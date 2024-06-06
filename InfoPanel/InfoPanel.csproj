@@ -1,0 +1,141 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net6.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWPF>true</UseWPF>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<ApplicationIcon>Resources\Images\favicon.ico</ApplicationIcon>
+		<Platforms>x64</Platforms>
+		<FileVersion>$(AssemblyVersion)</FileVersion>
+		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
+		<Version>1.2.7.0</Version>
+		<UseWindowsForms>False</UseWindowsForms>
+		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\TuringSmartScreenLib.Helpers.SkiaSharp\TuringSmartScreenLib.Helpers.SkiaSharp.csproj" />
+		<ProjectReference Include="..\TuringSmartScreenLib\TuringSmartScreenLib.csproj" />
+	</ItemGroup>
+
+	<Target Name="Sign" AfterTargets="Publish">
+		<Exec WorkingDirectory="$(PublishDir)" Command="&quot;C:\Program Files (x86)\Windows Kits\10\App Certification Kit\signtool.exe&quot; sign /a /t http://timestamp.sectigo.com /fd SHA256 /d &quot;InfoPanel&quot; /v InfoPanel.exe" />
+	</Target>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x86'">
+		<DebugType>full</DebugType>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x86'">
+		<DebugType>full</DebugType>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <Compile Remove="Images\**" />
+	  <EmbeddedResource Remove="Images\**" />
+	  <None Remove="Images\**" />
+	  <Page Remove="Images\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="hwinfo_logo_white.png" />
+		<None Remove="index.html" />
+		<None Remove="Logo.png" />
+		<None Remove="logo_white.png" />
+		<None Remove="Resources\Images\home.jpg" />
+		<None Remove="Resources\Images\no_image.png" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Resource Include="Resources\Images\favicon.ico">
+			<CopyToOutputDirectory></CopyToOutputDirectory>
+		</Resource>
+		<Resource Include="Resources\Images\home.jpg" />
+		<Resource Include="Resources\Images\no_image.png" />
+		<Content Include="index.html">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<PackageReference Include="AutoMapper" Version="12.0.1" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.0" />
+		<PackageReference Include="Flurl.Http" Version="3.2.4" />
+		<PackageReference Include="MahApps.Metro" Version="2.4.9" />
+		<PackageReference Include="Microsoft.AppCenter.Analytics" Version="5.0.2" />
+		<PackageReference Include="Microsoft.AppCenter.Crashes" Version="5.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="7.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.1" />
+		<PackageReference Include="Prise" Version="6.0.0" />
+		<PackageReference Include="WinUSBNet" Version="2.1.0" />
+		<PackageReference Include="WPF-UI" Version="2.1.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="hwinfo_logo_white.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Update="Properties\Resources.Designer.cs">
+			<DesignTime>True</DesignTime>
+			<AutoGen>True</AutoGen>
+			<DependentUpon>Resources.resx</DependentUpon>
+		</Compile>
+		<Compile Update="Views\Pages\ProfilesPage.xaml.cs">
+			<SubType>Code</SubType>
+		</Compile>
+		<Compile Update="Views\Pages\HomePage.xaml.cs">
+			<SubType>Code</SubType>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Update="Properties\Resources.resx">
+			<Generator>ResXFileCodeGenerator</Generator>
+			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="NunitoSans_7pt_Condensed-BlackItalic.ttf">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="NunitoSans_7pt_Condensed-BoldItalic.ttf">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="NunitoSans_7pt_Condensed-ExtraBoldItalic.ttf">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="NunitoSans_7pt_Condensed-ExtraLightItalic.ttf">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="NunitoSans_7pt_Condensed-Light.ttf">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="NunitoSans_7pt_Condensed-Medium.ttf">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="NunitoSans_7pt_Condensed-Regular.ttf">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="NunitoSans_7pt_Condensed-SemiBoldItalic.ttf">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Page Update="Views\Pages\ProfilesPage.xaml">
+			<XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
+		</Page>
+		<Page Update="Views\Pages\HomePage.xaml">
+			<XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
+			<SubType>Designer</SubType>
+		</Page>
+	</ItemGroup>
+
+</Project>

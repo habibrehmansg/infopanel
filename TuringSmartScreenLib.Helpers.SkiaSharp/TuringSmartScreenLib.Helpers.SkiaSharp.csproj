@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	  <TargetFramework>net6.0-windows</TargetFramework>
+    <CodeAnalysisRuleSet>..\Analyzers.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>TuringSmartScreenLib.Helpers.SkiaSharp</PackageId>
+    <Title>TuringSmartScreenLib.Helpers.SkiaSharp</Title>
+    <Description>Turing Smart Screen controller helper.</Description>
+    <Summary>Turing Smart Screen controller helper</Summary>
+    <PackageTags>turing-smart-screen image</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="2.88.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TuringSmartScreenLib\TuringSmartScreenLib.csproj" />
+  </ItemGroup>
+
+</Project>

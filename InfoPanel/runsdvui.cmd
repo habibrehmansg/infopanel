@@ -1,0 +1,2 @@
+cd /d "C:\Users\Habib\VisualStudioProjects\InfoPanel\InfoPanel" &msbuild "InfoPanel.csproj" /t:sdvViewer /p:configuration="Debug" /p:platform="x86" /p:SolutionDir="C:\Users\Habib\VisualStudioProjects\InfoPanel" 
+exit %errorlevel% 

@@ -1,0 +1,218 @@
+﻿<UserControl x:Class="InfoPanel.Views.Components.SensorProperties"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:InfoPanel.Views.Components"
+      xmlns:app="clr-namespace:InfoPanel"
+      xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" 
+      mc:Ignorable="d"
+      d:DesignWidth="200">
+
+    <Grid Margin="10,10,10,10">
+        <StackPanel>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel>
+                    <TextBox IsReadOnly="True" Margin="0,0,0,0"
+                     Text="{Binding SensorName}"/>
+                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Sensor" FontSize="12" Margin="5,0,0,0" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,-5,0,0">
+                        <ToggleButton Grid.Column="2" HorizontalAlignment="Right" Margin="0,0,0,0"
+                              IsChecked="{Binding AbsoluteAddition}">
+                            <ui:SymbolIcon Symbol="FilterAdd20" ToolTip="Absolute"/>
+                        </ToggleButton>
+
+                        <ToggleButton Grid.Column="2" HorizontalAlignment="Right" Margin="5,0,0,0"
+                              IsChecked="{Binding ShowName}">
+                            <ui:SymbolIcon Symbol="DrawText20" ToolTip="Show Name"/>
+                        </ToggleButton>
+
+                        <ToggleButton Grid.Column="2" HorizontalAlignment="Right" Margin="5,0,0,0"
+                              IsChecked="{Binding ShowUnit}">
+                            <ui:SymbolIcon Symbol="TextAsterisk20" ToolTip="Show Unit"/>
+                        </ToggleButton>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                      Margin="10,0,0,0">
+                    <ComboBox
+                      x:Name="ComboBoxValueType"
+                      SelectedValue="{Binding ValueType}">
+                    </ComboBox>
+                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Reading" FontSize="12" Margin="5,0,0,0" />
+                </StackPanel>
+            </Grid>
+
+            <!--<Grid Grid.Row="3" Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="1*"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                     Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Id, Converter={StaticResource Int32ValueConverter}}" 
+                     IsReadOnly="True" Margin="0,0,10,20"/>
+                <TextBox x:Name="TextBoxInstance" Grid.Column="1"
+                    Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Instance, Converter={StaticResource Int32ValueConverter}}" 
+                    IsReadOnly="True" Margin="10,0,10,20"/>
+                <TextBox x:Name="TextBoxEntryId" Grid.Column="2" 
+                    Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.EntryId, Converter={StaticResource Int32ValueConverter}}" 
+                    IsReadOnly="True" Margin="10,0,0,20"/>
+
+            </Grid>-->
+
+
+            <Grid Grid.Row="6" Margin="0,15,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                    <ui:TextBox x:Name="TextBoxMultiplier" Text="{Binding MultiplicationModifier}" />
+                    <!--<ui:NumberBox Name="NumberBoxMultiplication" Margin="0,0,0,0"
+                                     FontSize="14" DecimalPlaces="3"
+                                     ToolTip="Useful for unit conversion. E.g. 0.008 for KB/s to Mbps"
+                                     Text="{Binding MultiplicationModifier}"/>-->
+                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Multiplier" FontSize="12" Margin="5,0,0,0" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                    <StackPanel>
+                        <ui:NumberBox Name="NumberBoxAddition" Margin="0,0,0,0"
+                                     FontSize="14" SmallChange="1" ToolTip="Useful for inversing values. E.g. -32000 (with ABS) from Memory Usage for Memory Free."
+                                     TextChanged="NumberBoxAddition_TextChanged"
+                                     Text="{Binding AdditionModifier}"
+                                     Value="{Binding AdditionModifier}"/>
+                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Modifier" FontSize="12" Margin="5,0,0,0" />
+                    </StackPanel>
+                </StackPanel>
+
+
+
+            </Grid>
+
+            <Grid Grid.Row="7" Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel>
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ui:NumberBox Name="NumberBoxPrecision" Margin="0,0,0,0"
+                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="0" Maximum="3"
+                                          ToolTip="Number of decimal places"
+                                          TextChanged="NumberBoxPrecision_TextChanged"
+                                     IsEnabled="{Binding OverridePrecision}"
+                                     Text="{Binding Precision}"
+                                     Value="{Binding Precision}"/>
+                            <ui:ToggleSwitch Grid.Column="1" Width="50" Margin="10,0,0,0"
+                                            IsChecked="{Binding OverridePrecision}" />
+                        </Grid>
+                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Override Precision" FontSize="12" Margin="5,0,0,0" />
+                    </StackPanel>
+
+
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBox Margin="0,0,0,0"
+                                     FontSize="14"
+                                     IsEnabled="{Binding OverrideUnit}"
+                                     Text="{Binding Unit}"/>
+                            <ui:ToggleSwitch Grid.Column="1" Width="50" Margin="10,0,0,0"
+                      IsChecked="{Binding OverrideUnit}" />
+                        </Grid>
+                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Override Unit" FontSize="12" Margin="5,0,0,0" />
+                    </StackPanel>
+
+
+                </StackPanel>
+            </Grid>
+
+
+            <Grid Margin="0,15,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid Margin="0,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <ui:NumberBox Name="NumberBoxThreshold1" Margin="0,0,0,0"
+                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="0" ToolTip="Change color when sensor ≥ value"
+                                      TextChanged="NumberBoxThreshold1_TextChanged"
+                                     Text="{Binding Threshold1}"
+                                     Value="{Binding Threshold1}"/>
+                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" 
+                                   Text="Threshold #1" FontSize="12" Margin="5,0,0,0" />
+                    </StackPanel>
+
+
+                    <metro:ColorPicker Grid.Column="1" Margin="10,0,0,0"
+                                   Background="Transparent" VerticalAlignment="Top"
+                                   Height="35" Width="50"
+                                   BorderThickness="1" 
+                                   metro:TextBoxHelper.UseFloatingWatermark="False"
+                                   SelectedColorTemplate="{DynamicResource MahApps.Templates.ColorPickerContent.ColorOnly}"
+                                   SelectedColor="{Binding Threshold1Color}"/>
+                </Grid>
+
+
+                <Grid Grid.Column="1" Margin="10,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <ui:NumberBox Name="NumberBoxThreshold2" Margin="0,0,0,0"
+                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="0" ToolTip="Change color when sensor ≥ value"
+                                      TextChanged="NumberBoxThreshold2_TextChanged"
+                                     Text="{Binding Threshold2}"
+                                     Value="{Binding Threshold2}"/>
+                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" 
+                                   Text="Threshold #2" FontSize="12" Margin="5,0,0,0" />
+                    </StackPanel>
+
+
+                    <metro:ColorPicker Grid.Column="1" Margin="10,0,0,0"
+                                   Background="Transparent" VerticalAlignment="Top"
+                                   Height="35" Width="50"
+                                   BorderThickness="1" 
+                                   metro:TextBoxHelper.UseFloatingWatermark="False"
+                                   SelectedColorTemplate="{DynamicResource MahApps.Templates.ColorPickerContent.ColorOnly}"
+                                   SelectedColor="{Binding Threshold2Color}"/>
+                </Grid>
+
+            </Grid>
+
+
+        </StackPanel>
+    </Grid>
+</UserControl>

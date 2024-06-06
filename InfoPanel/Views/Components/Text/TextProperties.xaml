@@ -1,0 +1,85 @@
+﻿<UserControl x:Class="InfoPanel.Views.Components.TextProperties"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:InfoPanel.Views.Components"
+      xmlns:app="clr-namespace:InfoPanel"
+      xmlns:models="clr-namespace:InfoPanel.Models"
+      xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      mc:Ignorable="d">
+
+    <Grid Margin="10,10,10,10">
+        <StackPanel Grid.Column="1">
+            <StackPanel>
+                <TextBox x:Name="TextBoxName" Text="{Binding Name}"/>
+                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text" FontSize="12" Margin="5,0,0,0" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,-2,0,0">
+                <ToggleButton Margin="0,0,0,0"
+                              IsChecked="{Binding Bold}">
+                    <ui:SymbolIcon Symbol="TextBold20" ToolTip="Bold"/>
+                </ToggleButton>
+                <ToggleButton Margin="5,0,0,0"
+                              IsChecked="{Binding Italic}">
+                    <ui:SymbolIcon Symbol="TextItalic20" ToolTip="Italic"/>
+                </ToggleButton>
+                <ToggleButton Margin="5,0,0,0"
+                              IsChecked="{Binding Underline}">
+                    <ui:SymbolIcon Symbol="TextUnderline20" ToolTip="Underline"/>
+                </ToggleButton>
+                <ToggleButton Margin="5,0,0,0"
+                              IsChecked="{Binding Strikeout}">
+                    <ui:SymbolIcon Symbol="TextStrikethrough20" ToolTip="Strikethrough"/>
+                </ToggleButton>
+                <ToggleButton Margin="5,0,0,0"
+                              IsChecked="{Binding RightAlign}">
+                    <ui:SymbolIcon Symbol="AlignRight20" ToolTip="Right align"/>
+                </ToggleButton>
+                <ToggleButton Margin="5,0,0,0"
+                              IsChecked="{Binding Uppercase}">
+                    <ui:SymbolIcon Symbol="TextCaseUppercase20" ToolTip="Uppercase"/>
+                </ToggleButton>
+            </StackPanel>
+
+            <StackPanel Margin="0,12,0,0">
+                <metro:ColorPicker Grid.Row="8"  Background="Transparent" Height="35"
+                               BorderThickness="1"
+                               metro:TextBoxHelper.UseFloatingWatermark="False"
+                               SelectedColor="{Binding Color}"/>
+                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Color" FontSize="12" Margin="5,0,0,0" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Margin="0,10,0,0">
+                <ComboBox Grid.Column="1" ScrollViewer.VerticalScrollBarVisibility="Visible" SelectedValue="{Binding Font}"
+                          ItemsSource="{Binding InstalledFonts, RelativeSource={RelativeSource AncestorType=local:TextProperties}}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontFamily="{Binding}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Font Family" FontSize="12" Margin="5,0,0,0" />
+            </StackPanel>
+
+            <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                    <ui:NumberBox Margin="0,0,0,0"
+                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" TextChanged="NumberBox_TextChanged"
+                                     Text="{Binding FontSize}"
+                                     Value="{Binding FontSize}"/>
+                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Font Size" FontSize="12" Margin="5,0,0,0" />
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+       
+
+    </Grid>
+</UserControl>

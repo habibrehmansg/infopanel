@@ -1,0 +1,57 @@
+﻿<Application x:Class="InfoPanel.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:InfoPanel"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- MahApps -->
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Controls.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Fonts.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Themes/Dark.Blue.xaml" />
+
+                <ui:ThemesDictionary Theme="Dark" />
+                <ui:ControlsDictionary />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!--<FontFamily x:Key="NunitoSansRegular">./Fonts/NunitoSans_7pt-Regular.ttf#Noto Sans</FontFamily>-->
+
+            <SolidColorBrush x:Key="MahApps.Colors.AccentBase" Color="#FF23262B"  />
+            <SolidColorBrush x:Key="MahApps.Colors.Accent" Color="#FF23262B"  />
+            <SolidColorBrush x:Key="MahApps.Colors.Accent2" Color="#FF23262B"  />
+            <SolidColorBrush x:Key="MahApps.Colors.Accent3" Color="#FF23262B"  />
+            <SolidColorBrush x:Key="MahApps.Colors.Accent4" Color="#FF23262B"  />
+            <SolidColorBrush x:Key="MahApps.Colors.Highlight" Color="#FF23262B"  />
+            <SolidColorBrush x:Key="MahApps.Colors.IdealForeground" Color="#FF23262B"  />
+
+            <SolidColorBrush x:Key="MahApps.Brushes.IdealForegroundDisabled" Color="Transparent"/>
+            <SolidColorBrush x:Key="MahApps.Brushes.Control.Background" Color="Transparent"/>
+            <SolidColorBrush x:Key="MahApps.Brushes.Control.Disabled" Color="Transparent"/>
+            <SolidColorBrush x:Key="MahApps.Brushes.Text" Color="LightGray"  />
+            <SolidColorBrush x:Key="MahApps.Brushes.Selected.Foreground" Color="LightGray"  />
+            <SolidColorBrush x:Key="MahApps.Brushes.Accent" Color="#FF23262B"  />
+            <SolidColorBrush x:Key="MahApps.Brushes.TextBox.Border" Color="DarkGray"  />
+            <SolidColorBrush x:Key="MahApps.Brushes.TextBox.Border.Focus" Color="#FF23262B"  />
+            <SolidColorBrush x:Key="MahApps.Brushes.TextBox.Border.MouseOver" Color="#FF23262B"  />
+
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <local:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+            <local:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+            <local:Int32ValueConverter x:Key="Int32ValueConverter" />
+            <local:ProfileIndexConverter x:Key="ProfileIndexConverter" />
+            <local:IsSensorConverter x:Key="IsSensorConverter" />
+            <local:CustomStepIndexConverter x:Key="CustomStepIndexConverter" />
+            <local:CacheImageConverter x:Key="CacheImageConverter" />
+            <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <local:NullToBooleanConverter x:Key="NullToBooleanConverter"/>
+            <local:SelectedItemTextConverter x:Key="SelectedItemTextConverter"/>
+            <local:IntStringValueConverter x:Key="IntStringValueConverter"/>
+            <local:IntDoubleValueConverter x:Key="IntDoubleValueConverter"/>
+            <local:BitmapToImageConverter x:Key="BitmapToImageConverter"/>
+            <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter"/>
+
+            <BitmapImage x:Key="HwinfoLogo" UriSource="hwinfo_logo_white.png" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

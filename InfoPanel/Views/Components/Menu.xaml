@@ -1,0 +1,46 @@
+﻿<UserControl x:Class="InfoPanel.Views.Components.Menu"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:InfoPanel.Views.Components"
+             xmlns:app="clr-namespace:InfoPanel"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <!--<materialDesign:Card>-->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="auto"/>
+            </Grid.ColumnDefinitions>
+            <Menu Grid.Column="0">
+                <MenuItem Header="File" HorizontalAlignment="Left">
+                    <!--<MenuItem Header="Export current profile"/>
+                <MenuItem Header="Import profile"/>-->
+                    <MenuItem Name="MenuItemExit" Header="Exit Program" Click="MenuItemExit_Click"/>
+                </MenuItem>
+                <MenuItem Header="Settings">
+                    <CheckBox Content="Start with Windows (Recommended)" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.AutoStart}" Margin="0,0,0,0"/>
+                    <CheckBox Content="Start minimized (Recommended)" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.StartMinimized}"/>
+                    <CheckBox Content="BeadaPanel support (1st Profile Only)" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.Beadapanel}"/>
+                    <CheckBox Grid.Column="0" Content="WebServer support" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.WebServer}"/>
+                </MenuItem>
+                <MenuItem Header="Misc">
+                    <MenuItem Name="MenuItemPerformanceSettings" Header="Performance Settings" Click="MenuItemPerformanceSettings_Click"/>
+                    <MenuItem Name="MenuItemWebserverSettings" Header="WebServer Settings" Click="MenuItemWebserverSettings_Click"/>
+                </MenuItem>
+                <MenuItem Header="Help">
+                    <MenuItem Name="MenuItemDiscord" Header="Discord" Click="MenuItemDiscord_Click"/>
+                </MenuItem>
+            </Menu>
+            <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="0,0,10,0">
+                <Span FontWeight="Bold" FontSize="24">infopanel</Span>
+            </TextBlock>
+            <!--<Image x:Name="ImageLogo" Grid.Column="2" Source="{StaticResource Logo}" 
+                       Cursor="Hand" ToolTip="https://infopanel.pages.dev"
+                       Height="30" Margin="0,0,10,0"/>-->
+        </Grid>
+    <!--</materialDesign:Card>-->
+</UserControl>
