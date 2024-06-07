@@ -5,9 +5,9 @@ name: .NET
 
 on:
   push:
-    branches: [ "micah686/gh-actions" ]
+    branches: '*'
   pull_request:
-    branches: [ "micah686/gh-actions" ]
+    branches: '*'
 
 jobs:
   build:
