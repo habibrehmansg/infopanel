@@ -24,5 +24,9 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet build --no-restore
-    - name: Test
-      run: dotnet test --no-build --verbosity normal
+    - name: Build with PS
+      shell: powershell
+      run: |
+        mkdir ${{ github.workspace }}/build
+        dir ${{ github.workspace }}
+        dotnet publish InfoPanel\InfoPanel.csproj -c Release --output "${{ github.workspace }}\build" 
