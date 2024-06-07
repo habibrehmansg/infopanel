@@ -1,49 +1,28 @@
-name: Build Normal
+# This workflow will build a .NET project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+
+name: .NET
+
 on:
   push:
-    branches:
-      - '*'
-      - '!master'
-      - 'gh-pages'
+    branches: [ "micah686/gh-actions" ]
   pull_request:
-    types: [opened, synchronize, reopened]
-
+    branches: [ "micah686/gh-actions" ]
 
 jobs:
-
   build:
 
-    runs-on: windows-latest  
+    runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    # Install the .NET Core workload
-    - name: Install .NET Core
+    - uses: actions/checkout@v4
+    - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
-
-    - name: Cache NuGet Packages
-      uses: actions/cache@v1
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
-          
-    - name: Build 
-      shell: powershell
-      run: |
-        mkdir ${{ github.workspace }}/build
-        dir ${{ github.workspace }}
-        dotnet publish InfoPanel\InfoPanel.csproj.csproj -c Release --output "${{ github.workspace }}\build"      
-                
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v1
-      with:
-        name: VnManager
-        path:  "${{ github.workspace }}/build/"
+    - name: Restore dependencies
+      run: dotnet restore
+    - name: Build
+      run: dotnet build --no-restore
+    - name: Test
+      run: dotnet test --no-build --verbosity normal
