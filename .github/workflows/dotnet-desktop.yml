@@ -5,12 +5,9 @@ name: .NET
 
 on:
   push:
-    branches:
-      - '*'
-      - '!master'
-      - 'gh-pages'
+    branches: '**'
   pull_request:
-    types: [opened, synchronize, reopened]
+    branches: '**'
 
 jobs:
   build:
