@@ -22,11 +22,11 @@ jobs:
         dotnet-version: 8.0.x
     - name: Restore dependencies
       run: dotnet restore
-    - name: Build
-      run: dotnet build --no-restore
+    #- name: Build
+      #run: dotnet build --no-restore
     - name: Build with PS
       shell: powershell
       run: |
         mkdir ${{ github.workspace }}/build
         dir ${{ github.workspace }}
-        dotnet publish InfoPanel\InfoPanel.csproj -c Release --output "${{ github.workspace }}\build" 
+        dotnet build InfoPanel\InfoPanel.csproj -c Release --output "${{ github.workspace }}\build" 
