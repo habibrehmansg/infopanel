@@ -1,0 +1,48 @@
+name: .NET Core Desktop
+
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+    branches:
+      - '*'
+
+jobs:
+
+  build:
+
+    runs-on: windows-latest  
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # Install the .NET Core workload
+    - name: Install .NET Core
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Cache NuGet Packages
+      uses: actions/cache@v1
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+          
+    - name: Build 
+      shell: powershell
+      run: |
+        mkdir ${{ github.workspace }}/build
+        dir ${{ github.workspace }}
+        dotnet publish InfoPanel\InfoPanel.csproj.csproj -c Release --output "${{ github.workspace }}\build"      
+                
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: VnManager
+        path:  "${{ github.workspace }}/build/"
