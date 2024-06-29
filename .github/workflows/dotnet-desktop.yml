@@ -34,6 +34,7 @@ jobs:
     - name: Build InnoSetup
       run: |
         dotnet restore
+        dir ${{ github.workspace }}
         dotnet publish InfoSetup\InfoPanel.csproj -c Release -o "${{ github.workspace }}\build"        
 
     - name: Install and Compile Inno Setup Installer
