@@ -24,18 +24,13 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
-    - name: Create Output Directories
-      run: |
-        mkdir ${{ github.workspace }}\output\setup
-        mkdir ${{ github.workspace }}\output\build
-        xcopy /E /I ${{ github.workspace }}\setup ${{ github.workspace }}\output\setup       
-
     - name: Build with PS
       shell: powershell
       run: |
         mkdir ${{ github.workspace }}/build
         dir ${{ github.workspace }}
-        dotnet build InfoPanel\InfoPanel.csproj -c Release --output "${{ github.workspace }}\output\build" 
+        dotnet build InfoPanel\InfoPanel.csproj -c Release --output "${{ github.workspace }}\build" 
+
         
 
     - name: Install and Compile Inno Setup Installer
