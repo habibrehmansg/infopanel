@@ -27,6 +27,7 @@ DisableWelcomePage=no
 ;PrivilegesRequired=lowest
 OutputBaseFilename=InfoPanelSetup
 ;SetupIconFile=C:\Users\Habib\VisualStudioProjects\InfoPanel\InfoPanel\Resources\Images\favicon.ico
+SetupIconFile=..\InfoPanel\Resources\Images\favicon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
