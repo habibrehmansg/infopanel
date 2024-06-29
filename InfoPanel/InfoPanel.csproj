@@ -21,7 +21,7 @@
 	</ItemGroup>
 
 	<Target Name="Sign" AfterTargets="Publish">
-		<Exec WorkingDirectory="$(PublishDir)" Command="&quot;C:\Program Files (x86)\Windows Kits\10\App Certification Kit\signtool.exe&quot; sign /a /t http://timestamp.sectigo.com /fd SHA256 /d &quot;InfoPanel&quot; /v InfoPanel.exe" />
+		<!-- <Exec WorkingDirectory="$(PublishDir)" Command="&quot;C:\Program Files (x86)\Windows Kits\10\App Certification Kit\signtool.exe&quot; sign /a /t http://timestamp.sectigo.com /fd SHA256 /d &quot;InfoPanel&quot; /v InfoPanel.exe" /> -->
 	</Target>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x86'">
