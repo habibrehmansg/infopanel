@@ -38,3 +38,9 @@ jobs:
       with:
         name: InfoPanel
         path:  "${{ github.workspace }}/build/"
+
+    - name: Upload Artifact Setup
+      uses: actions/upload-artifact@v1
+      with:
+        name: InfoPanel-Setup
+        path:  "${{ github.workspace }}/InnoSetup/Output/InfoPanelSetup.exe"           
