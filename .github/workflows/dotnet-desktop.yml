@@ -6,31 +6,41 @@ name: .NET
 on:
   push:
     branches: '**'
+    tags: '*'
   pull_request:
     branches: '**'
 
 jobs:
   build:
 
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v4
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 8.0.x
-    - name: Restore dependencies
-      run: dotnet restore
+        dotnet-version: 8.0.x         
 
-    - name: Build with PS
+    - name: Build InfoPanel
+      run: |
+        dotnet restore
+        dotnet publish InfoPanel\InfoPanel.csproj -c Release -o "${{ github.workspace }}\build"        
+
+    - name: Install and Compile Inno Setup Installer
       shell: powershell
       run: |
-        mkdir ${{ github.workspace }}/build
-        dir ${{ github.workspace }}
-        dotnet build InfoPanel\InfoPanel.csproj -c Release --output "${{ github.workspace }}\build" 
+        cd ${{ github.workspace }}\InnoSetup
+        iscc "setup.iss"  
+    
     - name: Upload Artifact
       uses: actions/upload-artifact@v1
       with:
         name: InfoPanel
         path:  "${{ github.workspace }}/build/"
+
+    - name: Upload Artifact Setup
+      uses: actions/upload-artifact@v1
+      with:
+        name: InfoPanel-Setup
+        path:  "${{ github.workspace }}/InnoSetup/Output/InfoPanelSetup.exe"           

@@ -10,7 +10,7 @@
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-SignTool=MsSign $f
+;SignTool=MsSign $f
 AppId={{761BE813-4A06-4646-B930-3E647446A307}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
@@ -26,7 +26,7 @@ DisableWelcomePage=no
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
 OutputBaseFilename=InfoPanelSetup
-SetupIconFile=C:\Users\Habib\VisualStudioProjects\InfoPanel\InfoPanel\Resources\Images\favicon.ico
+SetupIconFile=..\InfoPanel\Resources\Images\favicon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -42,7 +42,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}";
 
 [Files]
-Source: "C:\Users\Habib\VisualStudioProjects\InfoPanel\InfoPanel\bin\Release\net6.0-windows\publish\win-x86\*"; Excludes: "*.pdb"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\*"; Excludes: "*.pdb"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [InstallDelete]
