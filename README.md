@@ -2,16 +2,50 @@
 
 [Releases][release]&nbsp;|&nbsp;[Reddit][reddit]&nbsp;|&nbsp;[Website][website]&nbsp;|&nbsp;[Forum][forum]&nbsp;|&nbsp;[Discord][discord]&nbsp;|&nbsp;[Microsoft Store][msstore]&nbsp;|&nbsp;[License][license]
 
-This is a hardware/sensor monitoring tool that can display stats like CPU Temp, GPU Temp, FPS,... on a repositionable floating window, Similar to Aida64.  
-It is also fully customizable, so you can adjust it and the style to fit your needs.  
-All sesnor data is currently being read from HWiNFO, so you'll need that software running to use InfoPanel.  
-There are multiple profiles available, so you can swap between them as necessary.
+![example branch parameter](https://github.com/habibrehmansg/infopanel/actions/workflows/dotnet-desktop.yml/badge.svg?branch=main) 
 
-If you have questions, check out our discord: https://discord.gg/cQnjdMC7Qc
+InfoPanel is a desktop visualization software designed to work with HWiNFO sensors via Shared Memory (SHM). It allows users to display system information on their desktop or external displays, including USB-only LCDs like BeadaPanel.
+
+## Features
+
+- Utilizes HWiNFO sensors for comprehensive system monitoring
+- Supports USB-only LCDs via WinUSB API
+- GIF support for dynamic visualizations
+- Faster refresh rates compared to similar solutions
+- Customizable display options
+
+## Motivation
+
+InfoPanel was developed to leverage HWiNFO's extensive sensor capabilities while providing a flexible display solution for USB LCDs. It aims to offer more features and sensor options than existing alternatives like AIDA.
+
+## Usage
+
+1. Install HWiNFO and enable Shared Memory support
+2. Install InfoPanel from the Microsoft Store or the website
+3. Configure InfoPanel to display your desired sensors and information
+4. Customize the appearance and layout to suit your preferences
+
+## Development
+
+InfoPanel was developed using C# for the UI, with assistance from ChatGPT to accelerate the development process. It represents the developer's first foray into C# UI development, coming from a Java backend background.
+
+## Demo
+![InfoPanel Demo](https://imgur.com/a/custom-hwinfo-sensorpanel-on-beadapanel-via-usb-with-high-fps-refresh-rate-gif-support-0kDjbfT#KbPgz5E)
+
+*A demonstration of InfoPanel in action on a BeadaPanel USB LCD*
+
+## License
+
+InfoPanel is licensed under GPL 3.0
+
+---
+
+InfoPanel is not affiliated with HWiNFO. HWiNFO is a registered trademark of its respective owners.
+
 ![InfoPanel](https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHM0OYfiFeMI2p9MWie0CvL99U4GA1gf6_kayTt_kBblFwHwo8BW8JXlqfnYxKPmmBfi569Wnp8TEITjNxN843cbSYSiHkAaYYuOxjrAXsLUjKUZ4nxXfJmTW9jKbW6F0uycsBYU0tD3WyFl2.JfBRRY-&format=source)
 
 
-![example branch parameter](https://github.com/habibrehmansg/infopanel/actions/workflows/dotnet-desktop.yml/badge.svg?branch=master) 
+
 
 
 
