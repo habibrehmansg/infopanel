@@ -26,7 +26,7 @@ DisableWelcomePage=no
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
 OutputBaseFilename=InfoPanelSetup
-SetupIconFile=C:\Users\Habib\VisualStudioProjects\InfoPanel\InfoPanel\Resources\Images\favicon.ico
+;SetupIconFile=C:\Users\Habib\VisualStudioProjects\InfoPanel\InfoPanel\Resources\Images\favicon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
