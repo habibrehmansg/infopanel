@@ -21,8 +21,8 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
-    - name: Restore dependencies
-      run: dotnet restore
+   # - name: Restore dependencies
+    #  run: dotnet restore
 
     # - name: Build with PS
     #   shell: powershell
@@ -34,6 +34,7 @@ jobs:
     - name: Build InnoSetup
       run: |
         dotnet restore
+        dir
         dir ${{ github.workspace }}
         dotnet publish InfoSetup\InfoPanel.csproj -c Release -o "${{ github.workspace }}\build"        
 
