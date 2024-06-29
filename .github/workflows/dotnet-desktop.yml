@@ -6,6 +6,7 @@ name: .NET
 on:
   push:
     branches: '**'
+    tags: '*'
   pull_request:
     branches: '**'
 
@@ -23,12 +24,24 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
-    - name: Build with PS
+    # - name: Build with PS
+    #   shell: powershell
+    #   run: |
+    #     mkdir ${{ github.workspace }}/build
+    #     dir ${{ github.workspace }}
+    #     dotnet build InfoPanel\InfoPanel.csproj -c Release --output "${{ github.workspace }}\build" 
+
+    - name: Build InnoSetup
+      run: |
+        dotnet restore
+        dotnet publish InfoSetup\InfoPanel.csproj -c Release -o "${{ github.workspace }}\build"        
+
+    - name: Install and Compile Inno Setup Installer
       shell: powershell
       run: |
-        mkdir ${{ github.workspace }}/build
-        dir ${{ github.workspace }}
-        dotnet build InfoPanel\InfoPanel.csproj -c Release --output "${{ github.workspace }}\build" 
+        cd ${{ github.workspace }}\InnoSetup
+        iscc "setup.iss"  
+    
     - name: Upload Artifact
       uses: actions/upload-artifact@v1
       with:
