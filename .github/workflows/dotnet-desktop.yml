@@ -22,6 +22,11 @@ jobs:
       with:
         dotnet-version: 8.0.x
 
+    - name: Find SignTool
+      run: |
+        
+        dir "C:/Program Files (x86)/Windows Kits/10/bin"           
+
     - name: Build InfoPanel
       run: |
         dotnet restore
