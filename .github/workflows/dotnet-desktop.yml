@@ -50,23 +50,11 @@ jobs:
 # be sure to add this to force it to be for tags only
 # if: startsWith(github.ref, 'refs/tags/')
 ##################################                      
-                
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      id: create_release #Don't touch this ID
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-       tag_name: ${{ github.ref }}
-       release_name: Release ${{ github.ref }}
-       draft: false
-       prerelease: false     
-      
     - name: Upload Release Asset
       if: startsWith(github.ref, 'refs/tags/')
       id: upload-release-asset
       uses: ncipollo/release-action@v1
       with:        
         artifacts: ${{ github.workspace }}/InnoSetup/Output/InfoPanelSetup.exe
-        asset_content_type: application/octet-stream
+        generateReleaseNotes: true
+
