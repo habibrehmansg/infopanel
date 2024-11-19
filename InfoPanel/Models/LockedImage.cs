@@ -1,78 +1,90 @@
-﻿using System;
+﻿using ImageMagick;
+using System;
 using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Windows.Controls;
+using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
 namespace InfoPanel.Models
 {
     public class LockedImage : IDisposable
     {
-        private readonly System.Drawing.Image image;
-        public readonly BitmapImage bitmapImage;
-        public readonly int Scale;
-        public readonly int Width;
-        public readonly int Height;
-        public readonly int Frames;
-        public readonly int FrameTime;
+        private readonly string? ImagePath;
+        private MagickImageCollection? ImageCollection;
+        private readonly Bitmap? Bitmap;
+        public int Width = 0;
+        public int Height = 0;
 
-        private readonly object bitmapLock = new object();
-        private bool isDisposed = false;
+        public int Frames = 0;
+        public int FrameTime = 0;
 
-        private Stopwatch Stopwatch = new Stopwatch();
+        private readonly object Lock = new();
+        private bool IsDisposed = false;
 
-        public LockedImage(System.Drawing.Image image)
+        private readonly Stopwatch Stopwatch = new Stopwatch();
+
+        public LockedImage(string imagePath)
         {
-            this.image = image;
-            this.Width = image.Width;
-            this.Height = image.Height;
-            this.Scale = 100;
+            ImagePath = imagePath;
+            LoadImage();
+        }
 
-            using (MemoryStream stream = new MemoryStream())
+        public LockedImage(Bitmap bitmap)
+        {
+            Bitmap = bitmap;
+            Width = Bitmap.Width;
+            Height = Bitmap.Height;
+            Frames = 1;
+        }
+
+        private void LoadImage()
+        {
+            if (ImagePath != null && File.Exists(ImagePath))
             {
-                image.Save(stream, ImageFormat.Png);
-                bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.StreamSource = stream;
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
-            }
-
-            FrameDimension dimension = new FrameDimension(image.FrameDimensionsList[0]);
-            Frames = image.GetFrameCount(dimension);
-
-            if (Frames > 1)
-            {
-                Stopwatch.Start();
-
-                var totalDuration = 0;
-                for (int i = 0; i < Frames; i++)
-                {
-                    var delayPropertyBytes = image.GetPropertyItem(20736)?.Value;
-                    if (delayPropertyBytes != null)
+                lock (Lock) { 
+                    try
                     {
-                        var frameDelay = BitConverter.ToInt32(delayPropertyBytes, i * 4) * 10;
-                        totalDuration += frameDelay;
+                        ImageCollection?.Dispose();
+                        ImageCollection = new MagickImageCollection(ImagePath);
+                        ImageCollection.Coalesce();
+
+                        Width = (int)ImageCollection[0].Width;
+                        Height = (int)ImageCollection[0].Height;
+                        Frames = ImageCollection.Count;
+
+                        //only animate if there are multiple frames (gif)
+                        if (Frames > 1)
+                        {
+                            var totalDuration = 0;
+                            foreach (var image in ImageCollection)
+                            {
+                                totalDuration += (int)image.AnimationDelay * 10;
+                            }
+
+                            //default to 1 second if no delay is found
+                            if (totalDuration == 0)
+                            {
+                                totalDuration = 1000;
+                            }
+
+                            FrameTime = totalDuration / Frames;
+
+                            //start the stopwatch
+                            Stopwatch.Start();
+                        } else
+                        {
+                            Stopwatch.Stop();
+                        }
                     }
+                    catch { }
                 }
-
-                if(totalDuration == 0)
-                {
-                    totalDuration = 1000;
-                }
-
-                FrameTime = totalDuration / Frames;
-            }
-            else
-            {
-                FrameTime = 0;
             }
         }
 
-        public int GetCurrentTimeFrame()
+        private Bitmap? GetCurrentFrame()
         {
             if (Frames > 1)
             {
@@ -85,50 +97,58 @@ namespace InfoPanel.Models
                 }
 
                 //reset every day
-                if(elapsedTime > 86400000)
+                if (elapsedTime > 86400000)
                 {
                     Stopwatch.Restart();
                 }
 
-                return elapsedFrames % Frames;
+                var currentFrame = elapsedFrames % Frames;
+
+                //ensure the frame is within bounds
+                if (currentFrame >= Frames)
+                {
+                    currentFrame = Frames - 1;
+                }
+
+                return ImageCollection?[currentFrame].ToBitmap();
             }
             else
             {
-                return 0;
+                return ImageCollection?.ToBitmap();
             }
         }
 
-        public LockedImage(System.Drawing.Image image, int scale)
+        public void Access(Action<Bitmap?> access)
         {
-            this.image = image;
-            this.Width = image.Width;
-            this.Height = image.Height;
-            this.Scale = scale;
-            FrameDimension dimension = new FrameDimension(image.FrameDimensionsList[0]);
-            Frames = image.GetFrameCount(dimension);
-        }
-
-        public void Access(Action<System.Drawing.Image> access)
-        {
-            if (isDisposed)
-                throw new ObjectDisposedException("LockedImage");
-
-            lock (bitmapLock)
+            if (IsDisposed)
             {
-                access(image);
+                throw new ObjectDisposedException("LockedImage");
+            }
+
+            lock (Lock)
+            {
+                if (Bitmap != null)
+                {
+                    access(Bitmap);
+                }
+                else
+                {
+                    access(GetCurrentFrame());
+                }
             }
         }
+
         public void Dispose()
         {
-            if (isDisposed)
+            if (IsDisposed)
                 return;
 
-            lock (bitmapLock)
+            lock (Lock)
             {
-                if (!isDisposed)
+                if (!IsDisposed)
                 {
-                    image.Dispose();
-                    isDisposed = true;
+                    ImageCollection?.Dispose();
+                    IsDisposed = true;
                 }
             }
         }

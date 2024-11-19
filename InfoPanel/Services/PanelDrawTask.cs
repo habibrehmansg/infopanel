@@ -198,38 +198,32 @@ namespace InfoPanel
                                 if (imageDisplayItem.CalculatedPath != null)
                                 {
                                     var cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);
-                                    var frame = cachedImage?.GetCurrentTimeFrame() ?? 0;
+
+
+                                  
 
                                     cachedImage?.Access(image =>
                                     {
-                                        if (frame > 0 && frame < cachedImage.Frames)
+                                        var scaledWidth = (int)(cachedImage.Width * imageDisplayItem.Scale / 100.0f);
+                                        var scaledHeight = (int)(cachedImage.Height * imageDisplayItem.Scale / 100.0f);
+
+                                        if (image != null)
                                         {
-                                            FrameDimension dimension = new FrameDimension(image.FrameDimensionsList[0]);
-                                            image.SelectActiveFrame(dimension, frame);
+                                            g.DrawImage(image, new Rectangle(imageDisplayItem.X, imageDisplayItem.Y, scaledWidth, scaledHeight));
                                         }
-
-                                        var width = image.Width;
-                                        var height = image.Height;
-
-                                        if(imageDisplayItem.Scale > 0)
-                                        {
-                                            width = (int)(width * imageDisplayItem.Scale / 100.0f);
-                                            height = (int)(height * imageDisplayItem.Scale / 100.0f);
-                                        }
-
-                                        g.DrawImage(image, new Rectangle(imageDisplayItem.X, imageDisplayItem.Y, width, height));
+                                       
 
                                         if (imageDisplayItem.Layer)
                                         {
                                             using (var brush = new SolidBrush(ColorTranslator.FromHtml(imageDisplayItem.LayerColor)))
                                             {
-                                                g.FillRectangle(brush, imageDisplayItem.X, imageDisplayItem.Y, width, height);
+                                                g.FillRectangle(brush, imageDisplayItem.X, imageDisplayItem.Y, scaledWidth, scaledHeight);
                                             }
                                         }
 
                                         if (displayItem.Selected)
                                         {
-                                            selectedRectangles.Add(new Rectangle(imageDisplayItem.X + 2, imageDisplayItem.Y + 2, width - 4, height - 4));
+                                            selectedRectangles.Add(new Rectangle(imageDisplayItem.X + 2, imageDisplayItem.Y + 2, scaledWidth - 4, scaledHeight - 4));
                                         }
                                     });
                                 }
@@ -241,18 +235,17 @@ namespace InfoPanel
                                     if (imageDisplayItem?.CalculatedPath != null)
                                     {
                                         var cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);
-                                        var frame = cachedImage?.GetCurrentTimeFrame() ?? 0;
-
+                                      
                                         cachedImage?.Access(image =>
                                         {
-                                            if (frame > 0 && frame < cachedImage.Frames)
-                                            {
-                                                FrameDimension dimension = new FrameDimension(image.FrameDimensionsList[0]);
-                                                image.SelectActiveFrame(dimension, frame);
-                                            }
+                                            //if (frame > 0 && frame < cachedImage.Frames)
+                                            //{
+                                            //    FrameDimension dimension = new FrameDimension(image.FrameDimensionsList[0]);
+                                            //    image.SelectActiveFrame(dimension, frame);
+                                            //}
 
-                                            int width = (int)(image.Width * imageDisplayItem.Scale / 100.0f);
-                                            int height = (int)(image.Height * imageDisplayItem.Scale / 100.0f);
+                                            int width = (int)(cachedImage.Width * imageDisplayItem.Scale / 100.0f);
+                                            int height = (int)(cachedImage.Height * imageDisplayItem.Scale / 100.0f);
 
                                             g.DrawImage(image, new Rectangle(gaugeDisplayItem.X, gaugeDisplayItem.Y, width, height));
 

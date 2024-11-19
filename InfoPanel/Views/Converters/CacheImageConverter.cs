@@ -26,10 +26,25 @@ namespace InfoPanel
 
             if (value is string imagePath)
             {
-                LockedImage? image = Cache.GetLocalImage(imagePath);
-                if(image != null)
+                LockedImage? lockedImage = Cache.GetLocalImage(imagePath);
+
+                if (lockedImage != null)
                 {
-                    return image.bitmapImage;
+                    BitmapImage? bitmapImage = null;
+                    lockedImage.Access(bitmap =>
+                    {
+                        if(bitmap != null)
+                        {
+                            bitmapImage = new BitmapImage();
+                            bitmapImage.BeginInit();
+                            bitmapImage.StreamSource = bitmap.ToStream(ImageFormat.Png);
+                            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                            bitmapImage.EndInit();
+                            bitmapImage.Freeze();
+                        }
+                    });
+
+                    return bitmapImage;
                 }
             }
 

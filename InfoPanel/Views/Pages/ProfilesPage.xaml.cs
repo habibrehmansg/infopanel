@@ -94,17 +94,18 @@ namespace InfoPanel.Views.Pages
 
         private static async void LoadPreviews()
         {
+            //todo investigate lockup
+            //Parallel.ForEach(ConfigModel.Instance.GetProfilesCopy(), profile =>
+            //{
+            //    LockedBitmap? lockedBitmap = PanelDrawTask.Render(profile, 0, 30, false);
+            //});
+
             foreach (var profile in ConfigModel.Instance.GetProfilesCopy())
             {
-                LockedBitmap? lockedBitmap = null;
                 await Task.Run(() =>
                 {
-                    lockedBitmap = PanelDrawTask.Render(profile, 0, 30, false);
-                });
-
-                if (lockedBitmap != null)
-                {
-                    await Task.Run(() =>
+                    LockedBitmap? lockedBitmap = PanelDrawTask.Render(profile, 0, 30, false);
+                    if (lockedBitmap != null)
                     {
                         lockedBitmap.Access(bitmap =>
                         {
@@ -141,8 +142,10 @@ namespace InfoPanel.Views.Pages
                                 profile.BitmapImage.Unlock();
                             });
                         });
-                    });
-                }
+                    }
+                });
+
+
             }
         }
         private void ButtonAdd_Click(object sender, RoutedEventArgs e)
@@ -195,7 +198,7 @@ namespace InfoPanel.Views.Pages
 
         private async void ButtonDeleteProfile_Click(object sender, RoutedEventArgs e)
         {
-            if(ConfigModel.Instance.Profiles.First() == ViewModel.Profile)
+            if (ConfigModel.Instance.Profiles.First() == ViewModel.Profile)
             {
                 return;
             }
