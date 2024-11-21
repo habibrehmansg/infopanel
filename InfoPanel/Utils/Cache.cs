@@ -13,33 +13,12 @@ namespace InfoPanel
 {
     internal static class Cache
     {
-        private static ConcurrentDictionary<string, LockedImage> ImageDictionary = new ConcurrentDictionary<string, LockedImage>();
         private static readonly IMemoryCache ImageCache = new MemoryCache(new MemoryCacheOptions()
         {
-            ExpirationScanFrequency = TimeSpan.FromSeconds(5)
+            ExpirationScanFrequency = TimeSpan.FromSeconds(1)
         });
 
         private static object _imageLock = new object();
-
-        public static void PurgeImageCache(ImageDisplayItem imageDisplayItem)
-        {
-            if (imageDisplayItem.CalculatedPath != null)
-            {
-                PurgeImageCache(imageDisplayItem.CalculatedPath);
-            }
-        }
-
-        public static void PurgeImageCache(string path)
-        {
-            lock (_imageLock)
-            {
-                if (ImageDictionary.ContainsKey(path))
-                {
-                    ImageDictionary.Remove(path, out var Image);
-                    Image?.Dispose();
-                }
-            }
-        }
 
         public static Stream ToStream(this Image image, ImageFormat format)
         {
@@ -61,12 +40,10 @@ namespace InfoPanel
 
         public static LockedImage? GetLocalImage(string path)
         {
-            LockedImage result;
-            ImageCache.TryGetValue(path, out result);
+            ImageCache.TryGetValue(path, out LockedImage result);
 
-            if(result != null)
+            if (result != null)
             {
-                //ImageCache.Set(path, result, TimeSpan.FromSeconds(5));
                 return result;
             }
 
@@ -76,59 +53,29 @@ namespace InfoPanel
                 {
                     if (!path.Equals("NO_IMAGE") && File.Exists(path))
                     {
-                        using (var temp = Image.FromFile(path))
-                        {
-                            //todo fix DPI to lower
-                            //FrameDimension dimension = new FrameDimension(temp.FrameDimensionsList[0]);
-                            //if (temp.GetFrameCount(dimension) == 1 
-                            //    && temp.Width > 4096 || temp.Height > 4096
-                            //    || temp.HorizontalResolution > 96 || temp.VerticalResolution > 96)
-                            //{
-                            //    //var width = (int)(temp.Width * (96.0 / temp.HorizontalResolution));
-                            //    //var height = (int)(temp.Height * (96.0 / temp.VerticalResolution));
-                            //    var width = temp.Width;
-                            //    var height = temp.Height;
-
-
-
-                            //    using (var resized = new Bitmap(width, height, temp.PixelFormat))
-                            //    {
-                            //        resized.SetResolution(96, 96);
-                            //        using (Graphics g = Graphics.FromImage(resized))
-                            //        {
-                            //            g.DrawImage(temp, new Rectangle(0, 0, temp.Width, temp.Height));
-                            //        }
-
-                            //        var stream = ToStream(resized, temp.RawFormat);
-                            //        var image = Image.FromStream(stream);
-                            //        result = new LockedImage(image);
-                            //    }
-                            //}
-                            //else
-                            //{
-                            //    //var stream = ToStream(temp, temp.RawFormat);
-                            //    //result = new LockedImage(Image.FromStream(stream));
-                            //    result = new LockedImage(path);
-                            //}
-
-                            result = new LockedImage(path);
-
-                        }
+                        result = new LockedImage(path);
                     }
-                    else
-                    {
-                        using (var stream = Application.GetResourceStream(new Uri("Images/no_image.png", UriKind.Relative)).Stream)
-                        {
-                           
-                            result = new LockedImage((Bitmap) Image.FromStream(stream));
-                        }
-                    }
+                    //else
+                    //{
+                    //    using var stream = Application.GetResourceStream(new Uri("Images/no_image.png", UriKind.Relative)).Stream;
+                    //    result = new LockedImage((Bitmap)Image.FromStream(stream));
+                    //}
 
                     ImageCache.Set(path, result, new MemoryCacheEntryOptions
                     {
-                        SlidingExpiration = TimeSpan.FromSeconds(5)
+                        SlidingExpiration = TimeSpan.FromSeconds(5),
+                        PostEvictionCallbacks = { new PostEvictionCallbackRegistration
+                        {
+                            EvictionCallback = (key, value, reason, state) =>
+                            {
+                                if(value is LockedImage lockedImage)
+                                {
+                                   lockedImage.Dispose();
+                                }
+                            }
+                        } }
                     });
-                    return result;
+
                 }
                 catch (Exception e)
                 {
@@ -136,7 +83,7 @@ namespace InfoPanel
                 }
             }
 
-            return null;
+            return result;
         }
     }
 

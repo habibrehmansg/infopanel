@@ -47,8 +47,6 @@ namespace InfoPanel.Views.Components
 
                             //OptimizeGif(filePath);
 
-                            Cache.PurgeImageCache(filePath);
-
                             imageDisplayItem.Guid = Guid.NewGuid();
                             imageDisplayItem.RelativePath = true;
                             imageDisplayItem.Name = openFileDialog.SafeFileName;

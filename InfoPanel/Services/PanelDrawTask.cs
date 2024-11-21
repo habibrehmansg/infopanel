@@ -1,4 +1,5 @@
-﻿using InfoPanel.Models;
+﻿using InfoPanel.Drawing;
+using InfoPanel.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -75,7 +76,7 @@ namespace InfoPanel
 
                 profiles.ForEach(profile =>
                 {
-                    if (profile.Active 
+                    if ((profile.Active && profile.CompatMode)
                     || (ConfigModel.Instance.Settings.BeadaPanel && ConfigModel.Instance.Settings.BeadaPanelProfile == profile.Guid)
                     || ConfigModel.Instance.Settings.TuringPanelA && ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid
                     || ConfigModel.Instance.Settings.TuringPanelC && ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid)
@@ -139,155 +140,10 @@ namespace InfoPanel
 
             lockedBitmap.Access(bitmap =>
             {
-                using (Graphics g = Graphics.FromImage(bitmap))
+                
+                using (var g = CompatGraphics.FromImage(bitmap) as MyGraphics)
                 {
-                    g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.InterpolationMode = InterpolationMode.Bilinear;
-                    g.TextRenderingHint = TextRenderingHint.AntiAlias;
-
-                    DisplayItem? selectedItem = SharedModel.Instance.SelectedItem;
-                    List<Rectangle> selectedRectangles = new List<Rectangle>();
-
-                    foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))
-                    {
-                        if (displayItem.Hidden) continue;
-
-                        switch (displayItem)
-                        {
-                            case TextDisplayItem textDisplayItem:
-                                {
-                                    (var text, var color) = textDisplayItem.EvaluateTextAndColor();
-                                    
-                                    FontStyle fontStyle =
-                                        (textDisplayItem.Bold ? FontStyle.Bold : FontStyle.Regular) |
-                                        (textDisplayItem.Italic ? FontStyle.Italic : FontStyle.Regular) |
-                                        (textDisplayItem.Underline ? FontStyle.Underline : FontStyle.Regular) |
-                                        (textDisplayItem.Strikeout ? FontStyle.Strikeout : FontStyle.Regular);
-
-                                    using Font font = new Font(textDisplayItem.Font, textDisplayItem.FontSize, fontStyle);
-                                    using Brush brush = new SolidBrush(ColorTranslator.FromHtml(color));
-                                    StringFormat format = new StringFormat();
-                                    if (textDisplayItem.RightAlign)
-                                    {
-                                        format.Alignment = StringAlignment.Far;
-                                    }
-                                    else
-                                    {
-                                        format.Alignment = StringAlignment.Near;
-                                    }
-
-                                    g.DrawString(text, font, brush, new PointF(textDisplayItem.X, textDisplayItem.Y), format);
-
-                                    if (displayItem.Selected)
-                                    {
-                                        var textSize = g.MeasureString(text, font);
-                                        if (textDisplayItem.RightAlign)
-                                        {
-                                            selectedRectangles.Add(new Rectangle((int)(textDisplayItem.X - textSize.Width), textDisplayItem.Y - 2, (int)textSize.Width, (int)(textSize.Height - 4)));
-                                        }
-                                        else
-                                        {
-                                            selectedRectangles.Add(new Rectangle(textDisplayItem.X, textDisplayItem.Y - 2, (int)textSize.Width, (int)(textSize.Height - 4)));
-                                        }
-                                    }
-
-                                    break;
-                                }
-                            case ImageDisplayItem imageDisplayItem:
-                                if (imageDisplayItem.CalculatedPath != null)
-                                {
-                                    var cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);
-
-
-                                  
-
-                                    cachedImage?.Access(image =>
-                                    {
-                                        var scaledWidth = (int)(cachedImage.Width * imageDisplayItem.Scale / 100.0f);
-                                        var scaledHeight = (int)(cachedImage.Height * imageDisplayItem.Scale / 100.0f);
-
-                                        if (image != null)
-                                        {
-                                            g.DrawImage(image, new Rectangle(imageDisplayItem.X, imageDisplayItem.Y, scaledWidth, scaledHeight));
-                                        }
-                                       
-
-                                        if (imageDisplayItem.Layer)
-                                        {
-                                            using (var brush = new SolidBrush(ColorTranslator.FromHtml(imageDisplayItem.LayerColor)))
-                                            {
-                                                g.FillRectangle(brush, imageDisplayItem.X, imageDisplayItem.Y, scaledWidth, scaledHeight);
-                                            }
-                                        }
-
-                                        if (displayItem.Selected)
-                                        {
-                                            selectedRectangles.Add(new Rectangle(imageDisplayItem.X + 2, imageDisplayItem.Y + 2, scaledWidth - 4, scaledHeight - 4));
-                                        }
-                                    });
-                                }
-                                break;
-                            case GaugeDisplayItem gaugeDisplayItem:
-                                {
-                                    var imageDisplayItem = gaugeDisplayItem.EvaluateImage(1.0 / frameRateLimit);
-
-                                    if (imageDisplayItem?.CalculatedPath != null)
-                                    {
-                                        var cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);
-                                      
-                                        cachedImage?.Access(image =>
-                                        {
-                                            //if (frame > 0 && frame < cachedImage.Frames)
-                                            //{
-                                            //    FrameDimension dimension = new FrameDimension(image.FrameDimensionsList[0]);
-                                            //    image.SelectActiveFrame(dimension, frame);
-                                            //}
-
-                                            int width = (int)(cachedImage.Width * imageDisplayItem.Scale / 100.0f);
-                                            int height = (int)(cachedImage.Height * imageDisplayItem.Scale / 100.0f);
-
-                                            g.DrawImage(image, new Rectangle(gaugeDisplayItem.X, gaugeDisplayItem.Y, width, height));
-
-                                            if (displayItem.Selected)
-                                            {
-                                                selectedRectangles.Add(new Rectangle(gaugeDisplayItem.X + 2, gaugeDisplayItem.Y + 2, width - 4, height - 4));
-                                            }
-                                        });
-                                    }
-                                    break;
-                                }
-                            case ChartDisplayItem chartDisplayItem:
-
-                                var chartBitmap = GraphDrawTask.Instance.GetBitmap(chartDisplayItem.Guid);
-
-                                if (chartBitmap != null)
-                                {
-                                    chartBitmap.Access(chartBitmap =>
-                                    {
-                                        g.DrawImage(chartBitmap, chartDisplayItem.X, chartDisplayItem.Y);
-                                    });
-
-                                    if (displayItem.Selected)
-                                    {
-                                        selectedRectangles.Add(new Rectangle(chartDisplayItem.X - 2, chartDisplayItem.Y - 2, chartDisplayItem.Width + 4, chartDisplayItem.Height + 4));
-                                    }
-                                }
-                                break;
-                        }
-                    }
-
-                    if (drawSelected && SharedModel.Instance.SelectedProfile == profile && selectedRectangles.Any())
-                    {
-                        if (currentFps >= 0 && currentFps < frameRateLimit / 2)
-                        {
-                            using var pen = new Pen(Color.FromArgb(255, 0, 255, 0), 2);
-                            foreach (var rectangle in selectedRectangles)
-                            {
-                                g.DrawRectangle(pen, rectangle);
-                            }
-                        }
-                    }
+                    PanelDraw.Run(profile, g, drawSelected);
                 }
             });
 

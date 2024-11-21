@@ -158,6 +158,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private bool _compatMode = true;
+        public bool CompatMode
+        {
+            get { return _compatMode; }
+            set
+            {
+                SetProperty(ref _compatMode, value);
+            }
+        }
+
         private bool _topmost = false;
         public bool Topmost
         {

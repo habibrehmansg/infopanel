@@ -100,10 +100,6 @@ namespace InfoPanel.Views.Components
                                 File.Copy(file, Path.Combine(imageFolder, fileName), true);
                                 var imageDisplayItem = new ImageDisplayItem(fileName, profile.Guid, fileName, true);
 
-                                if (imageDisplayItem.CalculatedPath != null)
-                                {
-                                    Cache.PurgeImageCache(imageDisplayItem);
-                                }
                                 customDisplayItem.Images.Add(imageDisplayItem);
                             }
                             catch (Exception ex)

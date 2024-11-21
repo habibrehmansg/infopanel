@@ -1,20 +1,26 @@
 ﻿using ImageMagick;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Eventing.Reader;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Threading.Tasks;
-using System.Windows.Media.Imaging;
+using unvell.D2DLib;
+using unvell.D2DLib.WinForm;
+using Windows.Web;
+using static System.Windows.Forms.DataFormats;
 
 namespace InfoPanel.Models
 {
-    public class LockedImage : IDisposable
+    public partial class LockedImage : IDisposable
     {
         private readonly string? ImagePath;
-        private MagickImageCollection? ImageCollection;
-        private readonly Bitmap? Bitmap;
+        private Image? Image;
+        private FrameDimension? FrameDimension;
+        //private MagickImageCollection? ImageCollection;
+        private IntPtr? D2DHandle;
+        private D2DBitmap[]? D2DBitmapCache;
         public int Width = 0;
         public int Height = 0;
 
@@ -32,14 +38,6 @@ namespace InfoPanel.Models
             LoadImage();
         }
 
-        public LockedImage(Bitmap bitmap)
-        {
-            Bitmap = bitmap;
-            Width = Bitmap.Width;
-            Height = Bitmap.Height;
-            Frames = 1;
-        }
-
         private void LoadImage()
         {
             if (ImagePath != null && File.Exists(ImagePath))
@@ -47,22 +45,57 @@ namespace InfoPanel.Models
                 lock (Lock) { 
                     try
                     {
-                        ImageCollection?.Dispose();
-                        ImageCollection = new MagickImageCollection(ImagePath);
-                        ImageCollection.Coalesce();
+                        DisposeAssets();
 
-                        Width = (int)ImageCollection[0].Width;
-                        Height = (int)ImageCollection[0].Height;
-                        Frames = ImageCollection.Count;
+                        Image?.Dispose();
+
+                        //double convert to release lock on file
+                        using var temp = Image.FromFile(ImagePath);
+
+                        var stream = new MemoryStream();
+                        temp.Save(stream, temp.RawFormat);
+                        stream.Position = 0;
+
+                        Image = Image.FromStream(stream);
+
+                        Width = Image.Width;
+                        Height = Image.Height;
+
+                        FrameDimension = new FrameDimension(Image.FrameDimensionsList[0]);
+                        Frames = Image.GetFrameCount(FrameDimension);
+
+                        //ImageCollection = new MagickImageCollection(ImagePath);
+                        //ImageCollection.Coalesce();
+
+                        //Width = (int)ImageCollection[0].Width;
+                        //Height = (int)ImageCollection[0].Height;
+                        //Frames = ImageCollection.Count;
+
+                        DisposeD2DAssets();
+
+                        D2DBitmapCache = new D2DBitmap[Frames];
 
                         //only animate if there are multiple frames (gif)
                         if (Frames > 1)
                         {
                             var totalDuration = 0;
-                            foreach (var image in ImageCollection)
+
+                            for (int i = 0; i < Frames; i++)
                             {
-                                totalDuration += (int)image.AnimationDelay * 10;
+                                Image.SelectActiveFrame(FrameDimension, i);
+                                var delayPropertyBytes = Image.GetPropertyItem(20736)?.Value;
+
+                                if (delayPropertyBytes != null)
+                                {
+                                    var frameDelay = BitConverter.ToInt32(delayPropertyBytes, i * 4) * 10;
+                                    totalDuration += frameDelay;
+                                }
                             }
+
+                            //foreach (var image in ImageCollection)
+                            //{
+                            //    totalDuration += (int)image.AnimationDelay * 10;
+                            //}
 
                             //default to 1 second if no delay is found
                             if (totalDuration == 0)
@@ -84,7 +117,7 @@ namespace InfoPanel.Models
             }
         }
 
-        private Bitmap? GetCurrentFrame()
+        private int GetCurrentFrameCount()
         {
             if (Frames > 1)
             {
@@ -110,11 +143,67 @@ namespace InfoPanel.Models
                     currentFrame = Frames - 1;
                 }
 
-                return ImageCollection?[currentFrame].ToBitmap();
+                return currentFrame;
             }
             else
             {
-                return ImageCollection?.ToBitmap();
+                return 0;
+            }
+        }
+
+        private Bitmap? GetBitmap()
+        {
+            var frame = GetCurrentFrameCount();
+            Image?.SelectActiveFrame(FrameDimension, frame);
+            return (Bitmap?)Image;
+            //return ImageCollection?[frame].ToBitmap();
+        }
+
+        public void AccessD2D(D2DDevice device, IntPtr handle, Action<D2DBitmap?> action)
+        {
+            if (IsDisposed)
+            {
+                throw new ObjectDisposedException("LockedImage");
+            }
+
+            lock (Lock)
+            {
+                if (D2DHandle == null)
+                {
+                    D2DHandle = handle;
+                }
+                else
+                if (handle != D2DHandle)
+                {
+                    Trace.WriteLine("D2DDevice changed, disposing assets");
+                    DisposeD2DAssets();
+                    D2DHandle = handle;
+                }
+
+                D2DBitmap? d2dbitmap = null;
+
+                if (D2DBitmapCache != null) {
+                    var frame = GetCurrentFrameCount();
+                    d2dbitmap = D2DBitmapCache[frame];
+
+                    if (d2dbitmap == null)
+                    {
+                        //var bitmap = ImageCollection?[frame].ToBitmap();
+                        var bitmap = GetBitmap();
+
+                        if (bitmap != null)
+                        {
+                            d2dbitmap = device.CreateBitmapFromGDIBitmap(bitmap, true);
+
+                            if (d2dbitmap != null)
+                            {
+                                D2DBitmapCache[frame] = d2dbitmap;
+                            }
+                        }
+                    }
+                }
+
+                action(d2dbitmap);
             }
         }
 
@@ -127,15 +216,28 @@ namespace InfoPanel.Models
 
             lock (Lock)
             {
-                if (Bitmap != null)
+                access(GetBitmap());
+            }
+        }
+
+        private void DisposeD2DAssets()
+        {
+            Trace.WriteLine("DisposeD2DAssets");
+            if (D2DBitmapCache != null)
+            {
+                for(int i = 0; i< D2DBitmapCache.Length; i++)
                 {
-                    access(Bitmap);
-                }
-                else
-                {
-                    access(GetCurrentFrame());
+                    D2DBitmapCache[i]?.Dispose();
+                    D2DBitmapCache[i] = null;
                 }
             }
+        }
+
+        private void DisposeAssets()
+        {
+            Trace.WriteLine("DisposeAssets");
+            //ImageCollection?.Dispose();
+            //ImageCollection = null;
         }
 
         public void Dispose()
@@ -147,10 +249,13 @@ namespace InfoPanel.Models
             {
                 if (!IsDisposed)
                 {
-                    ImageCollection?.Dispose();
+                    DisposeAssets();
+                    DisposeD2DAssets();
                     IsDisposed = true;
                 }
             }
+
+            GC.SuppressFinalize(this);
         }
     }
 

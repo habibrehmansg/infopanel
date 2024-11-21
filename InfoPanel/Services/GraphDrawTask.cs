@@ -22,7 +22,7 @@ namespace InfoPanel
         private Task _task;
 
         private Dictionary<(UInt32, UInt32, UInt32), Queue<Double>> ValuesCache = new Dictionary<(UInt32, UInt32, UInt32), Queue<Double>>();
-        private ConcurrentDictionary<Guid, LockedImage> BitmapCache = new ConcurrentDictionary<Guid, LockedImage>();
+        private ConcurrentDictionary<Guid, LockedBitmap> BitmapCache = new ConcurrentDictionary<Guid, LockedBitmap>();
 
         private GraphDrawTask()
         { }
@@ -43,7 +43,7 @@ namespace InfoPanel
             }
         }
 
-        public LockedImage? GetBitmap(Guid guid)
+        public LockedBitmap? GetBitmap(Guid guid)
         {
             BitmapCache.TryGetValue(guid, out var bitmap);
             return bitmap;
@@ -116,10 +116,10 @@ namespace InfoPanel
                                         queue.Dequeue();
                                     }
 
-                                    if (!BitmapCache.TryGetValue(chartDisplayItem.Guid, out LockedImage? bitmap) || bitmap.Width != chartDisplayItem.Width || bitmap.Height != chartDisplayItem.Height)
+                                    if (!BitmapCache.TryGetValue(chartDisplayItem.Guid, out LockedBitmap? bitmap) || bitmap.Width != chartDisplayItem.Width || bitmap.Height != chartDisplayItem.Height)
                                     {
                                         bitmap?.Dispose();
-                                        bitmap = new LockedImage(new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height, PixelFormat.Format32bppArgb));
+                                        bitmap = new LockedBitmap(new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height, PixelFormat.Format32bppArgb));
                                         BitmapCache[chartDisplayItem.Guid] = bitmap;
                                     }
 

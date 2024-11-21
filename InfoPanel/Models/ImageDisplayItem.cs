@@ -136,11 +136,12 @@ namespace InfoPanel.Models
 
             if (CalculatedPath != null)
             {
-                Cache.GetLocalImage(CalculatedPath)?.Access(image =>
+                var cachedImage = Cache.GetLocalImage(CalculatedPath);
+                if (cachedImage != null)
                 {
-                    result.Width = (int)(image.Width * Scale / 100.0f);
-                    result.Height = (int)(image.Height * Scale / 100.0f);
-                });
+                    result.Width = cachedImage.Width * Scale / 100.0f;
+                    result.Height = cachedImage.Height * Scale / 100.0f;
+                }
             }
 
             return result;

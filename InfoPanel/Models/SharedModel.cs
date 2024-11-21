@@ -18,6 +18,7 @@ using System.IO.Compression;
 using System.Diagnostics;
 using System.Windows.Navigation;
 using System.Windows.Threading;
+using InfoPanel.Views.Common;
 
 namespace InfoPanel
 {
@@ -241,40 +242,45 @@ namespace InfoPanel
         {
             if (Application.Current is App app)
             {
-                var displayWindow = app.GetDisplayWindow(profile);
-                var writeableBitmap = displayWindow?.WriteableBitmap;
+                var window = app.GetDisplayWindow(profile);
 
-                if (writeableBitmap != null)
+                if (window is DisplayWindow displayWindow)
                 {
-                    IntPtr backBuffer = IntPtr.Zero;
 
-                   writeableBitmap.Dispatcher.Invoke(() =>
+                    var writeableBitmap = displayWindow?.WriteableBitmap;
+
+                    if (writeableBitmap != null)
                     {
-                        if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
+                        IntPtr backBuffer = IntPtr.Zero;
+
+                        writeableBitmap.Dispatcher.Invoke(() =>
+                         {
+                             if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
+                             {
+                                 writeableBitmap.Lock();
+                                 backBuffer = writeableBitmap.BackBuffer;
+                             }
+                         });
+
+                        if (backBuffer == IntPtr.Zero)
                         {
-                            writeableBitmap.Lock();
-                            backBuffer = writeableBitmap.BackBuffer;
+                            return;
                         }
-                    });
 
-                    if (backBuffer == IntPtr.Zero)
-                    {
-                        return;
+                        // copy the pixel data from the bitmap to the back buffer
+                        BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                        int stride = bitmapData.Stride;
+                        byte[] pixels = new byte[stride * bitmap.Height];
+                        Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
+                        Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
+                        bitmap.UnlockBits(bitmapData);
+
+                        writeableBitmap.Dispatcher.Invoke(() =>
+                        {
+                            writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
+                            writeableBitmap.Unlock();
+                        });
                     }
-
-                    // copy the pixel data from the bitmap to the back buffer
-                    BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                    int stride = bitmapData.Stride;
-                    byte[] pixels = new byte[stride * bitmap.Height];
-                    Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-                    Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-                    bitmap.UnlockBits(bitmapData);
-                    
-                    writeableBitmap.Dispatcher.Invoke(() =>
-                    {
-                        writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
-                        writeableBitmap.Unlock();
-                    });
                 }
             }
         }

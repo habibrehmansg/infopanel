@@ -11,7 +11,7 @@
 		<FileVersion>$(AssemblyVersion)</FileVersion>
 		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
 		<Version>1.2.7.0</Version>
-		<UseWindowsForms>False</UseWindowsForms>
+		<UseWindowsForms>True</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 	</PropertyGroup>
 
@@ -61,6 +61,7 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<PackageReference Include="AnimatedImage.Wpf" Version="1.0.4" />
 		<PackageReference Include="AutoMapper" Version="12.0.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.0" />
 		<PackageReference Include="Flurl.Http" Version="3.2.4" />
@@ -72,6 +73,7 @@
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="7.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.1" />
 		<PackageReference Include="Prise" Version="6.0.0" />
+		<PackageReference Include="unvell.D2DLib-x64" Version="1.5.0" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
 	</ItemGroup>

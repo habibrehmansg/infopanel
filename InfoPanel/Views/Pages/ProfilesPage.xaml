@@ -346,6 +346,24 @@
                             IsChecked="{Binding OverrideDpi}"/>
                                 </ui:CardControl>
 
+                                <ui:CardControl Margin="0,15,0,0">
+                                    <ui:CardControl.Header>
+                                        <Grid Margin="0,-5,0,-5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock
+                            FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="Compatibility Mode" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </ui:CardControl.Header>
+                                    <ui:ToggleSwitch Margin="0,-5,0,-5"
+IsChecked="{Binding CompatMode}"/>
+                                </ui:CardControl>
+
 
                                 <Grid>
                                     <Grid.ColumnDefinitions>

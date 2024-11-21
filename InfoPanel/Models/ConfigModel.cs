@@ -89,7 +89,7 @@ namespace InfoPanel
         {
             if (sender is Profile profile)
             {
-                if (e.PropertyName == nameof(Profile.Active))
+                if (e.PropertyName == nameof(Profile.Active) || e.PropertyName == nameof(Profile.CompatMode))
                 {
                     if (profile.Active)
                     {

@@ -1,27 +1,27 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Services;
+using InfoPanel.ViewModels;
 using InfoPanel.Views.Common;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
-using System.Windows;
+using InfoPanel.Views.Windows;
 using Microsoft.AppCenter;
 using Microsoft.AppCenter.Analytics;
 using Microsoft.AppCenter.Crashes;
-using System.Globalization;
-using InfoPanel.Views.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Wpf.Ui.Mvvm.Contracts;
-using Wpf.Ui.Mvvm.Services;
-using InfoPanel.Services;
-using InfoPanel.ViewModels;
+using Microsoft.Win32;
+using Prise.DependencyInjection;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Prise.DependencyInjection;
-using Prise;
-using Microsoft.Win32;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
+using Wpf.Ui.Mvvm.Contracts;
+using Wpf.Ui.Mvvm.Services;
 
 namespace InfoPanel
 {
@@ -30,6 +30,7 @@ namespace InfoPanel
     /// </summary>
     public partial class App : System.Windows.Application
     {
+
         private static readonly IHost _host = Host
        .CreateDefaultBuilder()
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
@@ -81,8 +82,7 @@ namespace InfoPanel
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
        }).Build();
 
-        public Dictionary<Guid, DisplayWindow> DisplayWindows = new Dictionary<Guid, DisplayWindow>();
-
+        public Dictionary<Guid, object> DisplayWindows = [];
 
         public static T GetService<T>()
         where T : class
@@ -99,6 +99,8 @@ namespace InfoPanel
         protected override void OnStartup(StartupEventArgs e)
         {
             //WpfSingleInstance.Make("InfoPanel");
+
+            RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
 
             Process proc = Process.GetCurrentProcess();
             if (Process.GetProcesses().Where(p => p.ProcessName == proc.ProcessName).Count() > 1)
@@ -261,7 +263,7 @@ namespace InfoPanel
             window?.Navigate(typeof(Views.Pages.DesignPage));
         }
 
-        public DisplayWindow? GetDisplayWindow(Profile profile)
+        public object? GetDisplayWindow(Profile profile)
         {
             DisplayWindows.TryGetValue(profile.Guid, out var displayWindow);
             return displayWindow;
@@ -269,31 +271,77 @@ namespace InfoPanel
 
         public void MaximiseDisplayWindow(Profile profile)
         {
-            var displayWindow = GetDisplayWindow(profile);
-            displayWindow?.Fullscreen();
+            var window = GetDisplayWindow(profile);
+            
+            if(window is DisplayWindow displayWindow)
+            {
+                displayWindow?.Fullscreen();
+            }
+           
         }
 
         public void ShowDisplayWindow(Profile profile)
         {
-            var displayWindow = GetDisplayWindow(profile);
+            var window = GetDisplayWindow(profile);
 
-            if (displayWindow == null)
+            if (window == null)
             {
-                displayWindow = new DisplayWindow(profile);
-                DisplayWindows[profile.Guid] = displayWindow;
-                displayWindow.Closed += DisplayWindow_Closed;
+                if(profile.CompatMode)
+                {
+                    window = new DisplayWindow(profile);
+                    DisplayWindows[profile.Guid] = window;
+                    ((DisplayWindow) window).Closed += DisplayWindow_Closed;
+                } else
+                {
+                    window = new DirectDisplayWindow(profile);
+                    DisplayWindows[profile.Guid] = window;
+                    ((DirectDisplayWindow) window).Closed += DisplayWindow_Closed;
+                }
             }
 
-            if (!displayWindow.IsVisible)
+            if (window is DisplayWindow displayWindow)
             {
-                displayWindow.Show();
+                if (profile.CompatMode)
+                {
+                    displayWindow?.Show();
+                }
+                else
+                {
+                    displayWindow?.Close();
+                    ShowDisplayWindow(profile);
+                }
             }
+
+            if (window is DirectDisplayWindow directDisplayWindow)
+            {
+                if (profile.CompatMode)
+                {
+                    directDisplayWindow?.Close();
+                    ShowDisplayWindow(profile);
+                }
+                else
+                {
+                    directDisplayWindow?.Show();
+                }
+            }
+
+
         }
+
 
         public void CloseDisplayWindow(Profile profile)
         {
-            var displayWindow = GetDisplayWindow(profile);
-            displayWindow?.Close();
+            var window = GetDisplayWindow(profile);
+
+            if (window is DisplayWindow displayWindow)
+            {
+                displayWindow?.Close();
+            }
+
+            if (window is DirectDisplayWindow directDisplayWindow)
+            {
+                directDisplayWindow?.Close();
+            }
         }
 
         private void DisplayWindow_Closed(object? sender, EventArgs e)
@@ -302,6 +350,11 @@ namespace InfoPanel
             {
                 displayWindow.Closed -= DisplayWindow_Closed;
                 DisplayWindows.Remove(displayWindow.Profile.Guid);
+            }
+            else if (sender is DirectDisplayWindow directDisplayWindow)
+            {
+                directDisplayWindow.Closed -= DisplayWindow_Closed;
+                DisplayWindows.Remove(directDisplayWindow.Profile.Guid);
             }
         }
 
