@@ -16,6 +16,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\D2DLib\D2DLibExport\D2DLibExport.csproj" />
+		<ProjectReference Include="..\D2DLib\d2dlib\D2DLib.vcxproj" />
+		<ProjectReference Include="..\D2DLib\D2DWinForm\D2DWinForm.csproj" />
 		<ProjectReference Include="..\TuringSmartScreenLib.Helpers.SkiaSharp\TuringSmartScreenLib.Helpers.SkiaSharp.csproj" />
 		<ProjectReference Include="..\TuringSmartScreenLib\TuringSmartScreenLib.csproj" />
 	</ItemGroup>
@@ -73,7 +76,6 @@
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="7.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.1" />
 		<PackageReference Include="Prise" Version="6.0.0" />
-		<PackageReference Include="unvell.D2DLib-x64" Version="1.5.0" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
 	</ItemGroup>
