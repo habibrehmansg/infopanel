@@ -2,6 +2,8 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Linq;
+using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
 {
@@ -9,7 +11,7 @@ namespace InfoPanel.Drawing
     {
         private readonly Graphics Graphics = graphics;
 
-        public static CompatGraphics FromImage(Bitmap bitmap)
+        public static CompatGraphics FromBitmap(Bitmap bitmap)
         {
            var graphics = Graphics.FromImage(bitmap);
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -70,14 +72,19 @@ namespace InfoPanel.Drawing
             });
         }
 
-        public override void DrawImage(Bitmap image, int x, int y)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y)
         {
-            this.Graphics.DrawImage(image, x, y);
+            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height);
         }
 
-        public override void DrawImage(Bitmap image, int x, int y, int width, int height)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height)
         {
-            this.Graphics.DrawImage(image, x, y, width, height);
+            this.Graphics.DrawImage(bitmap, x, y, width, height);
+        }
+
+        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height)
+        {
+            throw new System.NotSupportedException();
         }
 
         public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height)
@@ -92,10 +99,53 @@ namespace InfoPanel.Drawing
             this.Graphics.DrawRectangle(pen, x, y, width, height);
         }
 
-        public override void FillRectangle(string color, int x, int y, int width, int height)
+        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null)
         {
+            if (gradientColor != null)
+            {
+                using var brush = new LinearGradientBrush(new Rectangle(x, y, width, height), ColorTranslator.FromHtml(color), ColorTranslator.FromHtml(gradientColor), LinearGradientMode.Vertical);
+                this.Graphics.FillRectangle(brush, x, y, width, height);
+            }
+            else
+            {
+                using var brush = new SolidBrush(ColorTranslator.FromHtml(color));
+                this.Graphics.FillRectangle(brush, x, y, width, height);
+            }
+        }
+
+        private GraphicsPath CreateGraphicsPath(MyPoint[] points)
+        {
+            var path = new GraphicsPath();
+
+            for (int i = 0; i < points.Length; i++)
+            {
+                if (i == 0)
+                {
+                    path.StartFigure();
+                }
+                else
+                {
+                    path.AddLine(new Point(points[i - 1].X, points[i - 1].Y), new Point(points[i].X, points[i].Y));
+                }
+            }
+
+            path.CloseFigure();
+
+            return path;
+        }
+
+        public override void DrawPath(MyPoint[] points, string color, int strokeWidth)
+        {
+            using var path = CreateGraphicsPath(points);
+            using var pen = new Pen(ColorTranslator.FromHtml(color), strokeWidth);
+            this.Graphics.DrawPath(pen, path);
+        }
+
+        public override void FillPath(MyPoint[] points, string color)
+        {
+            using var path = CreateGraphicsPath(points);
             using var brush = new SolidBrush(ColorTranslator.FromHtml(color));
-            this.Graphics.FillRectangle(brush, x, y, width, height);
+            this.Graphics.FillPath(brush, path);
         }
 
         public override void Dispose()

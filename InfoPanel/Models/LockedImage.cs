@@ -7,9 +7,6 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using unvell.D2DLib;
-using unvell.D2DLib.WinForm;
-using Windows.Web;
-using static System.Windows.Forms.DataFormats;
 
 namespace InfoPanel.Models
 {
@@ -173,7 +170,7 @@ namespace InfoPanel.Models
                     D2DHandle = handle;
                 }
                 else
-                if (handle != D2DHandle)
+                if (D2DHandle != handle)
                 {
                     Trace.WriteLine("D2DDevice changed, disposing assets");
                     DisposeD2DAssets();

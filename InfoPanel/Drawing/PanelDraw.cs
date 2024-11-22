@@ -1,8 +1,10 @@
 ﻿using InfoPanel.Models;
+using SkiaSharp;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
 {
@@ -100,21 +102,35 @@ namespace InfoPanel.Drawing
                             break;
                         }
                     case ChartDisplayItem chartDisplayItem:
-
-                        var chartBitmap = GraphDrawTask.Instance.GetBitmap(chartDisplayItem.Guid);
-
-                        if (chartBitmap != null)
+                        if (g is CompatGraphics)
                         {
-                            chartBitmap.Access(chartBitmap =>
-                            {
-                                g.DrawImage(chartBitmap, chartDisplayItem.X, chartDisplayItem.Y);
-                            });
+                            using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
+                            using var g1 = CompatGraphics.FromBitmap(graphBitmap);
+                            GraphDraw.Run(chartDisplayItem, g1);
+                            g.DrawBitmap(graphBitmap, chartDisplayItem.X, chartDisplayItem.Y);
+                        }
+                        else if (g is AcceleratedGraphics acceleratedGraphics)
+                        {
+                            using var d2dGraphics = acceleratedGraphics.D2DDevice
+                                .CreateBitmapGraphics(chartDisplayItem.Width, chartDisplayItem.Height);
 
-                            if (displayItem.Selected)
+                            if (d2dGraphics != null)
                             {
-                                selectedRectangles.Add(new Rectangle(chartDisplayItem.X - 2, chartDisplayItem.Y - 2, chartDisplayItem.Width + 4, chartDisplayItem.Height + 4));
+                                using var g1 = AcceleratedGraphics.FromD2DGraphics(d2dGraphics, acceleratedGraphics);
+
+                                d2dGraphics.BeginRender();
+                                GraphDraw.Run(chartDisplayItem, g1);
+                                d2dGraphics.EndRender();
+
+                                g.DrawBitmap(d2dGraphics, chartDisplayItem.X, chartDisplayItem.Y, chartDisplayItem.Width, chartDisplayItem.Height);
                             }
                         }
+
+                        if (displayItem.Selected)
+                        {
+                            selectedRectangles.Add(new Rectangle(chartDisplayItem.X - 2, chartDisplayItem.Y - 2, chartDisplayItem.Width + 4, chartDisplayItem.Height + 4));
+                        }
+
                         break;
                 }
             }

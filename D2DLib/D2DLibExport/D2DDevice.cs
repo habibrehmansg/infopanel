@@ -28,16 +28,16 @@ namespace unvell.D2DLib
 {
 	public class D2DDevice : IDisposable
 	{
-		internal HANDLE Handle { get; private set; }
+		public HANDLE Handle { get; private set; }
 
 		internal D2DDevice(HANDLE deviceHandle)
 		{
 			this.Handle = deviceHandle;
 		}
 
-		public static D2DDevice FromBitmap(D2DBitmapGraphics d2dBitmapGraphic)
+		public static D2DDevice FromHandle(HANDLE handle)
 		{
-			return new D2DDevice(d2dBitmapGraphic.Handle);
+			return new D2DDevice(handle);
 		}
 
 		public static D2DDevice FromHwnd(HWND hwnd, D2D1PresentOptions presentOptions = D2D1PresentOptions.None)

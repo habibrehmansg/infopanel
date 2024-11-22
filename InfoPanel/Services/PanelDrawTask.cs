@@ -141,7 +141,7 @@ namespace InfoPanel
             lockedBitmap.Access(bitmap =>
             {
                 
-                using (var g = CompatGraphics.FromImage(bitmap) as MyGraphics)
+                using (var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics)
                 {
                     PanelDraw.Run(profile, g, drawSelected);
                 }
