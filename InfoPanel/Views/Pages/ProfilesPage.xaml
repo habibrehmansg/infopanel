@@ -47,7 +47,7 @@
                                         Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}"/>
                                         <StackPanel>
                                             <Image Height="150" Margin="20,20,20,20"
-                            Source="{Binding BitmapImage}"/>
+                            Source="{Binding BitmapImagePreview}"/>
                                             <Border Background="#FF1A1a1a" CornerRadius="0,0,8,8">
                                                 <Grid Margin="10,0,10,0">
                                                     <Grid.ColumnDefinitions>

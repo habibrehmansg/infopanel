@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Models;
 using SkiaSharp;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -17,7 +18,7 @@ namespace InfoPanel.Drawing
             stopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true)
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = false)
         {
             g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
 
@@ -27,14 +28,18 @@ namespace InfoPanel.Drawing
             foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))
             {
                 if (displayItem.Hidden) continue;
+                
+                var x = (int) Math.Ceiling(displayItem.X * scale);
+                var y = (int) Math.Ceiling(displayItem.Y * scale);
 
                 switch (displayItem)
                 {
                     case TextDisplayItem textDisplayItem:
                         {
                             (var text, var color) = textDisplayItem.EvaluateTextAndColor();
+                            var fontSize = (int) Math.Ceiling(textDisplayItem.FontSize * scale);
 
-                            g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontSize, color, textDisplayItem.X, textDisplayItem.Y, textDisplayItem.RightAlign,
+                            g.DrawString(text, textDisplayItem.Font, fontSize, color, x, y, textDisplayItem.RightAlign,
                                 textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
 
                             if (displayItem.Selected)
@@ -43,11 +48,11 @@ namespace InfoPanel.Drawing
 
                                 if (textDisplayItem.RightAlign)
                                 {
-                                    selectedRectangles.Add(new Rectangle((int)(textDisplayItem.X - textWidth), textDisplayItem.Y - 2, (int)textWidth, (int)(textHeight - 4)));
+                                    selectedRectangles.Add(new Rectangle((int)(x - textWidth), y - 2, (int)textWidth, (int)(textHeight - 4)));
                                 }
                                 else
                                 {
-                                    selectedRectangles.Add(new Rectangle(textDisplayItem.X, textDisplayItem.Y, (int)textWidth, (int)(textHeight)));
+                                    selectedRectangles.Add(new Rectangle(x, y, (int)textWidth, (int)(textHeight)));
                                 }
                             }
 
@@ -60,19 +65,19 @@ namespace InfoPanel.Drawing
 
                             if (cachedImage != null)
                             {
-                                var scaledWidth = (int)(cachedImage.Width * imageDisplayItem.Scale / 100.0f);
-                                var scaledHeight = (int)(cachedImage.Height * imageDisplayItem.Scale / 100.0f);
+                                var scaledWidth = (int) Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
+                                var scaledHeight = (int) Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
 
-                                g.DrawImage(cachedImage, imageDisplayItem.X, imageDisplayItem.Y, scaledWidth, scaledHeight);
+                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, cache);
 
                                 if (imageDisplayItem.Layer)
                                 {
-                                    g.FillRectangle(imageDisplayItem.LayerColor, imageDisplayItem.X, imageDisplayItem.Y, scaledWidth, scaledHeight);
+                                    g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight);
                                 }
 
                                 if (displayItem.Selected)
                                 {
-                                    selectedRectangles.Add(new Rectangle(imageDisplayItem.X + 2, imageDisplayItem.Y + 2, scaledWidth - 4, scaledHeight - 4));
+                                    selectedRectangles.Add(new Rectangle(x + 2, y + 2, scaledWidth - 4, scaledHeight - 4));
                                 }
                             }
                         }
@@ -88,26 +93,29 @@ namespace InfoPanel.Drawing
 
                                 if (cachedImage != null)
                                 {
-                                    var scaledWidth = (int)(cachedImage.Width * imageDisplayItem.Scale / 100.0f);
-                                    var scaledHeight = (int)(cachedImage.Height * imageDisplayItem.Scale / 100.0f);
+                                    var scaledWidth = (int) Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
+                                    var scaledHeight = (int) Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
 
-                                    g.DrawImage(cachedImage, gaugeDisplayItem.X, gaugeDisplayItem.Y, scaledWidth, scaledHeight);
+                                    g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, cache);
 
                                     if (displayItem.Selected)
                                     {
-                                        selectedRectangles.Add(new Rectangle(gaugeDisplayItem.X + 2, gaugeDisplayItem.Y + 2, scaledWidth - 4, scaledHeight - 4));
+                                        selectedRectangles.Add(new Rectangle(x + 2, y + 2, scaledWidth - 4, scaledHeight - 4));
                                     }
                                 }
                             }
                             break;
-                        }
+                         }
                     case ChartDisplayItem chartDisplayItem:
                         if (g is CompatGraphics)
                         {
-                            using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
+                            var width = (int) Math.Ceiling(chartDisplayItem.Width * scale);
+                            var height = (int) Math.Ceiling(chartDisplayItem.Height * scale);
+                            using var graphBitmap = new Bitmap(width, height);
+                            //using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
                             using var g1 = CompatGraphics.FromBitmap(graphBitmap);
                             GraphDraw.Run(chartDisplayItem, g1);
-                            g.DrawBitmap(graphBitmap, chartDisplayItem.X, chartDisplayItem.Y);
+                            g.DrawBitmap(graphBitmap, x, y, width, height);
                         }
                         else if (g is AcceleratedGraphics acceleratedGraphics)
                         {
@@ -153,6 +161,11 @@ namespace InfoPanel.Drawing
                     }
                 }
             }
+
+            //if(g is AcceleratedGraphics gX)
+            //{
+            //    gX.test();
+            //}
         }
     }
 }

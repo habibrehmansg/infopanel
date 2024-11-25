@@ -51,11 +51,15 @@ namespace InfoPanel.Drawing
                     if(queue != null)
                     {
                         HWHash.SENSORHASH.TryGetValue(key, out HWHash.HWINFO_HASH value);
-                        queue.Enqueue(value.ValueNow);
 
-                        if(queue.Count > 1000)
+                        lock (queue)
                         {
-                            queue.Dequeue();
+                            queue.Enqueue(value.ValueNow);
+
+                            if (queue.Count > 1000)
+                            {
+                                queue.Dequeue();
+                            }
                         }
                     }
                 }
@@ -68,7 +72,19 @@ namespace InfoPanel.Drawing
 
                 var frameRect = new Rectangle(0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
 
-                var tempValues = GetGraphDataQueue(chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId).ToArray();
+                var queue = GetGraphDataQueue(chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId);
+
+                if(queue.Count == 0)
+                {
+                    return;
+                }
+
+                double[] tempValues;
+
+                lock (queue)
+                {
+                    tempValues = queue.ToArray();
+                }
 
                 double minValue = chartDisplayItem.MinValue;
                 double maxValue = chartDisplayItem.MaxValue;
@@ -116,7 +132,7 @@ namespace InfoPanel.Drawing
                                     }
 
                                     MyPoint[] points = new MyPoint[size + 2];
-                                    points[0] = new MyPoint(graphDisplayItem.Width + graphDisplayItem.Thickness, graphDisplayItem.Height + graphDisplayItem.Thickness);
+                                    points[0] = new MyPoint(frameRect.X + graphDisplayItem.Width + graphDisplayItem.Thickness, frameRect.Y + graphDisplayItem.Height + graphDisplayItem.Thickness);
 
                                     for (int i = 0; i < size; i++)
                                     {
@@ -136,12 +152,12 @@ namespace InfoPanel.Drawing
                                         value = value * (frameRect.Height - graphDisplayItem.Thickness);
                                         value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
-                                        var newPoint = new MyPoint(frameRect.Width - (i * graphDisplayItem.Step), (int)(frameRect.Height - (value + (graphDisplayItem.Thickness / 2.0))));
+                                        var newPoint = new MyPoint(frameRect.X + frameRect.Width - (i * graphDisplayItem.Step), frameRect.Y + (int)(frameRect.Height - (value + (graphDisplayItem.Thickness / 2.0))));
 
                                         points[i + 1] = newPoint;
                                     }
 
-                                    points[^1] = new MyPoint(points[^2].X - graphDisplayItem.Thickness, graphDisplayItem.Height + graphDisplayItem.Thickness);
+                                    points[^1] = new MyPoint(points[^2].X - graphDisplayItem.Thickness, frameRect.Y + graphDisplayItem.Height + graphDisplayItem.Thickness);
 
                                     if (graphDisplayItem.Fill)
                                     {
@@ -191,7 +207,7 @@ namespace InfoPanel.Drawing
                                         value = value * (frameRect.Height - 2 - 1);
                                         value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
-                                        var chartRect = new Rectangle(frameRect.Width - (i * (graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2)) - graphDisplayItem.Thickness - penSize, (int)(frameRect.Height - (value)), graphDisplayItem.Thickness, (int)value + penSize);
+                                        var chartRect = new Rectangle(frameRect.X + frameRect.Width - (i * (graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2)) - graphDisplayItem.Thickness - penSize, frameRect.Y + (int)(frameRect.Height - (value)), graphDisplayItem.Thickness, (int)value + penSize);
 
                                         if (graphDisplayItem.Fill)
                                         {

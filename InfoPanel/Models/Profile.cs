@@ -64,6 +64,21 @@ namespace InfoPanel.Models
             OnPropertyChanged(nameof(Bitmap));
         }
 
+        [XmlIgnore]
+        private WriteableBitmap? _bitmapImagePreview;
+
+        [XmlIgnore]
+        public WriteableBitmap? BitmapImagePreview
+        {
+            get { return _bitmapImagePreview; }
+            set { SetProperty(ref _bitmapImagePreview, value); }
+        }
+
+        public void NotifyBitmapPreviewUpdate()
+        {
+            OnPropertyChanged(nameof(Bitmap));
+        }
+
         public string Name
         {
             get { return _name; }

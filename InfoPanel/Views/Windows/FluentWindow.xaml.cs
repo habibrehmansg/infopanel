@@ -68,7 +68,7 @@ namespace InfoPanel.Views.Windows
         private void Window_ContentRendered(object sender, EventArgs e)
         {
             MinWidth = ActualWidth;
-            MinHeight = ActualHeight;
+            //MinHeight = ActualHeight;
             MaxHeight = SystemParameters.MaximizedPrimaryScreenHeight;
             MaxWidth = ActualWidth;
 

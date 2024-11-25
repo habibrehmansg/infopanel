@@ -13,12 +13,12 @@ namespace InfoPanel.Drawing
 
         public static CompatGraphics FromBitmap(Bitmap bitmap)
         {
-           var graphics = Graphics.FromImage(bitmap);
+            var graphics = Graphics.FromImage(bitmap);
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             graphics.InterpolationMode = InterpolationMode.Bilinear;
             graphics.TextRenderingHint = TextRenderingHint.AntiAlias;
 
-            return new CompatGraphics(Graphics.FromImage(bitmap));
+            return new CompatGraphics(graphics);
         }
         public override void Clear(Color color)
         {
@@ -63,13 +63,13 @@ namespace InfoPanel.Drawing
             this.Graphics.DrawString(text, font, brush, new PointF(x, y), format);
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, bool cache = true)
         {
             lockedImage.Access(bitmap =>
             {
                 if (bitmap != null)
                     this.Graphics.DrawImage(bitmap, x, y, width, height);
-            });
+            }, cache);
         }
 
         public override void DrawBitmap(Bitmap bitmap, int x, int y)

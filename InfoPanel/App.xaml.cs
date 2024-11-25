@@ -82,7 +82,7 @@ namespace InfoPanel
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
        }).Build();
 
-        public Dictionary<Guid, object> DisplayWindows = [];
+        public Dictionary<Guid, DisplayWindow> DisplayWindows = [];
 
         public static T GetService<T>()
         where T : class
@@ -177,7 +177,7 @@ namespace InfoPanel
             HWHash.Launch();
 
             PanelDrawTask.Instance.Start();
-            GraphDrawTask.Instance.Start();
+            //GraphDrawTask.Instance.Start();
 
             StartPanels();
 
@@ -263,7 +263,7 @@ namespace InfoPanel
             window?.Navigate(typeof(Views.Pages.DesignPage));
         }
 
-        public object? GetDisplayWindow(Profile profile)
+        public DisplayWindow? GetDisplayWindow(Profile profile)
         {
             DisplayWindows.TryGetValue(profile.Guid, out var displayWindow);
             return displayWindow;
@@ -272,76 +272,35 @@ namespace InfoPanel
         public void MaximiseDisplayWindow(Profile profile)
         {
             var window = GetDisplayWindow(profile);
-            
-            if(window is DisplayWindow displayWindow)
-            {
-                displayWindow?.Fullscreen();
-            }
-           
+            window?.Fullscreen();
+
         }
 
         public void ShowDisplayWindow(Profile profile)
         {
             var window = GetDisplayWindow(profile);
 
+            if(window != null && window.CompatMode != profile.CompatMode)
+            {
+                window.Close();
+                window = null;
+            }
+
             if (window == null)
             {
-                if(profile.CompatMode)
-                {
                     window = new DisplayWindow(profile);
                     DisplayWindows[profile.Guid] = window;
-                    ((DisplayWindow) window).Closed += DisplayWindow_Closed;
-                } else
-                {
-                    window = new DirectDisplayWindow(profile);
-                    DisplayWindows[profile.Guid] = window;
-                    ((DirectDisplayWindow) window).Closed += DisplayWindow_Closed;
-                }
+                    window.Closed += DisplayWindow_Closed;
             }
 
-            if (window is DisplayWindow displayWindow)
-            {
-                if (profile.CompatMode)
-                {
-                    displayWindow?.Show();
-                }
-                else
-                {
-                    displayWindow?.Close();
-                    ShowDisplayWindow(profile);
-                }
-            }
-
-            if (window is DirectDisplayWindow directDisplayWindow)
-            {
-                if (profile.CompatMode)
-                {
-                    directDisplayWindow?.Close();
-                    ShowDisplayWindow(profile);
-                }
-                else
-                {
-                    directDisplayWindow?.Show();
-                }
-            }
-
-
+            window?.Show();
         }
 
 
         public void CloseDisplayWindow(Profile profile)
         {
             var window = GetDisplayWindow(profile);
-
-            if (window is DisplayWindow displayWindow)
-            {
-                displayWindow?.Close();
-            }
-
-            if (window is DirectDisplayWindow directDisplayWindow)
-            {
-                directDisplayWindow?.Close();
-            }
+            window?.Close();
         }
 
         private void DisplayWindow_Closed(object? sender, EventArgs e)
@@ -350,11 +309,6 @@ namespace InfoPanel
             {
                 displayWindow.Closed -= DisplayWindow_Closed;
                 DisplayWindows.Remove(displayWindow.Profile.Guid);
-            }
-            else if (sender is DirectDisplayWindow directDisplayWindow)
-            {
-                directDisplayWindow.Closed -= DisplayWindow_Closed;
-                DisplayWindows.Remove(directDisplayWindow.Profile.Guid);
             }
         }
 

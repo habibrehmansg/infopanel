@@ -39,6 +39,11 @@ namespace InfoPanel.Models
             }
         }
 
+        public bool IsDisposed()
+        {
+            return isDisposed;
+        }
+
         public void Dispose()
         {
             if (isDisposed)

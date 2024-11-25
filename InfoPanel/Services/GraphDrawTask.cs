@@ -63,7 +63,10 @@ namespace InfoPanel
 
         public void Stop()
         {
-            _cts.Cancel();
+            if(_cts != null)
+            {
+                _cts.Cancel();
+            }
         }
 
         private void DoWork(CancellationToken token)

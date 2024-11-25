@@ -1,4 +1,5 @@
 ﻿using ImageMagick;
+using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,9 +13,10 @@ namespace InfoPanel.Models
 {
     public partial class LockedImage : IDisposable
     {
-        private readonly string? ImagePath;
+        public readonly string ImagePath;
         private Image? Image;
-        private FrameDimension? FrameDimension;
+        private Bitmap?[] BitmapCache;
+        private FrameDimension FrameDimension;
         //private MagickImageCollection? ImageCollection;
         private IntPtr? D2DHandle;
         private D2DBitmap[]? D2DBitmapCache;
@@ -60,6 +62,8 @@ namespace InfoPanel.Models
 
                         FrameDimension = new FrameDimension(Image.FrameDimensionsList[0]);
                         Frames = Image.GetFrameCount(FrameDimension);
+
+                        BitmapCache = new Bitmap[Frames];
 
                         //ImageCollection = new MagickImageCollection(ImagePath);
                         //ImageCollection.Coalesce();
@@ -148,15 +152,7 @@ namespace InfoPanel.Models
             }
         }
 
-        private Bitmap? GetBitmap()
-        {
-            var frame = GetCurrentFrameCount();
-            Image?.SelectActiveFrame(FrameDimension, frame);
-            return (Bitmap?)Image;
-            //return ImageCollection?[frame].ToBitmap();
-        }
-
-        public void AccessD2D(D2DDevice device, IntPtr handle, Action<D2DBitmap?> action)
+        public void AccessD2D(D2DDevice device, IntPtr handle, Action<D2DBitmap?> action, bool cache = true)
         {
             if (IsDisposed)
             {
@@ -179,23 +175,25 @@ namespace InfoPanel.Models
 
                 D2DBitmap? d2dbitmap = null;
 
-                if (D2DBitmapCache != null) {
+                if (Image != null && D2DBitmapCache != null) {
                     var frame = GetCurrentFrameCount();
                     d2dbitmap = D2DBitmapCache[frame];
 
                     if (d2dbitmap == null)
                     {
-                        //var bitmap = ImageCollection?[frame].ToBitmap();
-                        var bitmap = GetBitmap();
-
-                        if (bitmap != null)
+                        if(Frames == 1)
                         {
-                            d2dbitmap = device.CreateBitmapFromGDIBitmap(bitmap, true);
+                            d2dbitmap = device.CreateBitmapFromFile(ImagePath);
+                        } else
+                        {
+                            //var bitmap = ImageCollection?[frame].ToBitmap();
+                            Image.SelectActiveFrame(FrameDimension, frame);
+                            d2dbitmap = device.CreateBitmapFromGDIBitmap((Bitmap)Image, true);
+                        }
 
-                            if (d2dbitmap != null)
-                            {
-                                D2DBitmapCache[frame] = d2dbitmap;
-                            }
+                        if (d2dbitmap != null)
+                        {
+                            D2DBitmapCache[frame] = d2dbitmap;
                         }
                     }
                 }
@@ -204,7 +202,7 @@ namespace InfoPanel.Models
             }
         }
 
-        public void Access(Action<Bitmap?> access)
+        public void Access(Action<Bitmap?> access, bool cache = true)
         {
             if (IsDisposed)
             {
@@ -213,7 +211,24 @@ namespace InfoPanel.Models
 
             lock (Lock)
             {
-                access(GetBitmap());
+                if (Image != null && BitmapCache != null)
+                {
+                    var frame = GetCurrentFrameCount();
+                    var bitmap = BitmapCache[frame];
+
+                    if (bitmap == null && Image != null)
+                    {
+                        Image.SelectActiveFrame(FrameDimension, frame);
+                        bitmap = new Bitmap(Image);
+
+                        if (cache)
+                        {
+                            BitmapCache[frame] = bitmap;
+                        }
+                    }
+
+                    access(bitmap);
+                }
             }
         }
 
@@ -233,6 +248,15 @@ namespace InfoPanel.Models
         private void DisposeAssets()
         {
             Trace.WriteLine("DisposeAssets");
+            if(BitmapCache != null)
+            {
+                for (int i = 0; i < BitmapCache.Length; i++)
+                {
+                    BitmapCache[i]?.Dispose();
+                    BitmapCache[i] = null;
+                }
+            }
+
             //ImageCollection?.Dispose();
             //ImageCollection = null;
         }

@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
+using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -59,19 +60,22 @@ namespace InfoPanel
             _cts.Cancel();
         }
 
-        private async void DoWork(CancellationToken token)
+        private void DoWork(CancellationToken token)
         {
-            int frameRateLimit = ConfigModel.Instance.Settings.TargetFrameRate;
             int currentFps = 0;
             long currentFrameTime = 0;
 
-            DateTime lastFpsUpdate = DateTime.UtcNow;
-
             var watch = new Stopwatch();
+            watch.Start();
 
             while (!token.IsCancellationRequested)
             {
-                watch.Start();
+                var frameRateLimit = ConfigModel.Instance.Settings.TargetFrameRate;
+                var optimalFrameTime = 1000.0 / frameRateLimit; // Target frame time in ms
+
+                // Start timing the frame
+                var frameStart = watch.ElapsedMilliseconds;
+
                 var profiles = ConfigModel.Instance.GetProfilesCopy();
 
                 profiles.ForEach(profile =>
@@ -90,46 +94,41 @@ namespace InfoPanel
                     }
                 });
 
-                watch.Stop();
+                // Calculate the elapsed time for this frame
+                var frameTime = watch.ElapsedMilliseconds - frameStart;
 
+                // Update FPS and average frame time once per second
+                currentFrameTime += frameTime;
                 currentFps++;
-                currentFrameTime += watch.ElapsedMilliseconds;
-                
-                if (lastFpsUpdate.Second != DateTime.Now.Second)
+
+                if (frameStart >= 1000)
                 {
-                    frameRateLimit = ConfigModel.Instance.Settings.TargetFrameRate;
                     SharedModel.Instance.CurrentFrameRate = currentFps;
                     SharedModel.Instance.CurrentFrameTime = currentFrameTime / currentFps;
 
                     currentFps = 0;
                     currentFrameTime = 0;
-                    lastFpsUpdate = DateTime.Now;
+                    watch.Restart();
                 }
 
-                var optimalFrameTime = 1000 / frameRateLimit;
-                var delay = optimalFrameTime - watch.ElapsedMilliseconds;
+                // Delay to maintain target frame rate
+                var delay = optimalFrameTime - frameTime;
+                if (delay > 0) Thread.Sleep((int)delay);
 
-                if (delay > 0)
-                {
-                    Thread.Sleep((int)delay);
-                }
-
-                watch.Reset();
-
-                // Trace.WriteLine($"Draw Execution Time: {watch.ElapsedMilliseconds} ms");
+                //Trace.WriteLine($"Draw Execution Time: {frameTime} ms");
             }
         }
 
         public static LockedBitmap Render(Profile profile, int currentFps, int frameRateLimit, bool drawSelected = true)
         {
-            if (!BitmapCache.TryGetValue(profile.Guid, out var lockedBitmap) 
+            if (!BitmapCache.TryGetValue(profile.Guid, out var lockedBitmap)
                 || lockedBitmap.Width != profile.Width || lockedBitmap.Height != profile.Height
                 || lockedBitmap.OverrideDpi != profile.OverrideDpi)
             {
                 lockedBitmap?.Dispose();
                 var bitmap = new Bitmap(profile.Width, profile.Height, PixelFormat.Format32bppArgb);
 
-                if(profile.OverrideDpi)
+                if (profile.OverrideDpi)
                 {
                     bitmap.SetResolution(96, 96);
                 }
@@ -140,11 +139,8 @@ namespace InfoPanel
 
             lockedBitmap.Access(bitmap =>
             {
-                
-                using (var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics)
-                {
-                    PanelDraw.Run(profile, g, drawSelected);
-                }
+                using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
+                PanelDraw.Run(profile, g, drawSelected);
             });
 
             return lockedBitmap;

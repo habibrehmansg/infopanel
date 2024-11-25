@@ -54,19 +54,20 @@ namespace InfoPanel.Drawing
             using var textFormat = CreateTextFormat(fontName, fontSize * FontScale, rightAlign, bold, italic, underline, strikeout);
             using var textColor = this.D2DDevice.CreateSolidColorBrush(D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
 
-            var textSize = new D2DSize(float.MaxValue, float.MaxValue);
-            this.D2DGraphics.MeasureText(text, textFormat, ref textSize);
+            var rect = new D2DRect(x + TextXOffset, y + TextYOffset, float.MaxValue, 0);
 
-            textSize.width += 10;
+            if(rightAlign)
+            {
+                rect.X = 0;
+                rect.Width = x - TextXOffset;
+            }
 
-            var rect = new D2DRect(rightAlign? x - TextXOffset - textSize.width : x + TextXOffset, y + TextYOffset, textSize.width, textSize.height);
-           
             this.D2DGraphics.DrawText(text, textColor,
                    textFormat,
                    rect);
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, bool cache = true)
         {
             lockedImage.AccessD2D(this.D2DDevice, this.Handle, d2dBitmap =>
             {
@@ -102,13 +103,44 @@ namespace InfoPanel.Drawing
 
         public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null)
         {
-            this.D2DGraphics.FillRectangle(x, y, width, height, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
+            if (gradientColor != null)
+            {
+                using var brush = this.D2DDevice.CreateLinearGradientBrush(
+                    new Vector2(0, 0), new Vector2(0, height),
+                   [
+                            new(0, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color))),
+                            new(1, D2DColor.FromGDIColor(ColorTranslator.FromHtml(gradientColor)))
+                   ]);
+                this.D2DGraphics.FillRectangle(new D2DRect(x, y, width, height), brush);
+            }
+            else
+            {
+                this.D2DGraphics.FillRectangle(x, y, width, height, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
+            }
         }
+
+        //public void test()
+        //{
+        //    this.D2DGraphics.FillEllipse(0, 0, 100, 100, D2DColor.Yellow);
+        //    this.D2DGraphics.DrawEllipse(0, 0, 100, 100, D2DColor.Black);
+
+        //    var figureOrigin = new Vector2(50, 50);
+        //    var figureSize = new D2DSize(100, 100);
+
+        //    float currentAngle = 90;
+        //    var angleSpan = 0.9f * 360;
+        //    var path = D2DDevice.CreatePieGeometry(figureOrigin, figureSize, currentAngle, currentAngle + angleSpan);
+        //    D2DGraphics.FillPath(path, D2DColor.Green);
+
+
+        //    this.D2DGraphics.FillEllipse(10, 10, 80, 80, D2DColor.Yellow);
+
+        //}
 
         private D2DPathGeometry CreateGraphicsPath(MyPoint[] points)
         {
             var vectors = new Vector2[points.Length];
-            for(int i = 0; i< points.Length; i++)
+            for (int i = 0; i < points.Length; i++)
             {
                 vectors[i] = new Vector2(points[i].X, points[i].Y);
             }

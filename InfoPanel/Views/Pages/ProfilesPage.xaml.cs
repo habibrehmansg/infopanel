@@ -2,6 +2,7 @@
 
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Components;
@@ -94,59 +95,102 @@ namespace InfoPanel.Views.Pages
 
         private static async void LoadPreviews()
         {
-            //todo investigate lockup
-            //Parallel.ForEach(ConfigModel.Instance.GetProfilesCopy(), profile =>
-            //{
-            //    LockedBitmap? lockedBitmap = PanelDrawTask.Render(profile, 0, 30, false);
-            //});
+            var profiles = ConfigModel.Instance.GetProfilesCopy();
 
-            foreach (var profile in ConfigModel.Instance.GetProfilesCopy())
+            await Parallel.ForEachAsync(profiles, async (profile, ct) =>
             {
                 await Task.Run(() =>
                 {
-                    LockedBitmap? lockedBitmap = PanelDrawTask.Render(profile, 0, 30, false);
-                    if (lockedBitmap != null)
+                    var scale = 1.0;
+
+                    if (profile.Height > 150)
                     {
-                        lockedBitmap.Access(bitmap =>
-                        {
-                            IntPtr backBuffer = IntPtr.Zero;
-
-                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                if (profile.BitmapImage == null || profile.BitmapImage.Width != bitmap.Width || profile.BitmapImage.Height != bitmap.Height)
-                                {
-                                    profile.BitmapImage = new WriteableBitmap(bitmap.Width, bitmap.Height,
-                                                                  96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
-                                }
-
-                                profile.BitmapImage.Lock();
-                                backBuffer = profile.BitmapImage.BackBuffer;
-                            });
-
-                            if (backBuffer == IntPtr.Zero)
-                            {
-                                return;
-                            }
-
-                            // copy the pixel data from the bitmap to the back buffer
-                            BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                            int stride = bitmapData.Stride;
-                            byte[] pixels = new byte[stride * bitmap.Height];
-                            Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-                            Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-                            bitmap.UnlockBits(bitmapData);
-
-                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                profile.BitmapImage.AddDirtyRect(new Int32Rect(0, 0, profile.BitmapImage.PixelWidth, profile.BitmapImage.PixelHeight));
-                                profile.BitmapImage.Unlock();
-                            });
-                        });
+                        scale = 150f / profile.Height;
                     }
-                });
+
+                    var width = (int)(profile.Width * scale);
+                    var height = (int)(profile.Height * scale);
+
+                    using var bitmap = new Bitmap(width, height);
+                    using var g = CompatGraphics.FromBitmap(bitmap);
+                    PanelDraw.Run(profile, g, false, scale, false);
+
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (profile.BitmapImagePreview == null || profile.BitmapImagePreview.Width != bitmap.Width || profile.BitmapImagePreview.Height != bitmap.Height)
+                        {
+                            profile.BitmapImagePreview = new WriteableBitmap(bitmap.Width, bitmap.Height,
+                                                          96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+                        }
+
+                        profile.BitmapImagePreview.Lock();
+                        IntPtr backBuffer = profile.BitmapImagePreview.BackBuffer;
+
+                        if (backBuffer == IntPtr.Zero)
+                        {
+                            return;
+                        }
+
+                        // copy the pixel data from the bitmap to the back buffer
+                        BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                        int stride = bitmapData.Stride;
+                        byte[] pixels = new byte[stride * bitmap.Height];
+                        Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
+                        Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
+                        bitmap.UnlockBits(bitmapData);
 
 
-            }
+                        profile.BitmapImagePreview?.AddDirtyRect(new Int32Rect(0, 0, profile.BitmapImagePreview.PixelWidth, profile.BitmapImagePreview.PixelHeight));
+                        profile.BitmapImagePreview?.Unlock();
+                    });
+                }, ct);
+            });
+
+            //foreach (var profile in profiles)
+            //{
+            //    await Task.Run(() =>
+            //    {
+            //        LockedBitmap? lockedBitmap = PanelDrawTask.Render(profile, 0, 30, false);
+            //        if (lockedBitmap != null)
+            //        {
+            //            lockedBitmap.Access(bitmap =>
+            //            {
+            //                IntPtr backBuffer = IntPtr.Zero;
+
+            //                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            //                {
+            //                    if (profile.BitmapImage == null || profile.BitmapImage.Width != bitmap.Width || profile.BitmapImage.Height != bitmap.Height)
+            //                    {
+            //                        profile.BitmapImage = new WriteableBitmap(bitmap.Width, bitmap.Height,
+            //                                                      96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+            //                    }
+
+            //                    profile.BitmapImage.Lock();
+            //                    backBuffer = profile.BitmapImage.BackBuffer;
+            //                });
+
+            //                if (backBuffer == IntPtr.Zero)
+            //                {
+            //                    return;
+            //                }
+
+            //                // copy the pixel data from the bitmap to the back buffer
+            //                BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            //                int stride = bitmapData.Stride;
+            //                byte[] pixels = new byte[stride * bitmap.Height];
+            //                Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
+            //                Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
+            //                bitmap.UnlockBits(bitmapData);
+
+            //                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            //                {
+            //                    profile.BitmapImage.AddDirtyRect(new Int32Rect(0, 0, profile.BitmapImage.PixelWidth, profile.BitmapImage.PixelHeight));
+            //                    profile.BitmapImage.Unlock();
+            //                });
+            //            });
+            //        }
+            //    });
+            //}
         }
         private void ButtonAdd_Click(object sender, RoutedEventArgs e)
         {

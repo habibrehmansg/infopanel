@@ -12,7 +12,7 @@ namespace InfoPanel.Drawing
             bool bold = false, bool italic = false, bool underline = false, bool strikeout = false);
         public abstract void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false,
             bool bold = false, bool italic = false, bool underline = false, bool strikeout = false);
-        public abstract void DrawImage(LockedImage lockedImage, int x, int y, int width, int height);
+        public abstract void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, bool cache = true);
         public abstract void DrawBitmap(Bitmap bitmap, int x, int y);
         public abstract void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height);
         public abstract void DrawBitmap(D2DBitmapGraphics bitmap, int x, int y, int width, int height);

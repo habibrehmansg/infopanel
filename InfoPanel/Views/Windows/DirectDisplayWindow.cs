@@ -56,7 +56,6 @@ namespace InfoPanel
         protected override void OnRender(D2DGraphics d2dGraphics)
         {
             base.OnRender(d2dGraphics);
-            //g.SetDPI(96, 96);
 
             using var g = new AcceleratedGraphics(d2dGraphics, Handle, 1.33f, 5, -10);
             PanelDraw.Run(Profile, g);
