@@ -172,6 +172,11 @@
                                 <components:BarProperties BarDisplayItem="{Binding}"/>
                             </StackPanel>
                         </DataTemplate>
+                        <DataTemplate DataType="{x:Type models:DonutDisplayItem}">
+                            <StackPanel Orientation="Vertical">
+                                <components:DonutProperties DonutDisplayItem="{Binding}"/>
+                            </StackPanel>
+                        </DataTemplate>
                     </ContentControl.Resources>
                 </ContentControl>
             </Grid>

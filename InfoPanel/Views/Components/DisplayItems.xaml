@@ -114,6 +114,9 @@
                                                 <DataTrigger Binding="{Binding Kind}" Value="Bar">
                                                     <Setter Property="Symbol" Value="DataBarHorizontal20" />
                                                 </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Donut">
+                                                    <Setter Property="Symbol" Value="DataPie20" />
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding Kind}" Value="Gauge">
                                                     <Setter Property="Symbol" Value="Gauge20" />
                                                 </DataTrigger>

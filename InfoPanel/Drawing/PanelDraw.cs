@@ -111,8 +111,7 @@ namespace InfoPanel.Drawing
                         {
                             var width = (int) Math.Ceiling(chartDisplayItem.Width * scale);
                             var height = (int) Math.Ceiling(chartDisplayItem.Height * scale);
-                            using var graphBitmap = new Bitmap(width, height);
-                            //using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
+                            using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
                             using var g1 = CompatGraphics.FromBitmap(graphBitmap);
                             GraphDraw.Run(chartDisplayItem, g1);
                             g.DrawBitmap(graphBitmap, x, y, width, height);
@@ -161,11 +160,6 @@ namespace InfoPanel.Drawing
                     }
                 }
             }
-
-            //if(g is AcceleratedGraphics gX)
-            //{
-            //    gX.test();
-            //}
         }
     }
 }

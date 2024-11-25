@@ -1,21 +1,16 @@
 ﻿using InfoPanel.Models;
 using System;
-using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Drawing.Drawing2D;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Diagnostics;
-using Microsoft.Extensions.Caching.Memory;
-using Flurl.Util;
-using System.Collections.Concurrent;
 
 namespace InfoPanel.Drawing
 {
     internal class GraphDraw
     {
+        private static readonly ConcurrentDictionary<Guid, double> GraphDataSmoothCache = [];
         private static readonly ConcurrentDictionary<(UInt32, UInt32, UInt32), Queue<double>> GraphDataCache = [];
         private static readonly Stopwatch Stopwatch = new();
 
@@ -83,7 +78,7 @@ namespace InfoPanel.Drawing
 
                 lock (queue)
                 {
-                    tempValues = queue.ToArray();
+                    tempValues = [.. queue];
                 }
 
                 double minValue = chartDisplayItem.MinValue;
@@ -164,7 +159,18 @@ namespace InfoPanel.Drawing
                                         g.FillPath(points, graphDisplayItem.FillColor);
                                     }
 
+                                    //for (int i = 0; i < frameRect.Height / 5; i++)
+                                    //{
+                                    //    g.DrawLine(0, i * 5, frameRect.Width, i * 5, graphDisplayItem.FrameColor, 0.5f);
+                                    //}
+
+                                    //for (int i = 0; i < frameRect.Width / 5; i++)
+                                    //{
+                                    //    g.DrawLine(i * 5, 0, i * 5, frameRect.Height, graphDisplayItem.FrameColor, 0.5f);
+                                    //}
+
                                     g.DrawPath(points, graphDisplayItem.Color, graphDisplayItem.Thickness);
+
                                     break;
                                 }
                             case GraphDisplayItem.GraphType.HISTOGRAM:
@@ -223,22 +229,28 @@ namespace InfoPanel.Drawing
 
                     case BarDisplayItem barDisplayItem:
                         {
-                            var values = tempValues[0..];
-
                             if (chartDisplayItem.AutoValue)
                             {
-                                if (values.Length > 1 && values.Min() != values.Max())
+                                if (tempValues.Length > 1 && tempValues.Min() != tempValues.Max())
                                 {
-                                    minValue = values.Min();
-                                    maxValue = values.Max();
+                                    minValue = tempValues.Min();
+                                    maxValue = tempValues.Max();
                                 }
                             }
 
-                            var value = Math.Max(values.LastOrDefault(0.0) - minValue, 0);
+                            var value = Math.Max(tempValues.LastOrDefault(0.0) - minValue, 0);
                             value = Math.Min(value, maxValue);
                             value = value / (maxValue - minValue);
                             value = value * Math.Max(frameRect.Width, frameRect.Height);
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
+
+                            if (g is AcceleratedGraphics)
+                            {
+                                //only interpolate for high fps
+                                GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
+                                value = Interpolate(lastValue, value, 0.05);
+                                GraphDataSmoothCache[barDisplayItem.Guid] = value;
+                            }
 
                             var usageRect = new Rectangle(frameRect.X, frameRect.Y, (int)value, frameRect.Height);
                             if (frameRect.Height > frameRect.Width)
@@ -290,13 +302,51 @@ namespace InfoPanel.Drawing
 
                             break;
                         }
+                    case DonutDisplayItem donutDisplayItem:
+                        {
+                            if (donutDisplayItem.AutoValue)
+                            {
+                                if (tempValues.Length > 1 && tempValues.Min() != tempValues.Max())
+                                {
+                                    minValue = tempValues.Min();
+                                    maxValue = tempValues.Max();
+                                }
+                            }
+
+                            var value = Math.Max(tempValues.LastOrDefault(0.0) - minValue, 0);
+                            value = Math.Min(value, maxValue);
+                            value = value / (maxValue - minValue) * 100;
+
+                            if (g is AcceleratedGraphics)
+                            {
+                                //only interpolate for high fps
+                                GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
+                                value = Interpolate(lastValue, value, 0.05);
+                                GraphDataSmoothCache[donutDisplayItem.Guid] = value;
+                            }
+
+                            g.FillDonut(frameRect.X, frameRect.Y, frameRect.Width / 2, donutDisplayItem.Thickness, 
+                                donutDisplayItem.Rotation, (int)value, donutDisplayItem.Color, 
+                                donutDisplayItem.Background ? donutDisplayItem.BackgroundColor : "#00000000", 
+                                donutDisplayItem.Frame ? 1 : 0, donutDisplayItem.FrameColor);
+
+                            break;
+                        }
                 }
 
-                if (chartDisplayItem.Frame)
+                if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem.Frame)
                 {
                     g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width - 1, chartDisplayItem.Height - 1);
                 }
             }
+        }
+
+        public static double Interpolate(double A, double B, double t)
+        {
+            // Ensure t is clamped between 0 and 1
+            t = Math.Clamp(t, 0.0, 1.0);
+
+            return A + (B - A) * t;
         }
     }
 }

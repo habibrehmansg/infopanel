@@ -1,9 +1,12 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Views.Components;
+using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Numerics;
+using System.Windows.Ink;
+using System.Windows.Media.Media3D;
 using unvell.D2DLib;
 using unvell.D2DLib.WinForm;
 using WinRT;
@@ -91,6 +94,11 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.DrawBitmap(bitmapGraphics, new D2DRect(x, y, width, height));
         }
 
+        public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
+        {
+            this.D2DGraphics.DrawLine(x1, y1, x2, y2, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)), strokeWidth);
+        }
+
         public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height)
         {
             this.D2DGraphics.DrawRectangle(new D2DRect(x, y, width, height), D2DColor.FromGDIColor(color), strokeWidth);
@@ -119,23 +127,59 @@ namespace InfoPanel.Drawing
             }
         }
 
-        //public void test()
-        //{
-        //    this.D2DGraphics.FillEllipse(0, 0, 100, 100, D2DColor.Yellow);
-        //    this.D2DGraphics.DrawEllipse(0, 0, 100, 100, D2DColor.Black);
+        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, string color, string backgroundColor, int strokeWidth, string strokeColor)
+        {
+            
+            thickness = Math.Clamp(thickness, 0, radius);
+            rotation = Math.Clamp(rotation, 0, 360);
+            percentage = Math.Clamp(percentage, 0, 100);
 
-        //    var figureOrigin = new Vector2(50, 50);
-        //    var figureSize = new D2DSize(100, 100);
+            var innerRadius = radius - thickness;
+            // Create geometries for the outer and inner ellipses
+            using var outerGeometry = this.D2DDevice.CreateEllipseGeometry(
+                new Vector2(x + radius, y + radius),
+                new D2DSize(radius , radius)
+            );
 
-        //    float currentAngle = 90;
-        //    var angleSpan = 0.9f * 360;
-        //    var path = D2DDevice.CreatePieGeometry(figureOrigin, figureSize, currentAngle, currentAngle + angleSpan);
-        //    D2DGraphics.FillPath(path, D2DColor.Green);
+            using var innerGeometry = this.D2DDevice.CreateEllipseGeometry(
+                new Vector2(x + radius, y + radius),
+                new D2DSize(innerRadius, innerRadius)
+            );
 
+            // Combine the outer and inner geometries to create a ring
+            using var ringGeometry = this.D2DDevice.CreateCombinedGeometry(
+                outerGeometry,
+                innerGeometry,
+                D2D1CombineMode.Exclude
+            );
 
-        //    this.D2DGraphics.FillEllipse(10, 10, 80, 80, D2DColor.Yellow);
+            //draw outline
+            if (strokeWidth > 0)
+            {
+                this.D2DGraphics.DrawPath(ringGeometry, D2DColor.FromGDIColor(ColorTranslator.FromHtml(strokeColor)), strokeWidth);
+            }
 
-        //}
+            //fill background
+            this.D2DGraphics.FillPath(ringGeometry, D2DColor.FromGDIColor(ColorTranslator.FromHtml(backgroundColor)));
+
+            // Draw the pie slice
+           
+            var random = new Random();
+            var angleSpan = percentage * 360 / 100f;
+
+            if (angleSpan == 360)
+            {
+                this.D2DGraphics.FillPath(ringGeometry, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
+            }
+            else
+            {
+                using var layer = this.D2DGraphics.PushLayer(ringGeometry);
+                using var path = this.D2DDevice.CreatePieGeometry(new Vector2(x + radius, y + radius), new D2DSize(radius * 2, radius * 2), rotation, rotation + angleSpan);
+                this.D2DGraphics.FillPath(path, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color))); 
+                this.D2DGraphics.PopLayer();
+            }
+          
+        }
 
         private D2DPathGeometry CreateGraphicsPath(MyPoint[] points)
         {
