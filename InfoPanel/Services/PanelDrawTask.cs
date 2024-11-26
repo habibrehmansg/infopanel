@@ -80,7 +80,7 @@ namespace InfoPanel
 
                 profiles.ForEach(profile =>
                 {
-                    if ((profile.Active && profile.CompatMode)
+                    if ((profile.Active && !profile.Direct2DMode)
                     || (ConfigModel.Instance.Settings.BeadaPanel && ConfigModel.Instance.Settings.BeadaPanelProfile == profile.Guid)
                     || ConfigModel.Instance.Settings.TuringPanelA && ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid
                     || ConfigModel.Instance.Settings.TuringPanelC && ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid)

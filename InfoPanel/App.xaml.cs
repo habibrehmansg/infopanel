@@ -280,7 +280,7 @@ namespace InfoPanel
         {
             var window = GetDisplayWindow(profile);
 
-            if(window != null && window.CompatMode != profile.CompatMode)
+            if(window != null && window.Direct2DMode != profile.Direct2DMode)
             {
                 window.Close();
                 window = null;

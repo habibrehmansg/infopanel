@@ -13,95 +13,69 @@
 
     <Grid Margin="0,0,0,0" IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource NullToBooleanConverter}}">
         <Grid.RowDefinitions>
-            <RowDefinition/>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
+        <StackPanel Grid.Row="2" Orientation="Vertical" Margin="0,0,0,0">
+            <ui:NumberBox Margin="0,8,0,0" TextChanged="NumberBoxX_TextChanged"
+                       FontSize="12" MaxDecimalPlaces="1"
+                       SmallChange="{Binding Source={x:Static app:SharedModel.Instance}, Path=MoveValue}"
+                       Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.X}"/>
+             <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Position X" FontSize="12" Margin="5,0,0,0" />
 
-        <Grid Grid.Row="0">
+           <ui:NumberBox Margin="0,8,0,0" TextChanged="NumberBoxY_TextChanged"
+                   FontSize="12" MaxDecimalPlaces="1"
+                   SmallChange="{Binding Source={x:Static app:SharedModel.Instance}, Path=MoveValue}"
+                   Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Y}"/>
+             <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Position Y" FontSize="12" Margin="5,0,0,0" />
+        </StackPanel>
+
+        <Grid Grid.Row="0" Margin="0,10,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition/>
+                <RowDefinition/>
+                <RowDefinition/>
+            </Grid.RowDefinitions>
+
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="1.5*"/>
+                <ColumnDefinition/>
+                <ColumnDefinition/>
+                <ColumnDefinition/>
             </Grid.ColumnDefinitions>
 
-            <Grid Margin="0,0,0,0" VerticalAlignment="Top">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <StackPanel Grid.Row="0" Margin="0,0,0,0">
-                    <ui:NumberBox Margin="0,8,0,0" TextChanged="NumberBoxX_TextChanged"
-                                     FontSize="14" MaxDecimalPlaces="1"
-                                     SmallChange="{Binding Source={x:Static app:SharedModel.Instance}, Path=MoveValue}"
-                                     Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.X}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Position X" FontSize="12" Margin="5,0,0,0" />
-                </StackPanel>
-
-                <StackPanel Grid.Row="1" Margin="0,5,0,0">
-                    <ui:NumberBox Margin="0,8,0,0" TextChanged="NumberBoxY_TextChanged"
-                                     FontSize="14" MaxDecimalPlaces="1"
-                                     SmallChange="{Binding Source={x:Static app:SharedModel.Instance}, Path=MoveValue}"
-                                     Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Y}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Position Y" FontSize="12" Margin="5,0,0,0" />
-                </StackPanel>
-            </Grid>
-
-
-            <Grid Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,30,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition/>
-                    <RowDefinition/>
-                    <RowDefinition/>
-                </Grid.RowDefinitions>
-
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition/>
-                    <ColumnDefinition/>
-                    <ColumnDefinition/>
-                </Grid.ColumnDefinitions>
-
-                <ui:Button 
+            <ui:Button 
                 x:Name="ButtonLeft" Icon="ArrowLeft20"
-                  Grid.Row="1" Margin="0,0,10,0" Width="50" Height="50"
+                  Grid.Row="1" Margin="0,0,10,0" Width="40" Height="40"
                   CommandParameter="{x:Static Dock.Left}"
                   Click="ButtonLeft_Click" IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Hidden, Converter={StaticResource InverseBooleanConverter}}" />
 
-                <ui:Button x:Name="ButtonUp" Grid.Row="0" Icon="ArrowUp20"
-                  Grid.Column="1" Margin="0,0,0,10" Width="50" Height="50"
+            <ui:Button x:Name="ButtonUp" Grid.Row="0" Icon="ArrowUp20"
+                  Grid.Column="1" Margin="0,0,0,10" Width="40" Height="40"
                   CommandParameter="{x:Static Dock.Top}"
                  Click="ButtonUp_Click" IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Hidden, Converter={StaticResource InverseBooleanConverter}}" />
 
 
-                <ui:Button x:Name="ButtonRight" Grid.Row="1" Icon="ArrowRight20"
-                  Grid.Column="2" Margin="10,0,0,0" Width="50" Height="50"
+            <ui:Button x:Name="ButtonRight" Grid.Row="1" Icon="ArrowRight20"
+                  Grid.Column="2" Margin="10,0,0,0" Width="40" Height="40"
                   CommandParameter="{x:Static Dock.Right}"
                   Click="ButtonRight_Click" IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Hidden, Converter={StaticResource InverseBooleanConverter}}" />
 
 
-                <ui:Button x:Name="ButtonDown" Grid.Row="2" Icon="ArrowDown20"
-                  Grid.Column="1" Margin="0,10,0,0" Width="50" Height="50"
+            <ui:Button x:Name="ButtonDown" Grid.Row="2" Icon="ArrowDown20"
+                  Grid.Column="1" Margin="0,10,0,0" Width="40" Height="40"
                   CommandParameter="{x:Static Dock.Bottom}"
                    Click="ButtonDown_Click" IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Hidden, Converter={StaticResource InverseBooleanConverter}}" />
 
 
-                <ui:Button x:Name="ButtonMoveValue" 
-                 Grid.Row="1" Grid.Column="1" Margin="0,0,0,0" Width="50" Height="50"
+            <ui:Button x:Name="ButtonMoveValue" 
+                 Grid.Row="1" Grid.Column="1" Margin="0,0,0,0" Width="40" Height="40"
                   Click="ButtonMoveValue_Click" IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Hidden, Converter={StaticResource InverseBooleanConverter}}">
-                    <Button.Content>
-                        <TextBlock TextDecorations="Underline" Margin="-5,0,-5,0"
+                <Button.Content>
+                    <TextBlock TextDecorations="Underline" Margin="-10,0,-10,0" FontSize="12"
                                 Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=MoveValue, StringFormat={}{0} px}"/>
-                    </Button.Content>
-                </ui:Button>
-
-            </Grid>
-
+                </Button.Content>
+            </ui:Button>
         </Grid>
-        
-        <StackPanel Grid.Row="0" Visibility="Collapsed">
-         
-
-
-           
-        </StackPanel>
-
     </Grid>
 </UserControl>

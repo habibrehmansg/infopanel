@@ -27,16 +27,17 @@ namespace InfoPanel.Views.Common
     public partial class DisplayWindow : D2DWindow
     {
         public Profile Profile { get; }
-        public bool CompatMode { get; }
+        public bool Direct2DMode { get; }
         private readonly DispatcherTimer ResizeTimer;
         public WriteableBitmap? WriteableBitmap;
 
-        public DisplayWindow(Profile profile) : base(!profile.CompatMode)
+        public DisplayWindow(Profile profile) : base(profile.Direct2DMode)
         {
             Profile = profile;
             Width = Profile.Width;
             Height = Profile.Height;
-            CompatMode = profile.CompatMode;
+            Direct2DMode = profile.Direct2DMode;
+            ShowFps = profile.Direct2DModeFps;
 
             InitializeComponent();
 
@@ -73,7 +74,7 @@ namespace InfoPanel.Views.Common
         {
             base.OnRender(d2dGraphics);
 
-            using var g = new AcceleratedGraphics(d2dGraphics, this.Handle, 1.33f, 5, -10);
+            using var g = new AcceleratedGraphics(d2dGraphics, this.Handle, Profile.Direct2DFontScale, Profile.Direct2DTextXOffset, Profile.Direct2DTextYOffset);
             PanelDraw.Run(Profile, g);
         }
 
@@ -153,6 +154,9 @@ namespace InfoPanel.Views.Common
                 {
                     ResizeMode = ResizeMode.NoResize;
                 }
+            }else if(e.PropertyName == nameof(Profile.Direct2DModeFps))
+            {
+                ShowFps = Profile.Direct2DModeFps;
             }
         }
 

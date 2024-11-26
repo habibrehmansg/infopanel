@@ -234,7 +234,6 @@ namespace InfoPanel.Models
 
         private void DisposeD2DAssets()
         {
-            Trace.WriteLine("DisposeD2DAssets");
             if (D2DBitmapCache != null)
             {
                 for(int i = 0; i< D2DBitmapCache.Length; i++)
@@ -247,7 +246,6 @@ namespace InfoPanel.Models
 
         private void DisposeAssets()
         {
-            Trace.WriteLine("DisposeAssets");
             if(BitmapCache != null)
             {
                 for (int i = 0; i < BitmapCache.Length; i++)

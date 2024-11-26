@@ -244,7 +244,7 @@ namespace InfoPanel
             {
                 var window = app.GetDisplayWindow(profile);
 
-                if (window is DisplayWindow displayWindow && window.CompatMode)
+                if (window is DisplayWindow displayWindow && !window.Direct2DMode)
                 {
                     var writeableBitmap = displayWindow?.WriteableBitmap;
 

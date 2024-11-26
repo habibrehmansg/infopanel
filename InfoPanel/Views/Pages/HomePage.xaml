@@ -57,7 +57,7 @@
             </Border>
         </Border>
 
-        <StackPanel Grid.Row="1" Margin="20,20,20,20">
+        <StackPanel Grid.Row="1" MaxWidth="1000" Margin="20,20,20,20">
             <ui:CardAction Icon="List20"
                            Command="{Binding ViewModel.NavigateCommand}"
                            CommandParameter="navigate_to_profiles">

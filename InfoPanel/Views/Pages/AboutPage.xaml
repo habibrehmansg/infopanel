@@ -12,8 +12,8 @@
       Title="AboutPage">
 
     <Grid Margin="20,60,20,20">
-        <ScrollViewer VerticalScrollBarVisibility="Hidden">
-            <StackPanel Margin="0,20,0,0">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="1000" Margin="0,20,0,0">
                 <ui:CardControl Icon="Whiteboard24">
                     <ui:CardControl.Header>
                         <Grid>
@@ -30,7 +30,7 @@
                                 <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Text="Copyright © 2023 Habib Rehman, infopanel.net" />
+                            Text="Copyright © 2024 Habib Rehman, infopanel.net" />
 
                                 <TextBlock Margin="0,5,0,0"
                                        FontSize="12">

@@ -12,8 +12,8 @@
       Title="SettingsPage">
 
     <Grid Margin="20,60,20,20">
-        <ScrollViewer VerticalScrollBarVisibility="Hidden">
-            <StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="1000">
 
                 <StackPanel Grid.Row="0" Margin="0,20,0,0">
                     <Label FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Application"/>

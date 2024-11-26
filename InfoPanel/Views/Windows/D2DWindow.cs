@@ -2,6 +2,7 @@
 using InfoPanel.Models;
 using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Timers;
 using System.Windows;
@@ -17,8 +18,9 @@ namespace InfoPanel.Views.Common
         private D2DDevice? Device;
         private D2DGraphics? Graphics;
 
-        private Timer Timer = new (TimeSpan.FromMilliseconds(10));
+        private readonly Timer Timer = new (TimeSpan.FromMilliseconds(10));
 
+        internal bool ShowFps = false;
         private int FrameCounter = 0, LastFPSValue;
         private readonly Stopwatch FpsStopwatch = new();
 
@@ -127,8 +129,13 @@ namespace InfoPanel.Views.Common
                         FrameCounter = 0;
                     }
 
-                    this.Graphics.DrawText($"{LastFPSValue}", D2DColor.FromGDIColor(System.Drawing.Color.FromArgb(255, 0, 255, 0)), 
-                        "Arial", 25, new D2DRect(0, 5, this._width - 10, 0), halign: DWriteTextAlignment.Trailing);
+                    if (ShowFps)
+                    {
+                        var rect = new D2DRect(this._width - 40, 0, 40, 30);
+                        this.Graphics.FillRectangle(rect, D2DColor.FromGDIColor(System.Drawing.Color.FromArgb(100, 0, 0, 0)));
+                        this.Graphics.DrawTextCenter($"{LastFPSValue}", D2DColor.FromGDIColor(System.Drawing.Color.FromArgb(255, 0, 255, 0)),
+                            "Arial", 18, rect);
+                    }
 
                     this.Graphics.EndRender();
                 }

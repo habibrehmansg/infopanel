@@ -173,13 +173,56 @@ namespace InfoPanel.Models
             }
         }
 
-        private bool _compatMode = true;
-        public bool CompatMode
+        private bool _direct2DMode = false;
+        public bool Direct2DMode
         {
-            get { return _compatMode; }
+            get { return _direct2DMode; }
             set
             {
-                SetProperty(ref _compatMode, value);
+                SetProperty(ref _direct2DMode, value);
+            }
+        }
+
+        private bool _direct2DModeFps = false;
+        public bool Direct2DModeFps
+        {
+            get { return _direct2DModeFps; }
+            set
+            {
+                SetProperty(ref _direct2DModeFps, value);
+            }
+        }
+
+        private float _direct2DFontScale = 1.33f;
+
+        public float Direct2DFontScale
+        {
+            get { return _direct2DFontScale; }
+            set
+            {
+                SetProperty(ref _direct2DFontScale, value);
+            }
+        }
+
+        private int _direct2DTextXOffset = 0;
+
+        public int Direct2DTextXOffset
+        {
+            get { return _direct2DTextXOffset; }
+            set
+            {
+                SetProperty(ref _direct2DTextXOffset, value);
+            }
+        }
+
+        private int _direct2DTextYOffset = 0;
+
+        public int Direct2DTextYOffset
+        {
+            get { return _direct2DTextYOffset; }
+            set
+            {
+                SetProperty(ref _direct2DTextYOffset, value);
             }
         }
 

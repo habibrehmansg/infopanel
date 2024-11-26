@@ -38,7 +38,6 @@ namespace InfoPanel.Views.Pages
         private readonly ISnackbarControl _snackbarControl;
         private Timer? UpdateTimer;
 
-        private static ConcurrentDictionary<Guid, Bitmap> BitmapCache = new ConcurrentDictionary<Guid, Bitmap>();
         public ObservableCollection<string> InstalledFonts { get; } = new ObservableCollection<string>();
         public ProfilesViewModel ViewModel { get; }
 
@@ -47,10 +46,11 @@ namespace InfoPanel.Views.Pages
             ViewModel = viewModel;
             DataContext = this;
 
-            InitializeComponent();
             FetchInstalledFontNames();
             _dialogControl = dialogService.GetDialogControl();
             _snackbarControl = snackbarService.GetSnackbarControl();
+
+            InitializeComponent();
 
             Loaded += ProfilesPage_Loaded;
             Unloaded += ProfilesPage_Unloaded;
@@ -145,52 +145,6 @@ namespace InfoPanel.Views.Pages
                     });
                 }, ct);
             });
-
-            //foreach (var profile in profiles)
-            //{
-            //    await Task.Run(() =>
-            //    {
-            //        LockedBitmap? lockedBitmap = PanelDrawTask.Render(profile, 0, 30, false);
-            //        if (lockedBitmap != null)
-            //        {
-            //            lockedBitmap.Access(bitmap =>
-            //            {
-            //                IntPtr backBuffer = IntPtr.Zero;
-
-            //                System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            //                {
-            //                    if (profile.BitmapImage == null || profile.BitmapImage.Width != bitmap.Width || profile.BitmapImage.Height != bitmap.Height)
-            //                    {
-            //                        profile.BitmapImage = new WriteableBitmap(bitmap.Width, bitmap.Height,
-            //                                                      96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
-            //                    }
-
-            //                    profile.BitmapImage.Lock();
-            //                    backBuffer = profile.BitmapImage.BackBuffer;
-            //                });
-
-            //                if (backBuffer == IntPtr.Zero)
-            //                {
-            //                    return;
-            //                }
-
-            //                // copy the pixel data from the bitmap to the back buffer
-            //                BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            //                int stride = bitmapData.Stride;
-            //                byte[] pixels = new byte[stride * bitmap.Height];
-            //                Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-            //                Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-            //                bitmap.UnlockBits(bitmapData);
-
-            //                System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            //                {
-            //                    profile.BitmapImage.AddDirtyRect(new Int32Rect(0, 0, profile.BitmapImage.PixelWidth, profile.BitmapImage.PixelHeight));
-            //                    profile.BitmapImage.Unlock();
-            //                });
-            //            });
-            //        }
-            //    });
-            //}
         }
         private void ButtonAdd_Click(object sender, RoutedEventArgs e)
         {

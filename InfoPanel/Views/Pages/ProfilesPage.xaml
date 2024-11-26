@@ -105,8 +105,8 @@
             </ListView.ItemsPanel>
         </ListView>
 
-        <Expander Grid.Row="1" Background="#601A1a1a"
-                   IsExpanded="{Binding ViewModel.Profile, Converter={StaticResource NullToBooleanConverter}, Mode=OneWay}"
+        <Expander Grid.Row="1" MaxWidth="1000" Background="#601A1a1a"
+                   IsExpanded="True"
              Margin="0,20,0,0">
 
             <Expander.Header>
@@ -149,7 +149,8 @@
                 </ContentControl.Style>
                 <ContentControl.Resources>
                     <DataTemplate DataType="{x:Type models:Profile}">
-                        <Grid Grid.Row="1" Height="240" Margin="10,10,10,10">
+                        <StackPanel Height="400">
+                        <Grid Margin="10,10,10,10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="1.5*"/>
                                 <ColumnDefinition Width="*"/>
@@ -207,7 +208,7 @@
 
                                 </Grid>
 
-                                <Grid Margin="0,10,0,0" IsEnabled="{Binding Active}">
+                                <Grid Margin="0,25,0,0" IsEnabled="{Binding Active}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
@@ -217,14 +218,14 @@
                                     <StackPanel Margin="0,0,5,0">
                                         <ui:NumberBox
                                      FontSize="14" MaxDecimalPlaces="0" SmallChange="1" LargeChange="10" Minimum="0" Maximum="3840"
-                                     Text="{Binding Width}" />
+                                     Value="{Binding Width}" Text="{Binding Width}" />
                                         <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Width" FontSize="12" Margin="5,0,0,0" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" Margin="5,0,5,0">
                                         <ui:NumberBox
                                      FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="0" Maximum="3840"
-                                     Text="{Binding Height}" />
+                                     Value="{Binding Height}" Text="{Binding Height}" />
                                         <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Height" FontSize="12" Margin="5,0,0,0" />
                                     </StackPanel>
 
@@ -234,34 +235,36 @@
                                    ToolTip="Fill screen" Click="ButtonMaximise_Click"/>
                                 </Grid>
 
-                                <Grid Margin="0,10,0,0" IsEnabled="{Binding Active}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="auto"/>
-                                    </Grid.ColumnDefinitions>
+                                    <Grid Margin="0,10,0,0" IsEnabled="{Binding Active}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="auto"/>
+                                        </Grid.ColumnDefinitions>
 
-                                    <StackPanel Grid.Column="0" Margin="0,0,5,0">
-                                        <ui:NumberBox
+                                        <StackPanel Grid.Column="0" Margin="0,0,5,0">
+                                            <ui:NumberBox
                                      FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Text="{Binding WindowX}" />
-                                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="X" FontSize="12" Margin="5,0,0,0" />
-                                    </StackPanel>
+                                     Value="{Binding WindowX}" Text="{Binding WindowX}" />
+                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="X" FontSize="12" Margin="5,0,0,0" />
+                                        </StackPanel>
 
-                                    <StackPanel Grid.Column="1" Margin="5,0,5,0">
-                                        <ui:NumberBox
+                                        <StackPanel Grid.Column="1" Margin="5,0,5,0">
+                                            <ui:NumberBox
                                      FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Text="{Binding WindowY}" />
-                                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Y" FontSize="12" Margin="5,0,0,0" />
-                                    </StackPanel>
+                                     Value="{Binding WindowY}" Text="{Binding WindowY}"/>
+                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Y" FontSize="12" Margin="5,0,0,0" />
+                                        </StackPanel>
 
-                                    <ui:Button Grid.Column="2" Margin="5,0,0,15" VerticalAlignment="Center" 
+                                        <ui:Button Grid.Column="2" Margin="5,0,0,15" VerticalAlignment="Center" 
                                    Content="" Appearance="Caution"
                                    Name="ButtonResetPosition" Icon="ArrowReset20"
                                    ToolTip="Reset window position" Click="ButtonResetPosition_Click"/>
 
-                                </Grid>
-                            </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            
+                            
 
                             <StackPanel Grid.Column="1" Margin="10,0,10,0">
                                 <StackPanel Grid.Column="1" Margin="0,0,0,0">
@@ -308,80 +311,130 @@
                             </StackPanel>
 
 
-                            <StackPanel Grid.Column="2" Margin="10,0,0,0">
+                                <StackPanel Grid.Column="2" Margin="10,0,0,0">
 
-                                <ui:CardControl Margin="0,0,0,0">
-                                    <ui:CardControl.Header>
-                                        <Grid Margin="0,-5,0,-5">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock
+                                    <ui:CardControl Margin="0,0,0,0">
+                                        <ui:CardControl.Header>
+                                            <Grid Margin="0,-5,0,-5">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock
                             FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Strict Window Matching" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </ui:CardControl.Header>
-                                    <ui:ToggleSwitch Margin="0,-5,0,-5"
+                                                </StackPanel>
+                                            </Grid>
+                                        </ui:CardControl.Header>
+                                        <ui:ToggleSwitch Margin="0,-5,0,-5"
                             IsChecked="{Binding StrictWindowMatching}"/>
-                                </ui:CardControl>
+                                    </ui:CardControl>
 
-                                <ui:CardControl Margin="0,15,0,0">
-                                    <ui:CardControl.Header>
-                                        <Grid Margin="0,-5,0,-5">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock
+                                    <ui:CardControl Margin="0,15,0,0">
+                                        <ui:CardControl.Header>
+                                            <Grid Margin="0,-5,0,-5">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock
                             FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Override DPI" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </ui:CardControl.Header>
-                                    <ui:ToggleSwitch Margin="0,-5,0,-5"
+                                                </StackPanel>
+                                            </Grid>
+                                        </ui:CardControl.Header>
+                                        <ui:ToggleSwitch Margin="0,-5,0,-5"
                             IsChecked="{Binding OverrideDpi}"/>
-                                </ui:CardControl>
+                                    </ui:CardControl>
+                                </StackPanel>
+                            </Grid>
 
-                                <ui:CardControl Margin="0,15,0,0">
-                                    <ui:CardControl.Header>
-                                        <Grid Margin="0,-5,0,-5">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="2*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border BorderBrush="DarkGray" BorderThickness="1" CornerRadius="5" Margin="0,10,0,0">
+                                <StackPanel Margin="5,5,5,5">
+
+                                        <Grid Margin="0,0,0,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock
-                            FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Compatibility Mode" />
-                                            </StackPanel>
+                                            <ui:CardControl Margin="0,0,0,0">
+                                                <ui:CardControl.Header>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Direct2D Acceleration" />
+                                                    </StackPanel>
+                                                </ui:CardControl.Header>
+                                                <StackPanel>
+                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DMode}"/>
+                                                </StackPanel>
+                                            </ui:CardControl>
+
+                                            <ui:CardControl Grid.Column="1" Margin="10,0,0,0"  IsEnabled="{Binding Direct2DMode}">
+                                                <ui:CardControl.Header>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Panel FPS" />
+                                                    </StackPanel>
+                                                </ui:CardControl.Header>
+                                                <StackPanel>
+                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DModeFps}"/>
+                                                </StackPanel>
+                                            </ui:CardControl>
                                         </Grid>
-                                    </ui:CardControl.Header>
-                                    <ui:ToggleSwitch Margin="0,-5,0,-5"
-IsChecked="{Binding CompatMode}"/>
-                                </ui:CardControl>
 
 
-                                <Grid>
+                                        <Grid Margin="0,10,0,0" IsEnabled="{Binding Direct2DMode}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,0,0" >
+                                                <ui:NumberBox
+                                    FontSize="14" MaxDecimalPlaces="2" SmallChange="0.01" LargeChange="0.1" Minimum="0.01" Maximum="10"
+                                    Value="{Binding Direct2DFontScale}" Text="{Binding Direct2DFontScale}"  />
+                                                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Font Scale" FontSize="12" Margin="5,0,0,0" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                            <ui:NumberBox
+                                    FontSize="14" MaxDecimalPlaces="0" SmallChange="1" LargeChange="10" Minimum="-3840" Maximum="3840"
+                                    Value="{Binding Direct2DTextXOffset}" Text="{Binding Direct2DTextXOffset}" />
+                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text X Offset" FontSize="12" Margin="5,0,0,0" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2" Margin="10,0,0,0">
+                                    <ui:NumberBox
+                                    FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="-3840" Maximum="3840"
+                                    Value="{Binding Direct2DTextYOffset}" Text="{Binding Direct2DTextYOffset}" />    
+                                                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text Y Offset" FontSize="12" Margin="5,0,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+
+
+                                </StackPanel>
+                            </Border>
+
+                                <Grid Grid.Column="2" Margin="10,0,10,0" VerticalAlignment="Bottom">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <ui:Button Grid.Column="0" Margin="0,20,0,0"
-                               Appearance="Primary" Width="150"
-                               Content="Save" Click="ButtonSave_Click"/>
-                                    <ui:Button Grid.Column="1" Margin="0,20,0,0"
-                               Appearance="Danger" Icon="ArrowUndo20" Click="ButtonReload_Click"/>
+                                    <ui:Button Grid.Column="0" Margin="0,0,0,0" HorizontalAlignment="Stretch" Appearance="Primary" Content="Save Profile Settings" Click="ButtonSave_Click"/>
+                                    <ui:Button Grid.Column="1" Margin="10,0,0,0" Appearance="Danger" Icon="ArrowUndo20" Click="ButtonReload_Click"/>
                                 </Grid>
 
-                            </StackPanel>
+                            </Grid>
 
-
-                        </Grid>
+                        </StackPanel>
                     </DataTemplate>
                 </ContentControl.Resources>
             </ContentControl>
