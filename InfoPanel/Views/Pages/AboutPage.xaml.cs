@@ -115,36 +115,34 @@ namespace InfoPanel.Views.Pages
         {
             try
             {
-                using (IFlurlResponse response = await url.GetAsync(cancellationToken, HttpCompletionOption.ResponseHeadersRead))
-                using (var stream = await response.GetStreamAsync())
+                using IFlurlResponse response = await url.GetAsync(HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                using var stream = await response.GetStreamAsync();
+                var receivedBytes = 0;
+                var buffer = new byte[4096];
+                var totalBytes = Convert.ToDouble(response.ResponseMessage.Content.Headers.ContentLength);
+
+                var memStream = new MemoryStream();
+
+                while (true)
                 {
-                    var receivedBytes = 0;
-                    var buffer = new byte[4096];
-                    var totalBytes = Convert.ToDouble(response.ResponseMessage.Content.Headers.ContentLength);
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                    var memStream = new MemoryStream();
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
 
-                    while (true)
+                    await memStream.WriteAsync(buffer, 0, bytesRead);
+
+                    if (bytesRead == 0)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-
-                        await memStream.WriteAsync(buffer, 0, bytesRead);
-
-                        if (bytesRead == 0)
-                        {
-                            break;
-                        }
-                        receivedBytes += bytesRead;
-
-                        var args = new DownloadProgressArgs(receivedBytes, totalBytes);
-                        progessReporter.Report(args);
+                        break;
                     }
+                    receivedBytes += bytesRead;
 
-                    memStream.Position = 0;
-                    return memStream;
+                    var args = new DownloadProgressArgs(receivedBytes, totalBytes);
+                    progessReporter.Report(args);
                 }
+
+                memStream.Position = 0;
+                return memStream;
             }
             catch (Exception e)
             {
