@@ -17,7 +17,7 @@ namespace InfoPanel.Drawing
     {
         public readonly IntPtr Handle = handle;
         public readonly D2DGraphics D2DGraphics = d2dGraphics;
-        public readonly D2DDevice D2DDevice = d2dGraphics.Device!;
+        public readonly D2DDevice D2DDevice = d2dGraphics.Device;
         public readonly int TextXOffset = textXOffset;
         public readonly int TextYOffset = textYOffSet;
         public readonly float FontScale = fontScale;

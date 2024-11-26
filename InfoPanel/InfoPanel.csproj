@@ -17,11 +17,14 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\D2DLib\D2DLibExport\D2DLibExport.csproj" />
-		<ProjectReference Include="..\D2DLib\d2dlib\D2DLib.vcxproj" />
-		<ProjectReference Include="..\D2DLib\D2DWinForm\D2DWinForm.csproj" />
 		<ProjectReference Include="..\TuringSmartScreenLib.Helpers.SkiaSharp\TuringSmartScreenLib.Helpers.SkiaSharp.csproj" />
 		<ProjectReference Include="..\TuringSmartScreenLib\TuringSmartScreenLib.csproj" />
+		<Reference Include="d2dlibexport">
+			<HintPath>Lib\d2dlibexport.dll</HintPath>
+		</Reference>
+		<Reference Include="d2dwinform">
+			<HintPath>Lib\d2dwinform.dll</HintPath>
+		</Reference>
 	</ItemGroup>
 
 	<Target Name="Sign" AfterTargets="Publish">
@@ -112,6 +115,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Update="Lib\d2dlib64.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>d2dlib64.dll</TargetPath>
+		</None>
 		<None Update="NunitoSans_7pt_Condensed-BlackItalic.ttf">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
@@ -149,6 +156,10 @@
 			<XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
 			<SubType>Designer</SubType>
 		</Page>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Lib\" />
 	</ItemGroup>
 
 </Project>
