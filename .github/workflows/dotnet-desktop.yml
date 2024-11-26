@@ -20,7 +20,12 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 8.0.x         
+        dotnet-version: 8.0.x  
+
+    - name: Setup Visual Studio Build Tools for C++
+      uses: microsoft/setup-msbuild@v1
+      with:
+        vs-version: 'latest'        
 
     - name: Build InfoPanel
       run: |
