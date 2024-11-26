@@ -117,9 +117,9 @@
            ToolTip="Add selected sensor as a donut" IsEnabled="True" Click="ButtonAddDonut_Click" Margin="10,0,0,0"/>
             <ui:Button x:Name="ButtonAddGraph" Grid.Column="4" Appearance="Primary" Icon="DataBarVertical20" 
                        ToolTip="Add selected sensor as a graph" IsEnabled="True" Click="ButtonAddGraph_Click" Margin="10,0,0,0"/>
-            <ui:Button x:Name="ButtonAddCustom" Grid.Column="4" Appearance="Primary" Icon="Gauge20" 
+            <ui:Button x:Name="ButtonAddCustom" Grid.Column="5" Appearance="Primary" Icon="Gauge20" 
                        ToolTip="Add selected sensor as gauge" IsEnabled="True" Click="ButtonAddCustom_Click" Margin="10,0,0,0"/>
-            <ui:Button x:Name="ButtonReplace" Grid.Column="5" Icon="ArrowSwap20" Appearance="Caution"
+            <ui:Button x:Name="ButtonReplace" Grid.Column="6" Icon="ArrowSwap20" Appearance="Caution"
                        ToolTip="Replace selected sensor" IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource IsSensorConverter}}" Click="ButtonReplace_Click" Margin="10,0,0,0"/>
         </Grid>
 

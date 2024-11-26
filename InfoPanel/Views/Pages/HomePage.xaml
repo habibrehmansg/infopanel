@@ -21,11 +21,13 @@
         <Border
             Grid.Row="0"
             Height="400"
-            CornerRadius="8,0,0,0">
+            MaxWidth="1000"
+            Margin="0,100,0,0"
+            CornerRadius="8,8,8,8">
             <Border.Background>
                 <ImageBrush ImageSource="/InfoPanel;component/Resources/Images/home.jpg" Stretch="UniformToFill" />
             </Border.Background>
-            <Border CornerRadius="8,0,0,0">
+            <Border CornerRadius="8,8,8,8">
                 <Border.Background>
                     <RadialGradientBrush>
                         <GradientStop Offset="0" Color="#2F000000" />

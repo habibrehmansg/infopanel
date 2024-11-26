@@ -48,9 +48,6 @@ namespace InfoPanel.Views.Windows
             Loaded += FluentWindow_Loaded;
             StateChanged += FluentWindow_StateChanged;
 
-            MinWidth = ActualWidth;
-            MinHeight = ActualHeight;
-
             var screenHeight = SystemParameters.PrimaryScreenHeight;
             var desiredHeight = screenHeight * 0.80;
 
@@ -79,6 +76,9 @@ namespace InfoPanel.Views.Windows
 
         private void Window_ContentRendered(object sender, EventArgs e)
         {
+            MinWidth = 1300;
+            MinHeight = 900;
+
             Navigate(typeof(Pages.HomePage));
 
             if (ConfigModel.Instance.Settings.StartMinimized && ConfigModel.Instance.Settings.MinimizeToTray)

@@ -29,7 +29,7 @@
                    VerticalAlignment="Top" HorizontalAlignment="Right" Appearance="Secondary" Content="Import" />
         </StackPanel>
 
-        <ListView x:Name="ListViewProfiles" Grid.Row="0" Margin="-20,20,0,0"
+        <ListView x:Name="ListViewProfiles" Grid.Row="0" MaxWidth="1400" Margin="10,20,10,0"
                 SelectionMode="Single"
                 ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
                 SelectedItem="{Binding ViewModel.Profile}">
