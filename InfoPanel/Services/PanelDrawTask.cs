@@ -85,7 +85,7 @@ namespace InfoPanel
                     || ConfigModel.Instance.Settings.TuringPanelA && ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid
                     || ConfigModel.Instance.Settings.TuringPanelC && ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid)
                     {
-                        var lockedBitmap = Render(profile, currentFps, frameRateLimit);
+                        var lockedBitmap = Render(profile);
 
                         lockedBitmap.Access(bitmap =>
                         {
@@ -119,7 +119,7 @@ namespace InfoPanel
             }
         }
 
-        public static LockedBitmap Render(Profile profile, int currentFps, int frameRateLimit, bool drawSelected = true)
+        public static LockedBitmap Render(Profile profile, bool drawSelected = true)
         {
             if (!BitmapCache.TryGetValue(profile.Guid, out var lockedBitmap)
                 || lockedBitmap.Width != profile.Width || lockedBitmap.Height != profile.Height

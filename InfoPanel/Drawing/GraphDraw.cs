@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Models;
+using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -10,7 +11,10 @@ namespace InfoPanel.Drawing
 {
     internal class GraphDraw
     {
-        private static readonly ConcurrentDictionary<Guid, double> GraphDataSmoothCache = [];
+        private static readonly IMemoryCache GraphDataSmoothCache = new MemoryCache(new MemoryCacheOptions()
+        {
+            ExpirationScanFrequency = TimeSpan.FromSeconds(5)
+        });
         private static readonly ConcurrentDictionary<(UInt32, UInt32, UInt32), Queue<double>> GraphDataCache = [];
         private static readonly Stopwatch Stopwatch = new();
 
@@ -25,7 +29,7 @@ namespace InfoPanel.Drawing
 
             GraphDataCache.TryGetValue(key, out Queue<double>? result);
 
-            if(result == null)
+            if (result == null)
             {
                 result = new Queue<double>();
                 GraphDataCache.TryAdd(key, result);
@@ -40,10 +44,10 @@ namespace InfoPanel.Drawing
 
             if (elapsedMilliseconds > ConfigModel.Instance.Settings.TargetGraphUpdateRate)
             {
-                foreach(var key in GraphDataCache.Keys)
+                foreach (var key in GraphDataCache.Keys)
                 {
                     GraphDataCache.TryGetValue(key, out Queue<double>? queue);
-                    if(queue != null)
+                    if (queue != null)
                     {
                         HWHash.SENSORHASH.TryGetValue(key, out HWHash.HWINFO_HASH value);
 
@@ -69,7 +73,7 @@ namespace InfoPanel.Drawing
 
                 var queue = GetGraphDataQueue(chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId);
 
-                if(queue.Count == 0)
+                if (queue.Count == 0)
                 {
                     return;
                 }
@@ -180,10 +184,6 @@ namespace InfoPanel.Drawing
 
                                     if (size * graphDisplayItem.Step != frameRect.Width)
                                     {
-                                        size += 2;
-                                    }
-                                    else
-                                    {
                                         size += 1;
                                     }
 
@@ -205,23 +205,38 @@ namespace InfoPanel.Drawing
                                         }
                                     }
 
+                                    // Initialize refRect to start at the right edge of frameRect
+                                    var refRect = new Rectangle(
+                                        frameRect.Right - graphDisplayItem.Thickness - penSize * 2,
+                                        frameRect.Bottom - penSize * 2,
+                                        graphDisplayItem.Thickness,
+                                        0);
+
+                                    var maxHeight = frameRect.Height - 3; // Precalculate the drawable height range
+                                    var offset = graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2; // Precalculate horizontal offset
+
                                     for (int i = 0; i < size; i++)
                                     {
-                                        var value = Math.Max(values[i] - minValue, 0);
-                                        value = Math.Min(value, maxValue);
-                                        value = value / (maxValue - minValue);
-                                        value = value * (frameRect.Height - 2 - 1);
-                                        value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
+                                        // Normalize and scale the value
+                                        var value = Math.Clamp(values[i] - minValue, 0, maxValue) / (maxValue - minValue) * maxHeight;
+                                        var normalizedHeight = (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
-                                        var chartRect = new Rectangle(frameRect.X + frameRect.Width - (i * (graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2)) - graphDisplayItem.Thickness - penSize, frameRect.Y + (int)(frameRect.Height - (value)), graphDisplayItem.Thickness, (int)value + penSize);
+                                        // Update refRect properties for the current rectangle
+                                        refRect.Y = frameRect.Bottom - normalizedHeight - penSize * 2;
+                                        refRect.Height = normalizedHeight + penSize;
 
+                                        // Draw the rectangle (filled and outlined)
                                         if (graphDisplayItem.Fill)
                                         {
-                                            g.FillRectangle(graphDisplayItem.FillColor, chartRect.X, chartRect.Y, chartRect.Width, chartRect.Height);
+                                            g.FillRectangle(graphDisplayItem.FillColor, refRect.X, refRect.Y, refRect.Width, refRect.Height);
                                         }
 
-                                        g.DrawRectangle(graphDisplayItem.Color, penSize, chartRect.X, chartRect.Y, chartRect.Width, chartRect.Height);
+                                        g.DrawRectangle(graphDisplayItem.Color, penSize, refRect.X, refRect.Y, refRect.Width, refRect.Height);
+
+                                        // Move refRect horizontally for the next rectangle
+                                        refRect.X -= offset;
                                     }
+
                                     break;
                                 }
                         }
@@ -249,7 +264,7 @@ namespace InfoPanel.Drawing
                                 //only interpolate for high fps
                                 GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
                                 value = Interpolate(lastValue, value, 0.05);
-                                GraphDataSmoothCache[barDisplayItem.Guid] = value;
+                                GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
                             }
 
                             var usageRect = new Rectangle(frameRect.X, frameRect.Y, (int)value, frameRect.Height);
@@ -322,12 +337,12 @@ namespace InfoPanel.Drawing
                                 //only interpolate for high fps
                                 GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
                                 value = Interpolate(lastValue, value, 0.05);
-                                GraphDataSmoothCache[donutDisplayItem.Guid] = value;
+                                GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
                             }
 
-                            g.FillDonut(frameRect.X, frameRect.Y, frameRect.Width / 2, donutDisplayItem.Thickness, 
-                                donutDisplayItem.Rotation, (int)value, donutDisplayItem.Color, 
-                                donutDisplayItem.Background ? donutDisplayItem.BackgroundColor : "#00000000", 
+                            g.FillDonut(frameRect.X, frameRect.Y, frameRect.Width / 2, donutDisplayItem.Thickness,
+                                donutDisplayItem.Rotation, (int)value, donutDisplayItem.Color,
+                                donutDisplayItem.Background ? donutDisplayItem.BackgroundColor : "#00000000",
                                 donutDisplayItem.Frame ? 1 : 0, donutDisplayItem.FrameColor);
 
                             break;

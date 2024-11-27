@@ -18,7 +18,7 @@ namespace InfoPanel
             ExpirationScanFrequency = TimeSpan.FromSeconds(1)
         });
 
-        private static object _imageLock = new object();
+        private static readonly object _imageLock = new();
 
         public static Stream ToStream(this Image image, ImageFormat format)
         {

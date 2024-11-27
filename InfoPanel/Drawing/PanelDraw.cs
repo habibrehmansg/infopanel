@@ -120,11 +120,12 @@ namespace InfoPanel.Drawing
                         {
                             using var d2dGraphics = acceleratedGraphics.D2DDevice
                                 .CreateBitmapGraphics(chartDisplayItem.Width, chartDisplayItem.Height);
-
+                            
                             if (d2dGraphics != null)
                             {
+                                d2dGraphics.SetDPI(96, 96);
+                                d2dGraphics.Antialias = true;
                                 using var g1 = AcceleratedGraphics.FromD2DGraphics(d2dGraphics, acceleratedGraphics);
-
                                 d2dGraphics.BeginRender();
                                 GraphDraw.Run(chartDisplayItem, g1);
                                 d2dGraphics.EndRender();
