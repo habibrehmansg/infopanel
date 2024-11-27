@@ -1,0 +1,143 @@
+﻿<Page x:Class="InfoPanel.Views.Pages.UpdatesPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:InfoPanel"
+      xmlns:components="clr-namespace:InfoPanel.Views.Components"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:viewmodels="clr-namespace:InfoPanel.ViewModels" 
+      d:DataContext="{d:DesignInstance Type=viewmodels:AboutViewModel}"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="AboutPage">
+
+    <Grid Margin="0,60,0,20">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+            <StackPanel MaxWidth="1360" Margin="20,30,20,0">
+                <StackPanel Grid.Row="0" Margin="0,0,0,0">
+                    <ui:CardControl Icon="PhoneUpdate20">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="{Binding ViewModel.Version, StringFormat='You are using InfoPanel v{0}'}" />
+
+                                    <TextBlock Margin="0,5,0,0"
+                                       FontSize="12">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                                <Setter Property="Text" Value="There are no updates available. You are using the latest version." />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ViewModel.UpdateAvailable}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource SystemAccentColorPrimaryBrush}"/>
+                                                        <Setter Property="Text" Value="{Binding ViewModel.VersionModel.Version, StringFormat='Version {0} is available. Click update to download and install.'}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                </StackPanel>
+                                <ui:Button Grid.Column="1" Width="150" Appearance="Primary" Margin="0,0,0,0"
+                                   Visibility="{Binding ViewModel.UpdateAvailable, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                   IsEnabled="{Binding ViewModel.DownloadInProgress, Converter={StaticResource InverseBooleanConverter}}"
+                        Content="Update" Click="ButtonUpdate_Click"/>
+                                <ProgressBar Name="ProgressBarDownload" Grid.Column="1" Width="150" Height="7" VerticalAlignment="Bottom" Margin="0,0,0,0"
+                                     Value="{Binding ViewModel.DownloadProgress}" Minimum="0" Maximum="100"
+                                     Visibility="{Binding ViewModel.DownloadInProgress, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                <ui:Button Grid.Column="2" Width="150" Margin="10,0,0,0"
+                                   IsEnabled="{Binding ViewModel.UpdateCheckInProgress, Converter={StaticResource InverseBooleanConverter}}"
+                        Content="Check for updates" Click="ButtonCheckUpdates_Click"/>
+                            </Grid>
+                        </ui:CardControl.Header>
+                    </ui:CardControl>
+
+                    <Label Margin="0,30,0,0" FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="What's New"/>
+                    <ui:CardExpander HorizontalContentAlignment="Left" Margin="0,10,0,0" IsExpanded="True">
+                        <ui:CardExpander.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                        FontSize="13"
+                        FontWeight="Medium"
+                        Text="v1.2.8" />
+                                    <TextBlock Margin="0,5,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                        Text="Performance and Feature Updates" />
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardExpander.Header>
+
+                       
+                        <StackPanel VerticalAlignment="Center">
+                            <!-- Start 1.2.8 Description -->
+                            <TextBlock
+                                    FontSize="13"
+                                    FontWeight="Medium"
+                                    Text="Direct2D GPU Acceleration" />
+                            <TextBlock Margin="0,0,0,0"
+                                    FontSize="12" TextWrapping="Wrap"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                    - New GPU accelerated rendering profile option for desktop panels providing superior FPS at extremely low CPU cost even at higher resolutions.
+                                    <LineBreak/>
+                                    - Backward compatibile with non-accelerated profiles with provided offset settings.
+                                    <LineBreak/>
+                                    - Additionally, graphs and charts are animated via interpolation in this mode.
+                            </TextBlock>
+
+                            <TextBlock Margin="0,20,0,0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Donut Chart" />
+                            <TextBlock Margin="0,0,0,0"
+                            FontSize="12" TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            - A new customisable circular chart design option that was previously only available as a user provided custom gauge.
+                            </TextBlock>
+
+                            <TextBlock Margin="0,20,0,0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="UI Improvements" />
+                            <TextBlock Margin="0,0,0,0"
+                            FontSize="12" TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            - Optimised and enabled resizing with responsive layout for InfoPanel for better low-resolution support.
+                            <LineBreak />    
+                            - Added GIF image preview support.
+                            <LineBreak />
+                            - Squashed some UI bugs.
+                            </TextBlock>
+
+                            <TextBlock Margin="0,20,0,0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Performance Enhancements" />
+                            <TextBlock Margin="0,0,0,0"
+                            FontSize="12" TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            - Reduced CPU and memory usage for non-accelerated profiles via smart caching.
+                            <LineBreak />
+                            - Squashed some memory bugs.
+                            </TextBlock>
+                            <!-- End 1.2.8 Description -->
+                        </StackPanel>
+                    </ui:CardExpander>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -11,78 +11,62 @@
       d:DesignHeight="450" d:DesignWidth="800"
       Title="AboutPage">
 
-    <Grid Margin="20,60,20,20">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel MaxWidth="1000" Margin="0,20,0,0">
-                <ui:CardControl Icon="Whiteboard24">
-                    <ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock
+    <Grid Margin="0,60,0,20">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+            <StackPanel MaxWidth="1360" Margin="20,30,20,0">
+                <StackPanel Grid.Row="0" Margin="0,0,0,0">
+                    <ui:CardControl Icon="Whiteboard24">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="{Binding ViewModel.Version, StringFormat='InfoPanel v{0}'}" />
-                                <TextBlock Margin="0,5,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Copyright © 2024 Habib Rehman, infopanel.net" />
+                                </StackPanel>
 
-                                <TextBlock Margin="0,5,0,0"
-                                       FontSize="12">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}"/>
-                                            <Setter Property="Text" Value="There are no updates available. You are using the latest version." />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding ViewModel.UpdateAvailable}" Value="True">
-                                                    <Setter Property="Foreground" Value="{DynamicResource SystemAccentColorPrimaryBrush}"/>
-                                                    <Setter Property="Text" Value="{Binding ViewModel.VersionModel.Version, StringFormat='Version {0} is available. Click update to download and install.'}"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                <ui:Anchor
+                                Grid.Column="2"
+                                Width="150"
+                                Margin="0,0,0,0"
+                                VerticalAlignment="Center"
+                                Appearance="Secondary"
+                                NavigateUri="https://github.com/habibrehmansg/infopanel"
+                                Content="Github" /> 
 
-                            </StackPanel>
-                            <ui:Button Grid.Column="1" Width="150" Appearance="Primary" Margin="0,0,0,0"
-                                   Visibility="{Binding ViewModel.UpdateAvailable, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                   IsEnabled="{Binding ViewModel.DownloadInProgress, Converter={StaticResource InverseBooleanConverter}}"
-                        Content="Update" Click="ButtonUpdate_Click"/>
-                            <ProgressBar Name="ProgressBarDownload" Grid.Column="1" Width="150" Height="7" VerticalAlignment="Bottom" Margin="0,0,0,0"
-                                     Value="{Binding ViewModel.DownloadProgress}" Minimum="0" Maximum="100"
-                                     Visibility="{Binding ViewModel.DownloadInProgress, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                            <ui:Button Grid.Column="2" Width="150" Margin="10,0,0,0"
-                                   IsEnabled="{Binding ViewModel.UpdateCheckInProgress, Converter={StaticResource InverseBooleanConverter}}"
-                        Content="Check for updates" Click="ButtonCheckUpdates_Click"/>
-                        </Grid>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                            </Grid>
+                        </ui:CardControl.Header>
+                    </ui:CardControl>
 
-                <ui:CardControl Icon="WebAsset20" Margin="0,10,0,0">
-                    <ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
+                    <ui:CardControl Icon="WebAsset20" Margin="0,10,0,0">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="Website" />
-                                <TextBlock Margin="0,5,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Check out our website." />
-                            </StackPanel>
-                            <ui:Anchor
+                                </StackPanel>
+                                <ui:Anchor
                         Grid.Column="2"
                         Width="150"
                         Margin="0,0,0,0"
@@ -90,30 +74,30 @@
                         Appearance="Secondary"
                         NavigateUri="https://infopanel.net/"
                         Content="Launch" />
-                        </Grid>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                            </Grid>
+                        </ui:CardControl.Header>
+                    </ui:CardControl>
 
-                <ui:CardControl Icon="HardDrive20" Margin="0,10,0,0">
-                    <ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
+                    <ui:CardControl Icon="HardDrive20" Margin="0,10,0,0">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="HWiNFO" />
-                                <TextBlock Margin="0,5,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Download HWiNFO to get started if you have not." />
-                            </StackPanel>
-                            <ui:Anchor
+                                </StackPanel>
+                                <ui:Anchor
                         Grid.Column="2"
                         Width="150"
                         Margin="0,0,0,0"
@@ -121,30 +105,30 @@
                         Appearance="Secondary"
                         NavigateUri="https://www.hwinfo.com/"
                         Content="Download" />
-                        </Grid>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                            </Grid>
+                        </ui:CardControl.Header>
+                    </ui:CardControl>
 
-                <ui:CardControl Icon="Chat20" Margin="0,10,0,0">
-                    <ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
+                    <ui:CardControl Icon="Chat20" Margin="0,10,0,0">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="Discord" />
-                                <TextBlock Margin="0,5,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Join in conversations with others regarding InfoPanel." />
-                            </StackPanel>
-                            <ui:Anchor
+                                </StackPanel>
+                                <ui:Anchor
                         Grid.Column="2"
                         Width="150"
                         Margin="0,0,0,0"
@@ -152,30 +136,30 @@
                         Appearance="Secondary"
                         NavigateUri="https://discord.gg/cQnjdMC7Qc"
                         Content="Join" />
-                        </Grid>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                            </Grid>
+                        </ui:CardControl.Header>
+                    </ui:CardControl>
 
-                <ui:CardControl Icon="Heart20" Margin="0,10,0,0">
-                    <ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
+                    <ui:CardControl Icon="Heart20" Margin="0,10,0,0">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="Love InfoPanel?" />
-                                <TextBlock Margin="0,5,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Leave a review for others to see and help InfoPanel grow." />
-                            </StackPanel>
-                            <ui:Anchor
+                                </StackPanel>
+                                <ui:Anchor
                         Grid.Column="2"
                         Width="150"
                         Margin="0,0,0,0"
@@ -183,30 +167,30 @@
                         Appearance="Secondary"
                         NavigateUri="ms-windows-store://review/?ProductId=XPFP7C8H5446ZD"
                         Content="Review" />
-                        </Grid>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                            </Grid>
+                        </ui:CardControl.Header>
+                    </ui:CardControl>
 
-                <ui:CardControl Icon="DrinkCoffee20" Margin="0,10,0,0">
-                    <ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
+                    <ui:CardControl Icon="DrinkCoffee20" Margin="0,10,0,0">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="Support Development" />
-                                <TextBlock Margin="0,5,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Help offset costs incurred such as hosting and domain fees." />
-                            </StackPanel>
-                            <ui:Anchor
+                                </StackPanel>
+                                <ui:Anchor
                         Grid.Column="2"
                         Width="150"
                         Margin="0,0,0,0"
@@ -214,206 +198,224 @@
                         Appearance="Secondary"
                         NavigateUri="https://www.buymeacoffee.com/urfath3r"
                         Content="Donate" />
-                        </Grid>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                            </Grid>
+                        </ui:CardControl.Header>
+                    </ui:CardControl>
 
-                <ui:CardExpander Icon="Code20" HorizontalContentAlignment="Left" Margin="0,10,0,0">
-                    <ui:CardExpander.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                    <ui:CardExpander Icon="Code20" HorizontalContentAlignment="Left" Margin="0,10,0,0">
+                        <ui:CardExpander.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="Other Licenses" />
-                                <TextBlock Margin="0,5,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Other software used that made this possible." />
-                            </StackPanel>
-                        </Grid>
-                    </ui:CardExpander.Header>
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardExpander.Header>
 
-                    <StackPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="HWiNFO" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Licensed software. © Martin Malik, REALiX, s.r.o." />
-                                <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://www.hwinfo.com/" NavigateUri="https://www.hwinfo.com/"/>
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,20,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                    <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://www.hwinfo.com/" NavigateUri="https://www.hwinfo.com/"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="WinUSBNet" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="MIT License. Copyright © 2010 Thomas Bleeker." />
-                                <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/madwizard-thomas/winusbnet" NavigateUri="https://github.com/madwizard-thomas/winusbnet"/>
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,20,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                    <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/madwizard-thomas/winusbnet" NavigateUri="https://github.com/madwizard-thomas/winusbnet"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="TuringSmartScreenLib" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="MIT License. Copyright © 2021 machi_pon." />
-                                <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/usausa/turing-smart-screen" NavigateUri="https://github.com/usausa/turing-smart-screen"/>
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,20,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                    <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/usausa/turing-smart-screen" NavigateUri="https://github.com/usausa/turing-smart-screen"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="MahApps.Metro" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="MIT License. Copyright © .NET Foundation, Jan Karger, Brendan Forster, Dennis Daume, Alex Mitchell, Paul Jenkins and contributors." />
-                                <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/MahApps/MahApps.Metro" NavigateUri="https://github.com/MahApps/MahApps.Metro"/>
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,20,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                    <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/MahApps/MahApps.Metro" NavigateUri="https://github.com/MahApps/MahApps.Metro"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="WPF UI" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="MIT License. Copyright © 2021-2023 Leszek Pomianowski and WPF UI Contributors." />
-                                <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/lepoco/wpfui" NavigateUri="https://github.com/lepoco/wpfui"/>
-                            </StackPanel>
-                        </Grid>
-                    </StackPanel>
-                </ui:CardExpander>
+                                    <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/lepoco/wpfui" NavigateUri="https://github.com/lepoco/wpfui"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+ FontSize="13"
+ FontWeight="Medium"
+ Text="d2dlib" />
+                                    <TextBlock Margin="0,0,0,0"
+ FontSize="12"
+ Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+ Text="MIT License. Copyright © 2009-2020 Jingwood, unvell.com. All right reserved." />
+                                    <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/jingwood/d2dlib" NavigateUri="https://github.com/jingwood/d2dlib"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </ui:CardExpander>
 
-                <ui:CardExpander Icon="People20" HorizontalContentAlignment="Left" Margin="0,10,0,0">
-                    <ui:CardExpander.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                    <ui:CardExpander Icon="People20" HorizontalContentAlignment="Left" Margin="0,10,0,0">
+                        <ui:CardExpander.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="Other People" />
-                                <TextBlock Margin="0,5,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Fellow humans who helped and continue to make InfoPanel great." />
-                            </StackPanel>
-                        </Grid>
-                    </ui:CardExpander.Header>
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardExpander.Header>
 
-                    <StackPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="/u/ME5ER" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Special thanks for patiently troubleshooting the early and buggy software iterations over extended periods." />
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,20,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="/u/DRA6N" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="Better known as RobOnTwoWheels our CM on Discord, without whom it would not have existed." />
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,20,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="Boredape" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="For your graphical musings." />
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,20,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
                             Text="Everyone else" />
-                                <TextBlock Margin="0,0,0,0"
+                                    <TextBlock Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Text="For those that messaged me or posted your questions, feedback and panel designs on Reddit, HWiNFO forums and Discord." />
-                            </StackPanel>
-                        </Grid>
-                    </StackPanel>
-                </ui:CardExpander>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </ui:CardExpander>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

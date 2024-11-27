@@ -99,6 +99,9 @@
 		<Compile Update="Views\Components\Chart\DonutProperties.xaml.cs">
 		  <SubType>Code</SubType>
 		</Compile>
+		<Compile Update="Views\Pages\UpdatesPage.xaml.cs">
+		  <SubType>Code</SubType>
+		</Compile>
 		<Compile Update="Views\Pages\ProfilesPage.xaml.cs">
 			<SubType>Code</SubType>
 		</Compile>
@@ -147,6 +150,9 @@
 
 	<ItemGroup>
 		<Page Update="Views\Components\Chart\DonutProperties.xaml">
+		  <SubType>Designer</SubType>
+		</Page>
+		<Page Update="Views\Pages\UpdatesPage.xaml">
 		  <SubType>Designer</SubType>
 		</Page>
 		<Page Update="Views\Pages\ProfilesPage.xaml">

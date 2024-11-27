@@ -13,6 +13,12 @@ namespace InfoPanel.Views.Pages
             get;
         }
 
+        public HomePage()
+        {
+            DataContext = this;
+            InitializeComponent();
+        }
+
         public HomePage(HomeViewModel viewModel)
         {
             ViewModel = viewModel;

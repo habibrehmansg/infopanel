@@ -14,22 +14,23 @@
       Title="DesignPage"
       mc:Ignorable="d" >
 
-    <Grid Margin="20,60,20,20">
+    <Grid Margin="0,60,0,20" MaxWidth="1400">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,-40,10,0">
-            <ui:Button Name="ButtonAdd" Grid.Row="0" Margin="0,0,0,0"
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,-40,50,0">
+            <ui:Button Name="ButtonImport" Grid.Row="0" Margin="0,0,0,0"
+        Click="ButtonImportProfile_Click" Width="150"
+        VerticalAlignment="Top" HorizontalAlignment="Right" Appearance="Secondary" Content="Import Profile" />
+
+            <ui:Button Name="ButtonAdd" Grid.Row="0" Margin="10,0,0,0"
                    Click="ButtonAdd_Click" Width="150"
-                   VerticalAlignment="Top" HorizontalAlignment="Right" Appearance="Secondary" Content="New" />
-            <ui:Button Name="ButtonImport" Grid.Row="0" Margin="10,0,0,0"
-                   Click="ButtonImportProfile_Click" Width="150"
-                   VerticalAlignment="Top" HorizontalAlignment="Right" Appearance="Secondary" Content="Import" />
+                   VerticalAlignment="Top" HorizontalAlignment="Right" Appearance="Primary" Content="New Profile" />
         </StackPanel>
 
-        <ListView x:Name="ListViewProfiles" Grid.Row="0" MaxWidth="1400" Margin="10,20,10,0"
+        <ListView x:Name="ListViewProfiles" Grid.Row="0" Margin="0,20,0,0"
                 SelectionMode="Single"
                 ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
                 SelectedItem="{Binding ViewModel.Profile}">
@@ -123,7 +124,7 @@
                 </Grid>
             </Expander.Header>
 
-            <ContentControl Grid.Row="1">
+            <ContentControl Grid.Row="1" Height="395">
                 <ContentControl.Style>
                     <Style TargetType="ContentControl">
                         <Setter Property="Content" Value="{Binding ViewModel.Profile}" />
@@ -135,9 +136,39 @@
                                             <Grid Margin="10,0,10,10">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition/>
+                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="2" TextWrapping="Wrap" VerticalAlignment="Stretch" AllowDrop="False" Margin="0,10,0,0">
-                                                         <Span Foreground="{DynamicResource TextFillColorSecondaryBrush}">Select or create a profile to get started.</Span>
+                                                <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Stretch" AllowDrop="False" Margin="0,0,0,0">
+        <Bold>Profile Guide:</Bold>
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>1.</Bold> Set profile settings such as width, height, background color and typography defaults and save them.
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>2.</Bold> Mouse over icons to see more details.
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>3.</Bold> Direct 2D Acceleration uses your GPU instead of CPU for faster frame rendering up to 100 FPS.
+       It also uses VRAM instead of memory to load images and GIFs. This results in faster GIF rendering and lower CPU usage for use cases with larger panel sizes and multiple high quality/high framerate images and GIFs.  <LineBreak/><LineBreak/>                                           
+            Direct2D is only available for HDMI/DP displays. Enabling for USB panels will not have an impact. USB displays are mostly limited by their update bus.
+                                                </TextBlock>
+                                                <TextBlock Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Stretch" AllowDrop="False" Margin="10,0,0,0">
+         <Bold>Direct2D Acceleration Notes:</Bold>
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>1.</Bold> Direct2D uses a different rendering engine. This results in different fonts being displayed differently when it is on versus off. This means that text may appear smaller or larger, and be offset lower, higher or more towards the left or right.                             
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>2.</Bold> Adjust Font Scale, Text X Offset and Text Y Offset accordingly for backward compatibility with Non-Direct2D profiles.
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>3.</Bold> Panel FPS shows the rendering speed of that particular panel. Although it uses mostly GPU, a CPU bottleneck by other non-Direct2D profiles or external applications can impact the speed as it is capped by the sensor calculations. The maximum FPS is 100.
+                                                </TextBlock>
+                                                <TextBlock Grid.Column="2" TextWrapping="Wrap" VerticalAlignment="Stretch" AllowDrop="False" Margin="10,0,0,0">
+         <Bold>Additional Notes:</Bold>
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>1.</Bold> This software is provided on a best effort basis. Expect bugs and/or crashes. You are encouraged to save often.
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>2.</Bold> Performance and memory usage is largely determined by the number of active profiles and <Bold Foreground="Orange">size of your panel and number of images and GIFs.</Bold>
+        <LineBreak/><LineBreak/>                                                        
+         <Bold>3.</Bold> Join our discord for support, feature requests and share your designs by using the export button to generate an .infopanel file for uploading.<LineBreak/>
+                                                    <LineBreak/> <LineBreak/> 
+        <Bold Foreground="OrangeRed">Lastly, remember to save your work. Updates are live but not auto saved.</Bold><LineBreak/>
                                                 </TextBlock>
                                             </Grid>
                                         </ControlTemplate>
@@ -353,15 +384,14 @@
 
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="3*" />
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
 
                                 <Border BorderBrush="DarkGray" BorderThickness="1" CornerRadius="5" Margin="0,10,0,0">
                                 <StackPanel Margin="5,5,5,5">
 
-                                        <Grid Margin="0,0,0,0">
+                                        <Grid Margin="0,0,0,0" IsEnabled="{Binding Active}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
@@ -407,14 +437,14 @@
                                             <ui:NumberBox
                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" LargeChange="10" Minimum="-3840" Maximum="3840"
                                     Value="{Binding Direct2DTextXOffset}" Text="{Binding Direct2DTextXOffset}" />
-                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text X Offset" FontSize="12" Margin="5,0,0,0" />
+                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text X (Left) Offset" FontSize="12" Margin="5,0,0,0" />
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="2" Margin="10,0,0,0">
                                     <ui:NumberBox
                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="-3840" Maximum="3840"
                                     Value="{Binding Direct2DTextYOffset}" Text="{Binding Direct2DTextYOffset}" />    
-                                                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text Y Offset" FontSize="12" Margin="5,0,0,0" />
+                                                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text Y (Top) Offset" FontSize="12" Margin="5,0,0,0" />
                                         </StackPanel>
                                     </Grid>
 
@@ -422,14 +452,16 @@
                                 </StackPanel>
                             </Border>
 
-                                <Grid Grid.Column="2" Margin="10,0,10,0" VerticalAlignment="Bottom">
+                                <Grid Grid.Column="2" Margin="10,0,10,0" VerticalAlignment="Bottom" HorizontalAlignment="Right">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="auto" />
+                                        <ColumnDefinition Width="auto" />
                                         <ColumnDefinition Width="auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <ui:Button Grid.Column="0" Margin="0,0,0,0" HorizontalAlignment="Stretch" Appearance="Primary" Content="Save Profile Settings" Click="ButtonSave_Click"/>
-                                    <ui:Button Grid.Column="1" Margin="10,0,0,0" Appearance="Danger" Icon="ArrowUndo20" Click="ButtonReload_Click"/>
+                                    <ui:Button Grid.Column="0" Margin="0,0,0,0" HorizontalAlignment="Stretch" Appearance="Primary" Content="Save profile changes" Click="ButtonSave_Click"/>
+                                    <ui:Button Grid.Column="1" Margin="10,0,0,0" Appearance="Danger" Content="Revert changes" Click="ButtonReload_Click"/>
+                                    <ui:Button Grid.Column="2" Margin="10,0,0,0" Appearance="Secondary"  Content="x" Click="ButtonClose_Click"/>
                                 </Grid>
 
                             </Grid>

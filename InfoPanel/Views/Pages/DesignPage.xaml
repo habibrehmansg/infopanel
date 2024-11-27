@@ -12,27 +12,27 @@
       Title="Design"
       mc:Ignorable="d" >
 
-    <Grid Margin="10,20,10,10" Grid.IsSharedSizeScope="True">
+    <Grid Margin="20,20,20,20" Grid.IsSharedSizeScope="True">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
         
-        <Grid Grid.Row="0" HorizontalAlignment="Center">
+        <Grid Grid.Row="0" MaxWidth="1400">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="0.5*" MinWidth="475" MaxWidth="750"/>
+                <ColumnDefinition Width="*" MinWidth="475"/>
                 <ColumnDefinition Width="auto" SharedSizeGroup="A"/>
             </Grid.ColumnDefinitions>
 
             <Border
             Grid.Column="0" 
-            CornerRadius="8,8,8,8" Margin="0,0,5,10">
-                <components:HWiNFOSensors Margin="0,0,10,0" />
+            CornerRadius="8,8,8,8" Margin="0,0,0,0" >
+                <components:HWiNFOSensors Margin="0,5,10,10" />
             </Border>
 
             <Border
             Grid.Column="1" Background="#601A1a1a"
-            CornerRadius="8,8,8,8" Margin="5,0,0,0">
+            CornerRadius="8,8,8,8" Margin="0,0,0,0">
                 <components:DisplayItems />
             </Border>
 

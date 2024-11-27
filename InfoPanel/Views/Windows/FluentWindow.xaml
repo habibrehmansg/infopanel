@@ -10,9 +10,7 @@
         xmlns:app="clr-namespace:InfoPanel"
         Title="InfoPanel"
         Width="1300"
-        MinWidth="1300"
         Height="900"
-        MinHeight="900"
         d:DesignHeight="900"
         d:DesignWidth="1300"
         ExtendsContentIntoTitleBar="True"     
@@ -31,7 +29,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0"
+            <ui:TitleBar Grid.Row="0"
             Name="RootTitleBar"
             Title="InfoPanel"
             Icon="/InfoPanel;component/Resources/Images/favicon.ico"
@@ -71,7 +69,8 @@
             </ui:TitleBar.Tray>
         </ui:TitleBar>
 
-        <Grid Grid.Row="1" Margin="0,0,0,0">
+
+            <Grid Grid.Row="1" Margin="0,0,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -103,6 +102,11 @@
                 </ui:NavigationStore.Items>
                 <ui:NavigationStore.Footer>
                     <ui:NavigationItem
+                    Content="Updates"
+                    Icon="PhoneUpdate20"
+                    PageTag="updates"
+                    PageType="{x:Type pages:UpdatesPage}" />
+                    <ui:NavigationItem
                         Content="Settings"
                         Icon="Settings20"
                         PageTag="settings"
@@ -115,7 +119,7 @@
                 </ui:NavigationStore.Footer>
             </ui:NavigationStore>
 
-            <Grid Grid.Column="1">
+                <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="auto"/>
@@ -125,13 +129,18 @@
                 Background="{DynamicResource ControlFillColorDefaultBrush}"
                 CornerRadius="8,0,0,0">
                     <Grid>
-                        <ui:Breadcrumb
-                        Margin="20,20,20,20"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Top"
-                        FontSize="24"
-                        Navigation="{Binding ElementName=RootNavigation}" />
-                        <Frame x:Name="RootFrame" />
+                        <Grid MaxWidth="1400" Panel.ZIndex="1000">
+                             <ui:Breadcrumb
+                        MaxWidth="1400"
+                         Margin="20,20,20,20"
+                             HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         FontSize="24"
+            Navigation="{Binding ElementName=RootNavigation}" />    
+                        </Grid>
+                        
+
+                            <Frame x:Name="RootFrame"/>
                         <ui:Snackbar
                         x:Name="RootSnackbar"
                         Icon="Checkmark20"
@@ -151,6 +160,7 @@
                     Severity="Error">
                 </ui:InfoBar>
             </Grid>
+
         </Grid>
 
         <ui:Dialog
@@ -160,5 +170,7 @@
             Grid.RowSpan="2"
             ButtonLeftName="Ok" ButtonLeftAppearance="Caution" ButtonLeftClick="RootDialog_ButtonClick"
             ButtonRightName="Cancel" ButtonRightClick="RootDialog_ButtonClick"/>
+
     </Grid>
+        
 </ui:UiWindow>

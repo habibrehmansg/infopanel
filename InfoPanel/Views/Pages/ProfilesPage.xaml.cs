@@ -235,6 +235,11 @@ namespace InfoPanel.Views.Pages
             ConfigModel.Instance.ReloadProfile(ViewModel.Profile);
         }
 
+        private void ButtonClose_Click(object sender, RoutedEventArgs e)
+        {
+            ViewModel.Profile = null;
+        }
+
         private void ToggleSwitch_Checked(object sender, RoutedEventArgs e)
         {
             ConfigModel.Instance.SaveProfiles();

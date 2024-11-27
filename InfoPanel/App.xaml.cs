@@ -77,6 +77,9 @@ namespace InfoPanel
            services.AddScoped<AboutViewModel>();
            services.AddScoped<Views.Pages.SettingsPage>();
            services.AddScoped<SettingsViewModel>();
+           services.AddScoped<Views.Pages.UpdatesPage>();
+           services.AddScoped<UpdatesViewModel>();
+
 
            // Configuration
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
