@@ -1,4 +1,6 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Monitors;
+using LibreHardwareMonitor.Hardware;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -13,15 +15,15 @@ namespace InfoPanel.Views.Components
     /// <summary>
     /// Interaction logic for HWiNFOSensors.xaml
     /// </summary>
-    public partial class HWiNFOSensors : System.Windows.Controls.UserControl
+    public partial class LibreSensors : System.Windows.Controls.UserControl
     {
-        private HWiNFOVM ViewModel { get; set; }
+        private LibreSensorsVM ViewModel { get; set; }
 
         private Timer? UpdateTimer;
 
-        public HWiNFOSensors()
+        public LibreSensors()
         {
-            ViewModel = new HWiNFOVM();
+            ViewModel = new LibreSensorsVM();
             DataContext = ViewModel;
 
             InitializeComponent();
@@ -76,23 +78,25 @@ namespace InfoPanel.Views.Components
         {
             TreeViewInfo.Items.Clear();
 
-            var parentDict = new Dictionary<ulong, TreeViewItem>();
+            var parentDict = new Dictionary<Identifier, TreeViewItem>();
 
-            foreach (HWINFO_HASH hash in HWHash.GetOrderedList())
+            foreach (ISensor hash in LibreMonitor.GetOrderedList())
             {
                 TreeViewItem item;
 
-                if (parentDict.ContainsKey(hash.ParentUniqueID))
+                var identifier = hash.Hardware.Parent?.Identifier ?? hash.Hardware.Identifier;
+
+                if (parentDict.ContainsKey(identifier))
                 {
-                    item = parentDict[hash.ParentUniqueID];
+                    item = parentDict[identifier];
                 }
                 else
                 {
                     item = new TreeViewItem();
                     item.SetResourceReference(TreeViewItem.ForegroundProperty, "TextFillColorSecondaryBrush");
                     item.Focusable = false;
-                    item.Header = hash.ParentNameCustom;
-                    item.Tag = (hash.ParentID, hash.ParentInstance);
+                    item.Header = hash.Hardware.Parent?.Name ?? hash.Hardware.Name;
+                    //item.Tag = hash.Index;
                     item.Selected += delegate (object sender, RoutedEventArgs e)
                     {
                         TreeViewItem selectedItem = (TreeViewItem)TreeViewInfo.SelectedItem;
@@ -108,17 +112,39 @@ namespace InfoPanel.Views.Components
                         }
                     };
 
-                    parentDict.Add(hash.ParentUniqueID, item);
+                    parentDict.Add(identifier, item);
                     TreeViewInfo.Items.Add(item);
                 }
 
-                TreeViewItem subItem = new TreeViewItem();
+                TreeViewItem subItem = new();
                 subItem.SetResourceReference(TreeViewItem.ForegroundProperty, "TextFillColorTertiaryBrush");
                 subItem.Focusable = false;
                 subItem.PreviewMouseDown += SubItem_PreviewMouseDown;
-                subItem.Header = hash.NameCustom;
-                subItem.Tag = hash.SensorID;
-                item.Items.Add(subItem);
+                subItem.Header = hash.Name;
+                subItem.Tag = hash.Identifier;
+
+                bool added = false;
+                foreach(TreeViewItem group in item.Items)
+                {
+                    if(group.Name == hash.SensorType.ToString())
+                    {
+                        group.Items.Add(subItem);
+                        added = true;
+                        break;
+                    }
+                }
+
+                if(!added)
+                {
+                    TreeViewItem group = new();
+                    group.SetResourceReference(TreeViewItem.ForegroundProperty, "TextFillColorTertiaryBrush");
+                    group.Focusable = false;
+                    group.Name = hash.SensorType.ToString();
+                    group.Header = hash.SensorType.ToString();
+                    group.Items.Add(subItem);
+                    item.Items.Add(group);
+                }
+
 
             }
         }
@@ -132,29 +158,21 @@ namespace InfoPanel.Views.Components
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
 
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (selectedTreeViewItem?.Tag is Identifier identifier)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new SensorDisplayItem()
+                if(LibreMonitor.SENSORHASH.TryGetValue(identifier.ToString(), out ISensor? sensor))
                 {
-                    Name = (string)selectedTreeViewItem.Header,
-                    Id = parentTag.Item1,
-                    Instance = parentTag.Item2,
-                    EntryId = (UInt32)selectedTreeViewItem.Tag,
-                };
+                    var item = new SensorDisplayItem(sensor.Name, sensor.Identifier.ToString());
 
-                ViewModel.SensorName = item.Name;
-                ViewModel.Id = item.Id;
-                ViewModel.Instance = item.Instance;
-                ViewModel.EntryId = item.EntryId;
-                ViewModel.SensorValue = item.EvaluateText();
+                    ViewModel.SensorName = item.Name;
+                    ViewModel.SensorId = item.LibreSensorId;
+                    ViewModel.SensorValue = item.EvaluateText();
+                }
             }
             else
             {
                 ViewModel.SensorName = "No sensor selected";
-                ViewModel.Id = 0;
-                ViewModel.Instance = 0;
-                ViewModel.EntryId = 0;
+                ViewModel.SensorId = String.Empty;
                 ViewModel.SensorValue = String.Empty;
             }
         }

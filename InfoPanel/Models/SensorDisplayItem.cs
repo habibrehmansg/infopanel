@@ -1,0 +1,445 @@
+﻿using LibreHardwareMonitor.Hardware;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace InfoPanel.Models
+{
+    [Serializable]
+    public class SensorDisplayItem : TextDisplayItem, ISensorItem
+    {
+        public enum SensorValueType
+        {
+            NOW, MIN, MAX, AVERAGE
+        }
+
+        private string _sensorName = String.Empty;
+        public string SensorName
+        {
+            get { return _sensorName; }
+            set
+            {
+                SetProperty(ref _sensorName, value);
+            }
+        }
+
+        private SensorType _sensorIdType = SensorType.HwInfo;
+        public SensorType SensorType
+        {
+            get { return _sensorIdType; }
+            set
+            {
+                SetProperty(ref _sensorIdType, value);
+            }
+        }
+
+        private UInt32 _id;
+        public UInt32 Id
+        {
+            get { return _id; }
+            set
+            {
+                SetProperty(ref _id, value);
+            }
+        }
+
+        private UInt32 _instance;
+        public UInt32 Instance
+        {
+            get { return _instance; }
+            set
+            {
+                SetProperty(ref _instance, value);
+            }
+        }
+
+        private UInt32 _entryId;
+        public UInt32 EntryId
+        {
+            get { return _entryId; }
+            set
+            {
+                SetProperty(ref _entryId, value);
+            }
+        }
+
+        private string _libreSensorId = String.Empty;
+        public string LibreSensorId
+        {
+            get { return _libreSensorId; }
+            set
+            {
+                SetProperty(ref _libreSensorId, value);
+            }
+        }
+
+        public SensorValueType _valueType = SensorValueType.NOW;
+        public SensorValueType ValueType
+        {
+            get { return _valueType; }
+            set
+            {
+                SetProperty(ref _valueType, value);
+            }
+        }
+        
+        private int _threshold1 = 0;
+        public int Threshold1
+        {
+            get { return _threshold1; }
+            set
+            {
+                SetProperty(ref _threshold1, value);
+            }
+        }
+
+        private string _threshold1Color = "#000000";
+        public string Threshold1Color
+        {
+            get { return _threshold1Color; }
+            set
+            {
+                if (value == null)
+                {
+                    return;
+                }
+
+                if (!value.StartsWith("#"))
+                {
+                    value = "#" + value;
+                }
+
+                try
+                {
+                    ColorTranslator.FromHtml(value);
+                    SetProperty(ref _threshold1Color, value);
+                }
+                catch
+                { }
+            }
+        }
+
+        private int _threshold2 = 0;
+        public int Threshold2
+        {
+            get { return _threshold2; }
+            set
+            {
+                SetProperty(ref _threshold2, value);
+            }
+        }
+
+        private string _threshold2Color = "#000000";
+        public string Threshold2Color
+        {
+            get { return _threshold2Color; }
+            set
+            {
+                if (value == null)
+                {
+                    return;
+                }
+
+                if (!value.StartsWith("#"))
+                {
+                    value = "#" + value;
+                }
+
+                try
+                {
+                    ColorTranslator.FromHtml(value);
+                    SetProperty(ref _threshold2Color, value);
+                }
+                catch
+                { }
+            }
+        }
+
+        private bool _showName = false;
+        public bool ShowName
+        {
+            get { return _showName; }
+            set
+            {
+                SetProperty(ref _showName, value);
+            }
+        }
+
+        private string _unit = String.Empty;
+        public string Unit
+        {
+            get { return _unit; }
+            set
+            {
+                SetProperty(ref _unit, value);
+            }
+        }
+
+        private bool _overrideUnit = false;
+        public bool OverrideUnit
+        {
+            get { return _overrideUnit; }
+            set
+            {
+                SetProperty(ref _overrideUnit, value);
+            }
+        }
+
+        private bool _showUnit = true;
+        public bool ShowUnit
+        {
+            get { return _showUnit; }
+            set
+            {
+                SetProperty(ref _showUnit, value);
+            }
+        }
+
+        private bool _overridePrecision = false;
+        public bool OverridePrecision
+        {
+            get { return _overridePrecision; }
+            set
+            {
+                SetProperty(ref _overridePrecision, value);
+            }
+        }
+
+        private int _precision = 0;
+        public int Precision
+        {
+            get { return _precision; }
+            set
+            {
+                SetProperty(ref _precision, value);
+            }
+        }
+
+        private double _additionModifier = 0;
+        public double AdditionModifier
+        {
+            get { return _additionModifier; }
+            set
+            {
+                SetProperty(ref _additionModifier, value);
+            }
+        }
+
+        private bool _absoluteAddition = true;
+        public bool AbsoluteAddition
+        {
+            get { return _absoluteAddition; }
+            set
+            {
+                SetProperty(ref _absoluteAddition, value);
+            }
+        }
+
+        private double _multiplicationModifier = 1.00;
+        public double MultiplicationModifier
+        {
+            get { return _multiplicationModifier; }
+            set
+            {
+                SetProperty(ref _multiplicationModifier, value);
+            }
+        }
+
+        public SensorDisplayItem()
+        {
+            SensorName = String.Empty;
+        }
+
+        public SensorDisplayItem(string name, string libreSensorId) : base(name)
+        {
+            SensorType = SensorType.Libre;
+            LibreSensorId = libreSensorId;
+        }
+
+        public SensorDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name)
+        {
+            SensorType = SensorType.HwInfo;
+            Id = id;
+            Instance = instance;
+            EntryId = entryId;
+        }
+
+        public SensorReading? GetValue()
+        {
+            return SensorType switch
+            {
+                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
+                SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
+                _ => null,
+            };
+        }
+
+        public override (string, string) EvaluateTextAndColor()
+        {
+            var value = GetValue();
+
+            if(value.HasValue)
+            {
+                return (EvaluateText(value.Value), EvaluateColor(value.Value));
+            }
+
+            return ("-", Color);
+        }
+
+        public override string EvaluateColor()
+        {
+            var value = GetValue();
+
+            if(value.HasValue)
+            {
+                return EvaluateColor(value.Value);
+            }
+
+            return Color;
+        }
+
+        private string EvaluateColor(SensorReading sensorReading)
+        {
+            if (Threshold1 > 0 || Threshold2 > 0)
+            {
+                double sensorReadingValue;
+
+                switch (ValueType)
+                {
+                    case SensorValueType.MIN:
+                        sensorReadingValue = sensorReading.ValueMin;
+                        break;
+                    case SensorValueType.MAX:
+                        sensorReadingValue = sensorReading.ValueMax;
+                        break;
+                    case SensorValueType.AVERAGE:
+                        sensorReadingValue = sensorReading.ValueAvg;
+                        break;
+                    default:
+                        sensorReadingValue = sensorReading.ValueNow;
+                        break;
+                }
+
+                sensorReadingValue = sensorReadingValue * MultiplicationModifier + AdditionModifier;
+
+                if (AbsoluteAddition)
+                {
+                    sensorReadingValue = Math.Abs(sensorReadingValue);
+                }
+
+                if (Threshold2 > 0 && sensorReadingValue >= Threshold2)
+                {
+                    return Threshold2Color;
+                }
+                else if (Threshold1 > 0 && sensorReadingValue >= Threshold1)
+                {
+                    return Threshold1Color;
+                }
+            }
+            return Color;
+        }
+
+        public override string EvaluateText()
+        {
+            var sensorReading = GetValue();
+
+            if (sensorReading.HasValue)
+            {
+                return EvaluateText(sensorReading.Value);
+            }
+
+            return "-";
+        }
+
+        private string EvaluateText(SensorReading sensorReading)
+        {
+            var value = String.Empty;
+
+            double sensorReadingValue;
+
+            switch (ValueType)
+            {
+                case SensorValueType.MIN:
+                    sensorReadingValue = sensorReading.ValueMin;
+                    break;
+                case SensorValueType.MAX:
+                    sensorReadingValue = sensorReading.ValueMax;
+                    break;
+                case SensorValueType.AVERAGE:
+                    sensorReadingValue = sensorReading.ValueAvg;
+                    break;
+                default:
+                    sensorReadingValue = sensorReading.ValueNow;
+                    break;
+            }
+
+            sensorReadingValue = sensorReadingValue * MultiplicationModifier + AdditionModifier;
+
+            if (AbsoluteAddition)
+            {
+                sensorReadingValue = Math.Abs(sensorReadingValue);
+            }
+
+            if (OverridePrecision)
+            {
+                switch (Precision)
+                {
+                    case 1:
+                        value = String.Format("{0:0.0}", sensorReadingValue);
+                        break;
+                    case 2:
+                        value = String.Format("{0:0.00}", sensorReadingValue);
+                        break;
+                    case 3:
+                        value = String.Format("{0:0.000}", sensorReadingValue);
+                        break;
+                    default:
+                        value = String.Format("{0:0}", Math.Floor(sensorReadingValue));
+                        break;
+                }
+            }
+            else
+            {
+                switch (sensorReading.Unit.ToLower())
+                {
+                    case "kb/s":
+                    case "mb/s":
+                    case "mbar/min":
+                    case "mbar":
+                        value = String.Format("{0:0.00}", sensorReadingValue);
+                        break;
+                    case "v":
+                        value = String.Format("{0:0.000}", sensorReadingValue);
+                        break;
+                    default:
+                        value = String.Format("{0:0}", sensorReadingValue);
+                        break;
+                }
+            }
+
+
+            if (ShowUnit)
+            {
+                if (OverrideUnit)
+                {
+                    value += Unit;
+                }
+                else
+                {
+                    value += sensorReading.Unit;
+                }
+            }
+
+            if (ShowName)
+            {
+                value = Name + " " + value;
+            }
+
+            return value;
+
+        }
+    }
+}

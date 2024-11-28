@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using Microsoft.Win32;
+using Microsoft.Win32.TaskScheduler;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -133,11 +134,36 @@ namespace InfoPanel
             }
         }
 
+        //todo
+        private void ValidateStartup2()
+        {
+            using var taskService = new TaskService();
+            taskService.RootFolder.DeleteTask("InfoPanel", false);
+
+            if (Settings.AutoStart)
+            {
+                using var taskDefinition = taskService.NewTask();
+                taskDefinition.RegistrationInfo.Description = "Runs InfoPanel on startup.";
+                taskDefinition.RegistrationInfo.Author = "Habib Rehman";
+                taskDefinition.Triggers.Add(new LogonTrigger());
+                taskDefinition.Actions.Add(new ExecAction(Application.ExecutablePath));
+                taskDefinition.Principal.RunLevel = TaskRunLevel.Highest;
+                taskDefinition.Settings.DisallowStartIfOnBatteries = false;
+                taskDefinition.Settings.StopIfGoingOnBatteries = false;
+                taskDefinition.Settings.AllowDemandStart = true;
+                taskDefinition.Settings.AllowHardTerminate = true;
+                taskDefinition.Settings.ExecutionTimeLimit = TimeSpan.Zero;
+
+                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition);
+            }
+        }
+
         private void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(Settings.AutoStart))
             {
                 ValidateStartup();
+                ValidateStartup2();
             }
             else if (e.PropertyName == nameof(Settings.BeadaPanel))
             {

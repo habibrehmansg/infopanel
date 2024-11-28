@@ -27,7 +27,8 @@
             <Border
             Grid.Column="0" 
             CornerRadius="8,8,8,8" Margin="0,0,0,0" >
-                <components:HWiNFOSensors Margin="0,5,10,10" />
+                <!--<components:HWiNFOSensors Margin="0,5,10,10" />-->
+                <components:LibreSensors Margin="0,5,10,10" />
             </Border>
 
             <Border
