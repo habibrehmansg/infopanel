@@ -63,6 +63,8 @@ public abstract class DisplayItem : ObservableObject, ICloneable
                     return "Bar";
                 case GaugeDisplayItem:
                     return "Gauge";
+                case DonutDisplayItem:
+                    return "Donut";
                 default:
                     return "";
             }

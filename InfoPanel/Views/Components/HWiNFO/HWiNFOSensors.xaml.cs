@@ -243,6 +243,18 @@ namespace InfoPanel.Views.Components
             }
         }
 
+        private void ButtonAddDonut_Click(object sender, RoutedEventArgs e)
+        {
+            TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
+            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            {
+                var parentTag = ((UInt32, UInt32))parentItem.Tag;
+                var item = new DonutDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                SharedModel.Instance.AddDisplayItem(item);
+                SharedModel.Instance.SelectedItem = item;
+            }
+        }
+
         private void ButtonAddCustom_Click(object sender, RoutedEventArgs e)
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;

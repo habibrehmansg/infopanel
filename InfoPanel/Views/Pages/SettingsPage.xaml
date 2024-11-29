@@ -11,12 +11,12 @@
       d:DesignHeight="450" d:DesignWidth="800"
       Title="SettingsPage">
 
-    <Grid Margin="20,60,20,20">
-        <ScrollViewer VerticalScrollBarVisibility="Hidden">
-            <StackPanel>
+    <Grid Margin="0,60,0,20">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+            <StackPanel MaxWidth="1340" Margin="20,30,20,0">
 
-                <StackPanel Grid.Row="0" Margin="0,20,0,0">
-                    <Label FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Application"/>
+                <StackPanel Grid.Row="0" Margin="0,0,0,0">
+                    <Label Margin="0,0,0,10" FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Application"/>
                     <ui:CardControl Icon="Whiteboard24">
                         <ui:CardControl.Header>
                             <Grid>
@@ -82,8 +82,8 @@
                     </ui:CardControl>
                 </StackPanel>
 
-                <StackPanel Grid.Row="1" Margin="0,20,0,0">
-                    <Label FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Performance"/>
+                <StackPanel Grid.Row="1" Margin="0,40,0,0">
+                    <Label Margin="0,0,0,10" FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Performance"/>
                     <ui:CardExpander Icon="Whiteboard24">
                         <ui:CardExpander.Header>
                             <Grid>
@@ -195,8 +195,8 @@
                     </ui:CardExpander>
                 </StackPanel>
 
-                <StackPanel Grid.Row="2" Margin="0,20,0,0">
-                    <Label FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="USB Panels"/>
+                <StackPanel Grid.Row="2" Margin="0,40,0,0">
+                    <Label Margin="0,0,0,10" FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="USB Panels"/>
                     <ui:CardControl Icon="Whiteboard24">
                         <ui:CardControl.Header>
                             <Grid>
@@ -329,8 +329,8 @@
                     </ui:CardControl>
                 </StackPanel>
 
-                <StackPanel Grid.Row="3" Margin="0,20,0,0">
-                    <Label FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Remote Sensor"/>
+                <StackPanel Grid.Row="3" Margin="0,40,0,0">
+                    <Label Margin="0,0,0,10" FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Remote Sensor"/>
                     <ui:CardControl Icon="WebAsset20">
                         <ui:CardControl.Header>
                             <Grid>
@@ -423,8 +423,8 @@
                     </ui:CardControl>
                 </StackPanel>
 
-                <StackPanel Margin="0,20,0,0">
-                    <Label FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Misc"/>
+                <StackPanel Margin="0,40,0,0">
+                    <Label Margin="0,0,0,10" FontWeight="Medium" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Content="Misc"/>
                     <ui:CardControl Icon="HardDrive20">
                         <ui:CardControl.Header>
                             <Grid>

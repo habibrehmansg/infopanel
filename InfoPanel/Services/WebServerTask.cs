@@ -155,7 +155,7 @@ namespace InfoPanel
                     buffer = WebServerTask.Instance.GetBuffer(profile);
                 } else
                 {
-                    var lockedBitmap = PanelDrawTask.Render(profile, 0, 0, false);
+                    var lockedBitmap = PanelDrawTask.Render(profile, false);
 
                     lockedBitmap.Access(bitmap =>
                     {

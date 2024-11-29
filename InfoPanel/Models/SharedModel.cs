@@ -18,6 +18,7 @@ using System.IO.Compression;
 using System.Diagnostics;
 using System.Windows.Navigation;
 using System.Windows.Threading;
+using InfoPanel.Views.Common;
 
 namespace InfoPanel
 {
@@ -241,40 +242,44 @@ namespace InfoPanel
         {
             if (Application.Current is App app)
             {
-                var displayWindow = app.GetDisplayWindow(profile);
-                var writeableBitmap = displayWindow?.WriteableBitmap;
+                var window = app.GetDisplayWindow(profile);
 
-                if (writeableBitmap != null)
+                if (window is DisplayWindow displayWindow && !window.Direct2DMode)
                 {
-                    IntPtr backBuffer = IntPtr.Zero;
+                    var writeableBitmap = displayWindow?.WriteableBitmap;
 
-                   writeableBitmap.Dispatcher.Invoke(() =>
+                    if (writeableBitmap != null)
                     {
-                        if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
+                        IntPtr backBuffer = IntPtr.Zero;
+
+                        writeableBitmap.Dispatcher.Invoke(() =>
+                         {
+                             if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
+                             {
+                                 writeableBitmap.Lock();
+                                 backBuffer = writeableBitmap.BackBuffer;
+                             }
+                         });
+
+                        if (backBuffer == IntPtr.Zero)
                         {
-                            writeableBitmap.Lock();
-                            backBuffer = writeableBitmap.BackBuffer;
+                            return;
                         }
-                    });
 
-                    if (backBuffer == IntPtr.Zero)
-                    {
-                        return;
+                        // copy the pixel data from the bitmap to the back buffer
+                        BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                        int stride = bitmapData.Stride;
+                        byte[] pixels = new byte[stride * bitmap.Height];
+                        Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
+                        Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
+                        bitmap.UnlockBits(bitmapData);
+
+                        writeableBitmap.Dispatcher.Invoke(() =>
+                        {
+                            writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
+                            writeableBitmap.Unlock();
+                        });
                     }
-
-                    // copy the pixel data from the bitmap to the back buffer
-                    BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                    int stride = bitmapData.Stride;
-                    byte[] pixels = new byte[stride * bitmap.Height];
-                    Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-                    Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-                    bitmap.UnlockBits(bitmapData);
-                    
-                    writeableBitmap.Dispatcher.Invoke(() =>
-                    {
-                        writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
-                        writeableBitmap.Unlock();
-                    });
                 }
             }
         }
@@ -325,7 +330,7 @@ namespace InfoPanel
             }
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
 
-            XmlSerializer xs = new XmlSerializer(typeof(List<DisplayItem>), new Type[] { typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem) });
+            XmlSerializer xs = new XmlSerializer(typeof(List<DisplayItem>), new Type[] { typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem) });
 
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
             using (var wr = XmlWriter.Create(fileName, settings))
@@ -645,7 +650,7 @@ namespace InfoPanel
             if (File.Exists(fileName))
             {
                 XmlSerializer xs = new XmlSerializer(typeof(List<DisplayItem>),
-                    new Type[] { typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem) });
+                    new Type[] { typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem) });
 
                 using var rd = XmlReader.Create(fileName);
                 try

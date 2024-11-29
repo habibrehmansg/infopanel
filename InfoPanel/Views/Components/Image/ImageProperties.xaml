@@ -5,6 +5,7 @@
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
       xmlns:local="clr-namespace:InfoPanel.Views.Components"
       xmlns:app="clr-namespace:InfoPanel"
+      xmlns:anim="https://github.com/whistyun/AnimatedImage.Wpf"
       xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       mc:Ignorable="d" 
@@ -78,9 +79,10 @@
             <ui:Button Grid.Row="0" x:Name="ButtonSelect" Content="Select Image" Appearance="Primary" Width="150"
                        HorizontalAlignment="Center" VerticalAlignment="Top"
                     Click="ButtonSelect_Click" Margin="0,0,0,15"/>
+            <!--<Image Grid.Row="1" x:Name="ImagePreview" Margin="10,10,10,10" VerticalAlignment="Center" 
+               Source="{Binding CalculatedPath, Converter={StaticResource CacheImageConverter}, Mode=OneWay}"/>-->
             <Image Grid.Row="1" x:Name="ImagePreview" Margin="10,10,10,10" VerticalAlignment="Center" 
-               Source="{Binding CalculatedPath, Converter={StaticResource CacheImageConverter}, Mode=OneWay}"/>
+                   anim:ImageBehavior.AnimatedSource="{Binding CalculatedPath, Mode=OneWay}"/>
         </Grid>
-        
     </Grid>
 </UserControl>

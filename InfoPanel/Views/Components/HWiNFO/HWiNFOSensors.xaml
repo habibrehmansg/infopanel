@@ -11,7 +11,7 @@
              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
              mc:Ignorable="d">
 
-    <Grid Margin="10,10,10,10">
+    <Grid Margin="0,0,0,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="1*"/>
@@ -23,13 +23,13 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="0,0,0,10">
+        <Grid Grid.Row="0" Margin="0,0,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition/>
-                <ColumnDefinition/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" TextAlignment="Right" Margin="0,-5,0,0">
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Right" TextAlignment="Right" Margin="0,0,20,0">
                  <Bold FontWeight="Medium" FontSize="20">Sensor Information</Bold><LineBreak/>
                   Provided by
             </TextBlock>
@@ -37,7 +37,7 @@
                    Height="40" Margin="0,0,0,0" HorizontalAlignment="Center" Cursor="Hand" ToolTip="https://www.hwinfo.com" MouseLeftButtonUp="ImageLogo_MouseLeftButtonUp"/>
         </Grid>
 
-        <ScrollViewer Name="MyScrollViewer" Grid.Row="1" PreviewMouseWheel="ScrollViewer_PreviewMouseWheel" >
+        <ScrollViewer Name="MyScrollViewer" Grid.Row="1" Margin="0,10,0,0" PreviewMouseWheel="ScrollViewer_PreviewMouseWheel" >
             <StackPanel Focusable="False">
                 <TreeView x:Name="TreeViewInfo"
                           Focusable="False" SelectedItemChanged="TreeViewInfo_SelectedItemChanged" Margin="0,0,0,0">
@@ -49,15 +49,26 @@
 
         <Expander Grid.Row="3" IsExpanded="False" Margin="0,0,0,0">
             <Expander.Header>
-                <Label>
-                    <TextBlock FontWeight="Medium" Text="{Binding Path=SensorName}">
-                    </TextBlock>
-                </Label>
+                <Grid Margin="0,0,20,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="auto"/>
+                        <ColumnDefinition Width="1*"/>
+                    </Grid.ColumnDefinitions>
+                    <Label HorizontalAlignment="Right">
+                        <TextBlock FontWeight="Medium" Text="{Binding Path=SensorName}">
+                        </TextBlock>
+                    </Label>
+                    <Label Grid.Column="1"  HorizontalAlignment="Right">
+                        <TextBlock  FontWeight="Medium" Text="{Binding Path=SensorValue, Converter={StaticResource Int32ValueConverter}}">
+                        </TextBlock>
+                    </Label>
+                </Grid>
             </Expander.Header>
             <StackPanel Margin="0,-5,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.5*"/>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="0.5*"/>
                         <ColumnDefinition Width="1*"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,10,0">
@@ -71,80 +82,78 @@
                                  Text="{Binding Path=Instance, Converter={StaticResource Int32ValueConverter}}" IsEnabled="True" IsReadOnly="True" />
                         <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Instance" FontSize="12" Margin="5,0,0,0" />
                     </StackPanel>
-                </Grid>
 
-                <Grid Margin="0,0,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.5*"/>
-                        <ColumnDefinition Width="1*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                    <StackPanel Grid.Column="2" Margin="10,0,0,0">
                         <TextBox Margin="0,8,0,0" 
-                                 Text="{Binding Path=EntryId, Converter={StaticResource Int32ValueConverter}}" IsEnabled="True" IsReadOnly="True" />
+                   Text="{Binding Path=EntryId, Converter={StaticResource Int32ValueConverter}}" IsEnabled="True" IsReadOnly="True" />
                         <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Entry Id" FontSize="12" Margin="5,0,0,0" />
                     </StackPanel>
-
-                    <StackPanel Grid.Column="1">
-                        <TextBox Margin="0,8,0,0" 
-                                 Text="{Binding Path=SensorValue, Converter={StaticResource Int32ValueConverter}}" IsEnabled="True" IsReadOnly="True" />
-                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Reading" FontSize="12" Margin="5,0,0,0" />
-                    </StackPanel>
-
-
                 </Grid>
+
+               
             </StackPanel>
         </Expander>
 
         <Grid x:Name="GridActions" IsEnabled="False" Grid.Row="5" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="1*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <ui:Button x:Name="ButtonSelect" Grid.Column="0" Appearance="Primary" Icon="Add20"
+            <TextBlock Grid.Column="0" Margin="0,5,0,0"
+              VerticalAlignment="Center" HorizontalAlignment="Left">
+                 <Bold FontWeight="Medium" FontSize="20">Sensor Items</Bold> 
+            </TextBlock>
+            <ui:Button x:Name="ButtonSelect" Grid.Column="1" Appearance="Primary" Icon="Add20"
                        ToolTip="Add selected sensor as a text item" IsEnabled="True" Click="ButtonSelect_Click"/>
-            <ui:Button x:Name="ButtonAddBar" Grid.Column="1"  Appearance="Primary" Icon="DataBarHorizontal20" 
+            <ui:Button x:Name="ButtonAddBar" Grid.Column="2"  Appearance="Primary" Icon="DataBarHorizontal20" 
                        ToolTip="Add selected sensor as a bar" IsEnabled="True" Click="ButtonAddBar_Click" Margin="10,0,0,0"/>
-            <ui:Button x:Name="ButtonAddGraph" Grid.Column="2" Appearance="Primary" Icon="DataBarVertical20" 
+            <ui:Button x:Name="ButtonAddDonut" Grid.Column="3"  Appearance="Primary" Icon="DataPie20" 
+           ToolTip="Add selected sensor as a donut" IsEnabled="True" Click="ButtonAddDonut_Click" Margin="10,0,0,0"/>
+            <ui:Button x:Name="ButtonAddGraph" Grid.Column="4" Appearance="Primary" Icon="DataBarVertical20" 
                        ToolTip="Add selected sensor as a graph" IsEnabled="True" Click="ButtonAddGraph_Click" Margin="10,0,0,0"/>
-            <ui:Button x:Name="ButtonAddCustom" Grid.Column="3" Appearance="Primary" Icon="Gauge20" 
+            <ui:Button x:Name="ButtonAddCustom" Grid.Column="5" Appearance="Primary" Icon="Gauge20" 
                        ToolTip="Add selected sensor as gauge" IsEnabled="True" Click="ButtonAddCustom_Click" Margin="10,0,0,0"/>
-            <ui:Button x:Name="ButtonReplace" Grid.Column="5" Icon="ArrowSwap20" Appearance="Caution"
+            <ui:Button x:Name="ButtonReplace" Grid.Column="6" Icon="ArrowSwap20" Appearance="Caution"
                        ToolTip="Replace selected sensor" IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource IsSensorConverter}}" Click="ButtonReplace_Click" Margin="10,0,0,0"/>
         </Grid>
 
         <StackPanel Grid.Row="6" Margin="0,10,0,0">
             <Separator/>
-            <TextBlock Grid.Column="0" Margin="0,5,0,0"
-                       VerticalAlignment="Center" HorizontalAlignment="Left" TextAlignment="Right">
-                 <Bold FontWeight="Medium" FontSize="20">Others</Bold>
-            </TextBlock>
         </StackPanel>
 
         <Grid Grid.Row="7" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="auto"/>
             </Grid.ColumnDefinitions>
 
-            <ui:Button x:Name="ButtonNewText" Grid.Column="0" Appearance="Primary" Icon="Text16" Click="ButtonNewText_Click"
+            <TextBlock Grid.Column="0" Margin="0,5,0,0"
+      VerticalAlignment="Center" HorizontalAlignment="Left">
+<Bold FontWeight="Medium" FontSize="20">Non-Sensor Items</Bold>
+            </TextBlock>
+
+            <ui:Button x:Name="ButtonNewText" Grid.Column="1" Appearance="Primary" Icon="Text16" Click="ButtonNewText_Click"
                          ToolTip="Add a customisable text item" Margin="0,0,0,0">
             </ui:Button>
-            <ui:Button x:Name="ButtonNewImage" Grid.Column="1" Appearance="Primary" Icon="Image20" Click="ButtonNewImage_Click"
+            <ui:Button x:Name="ButtonNewImage" Grid.Column="2" Appearance="Primary" Icon="Image20" Click="ButtonNewImage_Click"
                          ToolTip="Add an image item" Margin="10,0,0,0">
             </ui:Button>
-            <ui:Button x:Name="ButtonNewClock" Grid.Column="2" Appearance="Primary" Icon="Clock20" Click="ButtonNewClock_Click"
+            <ui:Button x:Name="ButtonNewClock" Grid.Column="3" Appearance="Primary" Icon="Clock20" Click="ButtonNewClock_Click"
                        ToolTip="Add a dynamic clock item" Margin="10,0,0,0">
             </ui:Button>
-            <ui:Button x:Name="ButtonNewCalendar" Grid.Column="3" Appearance="Primary" Icon="Calendar3Day20" Click="ButtonNewCalendar_Click"
+            <ui:Button x:Name="ButtonNewCalendar" Grid.Column="4" Appearance="Primary" Icon="Calendar3Day20" Click="ButtonNewCalendar_Click"
                        ToolTip="Add a dynamic calendar item" Margin="10,0,0,0">
             </ui:Button>
+           
         </Grid>
 
     </Grid>

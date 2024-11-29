@@ -1,12 +1,12 @@
-﻿using InfoPanel.Models;
-using Microsoft.Extensions.Hosting;
+﻿using AutoMapper;
+using InfoPanel.Drawing;
+using InfoPanel.Models;
 using Microsoft.Win32;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Forms;
@@ -15,28 +15,31 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using System.Xml.Linq;
+using unvell.D2DLib;
 using static System.Net.Mime.MediaTypeNames;
+using Profile = InfoPanel.Models.Profile;
 
 namespace InfoPanel.Views.Common
 {
     /// <summary>
     /// Interaction logic for DisplayWindow.xaml
     /// </summary>
-    public partial class DisplayWindow : Window
+    public partial class DisplayWindow : D2DWindow
     {
         public Profile Profile { get; }
+        public bool Direct2DMode { get; }
         private readonly DispatcherTimer ResizeTimer;
-        public WriteableBitmap WriteableBitmap;
+        public WriteableBitmap? WriteableBitmap;
 
-        public DisplayWindow(Profile profile)
+        public DisplayWindow(Profile profile) : base(profile.Direct2DMode)
         {
-            
             Profile = profile;
-            InitializeComponent();
+            Width = Profile.Width;
+            Height = Profile.Height;
+            Direct2DMode = profile.Direct2DMode;
+            ShowFps = profile.Direct2DModeFps;
 
-            Width = profile.Width;
-            Height = profile.Height;
+            InitializeComponent();
 
             Topmost = profile.Topmost;
 
@@ -67,6 +70,15 @@ namespace InfoPanel.Views.Common
             SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
         }
 
+        protected override void OnRender(D2DGraphics d2dGraphics)
+        {
+            base.OnRender(d2dGraphics);
+
+            using var g = new AcceleratedGraphics(d2dGraphics, this.Handle, Profile.Direct2DFontScale, Profile.Direct2DTextXOffset, Profile.Direct2DTextYOffset);
+            PanelDraw.Run(Profile, g);
+        }
+
+
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
         {
             SetWindowPositionRelativeToScreen();
@@ -95,7 +107,6 @@ namespace InfoPanel.Views.Common
 
                 Profile.Width = (int)Width;
                 Profile.Height = (int)Height;
-                //Background = System.Windows.Media.Brushes.Transparent;
             });
         }
 
@@ -143,12 +154,14 @@ namespace InfoPanel.Views.Common
                 {
                     ResizeMode = ResizeMode.NoResize;
                 }
+            }else if(e.PropertyName == nameof(Profile.Direct2DModeFps))
+            {
+                ShowFps = Profile.Direct2DModeFps;
             }
         }
 
         private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            Background = System.Windows.Media.Brushes.Gray;
             if (ResizeTimer.IsEnabled)
             {
                 ResizeTimer.Stop();
@@ -240,7 +253,7 @@ namespace InfoPanel.Views.Common
 
             // Subtract the position of the screen from the position of the window in device-independent units
             var windowPositionRelativeToDeviceIndependentUnits = new System.Windows.Point(
-                (windowPositionRelativeToScreen.X - screenPositionRelativeToDeviceIndependentUnits.X) * dpi.DpiScaleX, 
+                (windowPositionRelativeToScreen.X - screenPositionRelativeToDeviceIndependentUnits.X) * dpi.DpiScaleX,
                 (windowPositionRelativeToScreen.Y - screenPositionRelativeToDeviceIndependentUnits.Y) * dpi.DpiScaleY);
 
             return windowPositionRelativeToDeviceIndependentUnits;

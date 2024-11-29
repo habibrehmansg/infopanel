@@ -10,7 +10,7 @@
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              Foreground="{DynamicResource TextFillColorSecondaryBrush}">
 
-    <Grid Margin="10,10,10,10" Grid.IsSharedSizeScope="True">
+    <Grid Margin="10,10,10,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
@@ -28,16 +28,19 @@
                 <TextBlock Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" TextAlignment="Right">
                  <Bold FontWeight="Medium" FontSize="20">Panel Items</Bold><LineBreak/>
                 </TextBlock>
-                <ComboBox Name="ComboBoxSelectedProfile" Grid.Column="1" Margin="0,0,0,10"
-                      ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}" DisplayMemberPath="Name" 
-                  SelectedItem="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedProfile}"/>
+
+                <ComboBox Name="ComboBoxSelectedProfile" Grid.Column="1" Margin="5,0,5,0" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+     ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}" DisplayMemberPath="Name" 
+ SelectedItem="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedProfile}"/>
             </Grid>
         </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,5,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" SharedSizeGroup="A"/>
-                <ColumnDefinition Width="50"/>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="auto"/>
+
             </Grid.ColumnDefinitions>
 
             <Grid>
@@ -48,7 +51,7 @@
                 <Grid Grid.Row="0" Margin="5,0,10,5">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="40"/>
-                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="250"/>
                         <ColumnDefinition Width="100"/>
                         <ColumnDefinition Width="50"/>
                     </Grid.ColumnDefinitions>
@@ -68,7 +71,7 @@
                     </Label>
                 </Grid>
 
-                <ListView Name="ListViewItems" Grid.Row="1" 
+                <ListView Name="ListViewItems" Grid.Row="1" Width="auto"
                                   ItemsSource="{Binding Source={x:Static app:SharedModel.Instance}, Path=DisplayItems}" 
                                   SelectedItem="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem}"
                                   SelectionChanged="ListViewItems_SelectionChanged"
@@ -85,7 +88,7 @@
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="40"/>
-                                    <ColumnDefinition Width="200"/>
+                                    <ColumnDefinition Width="250"/>
                                     <ColumnDefinition Width="100"/>
                                     <ColumnDefinition Width="50"/>
                                 </Grid.ColumnDefinitions>
@@ -113,6 +116,9 @@
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Kind}" Value="Bar">
                                                     <Setter Property="Symbol" Value="DataBarHorizontal20" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Donut">
+                                                    <Setter Property="Symbol" Value="DataPie20" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Kind}" Value="Gauge">
                                                     <Setter Property="Symbol" Value="Gauge20" />
@@ -143,7 +149,7 @@
                 </ListView>
             </Grid>
 
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+            <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Margin="10,0,0,0">
                 <ui:Button x:Name="ButtonPushBack" Icon="ArrowUpload20" Margin="0,10,0,0"
                            ToolTip="Push selected item to the back (overlapped by items below)" Content=""
                            IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}" Click="ButtonPushBack_Click"/>
@@ -163,29 +169,28 @@
                         ToolTip="Delete selected item" Content="" Click="ButtonDelete_Click"
                            IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"/>
             </StackPanel>
+
+
+            <components:CommonProperties Grid.Column="2" Margin="10,0,0,0"/>
         </Grid>
 
         <Separator Grid.Row="2" Margin="0,5,0,0"/>
 
-        <Grid Grid.Row="3" Margin="0,10,0,0">
+        <!--<Grid Grid.Row="3" Margin="0,10,0,0">
             <Expander Header="Placement Control">
                 <components:CommonProperties/>
             </Expander>
-        </Grid>
+        </Grid>-->
 
-        <Grid Grid.Row="4" Margin="0,10,0,10">
+        <Grid Grid.Row="4" Margin="0,10,0,10" HorizontalAlignment="Right">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="auto" SharedSizeGroup="A"/>
+                <ColumnDefinition Width="auto"/>
                 <ColumnDefinition Width="auto"/>
             </Grid.ColumnDefinitions>
-            <ui:Button x:Name="ButtonSave" Grid.Column="0" HorizontalAlignment="Left" Content="Save" Appearance="Primary"
-                       ToolTip="Make your changes permanent" Click="ButtonSave_Click" Margin="0,0,0,0" Width="150"/>
+            <ui:Button x:Name="ButtonSave" Grid.Column="0" Content="Save" Appearance="Primary"
+                       ToolTip="Make your changes permanent" Click="ButtonSave_Click" Margin="0,0,0,0" Width="140"/>
             <ui:Button x:Name="ButtonReload" Grid.Column="1" Icon="ArrowUndo20" Appearance="Danger" Content=""
                      ToolTip="Discard all changes and reload from disk" Click="ButtonReload_Click" Margin="10,0,0,0"/>
         </Grid>
-
     </Grid>
-
-
-
 </UserControl>

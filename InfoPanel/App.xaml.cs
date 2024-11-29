@@ -1,27 +1,27 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Services;
+using InfoPanel.ViewModels;
 using InfoPanel.Views.Common;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
-using System.Windows;
+using InfoPanel.Views.Windows;
 using Microsoft.AppCenter;
 using Microsoft.AppCenter.Analytics;
 using Microsoft.AppCenter.Crashes;
-using System.Globalization;
-using InfoPanel.Views.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Wpf.Ui.Mvvm.Contracts;
-using Wpf.Ui.Mvvm.Services;
-using InfoPanel.Services;
-using InfoPanel.ViewModels;
+using Microsoft.Win32;
+using Prise.DependencyInjection;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Prise.DependencyInjection;
-using Prise;
-using Microsoft.Win32;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
+using Wpf.Ui.Mvvm.Contracts;
+using Wpf.Ui.Mvvm.Services;
 
 namespace InfoPanel
 {
@@ -30,6 +30,7 @@ namespace InfoPanel
     /// </summary>
     public partial class App : System.Windows.Application
     {
+
         private static readonly IHost _host = Host
        .CreateDefaultBuilder()
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
@@ -76,13 +77,15 @@ namespace InfoPanel
            services.AddScoped<AboutViewModel>();
            services.AddScoped<Views.Pages.SettingsPage>();
            services.AddScoped<SettingsViewModel>();
+           services.AddScoped<Views.Pages.UpdatesPage>();
+           services.AddScoped<UpdatesViewModel>();
+
 
            // Configuration
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
        }).Build();
 
-        public Dictionary<Guid, DisplayWindow> DisplayWindows = new Dictionary<Guid, DisplayWindow>();
-
+        public Dictionary<Guid, DisplayWindow> DisplayWindows = [];
 
         public static T GetService<T>()
         where T : class
@@ -99,6 +102,8 @@ namespace InfoPanel
         protected override void OnStartup(StartupEventArgs e)
         {
             //WpfSingleInstance.Make("InfoPanel");
+
+            RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
 
             Process proc = Process.GetCurrentProcess();
             if (Process.GetProcesses().Where(p => p.ProcessName == proc.ProcessName).Count() > 1)
@@ -175,7 +180,7 @@ namespace InfoPanel
             HWHash.Launch();
 
             PanelDrawTask.Instance.Start();
-            GraphDrawTask.Instance.Start();
+            //GraphDrawTask.Instance.Start();
 
             StartPanels();
 
@@ -269,31 +274,36 @@ namespace InfoPanel
 
         public void MaximiseDisplayWindow(Profile profile)
         {
-            var displayWindow = GetDisplayWindow(profile);
-            displayWindow?.Fullscreen();
+            var window = GetDisplayWindow(profile);
+            window?.Fullscreen();
+
         }
 
         public void ShowDisplayWindow(Profile profile)
         {
-            var displayWindow = GetDisplayWindow(profile);
+            var window = GetDisplayWindow(profile);
 
-            if (displayWindow == null)
+            if(window != null && window.Direct2DMode != profile.Direct2DMode)
             {
-                displayWindow = new DisplayWindow(profile);
-                DisplayWindows[profile.Guid] = displayWindow;
-                displayWindow.Closed += DisplayWindow_Closed;
+                window.Close();
+                window = null;
             }
 
-            if (!displayWindow.IsVisible)
+            if (window == null)
             {
-                displayWindow.Show();
+                    window = new DisplayWindow(profile);
+                    DisplayWindows[profile.Guid] = window;
+                    window.Closed += DisplayWindow_Closed;
             }
+
+            window?.Show();
         }
+
 
         public void CloseDisplayWindow(Profile profile)
         {
-            var displayWindow = GetDisplayWindow(profile);
-            displayWindow?.Close();
+            var window = GetDisplayWindow(profile);
+            window?.Close();
         }
 
         private void DisplayWindow_Closed(object? sender, EventArgs e)

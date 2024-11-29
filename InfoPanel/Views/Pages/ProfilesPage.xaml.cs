@@ -2,6 +2,7 @@
 
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Components;
@@ -37,7 +38,6 @@ namespace InfoPanel.Views.Pages
         private readonly ISnackbarControl _snackbarControl;
         private Timer? UpdateTimer;
 
-        private static ConcurrentDictionary<Guid, Bitmap> BitmapCache = new ConcurrentDictionary<Guid, Bitmap>();
         public ObservableCollection<string> InstalledFonts { get; } = new ObservableCollection<string>();
         public ProfilesViewModel ViewModel { get; }
 
@@ -46,10 +46,11 @@ namespace InfoPanel.Views.Pages
             ViewModel = viewModel;
             DataContext = this;
 
-            InitializeComponent();
             FetchInstalledFontNames();
             _dialogControl = dialogService.GetDialogControl();
             _snackbarControl = snackbarService.GetSnackbarControl();
+
+            InitializeComponent();
 
             Loaded += ProfilesPage_Loaded;
             Unloaded += ProfilesPage_Unloaded;
@@ -94,56 +95,56 @@ namespace InfoPanel.Views.Pages
 
         private static async void LoadPreviews()
         {
-            foreach (var profile in ConfigModel.Instance.GetProfilesCopy())
+            var profiles = ConfigModel.Instance.GetProfilesCopy();
+
+            await Parallel.ForEachAsync(profiles, async (profile, ct) =>
             {
-                LockedBitmap? lockedBitmap = null;
                 await Task.Run(() =>
                 {
-                    lockedBitmap = PanelDrawTask.Render(profile, 0, 30, false);
-                });
+                    var scale = 1.0;
 
-                if (lockedBitmap != null)
-                {
-                    await Task.Run(() =>
+                    if (profile.Height > 150)
                     {
-                        lockedBitmap.Access(bitmap =>
+                        scale = 150f / profile.Height;
+                    }
+
+                    var width = (int)(profile.Width * scale);
+                    var height = (int)(profile.Height * scale);
+
+                    using var bitmap = new Bitmap(width, height);
+                    using var g = CompatGraphics.FromBitmap(bitmap);
+                    PanelDraw.Run(profile, g, false, scale, false);
+
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (profile.BitmapImagePreview == null || profile.BitmapImagePreview.Width != bitmap.Width || profile.BitmapImagePreview.Height != bitmap.Height)
                         {
-                            IntPtr backBuffer = IntPtr.Zero;
+                            profile.BitmapImagePreview = new WriteableBitmap(bitmap.Width, bitmap.Height,
+                                                          96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+                        }
 
-                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                if (profile.BitmapImage == null || profile.BitmapImage.Width != bitmap.Width || profile.BitmapImage.Height != bitmap.Height)
-                                {
-                                    profile.BitmapImage = new WriteableBitmap(bitmap.Width, bitmap.Height,
-                                                                  96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
-                                }
+                        profile.BitmapImagePreview.Lock();
+                        IntPtr backBuffer = profile.BitmapImagePreview.BackBuffer;
 
-                                profile.BitmapImage.Lock();
-                                backBuffer = profile.BitmapImage.BackBuffer;
-                            });
+                        if (backBuffer == IntPtr.Zero)
+                        {
+                            return;
+                        }
 
-                            if (backBuffer == IntPtr.Zero)
-                            {
-                                return;
-                            }
+                        // copy the pixel data from the bitmap to the back buffer
+                        BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                        int stride = bitmapData.Stride;
+                        byte[] pixels = new byte[stride * bitmap.Height];
+                        Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
+                        Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
+                        bitmap.UnlockBits(bitmapData);
 
-                            // copy the pixel data from the bitmap to the back buffer
-                            BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                            int stride = bitmapData.Stride;
-                            byte[] pixels = new byte[stride * bitmap.Height];
-                            Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-                            Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-                            bitmap.UnlockBits(bitmapData);
 
-                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                profile.BitmapImage.AddDirtyRect(new Int32Rect(0, 0, profile.BitmapImage.PixelWidth, profile.BitmapImage.PixelHeight));
-                                profile.BitmapImage.Unlock();
-                            });
-                        });
+                        profile.BitmapImagePreview?.AddDirtyRect(new Int32Rect(0, 0, profile.BitmapImagePreview.PixelWidth, profile.BitmapImagePreview.PixelHeight));
+                        profile.BitmapImagePreview?.Unlock();
                     });
-                }
-            }
+                }, ct);
+            });
         }
         private void ButtonAdd_Click(object sender, RoutedEventArgs e)
         {
@@ -195,7 +196,7 @@ namespace InfoPanel.Views.Pages
 
         private async void ButtonDeleteProfile_Click(object sender, RoutedEventArgs e)
         {
-            if(ConfigModel.Instance.Profiles.First() == ViewModel.Profile)
+            if (ConfigModel.Instance.Profiles.First() == ViewModel.Profile)
             {
                 return;
             }
@@ -232,6 +233,11 @@ namespace InfoPanel.Views.Pages
         private void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
             ConfigModel.Instance.ReloadProfile(ViewModel.Profile);
+        }
+
+        private void ButtonClose_Click(object sender, RoutedEventArgs e)
+        {
+            ViewModel.Profile = null;
         }
 
         private void ToggleSwitch_Checked(object sender, RoutedEventArgs e)

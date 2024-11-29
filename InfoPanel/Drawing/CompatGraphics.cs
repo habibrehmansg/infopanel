@@ -1,0 +1,199 @@
+﻿using InfoPanel.Models;
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
+using System.Linq;
+using unvell.D2DLib;
+
+namespace InfoPanel.Drawing
+{
+    internal partial class CompatGraphics(Graphics graphics) : MyGraphics
+    {
+        private readonly Graphics Graphics = graphics;
+
+        public static CompatGraphics FromBitmap(Bitmap bitmap)
+        {
+            var graphics = Graphics.FromImage(bitmap);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.InterpolationMode = InterpolationMode.Bilinear;
+            graphics.TextRenderingHint = TextRenderingHint.AntiAlias;
+
+            return new CompatGraphics(graphics);
+        }
+        public override void Clear(Color color)
+        {
+            this.Graphics.Clear(color);
+        }
+
+        public override (float width, float height) MeasureString(string text, string fontName, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        {
+            var fontStyle =
+                                     (bold ? FontStyle.Bold : FontStyle.Regular) |
+                                     (italic ? FontStyle.Italic : FontStyle.Regular) |
+                                     (underline ? FontStyle.Underline : FontStyle.Regular) |
+                                     (strikeout ? FontStyle.Strikeout : FontStyle.Regular);
+
+            using var font = new Font(fontName, fontSize, fontStyle);
+            var size = this.Graphics.MeasureString(text, font);
+            return (size.Width, size.Height);
+        }
+
+        public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false,
+            bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        {
+            var fontStyle =
+                                       (bold ? FontStyle.Bold : FontStyle.Regular) |
+                                       (italic ? FontStyle.Italic : FontStyle.Regular) |
+                                       (underline ? FontStyle.Underline : FontStyle.Regular) |
+                                       (strikeout ? FontStyle.Strikeout : FontStyle.Regular);
+
+            using var font = new Font(fontName, fontSize, fontStyle);
+            using var brush = new SolidBrush(ColorTranslator.FromHtml(color));
+
+            using var format = new StringFormat();
+            if (rightAlign)
+            {
+                format.Alignment = StringAlignment.Far;
+            }
+            else
+            {
+                format.Alignment = StringAlignment.Near;
+            }
+
+            this.Graphics.DrawString(text, font, brush, new PointF(x, y), format);
+        }
+
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, bool cache = true)
+        {
+            lockedImage.Access(bitmap =>
+            {
+                if (bitmap != null)
+                    this.Graphics.DrawImage(bitmap, x, y, width, height);
+            }, cache);
+        }
+
+        public override void DrawBitmap(Bitmap bitmap, int x, int y)
+        {
+            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height);
+        }
+
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height)
+        {
+            this.Graphics.DrawImage(bitmap, x, y, width, height);
+        }
+
+        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height)
+        {
+            throw new System.NotSupportedException();
+        }
+
+        public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
+        {
+            using var pen = new Pen(ColorTranslator.FromHtml(color), strokeWidth);
+            this.Graphics.DrawLine(pen, new PointF(x1, y1), new PointF(x2, y2));
+        }
+
+        public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height)
+        {
+            using var pen = new Pen(color, strokeWidth);
+            this.Graphics.DrawRectangle(pen, x, y, width, height);
+        }
+
+        public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height)
+        {
+            using var pen = new Pen(ColorTranslator.FromHtml(color), strokeWidth);
+            this.Graphics.DrawRectangle(pen, x, y, width, height);
+        }
+
+        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null)
+        {
+            if (gradientColor != null)
+            {
+                using var brush = new LinearGradientBrush(new Rectangle(x, y, width, height), ColorTranslator.FromHtml(color), ColorTranslator.FromHtml(gradientColor), LinearGradientMode.Vertical);
+                this.Graphics.FillRectangle(brush, x, y, width, height);
+            }
+            else
+            {
+                using var brush = new SolidBrush(ColorTranslator.FromHtml(color));
+                this.Graphics.FillRectangle(brush, x, y, width, height);
+            }
+        }
+
+        private GraphicsPath CreateGraphicsPath(MyPoint[] points)
+        {
+            var path = new GraphicsPath();
+
+            for (int i = 0; i < points.Length; i++)
+            {
+                if (i == 0)
+                {
+                    path.StartFigure();
+                }
+                else
+                {
+                    path.AddLine(new Point(points[i - 1].X, points[i - 1].Y), new Point(points[i].X, points[i].Y));
+                }
+            }
+
+            path.CloseFigure();
+
+            return path;
+        }
+
+        public override void DrawPath(MyPoint[] points, string color, int strokeWidth)
+        {
+            using var path = CreateGraphicsPath(points);
+            using var pen = new Pen(ColorTranslator.FromHtml(color), strokeWidth);
+            this.Graphics.DrawPath(pen, path);
+        }
+
+        public override void FillPath(MyPoint[] points, string color)
+        {
+            using var path = CreateGraphicsPath(points);
+            using var brush = new SolidBrush(ColorTranslator.FromHtml(color));
+            this.Graphics.FillPath(brush, path);
+        }
+
+        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, string color, string backgroundColor, int strokeWidth, string strokeColor)
+        {
+            thickness = Math.Clamp(thickness, 0, radius);
+            rotation = Math.Clamp(rotation, 0, 360);
+            percentage = Math.Clamp(percentage, 0, 100);
+
+            var innerRadius = radius - thickness;
+
+            // Create ring path (outer ellipse minus inner ellipse)
+            using var ringPath = new GraphicsPath();
+            ringPath.AddEllipse(x, y, 2 * radius, 2 * radius);
+            ringPath.AddEllipse(x + (radius - innerRadius), y + (radius - innerRadius), 2 * innerRadius, 2 * innerRadius);
+
+            //draw outline
+            if (strokeWidth > 0)
+            {
+                using var pen = new Pen(ColorTranslator.FromHtml(strokeColor), strokeWidth);
+                Graphics.DrawPath(pen, ringPath);
+            }
+
+            //fill background
+            using var backgroundBrush = new SolidBrush(ColorTranslator.FromHtml(backgroundColor));
+            Graphics.FillPath(backgroundBrush, ringPath);
+
+            // Clip to the ring region
+            using var ringRegion = new Region(ringPath);
+            Graphics.SetClip(ringRegion, CombineMode.Replace);
+
+            // Draw the pie slice
+            float angleSpan = percentage * 360 / 100f;
+            using var colorBrush = new SolidBrush(ColorTranslator.FromHtml(color));
+            Graphics.FillPie(colorBrush, x, y, 2 * radius, 2 * radius, rotation, angleSpan);
+            Graphics.ResetClip();
+        }
+
+        public override void Dispose()
+        {
+            this.Graphics.Dispose();
+        }
+
+    }
+}

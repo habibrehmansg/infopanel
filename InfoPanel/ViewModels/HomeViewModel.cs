@@ -41,6 +41,9 @@ namespace InfoPanel.ViewModels
                 case "navigate_to_design":
                     _navigationService.Navigate(typeof(Views.Pages.DesignPage));
                     return;
+                case "navigate_to_updates":
+                    _navigationService.Navigate(typeof(Views.Pages.UpdatesPage));
+                    return;
                 case "navigate_to_about":
                     _navigationService.Navigate(typeof(Views.Pages.AboutPage));
                     return;

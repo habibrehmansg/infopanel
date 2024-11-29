@@ -214,6 +214,7 @@ namespace InfoPanel.Models
             Id = id;
             Instance = instance;
             EntryId = entryId;
+            
         }
 
         public override string EvaluateText()
@@ -387,6 +388,62 @@ namespace InfoPanel.Models
 
         public BarDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name, id, instance, entryId)
         { }
+
+        public override object Clone()
+        {
+            var clone = (DisplayItem)MemberwiseClone();
+            clone.Guid = Guid.NewGuid();
+            return clone;
+        }
+    }
+
+    public class DonutDisplayItem : ChartDisplayItem
+    {
+        public int Radius
+        {
+            get { return Width / 2; }
+            set
+            {
+                Width = value * 2;
+                Height = value * 2;
+            }
+        }
+
+        private int _thickness = 10;
+        public int Thickness
+        {
+            get { return _thickness; }
+            set
+            {
+                if (value <= 0)
+                {
+                    return;
+                }
+                SetProperty(ref _thickness, value);
+            }
+        }
+
+        private int _rotation = 90;
+        public int Rotation
+        {
+            get { return _rotation; }
+            set
+            {
+                if (value < 0 || value > 360)
+                {
+                    return;
+                }
+                SetProperty(ref _rotation, value);
+            }
+        }
+
+        public DonutDisplayItem()
+        {
+            Name = "Donut";
+        }
+
+        public DonutDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name, id, instance, entryId)
+        { Width = 100; Height = 100; }
 
         public override object Clone()
         {

@@ -47,6 +47,15 @@ namespace InfoPanel.Views.Windows
 
             Loaded += FluentWindow_Loaded;
             StateChanged += FluentWindow_StateChanged;
+
+            var screenHeight = SystemParameters.PrimaryScreenHeight;
+            var desiredHeight = screenHeight * 0.80;
+
+            if (desiredHeight > MinHeight)
+            {
+                Height = desiredHeight;
+            }
+
         }
 
         private void FluentWindow_StateChanged(object? sender, EventArgs e)
@@ -67,10 +76,8 @@ namespace InfoPanel.Views.Windows
 
         private void Window_ContentRendered(object sender, EventArgs e)
         {
-            MinWidth = ActualWidth;
-            MinHeight = ActualHeight;
-            MaxHeight = SystemParameters.MaximizedPrimaryScreenHeight;
-            MaxWidth = ActualWidth;
+            MinWidth = 1300;
+            MinHeight = 900;
 
             Navigate(typeof(Pages.HomePage));
 

@@ -64,6 +64,21 @@ namespace InfoPanel.Models
             OnPropertyChanged(nameof(Bitmap));
         }
 
+        [XmlIgnore]
+        private WriteableBitmap? _bitmapImagePreview;
+
+        [XmlIgnore]
+        public WriteableBitmap? BitmapImagePreview
+        {
+            get { return _bitmapImagePreview; }
+            set { SetProperty(ref _bitmapImagePreview, value); }
+        }
+
+        public void NotifyBitmapPreviewUpdate()
+        {
+            OnPropertyChanged(nameof(Bitmap));
+        }
+
         public string Name
         {
             get { return _name; }
@@ -155,6 +170,59 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _active, value);
+            }
+        }
+
+        private bool _direct2DMode = false;
+        public bool Direct2DMode
+        {
+            get { return _direct2DMode; }
+            set
+            {
+                SetProperty(ref _direct2DMode, value);
+            }
+        }
+
+        private bool _direct2DModeFps = false;
+        public bool Direct2DModeFps
+        {
+            get { return _direct2DModeFps; }
+            set
+            {
+                SetProperty(ref _direct2DModeFps, value);
+            }
+        }
+
+        private float _direct2DFontScale = 1.33f;
+
+        public float Direct2DFontScale
+        {
+            get { return _direct2DFontScale; }
+            set
+            {
+                SetProperty(ref _direct2DFontScale, value);
+            }
+        }
+
+        private int _direct2DTextXOffset = 0;
+
+        public int Direct2DTextXOffset
+        {
+            get { return _direct2DTextXOffset; }
+            set
+            {
+                SetProperty(ref _direct2DTextXOffset, value);
+            }
+        }
+
+        private int _direct2DTextYOffset = 0;
+
+        public int Direct2DTextYOffset
+        {
+            get { return _direct2DTextYOffset; }
+            set
+            {
+                SetProperty(ref _direct2DTextYOffset, value);
             }
         }
 
