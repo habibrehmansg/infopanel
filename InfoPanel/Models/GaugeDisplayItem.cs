@@ -11,7 +11,7 @@ using System.Windows;
 namespace InfoPanel.Models
 {
     [Serializable]
-    public class GaugeDisplayItem : DisplayItem
+    public class GaugeDisplayItem : DisplayItem, ISensorItem
     {
 
         private string _sensorName = String.Empty;
@@ -21,6 +21,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _sensorName, value);
+            }
+        }
+
+        private SensorType _sensorIdType = SensorType.HwInfo;
+        public SensorType SensorType
+        {
+            get { return _sensorIdType; }
+            set
+            {
+                SetProperty(ref _sensorIdType, value);
             }
         }
 
@@ -51,6 +61,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _entryId, value);
+            }
+        }
+
+        private string _libreSensorId = string.Empty;
+        public string LibreSensorId
+        {
+            get { return _libreSensorId; }
+            set
+            {
+                SetProperty(ref _libreSensorId, value);
             }
         }
 
@@ -145,12 +165,28 @@ namespace InfoPanel.Models
             Name = "Gauge";
         }
 
+        public GaugeDisplayItem(string name, string libreSensorId) : base(name)
+        {
+            SensorType = SensorType.Libre;
+            LibreSensorId = libreSensorId;
+        }
+
         public GaugeDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name)
         {
-            SensorName = name;
+            SensorType = SensorType.HwInfo;
             Id = id;
             Instance = instance;
             EntryId = entryId;
+        }
+
+        public SensorReading? GetValue()
+        {
+            return SensorType switch
+            {
+                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
+                SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
+                _ => null,
+            };
         }
 
         private double currentImageIndex = 0;
@@ -164,20 +200,20 @@ namespace InfoPanel.Models
 
             if (_images.Count > 1)
             {
-                if (HWHash.SENSORHASH.TryGetValue((Id, Instance, EntryId), out HWHash.HWINFO_HASH hash))
-                {
+                var sensorReading = GetValue();
+                if(sensorReading.HasValue) {
                     var step = 100.0 / (_images.Count - 1);
 
-                    var value = hash.ValueNow;
+                    var value = sensorReading.Value.ValueNow;
                     value = ((value - _minValue) / (_maxValue - _minValue)) * 100;
 
                     var index = (int)(value / step);
-                 
+
                     var intermediateIndex = Interpolate(currentImageIndex, index, interpolationDelay * 2);
                     intermediateIndex = Math.Clamp(intermediateIndex, 0, Images.Count - 1);
                     currentImageIndex = intermediateIndex;
 
-                   result = Images[(int)Math.Round(intermediateIndex)];
+                    result = Images[(int)Math.Round(intermediateIndex)];
                 }
             }
 

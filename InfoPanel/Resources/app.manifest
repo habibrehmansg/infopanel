@@ -5,10 +5,10 @@
   xmlns:asmv3="urn:schemas-microsoft-com:asm.v3"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
-    <!--<security>
+    <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
         <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
       </requestedPrivileges>
-    </security>-->
+    </security>
   </trustInfo>
 </asmv1:assembly>

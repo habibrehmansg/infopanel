@@ -112,35 +112,19 @@ namespace InfoPanel
 
         private void ValidateStartup()
         {
-            var registry = Registry.CurrentUser;
+            //legacy startup removal
+            using var registryKey = Registry.CurrentUser?.OpenSubKey(RegistryRunKey, true);
+            registryKey?.DeleteValue("InfoPanel", false);
 
-            if (registry != null)
-            {
-                using (var registryKey = registry.OpenSubKey(RegistryRunKey, true))
-                {
-                    if (registryKey != null)
-                    {
-                        if (Settings.AutoStart)
-                        {
-                            registryKey.SetValue("InfoPanel", "\"" + Application.ExecutablePath + "\"");
-                        }
-                        else
-                        {
-                            registryKey.DeleteValue("InfoPanel", false);
-                        }
-                    }
-
-                }
-            }
-        }
-
-        //todo
-        private void ValidateStartup2()
-        {
+            //new startup removal
             using var taskService = new TaskService();
-            taskService.RootFolder.DeleteTask("InfoPanel", false);
 
-            if (Settings.AutoStart)
+            if (!Settings.AutoStart)
+            {
+                //delete task if exists
+                taskService.RootFolder.DeleteTask("InfoPanel", false);
+            }
+            else
             {
                 using var taskDefinition = taskService.NewTask();
                 taskDefinition.RegistrationInfo.Description = "Runs InfoPanel on startup.";
@@ -154,7 +138,7 @@ namespace InfoPanel
                 taskDefinition.Settings.AllowHardTerminate = true;
                 taskDefinition.Settings.ExecutionTimeLimit = TimeSpan.Zero;
 
-                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition);
+                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition, TaskCreation.CreateOrUpdate, null);
             }
         }
 
@@ -163,7 +147,6 @@ namespace InfoPanel
             if (e.PropertyName == nameof(Settings.AutoStart))
             {
                 ValidateStartup();
-                ValidateStartup2();
             }
             else if (e.PropertyName == nameof(Settings.BeadaPanel))
             {

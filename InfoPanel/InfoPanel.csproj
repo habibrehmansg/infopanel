@@ -11,7 +11,7 @@
 		<FileVersion>$(AssemblyVersion)</FileVersion>
 		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
 		<Version>1.2.8.0</Version>
-		<UseWindowsForms>True</UseWindowsForms>
+		<UseWindowsForms>False</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<PlatformTarget>AnyCPU</PlatformTarget>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
@@ -53,6 +53,9 @@
 		<None Remove="Logo.png" />
 		<None Remove="logo_white.png" />
 		<None Remove="Resources\Images\home.jpg" />
+		<None Remove="Resources\Images\hwinfo_icon.ico" />
+		<None Remove="Resources\Images\hwinfo_logo_white.png" />
+		<None Remove="Resources\Images\libre_icon.ico" />
 		<None Remove="Resources\Images\no_image.png" />
 	</ItemGroup>
 
@@ -61,6 +64,8 @@
 			<CopyToOutputDirectory></CopyToOutputDirectory>
 		</Resource>
 		<Resource Include="Resources\Images\home.jpg" />
+		<Resource Include="Resources\Images\hwinfo_logo_white.png" />
+		<Resource Include="Resources\Images\libre_icon.ico" />
 		<Resource Include="Resources\Images\no_image.png" />
 		<Content Include="index.html">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -91,6 +96,12 @@
 		<Content Include="hwinfo_logo_white.png">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Resource Include="Resources\Images\hwinfo_icon.ico">
+	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+	  </Resource>
 	</ItemGroup>
 
 	<ItemGroup>

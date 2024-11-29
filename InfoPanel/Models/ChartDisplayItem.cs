@@ -5,7 +5,7 @@ using System.Windows;
 namespace InfoPanel.Models
 {
     [Serializable]
-    public abstract class ChartDisplayItem : DisplayItem
+    public abstract class ChartDisplayItem : DisplayItem, ISensorItem
     {
         private string _sensorName = String.Empty;
         public string SensorName
@@ -14,6 +14,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _sensorName, value);
+            }
+        }
+
+        private SensorType _sensorIdType = SensorType.HwInfo;
+        public SensorType SensorType
+        {
+            get { return _sensorIdType; }
+            set
+            {
+                SetProperty(ref _sensorIdType, value);
             }
         }
 
@@ -44,6 +54,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _entryId, value);
+            }
+        }
+
+        private string _libreSensorId = string.Empty;
+        public string LibreSensorId
+        {
+            get { return _libreSensorId; }
+            set
+            {
+                SetProperty(ref _libreSensorId, value);
             }
         }
 
@@ -207,14 +227,31 @@ namespace InfoPanel.Models
 
         public ChartDisplayItem() { }
 
+        public ChartDisplayItem(string name, string libreSensorId) : base(name)
+        {
+            SensorType = SensorType.Libre;
+            LibreSensorId = libreSensorId;
+        }
+
         public ChartDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId)
         {
+            SensorType = SensorType.HwInfo;
             Name = name;
             SensorName = name;
             Id = id;
             Instance = instance;
             EntryId = entryId;
             
+        }
+
+        public SensorReading? GetValue()
+        {
+            return SensorType switch
+            {
+                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
+                SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
+                _ => null,
+            };
         }
 
         public override string EvaluateText()
@@ -328,6 +365,10 @@ namespace InfoPanel.Models
         {
             Name = "Graph";
         }
+        public GraphDisplayItem(string name, GraphType type, string libreSensorId) : base(name, libreSensorId)
+        {
+            Type = type;
+        }
 
         public GraphDisplayItem(string name, GraphType type, UInt32 id, UInt32 instance, UInt32 entryId) : base(name, id, instance, entryId)
         {
@@ -386,6 +427,9 @@ namespace InfoPanel.Models
             Name = "Bar";
         }
 
+        public BarDisplayItem(string name, string libreSensorId) : base(name, libreSensorId)
+        { }
+
         public BarDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name, id, instance, entryId)
         { }
 
@@ -442,8 +486,19 @@ namespace InfoPanel.Models
             Name = "Donut";
         }
 
+        public DonutDisplayItem(string name, string libreSensorId) : base(name, libreSensorId)
+        {
+            Frame = false;
+            BackgroundColor = "#FFDCDCDC";
+            Width = 100; Height = 100;
+        }
+
         public DonutDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name, id, instance, entryId)
-        { Width = 100; Height = 100; }
+        {
+            Frame = false;
+            BackgroundColor = "#FFDCDCDC";
+            Width = 100; Height = 100; 
+        }
 
         public override object Clone()
         {

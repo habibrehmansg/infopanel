@@ -16,7 +16,7 @@ namespace InfoPanel.Models
             NOW, MIN, MAX, AVERAGE
         }
 
-        private string _sensorName = String.Empty;
+        private string _sensorName = string.Empty;
         public string SensorName
         {
             get { return _sensorName; }
@@ -66,7 +66,7 @@ namespace InfoPanel.Models
             }
         }
 
-        private string _libreSensorId = String.Empty;
+        private string _libreSensorId = string.Empty;
         public string LibreSensorId
         {
             get { return _libreSensorId; }
@@ -85,7 +85,7 @@ namespace InfoPanel.Models
                 SetProperty(ref _valueType, value);
             }
         }
-        
+
         private int _threshold1 = 0;
         public int Threshold1
         {
@@ -168,7 +168,7 @@ namespace InfoPanel.Models
             }
         }
 
-        private string _unit = String.Empty;
+        private string _unit = string.Empty;
         public string Unit
         {
             get { return _unit; }
@@ -250,7 +250,7 @@ namespace InfoPanel.Models
 
         public SensorDisplayItem()
         {
-            SensorName = String.Empty;
+            SensorName = string.Empty;
         }
 
         public SensorDisplayItem(string name, string libreSensorId) : base(name)
@@ -259,7 +259,7 @@ namespace InfoPanel.Models
             LibreSensorId = libreSensorId;
         }
 
-        public SensorDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name)
+        public SensorDisplayItem(string name, uint id, uint instance, uint entryId) : base(name)
         {
             SensorType = SensorType.HwInfo;
             Id = id;
@@ -281,7 +281,7 @@ namespace InfoPanel.Models
         {
             var value = GetValue();
 
-            if(value.HasValue)
+            if (value.HasValue)
             {
                 return (EvaluateText(value.Value), EvaluateColor(value.Value));
             }
@@ -293,7 +293,7 @@ namespace InfoPanel.Models
         {
             var value = GetValue();
 
-            if(value.HasValue)
+            if (value.HasValue)
             {
                 return EvaluateColor(value.Value);
             }
@@ -356,7 +356,7 @@ namespace InfoPanel.Models
 
         private string EvaluateText(SensorReading sensorReading)
         {
-            var value = String.Empty;
+            var value = string.Empty;
 
             double sensorReadingValue;
 
@@ -388,16 +388,16 @@ namespace InfoPanel.Models
                 switch (Precision)
                 {
                     case 1:
-                        value = String.Format("{0:0.0}", sensorReadingValue);
+                        value = string.Format("{0:0.0}", sensorReadingValue);
                         break;
                     case 2:
-                        value = String.Format("{0:0.00}", sensorReadingValue);
+                        value = string.Format("{0:0.00}", sensorReadingValue);
                         break;
                     case 3:
-                        value = String.Format("{0:0.000}", sensorReadingValue);
+                        value = string.Format("{0:0.000}", sensorReadingValue);
                         break;
                     default:
-                        value = String.Format("{0:0}", Math.Floor(sensorReadingValue));
+                        value = string.Format("{0:0}", Math.Floor(sensorReadingValue));
                         break;
                 }
             }
@@ -409,13 +409,13 @@ namespace InfoPanel.Models
                     case "mb/s":
                     case "mbar/min":
                     case "mbar":
-                        value = String.Format("{0:0.00}", sensorReadingValue);
+                        value = string.Format("{0:0.00}", sensorReadingValue);
                         break;
                     case "v":
-                        value = String.Format("{0:0.000}", sensorReadingValue);
+                        value = string.Format("{0:0.000}", sensorReadingValue);
                         break;
                     default:
-                        value = String.Format("{0:0}", sensorReadingValue);
+                        value = string.Format("{0:0}", sensorReadingValue);
                         break;
                 }
             }

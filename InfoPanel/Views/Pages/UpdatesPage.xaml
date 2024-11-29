@@ -101,6 +101,18 @@
                             <TextBlock Margin="0,20,0,0"
                             FontSize="13"
                             FontWeight="Medium"
+                            Text="Libre Sensors" />
+                            <TextBlock Margin="0,0,0,0"
+                            FontSize="12" TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            - A new built-in method to query PC sensors. Powered by LibreHardwareMonitor.
+                            <LineBreak/>
+                            - Fully compatible with HWiNFO sensors and can be used interchangeably.
+                            </TextBlock>
+
+                            <TextBlock Margin="0,20,0,0"
+                            FontSize="13"
+                            FontWeight="Medium"
                             Text="Donut Chart" />
                             <TextBlock Margin="0,0,0,0"
                             FontSize="12" TextWrapping="Wrap"
@@ -129,6 +141,8 @@
                             <TextBlock Margin="0,0,0,0"
                             FontSize="12" TextWrapping="Wrap"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            - Updated autostart setting to use Windows Task Scheduler instead of registry run key.
+                            <LineBreak />
                             - Reduced CPU and memory usage for non-accelerated profiles via smart caching.
                             <LineBreak />
                             - Squashed some memory bugs.

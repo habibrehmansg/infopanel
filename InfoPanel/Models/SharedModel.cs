@@ -24,18 +24,18 @@ namespace InfoPanel
 {
     public sealed class SharedModel : ObservableObject
     {
-        private static readonly Lazy<SharedModel> lazy = new Lazy<SharedModel>(() => new SharedModel());
+        private static readonly Lazy<SharedModel> lazy = new(() => new SharedModel());
 
         public static SharedModel Instance { get { return lazy.Value; } }
 
-        private bool _hWiNFOError = false;
+        private bool _hwInfoAvailable = false;
 
-        public bool HWiNFOError
+        public bool HwInfoAvailable
         {
-            get { return _hWiNFOError; }
+            get { return _hwInfoAvailable; }
             set
             {
-                SetProperty(ref _hWiNFOError, value);
+                SetProperty(ref _hwInfoAvailable, value);
             }
         }
 

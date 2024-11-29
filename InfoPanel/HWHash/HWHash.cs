@@ -98,12 +98,12 @@ using System.Timers;
 
             if (HWINFO_RUNNING)
             {
-                SharedModel.Instance.HWiNFOError = false;
+                SharedModel.Instance.HwInfoAvailable = true;
                 BuildHeaders();
             }
             else
             {
-                SharedModel.Instance.HWiNFOError = true;
+                SharedModel.Instance.HwInfoAvailable = false;
                 aTimer.Stop();
                 Thread.Sleep(1000);
                 aTimer.Start();

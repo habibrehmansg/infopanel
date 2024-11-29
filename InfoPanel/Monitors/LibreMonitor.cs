@@ -8,8 +8,8 @@ using System.Diagnostics;
 using Computer = LibreHardwareMonitor.Hardware.Computer;
 using System.Timers;
 using System.Threading;
-using static HWHash;
 using System.Linq;
+using System.Diagnostics.Tracing;
 namespace InfoPanel.Monitors
 {
     public class UpdateVisitor : IVisitor
@@ -30,28 +30,19 @@ namespace InfoPanel.Monitors
     internal class LibreMonitor
     {
         private static System.Timers.Timer aTimer = new(1000);
-        private static Dictionary<string, IHardware> HEADER_DICT = new ();
+        private static ConcurrentDictionary<string, IHardware> HEADER_DICT = new ();
         public static ConcurrentDictionary<string, ISensor> SENSORHASH = new();
-        private static Stopwatch stopwatch = new();
         private static Thread? CoreThread;
         private static Computer? Computer;
+
+        private static volatile bool IsOpen = false;
+        private static readonly object _lock = new();
 
         public static bool Launch()
         {
             if (CoreThread != null)
             {
                 return true;
-            }
-
-            Prepare();
-
-            if (!isRunning)
-            {
-                stopwatch.Start();
-                Computer?.Open();
-                Trace.WriteLine($"Open computer: {stopwatch.ElapsedMilliseconds}ms");
-                stopwatch.Reset();
-                isRunning = true;
             }
 
             CoreThread = new Thread(TimedStart);
@@ -62,6 +53,9 @@ namespace InfoPanel.Monitors
 
         private static void Prepare()
         {
+            var stopwatch = new Stopwatch();
+            stopwatch.Start();
+
             Computer = new Computer
             {
                 IsCpuEnabled = true,
@@ -71,24 +65,35 @@ namespace InfoPanel.Monitors
                 IsControllerEnabled = true,
                 IsNetworkEnabled = true,
                 IsStorageEnabled = true,
-                IsPsuEnabled = true,
-                IsBatteryEnabled = true,
             };
+
+            Computer.Open();
+            
+            stopwatch.Stop();
+            Trace.WriteLine($"Computer open: {stopwatch.ElapsedMilliseconds}ms");
 
             aTimer.Start();
         }
 
         public static void TimedStart()
         {
+            Prepare();
             aTimer.Elapsed += new ElapsedEventHandler(PollSensorData);
             aTimer.Enabled = true;
         }
 
-        private static bool isRunning = false;
+        private static volatile bool polling = false;
 
         private static void PollSensorData(object? source, ElapsedEventArgs e)
         {
+            if(polling)
+            {
+                return;
+            }
+
+            polling = true;
             Monitor();
+            polling = false;
         }
 
         private static UpdateVisitor updateVisitor = new();
@@ -128,14 +133,14 @@ namespace InfoPanel.Monitors
 
         public static List<ISensor> GetOrderedList()
         {
-            List<ISensor> OrderedList = SENSORHASH.Values.OrderBy(x => x.Hardware.HardwareType).ThenBy(x => x.Index).ToList();
+            List<ISensor> OrderedList = [.. SENSORHASH.Values.OrderBy(x => x.Hardware.HardwareType).ThenBy(x => x.Index)];
             return OrderedList;
         }
     }
 
     public static class ISensorExtensions
     {
-        private static Dictionary<SensorType, string> Units = new()
+        private static readonly Dictionary<SensorType, string> Units = new()
         {
             { SensorType.Voltage, "V" },
             { SensorType.Current, "A" },
@@ -153,7 +158,8 @@ namespace InfoPanel.Monitors
             { SensorType.Energy, "mWh" },
             { SensorType.Noise, "dBA" },
             { SensorType.Conductivity, "µS/cm" },
-            { SensorType.Humidity, "%" }
+            { SensorType.Humidity, "%" },
+            { SensorType.Throughput, "KB/s" },
         };
 
         public static string GetUnit(this ISensor sensor)

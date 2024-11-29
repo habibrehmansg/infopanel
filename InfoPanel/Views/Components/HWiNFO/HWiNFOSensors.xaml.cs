@@ -29,9 +29,14 @@ namespace InfoPanel.Views.Components
             Loaded += HWiNFOSensors_Loaded;
             Unloaded += HWiNFOSensors_Unloaded;
 
-            UpdateTimer = new Timer();
-            UpdateTimer.Interval = 1000;
+            UpdateTimer = new Timer
+            {
+                Interval = 1000
+            };
             UpdateTimer.Tick += Timer_Tick;
+
+            //tick once
+            Timer_Tick(this, null);
             UpdateTimer.Start();
         }
 
@@ -118,21 +123,42 @@ namespace InfoPanel.Views.Components
                 subItem.PreviewMouseDown += SubItem_PreviewMouseDown;
                 subItem.Header = hash.NameCustom;
                 subItem.Tag = hash.SensorID;
-                item.Items.Add(subItem);
 
+                bool added = false;
+                foreach (TreeViewItem group in item.Items)
+                {
+                    if (group.Name == hash.ReadingType)
+                    {
+                        group.Items.Add(subItem);
+                        added = true;
+                        break;
+                    }
+                }
+
+                if (!added)
+                {
+                    TreeViewItem group = new();
+                    group.SetResourceReference(TreeViewItem.ForegroundProperty, "TextFillColorTertiaryBrush");
+                    group.Focusable = false;
+                    group.Name = hash.ReadingType;
+                    group.Header = hash.ReadingType;
+                    group.Tag = item.Tag;
+                    group.Items.Add(subItem);
+                    item.Items.Add(group);
+                }
             }
         }
 
         private void SubItem_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-        {   
-            ((TreeViewItem) sender).IsSelected = true;
+        {
+            ((TreeViewItem)sender).IsSelected = true;
         }
 
         private void UpdateSensorDetails()
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
 
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (selectedTreeViewItem != null && selectedTreeViewItem.Tag is UInt32 && selectedTreeViewItem?.Parent is TreeViewItem parentItem)
             {
                 var parentTag = ((UInt32, UInt32))parentItem.Tag;
                 var item = new SensorDisplayItem()
@@ -172,6 +198,7 @@ namespace InfoPanel.Views.Components
                 var parentTag = ((UInt32, UInt32))parentItem.Tag;
                 var item = new SensorDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (UInt32)selectedTreeViewItem.Tag)
                 {
+                    SensorName = (string)selectedTreeViewItem.Header,
                     Font = SharedModel.Instance.SelectedProfile!.Font,
                     FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
                     Color = SharedModel.Instance.SelectedProfile!.Color,
@@ -194,6 +221,7 @@ namespace InfoPanel.Views.Components
                 {
                     sensorDisplayItem.Name = (string)selectedTreeViewItem.Header;
                     sensorDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
+                    sensorDisplayItem.SensorType = SensorType.HwInfo;
                     sensorDisplayItem.Id = parentTag.Item1;
                     sensorDisplayItem.Instance = parentTag.Item2;
                     sensorDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;
@@ -203,6 +231,7 @@ namespace InfoPanel.Views.Components
                 {
                     chartDisplayItem.Name = (string)selectedTreeViewItem.Header;
                     chartDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
+                    chartDisplayItem.SensorType = SensorType.HwInfo;
                     chartDisplayItem.Id = parentTag.Item1;
                     chartDisplayItem.Instance = parentTag.Item2;
                     chartDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;
@@ -211,6 +240,7 @@ namespace InfoPanel.Views.Components
                 {
                     gaugeDisplayItem.Name = (string)selectedTreeViewItem.Header;
                     gaugeDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
+                    gaugeDisplayItem.SensorType = SensorType.HwInfo;
                     gaugeDisplayItem.Id = parentTag.Item1;
                     gaugeDisplayItem.Instance = parentTag.Item2;
                     gaugeDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;

@@ -240,6 +240,25 @@
                                     <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://www.hwinfo.com/" NavigateUri="https://www.hwinfo.com/"/>
                                 </StackPanel>
                             </Grid>
+
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                                      FontSize="13"
+                                      FontWeight="Medium"
+                                      Text="LibreHardwareMonitor" />   
+                                    <TextBlock Margin="0,0,0,0"
+                                      FontSize="12"
+                                      Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                      Text="Mozilla Public License Version 2.0" />
+                                    <ui:Hyperlink Icon="Link20" FontSize="12" Content="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor" NavigateUri="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor"/>
+                                </StackPanel>
+                            </Grid>
+
                             <Grid Margin="0,20,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

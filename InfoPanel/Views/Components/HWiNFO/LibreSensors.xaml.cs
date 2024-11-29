@@ -31,9 +31,14 @@ namespace InfoPanel.Views.Components
             Loaded += HWiNFOSensors_Loaded;
             Unloaded += HWiNFOSensors_Unloaded;
 
-            UpdateTimer = new Timer();
-            UpdateTimer.Interval = 1000;
+            UpdateTimer = new Timer
+            {
+                Interval = 1000
+            };
             UpdateTimer.Tick += Timer_Tick;
+
+            //tick once
+            Timer_Tick(this, null);
             UpdateTimer.Start();
         }
 
@@ -185,53 +190,54 @@ namespace InfoPanel.Views.Components
         private void ButtonSelect_Click(object sender, RoutedEventArgs e)
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (selectedTreeViewItem?.Tag is Identifier identifier)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new SensorDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (UInt32)selectedTreeViewItem.Tag)
+                if (LibreMonitor.SENSORHASH.TryGetValue(identifier.ToString(), out ISensor? sensor))
                 {
-                    Font = SharedModel.Instance.SelectedProfile!.Font,
-                    FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
-                    Color = SharedModel.Instance.SelectedProfile!.Color,
-                    Unit = " " + HWHash.SENSORHASH[(parentTag.Item1, parentTag.Item2, (UInt32)selectedTreeViewItem.Tag)].Unit
-                };
-
-                SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
+                    var item = new SensorDisplayItem(sensor.Name, sensor.Identifier.ToString())
+                    {
+                        SensorName = sensor.Name,
+                        Font = SharedModel.Instance.SelectedProfile!.Font,
+                        FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
+                        Color = SharedModel.Instance.SelectedProfile!.Color,
+                        Unit = sensor.GetUnit(),
+                    };
+                    
+                    SharedModel.Instance.AddDisplayItem(item);
+                    SharedModel.Instance.SelectedItem = item;
+                }
             }
         }
 
         private void ButtonReplace_Click(object sender, RoutedEventArgs e)
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (selectedTreeViewItem?.Tag is Identifier identifier)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-
-                if (SharedModel.Instance.SelectedItem is SensorDisplayItem sensorDisplayItem)
+                if (LibreMonitor.SENSORHASH.TryGetValue(identifier.ToString(), out ISensor? sensor))
                 {
-                    sensorDisplayItem.Name = (string)selectedTreeViewItem.Header;
-                    sensorDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
-                    sensorDisplayItem.Id = parentTag.Item1;
-                    sensorDisplayItem.Instance = parentTag.Item2;
-                    sensorDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;
-                    sensorDisplayItem.Unit = " " + HWHash.SENSORHASH[(parentTag.Item1, parentTag.Item2, (UInt32)selectedTreeViewItem.Tag)].Unit;
-                }
-                else if (SharedModel.Instance.SelectedItem is ChartDisplayItem chartDisplayItem)
-                {
-                    chartDisplayItem.Name = (string)selectedTreeViewItem.Header;
-                    chartDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
-                    chartDisplayItem.Id = parentTag.Item1;
-                    chartDisplayItem.Instance = parentTag.Item2;
-                    chartDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;
-                }
-                else if (SharedModel.Instance.SelectedItem is GaugeDisplayItem gaugeDisplayItem)
-                {
-                    gaugeDisplayItem.Name = (string)selectedTreeViewItem.Header;
-                    gaugeDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
-                    gaugeDisplayItem.Id = parentTag.Item1;
-                    gaugeDisplayItem.Instance = parentTag.Item2;
-                    gaugeDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;
+                    if (SharedModel.Instance.SelectedItem is SensorDisplayItem sensorDisplayItem)
+                    {
+                        sensorDisplayItem.Name = (string)selectedTreeViewItem.Header;
+                        sensorDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
+                        sensorDisplayItem.SensorType = Models.SensorType.Libre;
+                        sensorDisplayItem.LibreSensorId = sensor.Identifier.ToString();
+                        sensorDisplayItem.Unit = sensor.GetUnit();
+                    }
+                    else if (SharedModel.Instance.SelectedItem is ChartDisplayItem chartDisplayItem)
+                    {
+                        chartDisplayItem.Name = (string)selectedTreeViewItem.Header;
+                        chartDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
+                        chartDisplayItem.SensorType = Models.SensorType.Libre;
+                        chartDisplayItem.LibreSensorId = sensor.Identifier.ToString();
+                    }
+                    else if (SharedModel.Instance.SelectedItem is GaugeDisplayItem gaugeDisplayItem)
+                    {
+                        gaugeDisplayItem.Name = (string)selectedTreeViewItem.Header;
+                        gaugeDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
+                        gaugeDisplayItem.SensorType = Models.SensorType.Libre;
+                        gaugeDisplayItem.LibreSensorId = sensor.Identifier.ToString();
+                    }
                 }
             }
         }
@@ -239,10 +245,9 @@ namespace InfoPanel.Views.Components
         private void ButtonAddGraph_Click(object sender, RoutedEventArgs e)
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (selectedTreeViewItem?.Tag is Identifier identifier)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new GraphDisplayItem((string)selectedTreeViewItem.Header, GraphDisplayItem.GraphType.LINE, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                var item = new GraphDisplayItem((string)selectedTreeViewItem.Header, GraphDisplayItem.GraphType.LINE, identifier.ToString());
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -251,10 +256,9 @@ namespace InfoPanel.Views.Components
         private void ButtonAddBar_Click(object sender, RoutedEventArgs e)
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (selectedTreeViewItem?.Tag is Identifier identifier)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new BarDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                var item = new BarDisplayItem((string)selectedTreeViewItem.Header, identifier.ToString());
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -263,10 +267,9 @@ namespace InfoPanel.Views.Components
         private void ButtonAddDonut_Click(object sender, RoutedEventArgs e)
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (selectedTreeViewItem?.Tag is Identifier identifier)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new DonutDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                var item = new DonutDisplayItem((string)selectedTreeViewItem.Header, identifier.ToString());
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -275,10 +278,9 @@ namespace InfoPanel.Views.Components
         private void ButtonAddCustom_Click(object sender, RoutedEventArgs e)
         {
             TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (selectedTreeViewItem?.Tag is Identifier identifier)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new GaugeDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                var item = new GaugeDisplayItem((string)selectedTreeViewItem.Header, identifier.ToString());
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -342,11 +344,6 @@ namespace InfoPanel.Views.Components
                 SharedModel.Instance.PushDisplayItemTo(item, SharedModel.Instance.SelectedItem);
                 SharedModel.Instance.SelectedItem = item;
             }
-        }
-
-        private void ImageLogo_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            Process.Start("explorer.exe", "https://www.hwinfo.com/");
         }
     }
 }
