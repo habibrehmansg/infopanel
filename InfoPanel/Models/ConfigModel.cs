@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using Microsoft.Win32;
+using Microsoft.Win32.TaskScheduler;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -111,25 +112,33 @@ namespace InfoPanel
 
         private void ValidateStartup()
         {
-            var registry = Registry.CurrentUser;
+            //legacy startup removal
+            using var registryKey = Registry.CurrentUser?.OpenSubKey(RegistryRunKey, true);
+            registryKey?.DeleteValue("InfoPanel", false);
 
-            if (registry != null)
+            //new startup removal
+            using var taskService = new TaskService();
+
+            if (!Settings.AutoStart)
             {
-                using (var registryKey = registry.OpenSubKey(RegistryRunKey, true))
-                {
-                    if (registryKey != null)
-                    {
-                        if (Settings.AutoStart)
-                        {
-                            registryKey.SetValue("InfoPanel", "\"" + Application.ExecutablePath + "\"");
-                        }
-                        else
-                        {
-                            registryKey.DeleteValue("InfoPanel", false);
-                        }
-                    }
+                //delete task if exists
+                taskService.RootFolder.DeleteTask("InfoPanel", false);
+            }
+            else
+            {
+                using var taskDefinition = taskService.NewTask();
+                taskDefinition.RegistrationInfo.Description = "Runs InfoPanel on startup.";
+                taskDefinition.RegistrationInfo.Author = "Habib Rehman";
+                taskDefinition.Triggers.Add(new LogonTrigger());
+                taskDefinition.Actions.Add(new ExecAction(Application.ExecutablePath));
+                taskDefinition.Principal.RunLevel = TaskRunLevel.Highest;
+                taskDefinition.Settings.DisallowStartIfOnBatteries = false;
+                taskDefinition.Settings.StopIfGoingOnBatteries = false;
+                taskDefinition.Settings.AllowDemandStart = true;
+                taskDefinition.Settings.AllowHardTerminate = true;
+                taskDefinition.Settings.ExecutionTimeLimit = TimeSpan.Zero;
 
-                }
+                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition, TaskCreation.CreateOrUpdate, null);
             }
         }
 

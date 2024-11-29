@@ -51,6 +51,9 @@
             <local:BitmapToImageConverter x:Key="BitmapToImageConverter"/>
             <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter"/>
 
+
+            <BitmapImage x:Key="HwinfoIcon" UriSource="Resources/Images/hwinfo_icon.ico" />
+            <BitmapImage x:Key="LibreIcon" UriSource="Resources/Images/libre_icon.ico" />
             <BitmapImage x:Key="HwinfoLogo" UriSource="hwinfo_logo_white.png" />
         </ResourceDictionary>
     </Application.Resources>

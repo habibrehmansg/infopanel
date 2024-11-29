@@ -35,7 +35,7 @@
             </Grid>
         </StackPanel>
 
-        <Grid Grid.Row="1" Margin="0,5,0,0">
+        <Grid Grid.Row="1" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="auto"/>
                 <ColumnDefinition Width="auto"/>
@@ -51,9 +51,10 @@
                 <Grid Grid.Row="0" Margin="5,0,10,5">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="40"/>
-                        <ColumnDefinition Width="250"/>
-                        <ColumnDefinition Width="100"/>
+                        <ColumnDefinition Width="230"/>
                         <ColumnDefinition Width="50"/>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="40"/>
                     </Grid.ColumnDefinitions>
                     <Label Grid.Column="0"  Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                         <TextBlock Grid.Column="0" Text="Type" VerticalAlignment="Center" HorizontalAlignment="Center"/>
@@ -62,11 +63,14 @@
                         <TextBlock  Text="Name" VerticalAlignment="Center" HorizontalAlignment="Center"  Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                     </Label>
                     <Label Grid.Column="2">
+                        <TextBlock  Text="Source" VerticalAlignment="Center" HorizontalAlignment="Center"  Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    </Label>
+                    <Label Grid.Column="3">
                         <TextBlock>
                             <TextBlock  Text="X, Y" VerticalAlignment="Center" HorizontalAlignment="Center"  Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                         </TextBlock>
                     </Label>
-                    <Label Grid.Column="3">
+                    <Label Grid.Column="4">
                         <TextBlock  Text="Enabled" VerticalAlignment="Center" HorizontalAlignment="Center"  Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                     </Label>
                 </Grid>
@@ -88,9 +92,10 @@
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="40"/>
-                                    <ColumnDefinition Width="250"/>
-                                    <ColumnDefinition Width="100"/>
+                                    <ColumnDefinition Width="230"/>
                                     <ColumnDefinition Width="50"/>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="40"/>
                                 </Grid.ColumnDefinitions>
                                 <ui:SymbolIcon Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="5,0,0,0">
                                     <ui:SymbolIcon.Style>
@@ -130,7 +135,38 @@
                                 <Label Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                 </Label>
-                                <Label Grid.Column="2" VerticalAlignment="Center">
+                                <Image Grid.Column="2" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <Image.Style>
+                                        <Style TargetType="Image">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="HwInfo">
+                                                    <Setter Property="Source" Value="/InfoPanel;component/Resources/Images/hwinfo_icon.ico" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="Libre">
+                                                    <Setter Property="Source" Value="/InfoPanel;component/Resources/Images/libre_icon.ico" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Image.Style>
+                                </Image>
+                                <!--<ui:SymbolIcon Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="5,0,0,0">
+                                    <ui:SymbolIcon.Style>
+                                        <Style TargetType="{x:Type ui:SymbolIcon}" BasedOn="{StaticResource {x:Type ui:SymbolIcon}}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SensorType}" Value="HwInfo">
+                                                    <Setter Property="Symbol" Value="HardDrive20" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding SensorType}" Value="Libre">
+                                                    <Setter Property="Symbol" Value="HardDrive20" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="Default">
+                                                    <Setter Property="Symbol" Value="Text16" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ui:SymbolIcon.Style>
+                                </ui:SymbolIcon>-->
+                                <Label Grid.Column="3" VerticalAlignment="Center">
                                     <TextBlock>
                                         <TextBlock.Text>
                                             <MultiBinding StringFormat="{}{0}, {1}">
@@ -140,7 +176,7 @@
                                         </TextBlock.Text>
                                     </TextBlock>
                                 </Label>
-                                <Label Grid.Column="3" VerticalAlignment="Center">
+                                <Label Grid.Column="4" VerticalAlignment="Center">
                                     <CheckBox HorizontalAlignment="Center" IsChecked="{Binding Hidden, Converter={StaticResource InverseBooleanConverter}}"/>
                                 </Label>
                             </Grid>

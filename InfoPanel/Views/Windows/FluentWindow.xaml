@@ -153,12 +153,12 @@
                         Timeout="3000"/>
                     </Grid>
                 </Border>
-                <ui:InfoBar Grid.Row="1" VerticalAlignment="Bottom" Title="Unable to read sensor data."
+                <!--<ui:InfoBar Grid.Row="1" VerticalAlignment="Bottom" Title="Unable to read sensor data."
                     IsClosable="False"
                     IsOpen="{Binding Source={x:Static app:SharedModel.Instance}, Path=HWiNFOError}"
                     Message="Ensure that HWiNFO is running and SHM is enabled."
                     Severity="Error">
-                </ui:InfoBar>
+                </ui:InfoBar>-->
             </Grid>
 
         </Grid>

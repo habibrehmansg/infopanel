@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Monitors;
 using InfoPanel.Services;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Common;
@@ -19,6 +20,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using Wpf.Ui.Mvvm.Contracts;
 using Wpf.Ui.Mvvm.Services;
@@ -187,6 +189,8 @@ namespace InfoPanel
             SystemEvents.SessionEnding += OnSessionEnding;
             SystemEvents.PowerModeChanged += OnPowerChange;
             Exit += App_Exit;
+
+            LibreMonitor.Launch();
         }
 
         private void OnSessionEnding(object sender, SessionEndingEventArgs e)
