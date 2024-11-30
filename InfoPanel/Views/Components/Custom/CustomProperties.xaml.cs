@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Threading;
 
 namespace InfoPanel.Views.Components
 {
@@ -25,7 +26,7 @@ namespace InfoPanel.Views.Components
         //to fix swapping view not refreshing when items empty etc
         public GaugePropertiesVM ViewModel { get; set; }
 
-        private Timer? UpdateTimer;
+        private DispatcherTimer UpdateTimer;
 
         public CustomProperties()
         {
@@ -34,8 +35,7 @@ namespace InfoPanel.Views.Components
             InitializeComponent();
             Unloaded += CustomProperties_Unloaded;
 
-            UpdateTimer = new Timer();
-            UpdateTimer.Interval = 300;
+            UpdateTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
             UpdateTimer.Tick += Timer_Tick;
             UpdateTimer.Start();
         }

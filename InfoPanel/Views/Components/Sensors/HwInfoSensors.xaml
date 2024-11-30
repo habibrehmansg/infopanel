@@ -57,7 +57,7 @@
                             <ColumnDefinition Width="1*"/>
                         </Grid.ColumnDefinitions>
                         <Label HorizontalAlignment="Left">
-                            <TextBlock FontWeight="Medium" Text="{Binding Path=SelectedItem.Name}">
+                            <TextBlock FontWeight="Medium" Text="{Binding Path=SelectedItem.Name, FallbackValue='No sensor selected.'}">
                             </TextBlock>
                         </Label>
                         <Label Grid.Column="1"  HorizontalAlignment="Right">

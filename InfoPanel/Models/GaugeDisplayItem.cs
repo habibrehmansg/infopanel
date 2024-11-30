@@ -104,7 +104,7 @@ namespace InfoPanel.Models
             }
         }
 
-        private ObservableCollection<ImageDisplayItem> _images = new ObservableCollection<ImageDisplayItem>();
+        private ObservableCollection<ImageDisplayItem> _images = [];
 
         public ObservableCollection<ImageDisplayItem> Images
         {

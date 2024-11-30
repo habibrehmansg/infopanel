@@ -77,7 +77,7 @@ namespace InfoPanel.Drawing
 
                                 if (displayItem.Selected)
                                 {
-                                    selectedRectangles.Add(new Rectangle(x + 2, y + 2, scaledWidth - 4, scaledHeight - 4));
+                                    selectedRectangles.Add(new Rectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4));
                                 }
                             }
                         }
@@ -100,7 +100,7 @@ namespace InfoPanel.Drawing
 
                                     if (displayItem.Selected)
                                     {
-                                        selectedRectangles.Add(new Rectangle(x + 2, y + 2, scaledWidth - 4, scaledHeight - 4));
+                                        selectedRectangles.Add(new Rectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4));
                                     }
                                 }
                             }
@@ -157,7 +157,33 @@ namespace InfoPanel.Drawing
                 {
                     foreach (var rectangle in selectedRectangles)
                     {
-                        g.DrawRectangle(Color.FromArgb(255, 0, 255, 0), 2, rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
+                        // pen width
+                        int penWidth = 2;
+
+                        // Clamp the top-left corner of the rectangle, considering the pen thickness
+                        var x = Math.Clamp(rectangle.X, penWidth / 2, profile.Width - penWidth / 2);
+                        var y = Math.Clamp(rectangle.Y, penWidth / 2, profile.Height - penWidth / 2);
+
+                        // Adjust width and height to ensure the rectangle stays within bounds
+                        var width = rectangle.Width - (x - rectangle.X);
+                        var height = rectangle.Height - (y - rectangle.Y);
+
+                        // Ensure the width does not extend beyond the right boundary, considering the pen thickness
+                        if (x + width + penWidth / 2 > profile.Width)
+                        {
+                            width = profile.Width - x - penWidth / 2;
+                        }
+
+                        // Ensure the height does not extend beyond the bottom boundary, considering the pen thickness
+                        if (y + height + penWidth / 2 > profile.Height)
+                        {
+                            height = profile.Height - y - penWidth / 2;
+                        }
+
+                        // draw the rectangle
+                        g.DrawRectangle(Color.FromArgb(255, 0, 255, 0), penWidth,
+                            x, y,
+                            width, height);
                     }
                 }
             }
