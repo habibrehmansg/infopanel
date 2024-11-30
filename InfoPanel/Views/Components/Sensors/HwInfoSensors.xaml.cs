@@ -1,13 +1,11 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.ViewModels.Components;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Forms;
 using System.Windows.Input;
-using static HWHash;
+using System.Windows.Threading;
 
 namespace InfoPanel.Views.Components
 {
@@ -18,7 +16,7 @@ namespace InfoPanel.Views.Components
     {
         private HwInfoSensorsVM ViewModel { get; set; }
 
-        private Timer? UpdateTimer;
+        private readonly DispatcherTimer UpdateTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
         public HwInfoSensors()
         {
@@ -29,16 +27,6 @@ namespace InfoPanel.Views.Components
 
             Loaded += HwInfoSensors_Loaded;
             Unloaded += HwInfoSensors_Unloaded;
-
-            UpdateTimer = new Timer
-            {
-                Interval = 1000
-            };
-            UpdateTimer.Tick += Timer_Tick;
-
-            //tick once
-            Timer_Tick(this, null);
-            UpdateTimer.Start();
         }
 
         private void HwInfoSensors_Loaded(object sender, RoutedEventArgs e)
@@ -46,6 +34,8 @@ namespace InfoPanel.Views.Components
             if (UpdateTimer != null)
             {
                 UpdateTimer.Tick += Timer_Tick;
+
+                Timer_Tick(this, new EventArgs());
                 UpdateTimer.Start();
             }
         }
@@ -61,13 +51,58 @@ namespace InfoPanel.Views.Components
 
         private void Timer_Tick(object? sender, EventArgs e)
         {
-            if (TreeViewInfo.Items.Count > 0)
+            LoadSensorTree();
+            UpdateSensorDetails();
+        }
+
+        private void LoadSensorTree()
+        {
+            foreach (HWHash.HWINFO_HASH hash in HWHash.GetOrderedList())
             {
-                UpdateSensorDetails();
+                //construct parent
+                var parent = ViewModel.FindParentSensorItem(hash.ParentUniqueID);
+                if(parent == null)
+                {
+                    parent = new TreeItem(hash.ParentUniqueID, hash.ParentNameDefault);
+                    ViewModel.Sensors.Add(parent);
+                }
+
+                TreeItem? group;
+                if(hash.ReadingType != "Other" && hash.ReadingType != "None")
+                {
+                    //construct type grouping
+                    group = parent.FindChild(hash.ReadingType);
+
+                    if (group == null)
+                    {
+                        group = new TreeItem(hash.ReadingType, hash.ReadingType);
+                        parent.Children.Add(group);
+                    }
+                } else
+                {
+                    group = parent;
+                }
+
+                //construct actual sensor
+                var child = group.FindChild(hash.UniqueID);
+                if (child == null)
+                {
+                    child = new HwInfoSensorItem(hash.UniqueID, hash.NameDefault, hash.ParentID, hash.ParentInstance, hash.SensorID);
+                    group.Children.Add(child);
+                }
+            }
+        }
+
+        private void TreeViewInfo_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (e.NewValue is HwInfoSensorItem sensorItem)
+            {
+                ViewModel.SelectedItem = sensorItem;
+                sensorItem.Update();
             }
             else
             {
-                LoadHWiNFO();
+                ViewModel.SelectedItem = null;
             }
         }
 
@@ -78,132 +113,22 @@ namespace InfoPanel.Views.Components
             e.Handled = true;
         }
 
-        public void LoadHWiNFO()
-        {
-            TreeViewInfo.Items.Clear();
-
-            var parentDict = new Dictionary<ulong, TreeViewItem>();
-
-            foreach (HWINFO_HASH hash in HWHash.GetOrderedList())
-            {
-                TreeViewItem item;
-
-                if (parentDict.ContainsKey(hash.ParentUniqueID))
-                {
-                    item = parentDict[hash.ParentUniqueID];
-                }
-                else
-                {
-                    item = new TreeViewItem();
-                    item.SetResourceReference(TreeViewItem.ForegroundProperty, "TextFillColorSecondaryBrush");
-                    item.Focusable = false;
-                    item.Header = hash.ParentNameCustom;
-                    item.Tag = (hash.ParentID, hash.ParentInstance);
-                    item.Selected += delegate (object sender, RoutedEventArgs e)
-                    {
-                        TreeViewItem selectedItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-                        Trace.WriteLine("Selected " + selectedItem.Tag);
-
-                        if (selectedItem.Parent is TreeViewItem)
-                        {
-                            GridActions.IsEnabled = true;
-                        }
-                        else
-                        {
-                            GridActions.IsEnabled = false;
-                        }
-                    };
-
-                    parentDict.Add(hash.ParentUniqueID, item);
-                    TreeViewInfo.Items.Add(item);
-                }
-
-                TreeViewItem subItem = new TreeViewItem();
-                subItem.SetResourceReference(TreeViewItem.ForegroundProperty, "TextFillColorTertiaryBrush");
-                subItem.Focusable = false;
-                subItem.PreviewMouseDown += SubItem_PreviewMouseDown;
-                subItem.Header = hash.NameCustom;
-                subItem.Tag = hash.SensorID;
-
-                bool added = false;
-                foreach (TreeViewItem group in item.Items)
-                {
-                    if (group.Name == hash.ReadingType)
-                    {
-                        group.Items.Add(subItem);
-                        added = true;
-                        break;
-                    }
-                }
-
-                if (!added)
-                {
-                    TreeViewItem group = new();
-                    group.SetResourceReference(TreeViewItem.ForegroundProperty, "TextFillColorTertiaryBrush");
-                    group.Focusable = false;
-                    group.Name = hash.ReadingType;
-                    group.Header = hash.ReadingType;
-                    group.Tag = item.Tag;
-                    group.Items.Add(subItem);
-                    item.Items.Add(group);
-                }
-            }
-        }
-
-        private void SubItem_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-        {
-            ((TreeViewItem)sender).IsSelected = true;
-        }
-
         private void UpdateSensorDetails()
         {
-            TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-
-            if (selectedTreeViewItem != null && selectedTreeViewItem.Tag is UInt32 && selectedTreeViewItem?.Parent is TreeViewItem parentItem)
-            {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new SensorDisplayItem()
-                {
-                    Name = (string)selectedTreeViewItem.Header,
-                    Id = parentTag.Item1,
-                    Instance = parentTag.Item2,
-                    EntryId = (UInt32)selectedTreeViewItem.Tag,
-                };
-
-                ViewModel.SensorName = item.Name;
-                ViewModel.Id = item.Id;
-                ViewModel.Instance = item.Instance;
-                ViewModel.EntryId = item.EntryId;
-                ViewModel.SensorValue = item.EvaluateText();
-            }
-            else
-            {
-                ViewModel.SensorName = "No sensor selected";
-                ViewModel.Id = 0;
-                ViewModel.Instance = 0;
-                ViewModel.EntryId = 0;
-                ViewModel.SensorValue = String.Empty;
-            }
-        }
-
-        private void TreeViewInfo_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
-        {
-            UpdateSensorDetails();
+            ViewModel.SelectedItem?.Update();
         }
 
         private void ButtonSelect_Click(object sender, RoutedEventArgs e)
         {
-            TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if(ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new SensorDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (UInt32)selectedTreeViewItem.Tag)
+                var item = new SensorDisplayItem(sensorItem.Name, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId)
                 {
-                    SensorName = (string)selectedTreeViewItem.Header,
                     Font = SharedModel.Instance.SelectedProfile!.Font,
                     FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
                     Color = SharedModel.Instance.SelectedProfile!.Color,
-                    Unit = " " + HWHash.SENSORHASH[(parentTag.Item1, parentTag.Item2, (UInt32)selectedTreeViewItem.Tag)].Unit
+                    SensorName = sensorItem.Name,
+                    Unit = sensorItem.Unit,
                 };
 
                 SharedModel.Instance.AddDisplayItem(item);
@@ -213,49 +138,44 @@ namespace InfoPanel.Views.Components
 
         private void ButtonReplace_Click(object sender, RoutedEventArgs e)
         {
-            TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-
-                if (SharedModel.Instance.SelectedItem is SensorDisplayItem sensorDisplayItem)
+                if (SharedModel.Instance.SelectedItem is SensorDisplayItem displayItem)
                 {
-                    sensorDisplayItem.Name = (string)selectedTreeViewItem.Header;
-                    sensorDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
-                    sensorDisplayItem.SensorType = SensorType.HwInfo;
-                    sensorDisplayItem.Id = parentTag.Item1;
-                    sensorDisplayItem.Instance = parentTag.Item2;
-                    sensorDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;
-                    sensorDisplayItem.Unit = " " + HWHash.SENSORHASH[(parentTag.Item1, parentTag.Item2, (UInt32)selectedTreeViewItem.Tag)].Unit;
+                    displayItem.Name = sensorItem.Name;
+                    displayItem.SensorName = sensorItem.Name;
+                    displayItem.SensorType = SensorType.HwInfo;
+                    displayItem.Id = sensorItem.ParentId;
+                    displayItem.Instance = sensorItem.ParentInstance;
+                    displayItem.EntryId = sensorItem.SensorId;
+                    displayItem.Unit = sensorItem.Unit;
                 }
                 else if (SharedModel.Instance.SelectedItem is ChartDisplayItem chartDisplayItem)
                 {
-                    chartDisplayItem.Name = (string)selectedTreeViewItem.Header;
-                    chartDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
+                    chartDisplayItem.Name = sensorItem.Name;
+                    chartDisplayItem.SensorName = sensorItem.Name;
                     chartDisplayItem.SensorType = SensorType.HwInfo;
-                    chartDisplayItem.Id = parentTag.Item1;
-                    chartDisplayItem.Instance = parentTag.Item2;
-                    chartDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;
+                    chartDisplayItem.Id = sensorItem.ParentId;
+                    chartDisplayItem.Instance = sensorItem.ParentInstance;
+                    chartDisplayItem.EntryId = sensorItem.SensorId;
                 }
                 else if (SharedModel.Instance.SelectedItem is GaugeDisplayItem gaugeDisplayItem)
                 {
-                    gaugeDisplayItem.Name = (string)selectedTreeViewItem.Header;
-                    gaugeDisplayItem.SensorName = (string)selectedTreeViewItem.Header;
+                    gaugeDisplayItem.Name = sensorItem.Name;
+                    gaugeDisplayItem.SensorName = sensorItem.Name;
                     gaugeDisplayItem.SensorType = SensorType.HwInfo;
-                    gaugeDisplayItem.Id = parentTag.Item1;
-                    gaugeDisplayItem.Instance = parentTag.Item2;
-                    gaugeDisplayItem.EntryId = (UInt32)selectedTreeViewItem.Tag;
+                    gaugeDisplayItem.Id = sensorItem.ParentId;
+                    gaugeDisplayItem.Instance = sensorItem.ParentInstance;
+                    gaugeDisplayItem.EntryId = sensorItem.SensorId;
                 }
             }
         }
 
         private void ButtonAddGraph_Click(object sender, RoutedEventArgs e)
         {
-            TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new GraphDisplayItem((string)selectedTreeViewItem.Header, GraphDisplayItem.GraphType.LINE, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                var item = new GraphDisplayItem(sensorItem.Name, GraphDisplayItem.GraphType.LINE, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -263,11 +183,9 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddBar_Click(object sender, RoutedEventArgs e)
         {
-            TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new BarDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                var item = new BarDisplayItem(sensorItem.Name, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -275,11 +193,9 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddDonut_Click(object sender, RoutedEventArgs e)
         {
-            TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new DonutDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                var item = new DonutDisplayItem(sensorItem.Name, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -287,17 +203,15 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddCustom_Click(object sender, RoutedEventArgs e)
         {
-            TreeViewItem? selectedTreeViewItem = (TreeViewItem)TreeViewInfo.SelectedItem;
-            if (selectedTreeViewItem?.Parent is TreeViewItem parentItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
             {
-                var parentTag = ((UInt32, UInt32))parentItem.Tag;
-                var item = new GaugeDisplayItem((string)selectedTreeViewItem.Header, parentTag.Item1, parentTag.Item2, (uint)selectedTreeViewItem.Tag);
+                var item = new GaugeDisplayItem(sensorItem.Name, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
         }
 
-        private void ImageLogo_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        private void ImageLogo_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             Process.Start("explorer.exe", "https://www.hwinfo.com/");
         }

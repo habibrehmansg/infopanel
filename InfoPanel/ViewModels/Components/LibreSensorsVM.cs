@@ -1,36 +1,35 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using LibreHardwareMonitor.Hardware;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Collections.ObjectModel;
 
 namespace InfoPanel.ViewModels.Components
 {
-    public class LibreSensorsVM : ObservableObject
+    public partial class LibreSensorsVM : ObservableObject
     {
-        private string _sensorName = "No sensor selected";
+        public ObservableCollection<TreeItem> Sensors { get; set; }
 
-        public string SensorName
+        private LibreSensorItem? selectedItem;
+        public LibreSensorItem? SelectedItem
         {
-            get { return _sensorName; }
-            set { SetProperty(ref _sensorName, value); }
+            get { return selectedItem; }
+            set { SetProperty(ref selectedItem, value); }
         }
 
-        private string _sensorValue = string.Empty;
-        public string SensorValue
+        public LibreSensorsVM()
         {
-            get { return _sensorValue; }
-            set { SetProperty(ref _sensorValue, value); }
+            Sensors = [];
         }
 
-        private string _sensorId = string.Empty;
-        public string SensorId
+        public TreeItem? FindParentSensorItem(object id)
         {
-            get { return _sensorId; }
-            set { SetProperty(ref _sensorId, value); }
+            foreach (var sensorItem in Sensors)
+            {
+                if (sensorItem.Id.Equals(id))
+                {
+                    return sensorItem;
+                }
+            }
+
+            return null;
         }
     }
 }

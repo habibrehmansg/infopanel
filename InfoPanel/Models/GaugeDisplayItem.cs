@@ -24,13 +24,13 @@ namespace InfoPanel.Models
             }
         }
 
-        private SensorType _sensorIdType = SensorType.HwInfo;
+        private SensorType _sensorType = SensorType.HwInfo;
         public SensorType SensorType
         {
-            get { return _sensorIdType; }
+            get { return _sensorType; }
             set
             {
-                SetProperty(ref _sensorIdType, value);
+                SetProperty(ref _sensorType, value);
             }
         }
 

@@ -1,49 +1,35 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Collections.ObjectModel;
 
 namespace InfoPanel.ViewModels.Components
 {
     public class HwInfoSensorsVM : ObservableObject
     {
-        private string _sensorName = "No sensor selected";
+        public ObservableCollection<TreeItem> Sensors { get; set; }
 
-        public string SensorName
+        private HwInfoSensorItem? selectedItem;
+        public HwInfoSensorItem? SelectedItem
         {
-            get { return _sensorName; }
-            set { SetProperty(ref _sensorName, value); }
+            get { return selectedItem; }
+            set { SetProperty(ref selectedItem, value); }
         }
 
-        private string _sensorValue = string.Empty;
-        public string SensorValue
+        public HwInfoSensorsVM()
         {
-            get { return _sensorValue; }
-            set { SetProperty(ref _sensorValue, value); }
+            Sensors = [];
         }
 
-        private uint _id = 0;
-        public uint Id
+        public TreeItem? FindParentSensorItem(object id)
         {
-            get { return _id; }
-            set { SetProperty(ref _id, value); }
-        }
+            foreach(var sensorItem in Sensors)
+            {
+               if(sensorItem.Id.Equals(id))
+                {
+                    return sensorItem;
+                }
+            }
 
-        private uint _instance = 0;
-        public uint Instance
-        {
-            get { return _instance; }
-            set { SetProperty(ref _instance, value); }
-        }
-
-        private uint _entryId = 0;
-        public uint EntryId
-        {
-            get { return _entryId; }
-            set { SetProperty(ref _entryId, value); }
+            return null;
         }
     }
 }
