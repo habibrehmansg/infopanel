@@ -54,7 +54,7 @@
                             </StackPanel>
                             <Border Background="#1D1D1D"  CornerRadius="0,4,4,4"
                                     Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=HwInfoAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <components:HWiNFOSensors Margin="0,0,0,10"/>
+                            <components:HwInfoSensors Margin="0,0,0,10"/>
                             </Border>
                         </Grid>
                     </TabItem>

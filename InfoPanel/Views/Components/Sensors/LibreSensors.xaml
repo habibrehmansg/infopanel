@@ -108,34 +108,7 @@
                 <Separator/>
             </StackPanel>
 
-            <Grid Grid.Row="7" Margin="0,10,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="auto"/>
-                </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Column="0" Margin="0,5,0,0"
-      VerticalAlignment="Center" HorizontalAlignment="Left">
-<Bold FontWeight="Medium" FontSize="20">Non-Sensor Items</Bold>
-                </TextBlock>
-
-                <ui:Button x:Name="ButtonNewText" Grid.Column="1" Appearance="Success" Icon="Text16" Click="ButtonNewText_Click"
-                         ToolTip="Add a customisable text item" Margin="0,0,0,0">
-                </ui:Button>
-                <ui:Button x:Name="ButtonNewImage" Grid.Column="2" Appearance="Success" Icon="Image20" Click="ButtonNewImage_Click"
-                         ToolTip="Add an image item" Margin="10,0,0,0">
-                </ui:Button>
-                <ui:Button x:Name="ButtonNewClock" Grid.Column="3" Appearance="Success" Icon="Clock20" Click="ButtonNewClock_Click"
-                       ToolTip="Add a dynamic clock item" Margin="10,0,0,0">
-                </ui:Button>
-                <ui:Button x:Name="ButtonNewCalendar" Grid.Column="4" Appearance="Success" Icon="Calendar3Day20" Click="ButtonNewCalendar_Click"
-                       ToolTip="Add a dynamic calendar item" Margin="10,0,0,0">
-                </ui:Button>
-
-            </Grid>
+            <components:CommonActions Margin="0,10,0,0"/>
         </StackPanel>
     </Grid>
 </UserControl>

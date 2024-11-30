@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace InfoPanel.Views.Components
+namespace InfoPanel.ViewModels.Components
 {
     public class LibreSensorsVM : ObservableObject
     {
@@ -19,14 +19,14 @@ namespace InfoPanel.Views.Components
             set { SetProperty(ref _sensorName, value); }
         }
 
-        private string _sensorValue = String.Empty;
+        private string _sensorValue = string.Empty;
         public string SensorValue
         {
             get { return _sensorValue; }
             set { SetProperty(ref _sensorValue, value); }
         }
 
-        private string _sensorId = String.Empty;
+        private string _sensorId = string.Empty;
         public string SensorId
         {
             get { return _sensorId; }

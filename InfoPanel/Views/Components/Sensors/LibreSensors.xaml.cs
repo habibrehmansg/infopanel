@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Monitors;
+using InfoPanel.ViewModels.Components;
 using LibreHardwareMonitor.Hardware;
 using System;
 using System.Collections.Generic;
@@ -8,7 +9,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Forms;
 using System.Windows.Input;
-using static HWHash;
 
 namespace InfoPanel.Views.Components
 {
@@ -28,8 +28,8 @@ namespace InfoPanel.Views.Components
 
             InitializeComponent();
 
-            Loaded += HWiNFOSensors_Loaded;
-            Unloaded += HWiNFOSensors_Unloaded;
+            Loaded += LibreSensors_Loaded;
+            Unloaded += LibreSensors_Unloaded;
 
             UpdateTimer = new Timer
             {
@@ -42,7 +42,7 @@ namespace InfoPanel.Views.Components
             UpdateTimer.Start();
         }
 
-        private void HWiNFOSensors_Loaded(object sender, RoutedEventArgs e)
+        private void LibreSensors_Loaded(object sender, RoutedEventArgs e)
         {
             if (UpdateTimer != null)
             {
@@ -51,7 +51,7 @@ namespace InfoPanel.Views.Components
             }
         }
 
-        private void HWiNFOSensors_Unloaded(object sender, RoutedEventArgs e)
+        private void LibreSensors_Unloaded(object sender, RoutedEventArgs e)
         {
             if (UpdateTimer != null)
             {
@@ -68,7 +68,7 @@ namespace InfoPanel.Views.Components
             }
             else
             {
-                LoadHWiNFO();
+                LoadLibreSensors();
             }
         }
 
@@ -79,7 +79,7 @@ namespace InfoPanel.Views.Components
             e.Handled = true;
         }
 
-        public void LoadHWiNFO()
+        public void LoadLibreSensors()
         {
             TreeViewInfo.Items.Clear();
 
@@ -282,66 +282,6 @@ namespace InfoPanel.Views.Components
             {
                 var item = new GaugeDisplayItem((string)selectedTreeViewItem.Header, identifier.ToString());
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
-            }
-        }
-
-        private void ButtonNewText_Click(object sender, RoutedEventArgs e)
-        {
-            var item = new TextDisplayItem("Custom Text")
-            {
-                Font = SharedModel.Instance.SelectedProfile!.Font,
-                FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
-                Color = SharedModel.Instance.SelectedProfile!.Color
-            };
-            SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
-
-        }
-
-        private void ButtonNewImage_Click(object sender, RoutedEventArgs e)
-        {
-            if (SharedModel.Instance.SelectedProfile != null)
-            {
-                var item = new ImageDisplayItem("Image", SharedModel.Instance.SelectedProfile.Guid);
-                SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
-            }
-        }
-
-        private void ButtonNewClock_Click(object sender, RoutedEventArgs e)
-        {
-            var item = new ClockDisplayItem("Clock")
-            {
-                Font = SharedModel.Instance.SelectedProfile!.Font,
-                FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
-                Color = SharedModel.Instance.SelectedProfile!.Color
-
-            };
-            SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
-        }
-
-        private void ButtonNewCalendar_Click(object sender, RoutedEventArgs e)
-        {
-            var item = new CalendarDisplayItem("Calendar")
-            {
-                Font = SharedModel.Instance.SelectedProfile!.Font,
-                FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
-                Color = SharedModel.Instance.SelectedProfile!.Color
-            };
-            SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
-
-        }
-
-        private void ButtonDuplicate_Click(object sender, RoutedEventArgs e)
-        {
-            if (SharedModel.Instance.SelectedItem != null)
-            {
-                var item = (DisplayItem)SharedModel.Instance.SelectedItem.Clone();
-                SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.PushDisplayItemTo(item, SharedModel.Instance.SelectedItem);
                 SharedModel.Instance.SelectedItem = item;
             }
         }

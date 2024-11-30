@@ -6,9 +6,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace InfoPanel.Views.Components
+namespace InfoPanel.ViewModels.Components
 {
-    public class HWiNFOVM : ObservableObject
+    public class HwInfoSensorsVM : ObservableObject
     {
         private string _sensorName = "No sensor selected";
 
@@ -18,29 +18,29 @@ namespace InfoPanel.Views.Components
             set { SetProperty(ref _sensorName, value); }
         }
 
-        private string _sensorValue = String.Empty;
+        private string _sensorValue = string.Empty;
         public string SensorValue
         {
             get { return _sensorValue; }
             set { SetProperty(ref _sensorValue, value); }
         }
 
-        private UInt32 _id = 0;
-        public UInt32 Id
+        private uint _id = 0;
+        public uint Id
         {
             get { return _id; }
             set { SetProperty(ref _id, value); }
         }
 
-        private UInt32 _instance = 0;
-        public UInt32 Instance
+        private uint _instance = 0;
+        public uint Instance
         {
             get { return _instance; }
             set { SetProperty(ref _instance, value); }
         }
 
-        private UInt32 _entryId = 0;
-        public UInt32 EntryId
+        private uint _entryId = 0;
+        public uint EntryId
         {
             get { return _entryId; }
             set { SetProperty(ref _entryId, value); }
