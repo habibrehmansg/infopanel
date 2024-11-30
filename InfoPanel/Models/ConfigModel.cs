@@ -138,7 +138,8 @@ namespace InfoPanel
                 taskDefinition.Settings.AllowHardTerminate = true;
                 taskDefinition.Settings.ExecutionTimeLimit = TimeSpan.Zero;
 
-                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition, TaskCreation.CreateOrUpdate, null);
+                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition, TaskCreation.CreateOrUpdate,
+                    System.Security.Principal.WindowsIdentity.GetCurrent().Name, null, TaskLogonType.InteractiveToken);
             }
         }
 
