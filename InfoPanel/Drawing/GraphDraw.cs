@@ -388,8 +388,10 @@ namespace InfoPanel.Drawing
                                 GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
                             }
 
-                            g.FillDonut(frameRect.X, frameRect.Y, frameRect.Width / 2, donutDisplayItem.Thickness,
-                                donutDisplayItem.Rotation, (int)value, donutDisplayItem.Color,
+                            var offset = donutDisplayItem.Frame ? 1 : 0;
+
+                            g.FillDonut(frameRect.X + offset, frameRect.Y + offset, (frameRect.Width / 2) - offset, donutDisplayItem.Thickness,
+                                 donutDisplayItem.Rotation, (int)value, donutDisplayItem.Color,
                                 donutDisplayItem.Background ? donutDisplayItem.BackgroundColor : "#00000000",
                                 donutDisplayItem.Frame ? 1 : 0, donutDisplayItem.FrameColor);
 
