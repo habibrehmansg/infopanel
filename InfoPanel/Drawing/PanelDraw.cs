@@ -1,11 +1,9 @@
 ﻿using InfoPanel.Models;
-using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
-using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
 {

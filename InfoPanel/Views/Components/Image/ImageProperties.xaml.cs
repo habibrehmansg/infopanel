@@ -1,5 +1,4 @@
-﻿using ImageMagick;
-using InfoPanel.Models;
+﻿using InfoPanel.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -61,65 +60,65 @@ namespace InfoPanel.Views.Components
             }
         }
 
-        public static void OptimizeGif(string filePath, int optimalFrameCount = 60)
-        {
-            // Load the GIF as a collection
-            var collection = new MagickImageCollection(filePath);
+        //public static void OptimizeGif(string filePath, int optimalFrameCount = 60)
+        //{
+        //    // Load the GIF as a collection
+        //    var collection = new MagickImageCollection(filePath);
 
-            if (collection.Count > 1)
-            {
-                // Optimize the GIF by coalescing
-                collection.Coalesce();
+        //    if (collection.Count > 1)
+        //    {
+        //        // Optimize the GIF by coalescing
+        //        collection.Coalesce();
 
-                // Calculate the original total duration of the GIF
-                int originalTotalDuration = 0;
-                foreach (var frame in collection)
-                {
-                    originalTotalDuration += (int)frame.AnimationDelay;
-                }
+        //        // Calculate the original total duration of the GIF
+        //        int originalTotalDuration = 0;
+        //        foreach (var frame in collection)
+        //        {
+        //            originalTotalDuration += (int)frame.AnimationDelay;
+        //        }
 
-                if (collection.Count > optimalFrameCount)
-                {
-                    // Calculate frames to keep
-                    List<int> framesToKeep = new List<int>();
-                    int frameCount = collection.Count;
-                    int step = frameCount / optimalFrameCount;
+        //        if (collection.Count > optimalFrameCount)
+        //        {
+        //            // Calculate frames to keep
+        //            List<int> framesToKeep = new List<int>();
+        //            int frameCount = collection.Count;
+        //            int step = frameCount / optimalFrameCount;
 
-                    // Add the indices of the frames to keep
-                    for (int i = 0; i < frameCount; i += step)
-                    {
-                        framesToKeep.Add(i);
-                    }
+        //            // Add the indices of the frames to keep
+        //            for (int i = 0; i < frameCount; i += step)
+        //            {
+        //                framesToKeep.Add(i);
+        //            }
 
-                    // Ensure exactly 30 frames are kept
-                    while (framesToKeep.Count > optimalFrameCount)
-                    {
-                        framesToKeep.RemoveAt(framesToKeep.Count - 1);
-                    }
+        //            // Ensure exactly 30 frames are kept
+        //            while (framesToKeep.Count > optimalFrameCount)
+        //            {
+        //                framesToKeep.RemoveAt(framesToKeep.Count - 1);
+        //            }
 
-                    // Remove frames not in the framesToKeep list
-                    for (int i = collection.Count - 1; i >= 0; i--)
-                    {
-                        if (!framesToKeep.Contains(i))
-                        {
-                            collection.RemoveAt(i);
-                        }
-                    }
+        //            // Remove frames not in the framesToKeep list
+        //            for (int i = collection.Count - 1; i >= 0; i--)
+        //            {
+        //                if (!framesToKeep.Contains(i))
+        //                {
+        //                    collection.RemoveAt(i);
+        //                }
+        //            }
 
-                    // Calculate new delay to keep the same total animation duration
-                    int newTotalDuration = originalTotalDuration;
-                    int newDelay = newTotalDuration / collection.Count;
+        //            // Calculate new delay to keep the same total animation duration
+        //            int newTotalDuration = originalTotalDuration;
+        //            int newDelay = newTotalDuration / collection.Count;
 
-                    // Adjust the delay of each remaining frame
-                    foreach (var frame in collection)
-                    {
-                        frame.AnimationDelay = (uint)newDelay;
-                    }
-                }
+        //            // Adjust the delay of each remaining frame
+        //            foreach (var frame in collection)
+        //            {
+        //                frame.AnimationDelay = (uint)newDelay;
+        //            }
+        //        }
 
-                // Write the optimized GIF back to the file
-                collection.Write(filePath);
-            }
-        }
+        //        // Write the optimized GIF back to the file
+        //        collection.Write(filePath);
+        //    }
+        //}
     }
 }

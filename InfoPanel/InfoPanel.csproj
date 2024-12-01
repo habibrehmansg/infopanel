@@ -18,7 +18,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\TuringSmartScreenLib.Helpers.SkiaSharp\TuringSmartScreenLib.Helpers.SkiaSharp.csproj" />
 		<ProjectReference Include="..\TuringSmartScreenLib\TuringSmartScreenLib.csproj" />
 		<Reference Include="d2dlibexport">
 			<HintPath>Lib\d2dlibexport.dll</HintPath>
@@ -138,13 +137,11 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-		<PackageReference Include="AnimatedImage.Wpf" Version="1.0.4" />
+		<PackageReference Include="AnimatedImage.Wpf" Version="2.0.0" />
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
-		<PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.2.0" />
-		<PackageReference Include="Magick.NET.SystemDrawing" Version="8.0.2" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
 		<PackageReference Include="Microsoft.AppCenter.Analytics" Version="5.0.2" />
 		<PackageReference Include="Microsoft.AppCenter.Crashes" Version="5.0.2" />

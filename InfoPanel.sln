@@ -7,8 +7,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel", "InfoPanel\Info
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TuringSmartScreenLib", "TuringSmartScreenLib\TuringSmartScreenLib.csproj", "{CBFDFBE0-0D45-41E5-B753-5FC13F66224F}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TuringSmartScreenLib.Helpers.SkiaSharp", "TuringSmartScreenLib.Helpers.SkiaSharp\TuringSmartScreenLib.Helpers.SkiaSharp.csproj", "{A64DB95F-8BBE-4EF7-B605-C297535F4989}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel.Contract", "InfoPanel.Contract\InfoPanel.Contract.csproj", "{336F46A0-A634-4B65-9082-DA9C00313658}"
 EndProject
 Global
@@ -45,18 +43,6 @@ Global
 		{CBFDFBE0-0D45-41E5-B753-5FC13F66224F}.Release|x64.Build.0 = Release|Any CPU
 		{CBFDFBE0-0D45-41E5-B753-5FC13F66224F}.Release|x86.ActiveCfg = Release|Any CPU
 		{CBFDFBE0-0D45-41E5-B753-5FC13F66224F}.Release|x86.Build.0 = Release|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Debug|x64.Build.0 = Debug|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Debug|x86.Build.0 = Debug|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Release|x64.ActiveCfg = Release|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Release|x64.Build.0 = Release|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Release|x86.ActiveCfg = Release|Any CPU
-		{A64DB95F-8BBE-4EF7-B605-C297535F4989}.Release|x86.Build.0 = Release|Any CPU
 		{336F46A0-A634-4B65-9082-DA9C00313658}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{336F46A0-A634-4B65-9082-DA9C00313658}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{336F46A0-A634-4B65-9082-DA9C00313658}.Debug|x64.ActiveCfg = Debug|Any CPU

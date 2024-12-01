@@ -1,15 +1,9 @@
 ﻿using InfoPanel.Models;
-using InfoPanel.Views.Components;
-using SkiaSharp;
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Numerics;
-using System.Windows.Ink;
-using System.Windows.Media.Media3D;
 using unvell.D2DLib;
 using unvell.D2DLib.WinForm;
-using WinRT;
 
 namespace InfoPanel.Drawing
 {
