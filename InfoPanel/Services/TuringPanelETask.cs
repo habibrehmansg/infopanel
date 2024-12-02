@@ -1,23 +1,23 @@
 ﻿using InfoPanel.Extensions;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
-
 using TuringSmartScreenLib;
 
 namespace InfoPanel
 {
-    public sealed class TuringPanelATask: BackgroundTask
+    public sealed class TuringPanelETask: BackgroundTask
     {
-        private static readonly Lazy<TuringPanelATask> _instance = new(() => new TuringPanelATask());
-        public static TuringPanelATask Instance => _instance.Value;
+        private static readonly Lazy<TuringPanelETask> _instance = new(() => new TuringPanelETask());
+        public static TuringPanelETask Instance => _instance.Value;
 
         private Bitmap? LCD_BUFFER;
 
-        private TuringPanelATask()
+        private TuringPanelETask()
         { }
 
         public static byte[] BitmapToRgb16(Bitmap bitmap)
@@ -35,14 +35,14 @@ namespace InfoPanel
         {
             if (LCD_BUFFER == null)
             {
-                var rotation = ConfigModel.Instance.Settings.TuringPanelARotation;
+                var rotation = ConfigModel.Instance.Settings.TuringPanelERotation;
                 if (rotation != ViewModels.LCD_ROTATION.RotateNone)
                 {
                     var rotateFlipType = (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), rotation);
                     bitmap.RotateFlip(rotateFlipType);
                 }
 
-                LCD_BUFFER = BitmapExtensions.EnsureBitmapSize(bitmap, 480, 320);
+                LCD_BUFFER = BitmapExtensions.EnsureBitmapSize(bitmap, 480, 1920);
 
                 if (rotation != ViewModels.LCD_ROTATION.RotateNone)
                 {
@@ -52,67 +52,32 @@ namespace InfoPanel
             }
         }
 
-
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
-            using var screen = ScreenFactory.Create(ScreenType.RevisionA, ConfigModel.Instance.Settings.TuringPanelAPort);
+            using var screen = ScreenFactory.Create(ScreenType.RevisionE, ConfigModel.Instance.Settings.TuringPanelEPort);
 
             if (screen == null)
             {
-                Trace.WriteLine("TuringPanelA: Screen not found");
-                ConfigModel.Instance.Settings.TuringPanelA = false;
+                Trace.WriteLine("TuringPanelE: Screen not found");
+                ConfigModel.Instance.Settings.TuringPanelE = false;
                 return;
             }
 
-            Trace.WriteLine("TuringPanelA: Screen found");
-            var watch = new Stopwatch();
+            Trace.WriteLine("TuringPanelE: Screen found");
 
             screen.SetBrightness(100);
-            screen.Orientation = ScreenOrientation.Landscape;
-           
+            screen.Orientation = TuringSmartScreenLib.ScreenOrientation.Landscape;
 
             try
             {
-                Bitmap? sentBitmap = null;
-
                 while (!token.IsCancellationRequested)
                 {
                     var bitmap = LCD_BUFFER;
-                    //var stopwatch = new Stopwatch();
 
                     if (bitmap != null)
                     {
-                        if (sentBitmap == null)
-                        {
-                            sentBitmap = bitmap;
-                            screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
-                        }
-                        else
-                        {
-                            //stopwatch.Start();
-                            var sectors = BitmapExtensions.GetChangedSectors(sentBitmap, bitmap, 16, 16);
-                            //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
-                            //stopwatch.Restart();
-
-                            if (sectors.Count > 480)
-                            {
-                                screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
-                            }
-                            else
-                            {
-                                foreach (var sector in sectors)
-                                {
-                                   screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, 16, 16));
-                                }
-                            }
-
-                            //stopwatch.Stop();
-                            //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
-
-                            sentBitmap = bitmap;
-                        }
-
+                        screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
                         LCD_BUFFER = null;
                     }
                     else
@@ -132,10 +97,9 @@ namespace InfoPanel
             finally
             {
                 Trace.WriteLine("Resetting screen");
+                screen.Clear();
                 screen.Reset();
             }
         }
-
-      
     }
-}
+ }

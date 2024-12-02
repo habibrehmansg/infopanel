@@ -1,15 +1,11 @@
 ﻿using LibreHardwareMonitor.Hardware;
-using Microsoft.VisualBasic.Devices;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System;
 using System.Diagnostics;
-
-using Computer = LibreHardwareMonitor.Hardware.Computer;
-using System.Timers;
-using System.Threading;
 using System.Linq;
-using System.Diagnostics.Tracing;
+using System.Threading;
+using System.Timers;
+using Computer = LibreHardwareMonitor.Hardware.Computer;
 namespace InfoPanel.Monitors
 {
     public class UpdateVisitor : IVisitor
@@ -96,7 +92,7 @@ namespace InfoPanel.Monitors
             polling = false;
         }
 
-        private static UpdateVisitor updateVisitor = new();
+        private static readonly UpdateVisitor _updateVisitor = new();
 
         public static void Monitor()
         {
@@ -105,7 +101,7 @@ namespace InfoPanel.Monitors
                 return;
             }
 
-            Computer.Accept(updateVisitor);
+            Computer.Accept(_updateVisitor);
            
             foreach (IHardware hardware in Computer.Hardware)
             {

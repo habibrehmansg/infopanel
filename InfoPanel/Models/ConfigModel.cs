@@ -153,33 +153,44 @@ namespace InfoPanel
             {
                 if (Settings.BeadaPanel)
                 {
-                    BeadaPanelTask.Instance.Start();
+                    BeadaPanelTask.Instance.StartAsync();
                 }
                 else
                 {
-                    BeadaPanelTask.Instance.Stop();
+                    BeadaPanelTask.Instance.StopAsync();
                 }
             }
             else if (e.PropertyName == nameof(Settings.TuringPanelA))
             {
                 if (Settings.TuringPanelA)
                 {
-                    TuringPanelATask.Instance.Start();
+                    TuringPanelATask.Instance.StartAsync();
                 }
                 else
                 {
-                    TuringPanelATask.Instance.Stop();
+                    TuringPanelATask.Instance.StopAsync();
                 }
             }
             else if (e.PropertyName == nameof(Settings.TuringPanelC))
             {
                 if (Settings.TuringPanelC)
                 {
-                    TuringPanelCTask.Instance.Start();
+                    TuringPanelCTask.Instance.StartAsync();
                 }
                 else
                 {
-                    TuringPanelCTask.Instance.Stop();
+                    TuringPanelCTask.Instance.StopAsync();
+                }
+            }
+            else if (e.PropertyName == nameof(Settings.TuringPanelE))
+            {
+                if (Settings.TuringPanelE)
+                {
+                    TuringPanelETask.Instance.StartAsync();
+                }
+                else
+                {
+                    TuringPanelETask.Instance.StopAsync();
                 }
             }
             else if (e.PropertyName == nameof(Settings.WebServer))
@@ -268,6 +279,10 @@ namespace InfoPanel
                                 Settings.TuringPanelCProfile = settings.TuringPanelCProfile;
                                 Settings.TuringPanelCPort = settings.TuringPanelCPort;
                                 Settings.TuringPanelCRotation = settings.TuringPanelCRotation;
+                                Settings.TuringPanelE = settings.TuringPanelE;
+                                Settings.TuringPanelEProfile = settings.TuringPanelEProfile;
+                                Settings.TuringPanelEPort = settings.TuringPanelEPort;
+                                Settings.TuringPanelERotation = settings.TuringPanelERotation;
                             }
 
                             ValidateStartup();

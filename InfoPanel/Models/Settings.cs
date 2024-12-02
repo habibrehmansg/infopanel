@@ -117,6 +117,37 @@ namespace InfoPanel.Models
             }
         }
 
+        private bool _turingPanelE = false;
+        public bool TuringPanelE
+        {
+            get { return _turingPanelE; }
+            set { SetProperty(ref _turingPanelE, value); }
+        }
+
+        private string _turingPanelEPort = String.Empty;
+        public string TuringPanelEPort
+        {
+            get { return _turingPanelEPort; }
+            set { SetProperty(ref _turingPanelEPort, value); }
+        }
+
+        private Guid _turingPanelEProfile = Guid.Empty;
+        public Guid TuringPanelEProfile
+        {
+            get { return _turingPanelEProfile; }
+            set { SetProperty(ref _turingPanelEProfile, value); }
+        }
+
+        private LCD_ROTATION _turingPanelERotation = LCD_ROTATION.Rotate90FlipNone;
+        public LCD_ROTATION TuringPanelERotation
+        {
+            get { return _turingPanelERotation; }
+            set
+            {
+                SetProperty(ref _turingPanelERotation, value);
+            }
+        }
+
         private bool _webServer = false;
         public bool WebServer
         {

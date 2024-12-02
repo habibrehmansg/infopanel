@@ -10,107 +10,88 @@ using System.Threading.Tasks;
 
 namespace InfoPanel
 {
-    public sealed class PanelDrawTask
+    public sealed class PanelDrawTask : BackgroundTask
     {
-        private static volatile PanelDrawTask? _instance;
+        private static readonly Lazy<PanelDrawTask> _instance = new(() => new PanelDrawTask());
         private static readonly object _lock = new object();
 
-        private CancellationTokenSource _cts;
-        private Task _task;
-
         private static ConcurrentDictionary<Guid, LockedBitmap> BitmapCache = new ConcurrentDictionary<Guid, LockedBitmap>();
-
+        public static PanelDrawTask Instance => _instance.Value;
         private PanelDrawTask() { }
 
-        public static PanelDrawTask Instance
+        protected override async Task DoWorkAsync(CancellationToken token)
         {
-            get
-            {
-                if (_instance != null) return _instance;
-                lock (_lock)
-                {
-                    if (_instance == null)
-                    {
-                        _instance = new PanelDrawTask();
-                    }
-                }
-                return _instance;
-            }
-        }
+            await Task.Delay(300, token);
 
-        public bool IsRunning()
-        {
-            return _cts != null && !_cts.IsCancellationRequested;
-        }
-
-        public void Start()
-        {
-            if (_task != null && !_task.IsCompleted) return;
-            _cts = new CancellationTokenSource();
-            _task = Task.Factory.StartNew(() => DoWork(_cts.Token), _cts.Token);
-        }
-
-        public void Stop()
-        {
-            _cts.Cancel();
-        }
-
-        private void DoWork(CancellationToken token)
-        {
             int currentFps = 0;
             long currentFrameTime = 0;
 
             var watch = new Stopwatch();
             watch.Start();
 
-            while (!token.IsCancellationRequested)
+            try
             {
-                var frameRateLimit = ConfigModel.Instance.Settings.TargetFrameRate;
-                var optimalFrameTime = 1000.0 / frameRateLimit; // Target frame time in ms
-
-                // Start timing the frame
-                var frameStart = watch.ElapsedMilliseconds;
-
-                var profiles = ConfigModel.Instance.GetProfilesCopy();
-
-                profiles.ForEach(profile =>
+                while (!token.IsCancellationRequested)
                 {
-                    if ((profile.Active && !profile.Direct2DMode)
-                    || (ConfigModel.Instance.Settings.BeadaPanel && ConfigModel.Instance.Settings.BeadaPanelProfile == profile.Guid)
-                    || ConfigModel.Instance.Settings.TuringPanelA && ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid
-                    || ConfigModel.Instance.Settings.TuringPanelC && ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid)
+                    try
                     {
-                        var lockedBitmap = Render(profile);
+                        var frameRateLimit = ConfigModel.Instance.Settings.TargetFrameRate;
+                        var optimalFrameTime = 1000.0 / frameRateLimit; // Target frame time in ms
 
-                        lockedBitmap.Access(bitmap =>
+                        // Start timing the frame
+                        var frameStart = watch.ElapsedMilliseconds;
+
+                        var profiles = ConfigModel.Instance.GetProfilesCopy();
+
+                        profiles.ForEach(profile =>
                         {
-                            SharedModel.Instance.SetPanelBitmap(profile, bitmap);
+                            if ((profile.Active && !profile.Direct2DMode)
+                            || (ConfigModel.Instance.Settings.BeadaPanel && ConfigModel.Instance.Settings.BeadaPanelProfile == profile.Guid)
+                            || ConfigModel.Instance.Settings.TuringPanelA && ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid
+                            || ConfigModel.Instance.Settings.TuringPanelC && ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid
+                            || ConfigModel.Instance.Settings.TuringPanelE && ConfigModel.Instance.Settings.TuringPanelEProfile == profile.Guid)
+                            {
+                                var lockedBitmap = Render(profile);
+
+                                lockedBitmap.Access(bitmap =>
+                                {
+                                    SharedModel.Instance.SetPanelBitmap(profile, bitmap);
+                                });
+                            }
                         });
+
+                        // Calculate the elapsed time for this frame
+                        var frameTime = watch.ElapsedMilliseconds - frameStart;
+
+                        // Update FPS and average frame time once per second
+                        currentFrameTime += frameTime;
+                        currentFps++;
+
+                        if (frameStart >= 1000)
+                        {
+                            SharedModel.Instance.CurrentFrameRate = currentFps;
+                            SharedModel.Instance.CurrentFrameTime = currentFrameTime / currentFps;
+
+                            currentFps = 0;
+                            currentFrameTime = 0;
+                            watch.Restart();
+                        }
+
+                        // Delay to maintain target frame rate
+                        var delay = optimalFrameTime - frameTime;
+                        if (delay > 0) await Task.Delay((int)delay, token);
+
+                        //Trace.WriteLine($"Draw Execution Time: {frameTime} ms");
                     }
-                });
-
-                // Calculate the elapsed time for this frame
-                var frameTime = watch.ElapsedMilliseconds - frameStart;
-
-                // Update FPS and average frame time once per second
-                currentFrameTime += frameTime;
-                currentFps++;
-
-                if (frameStart >= 1000)
-                {
-                    SharedModel.Instance.CurrentFrameRate = currentFps;
-                    SharedModel.Instance.CurrentFrameTime = currentFrameTime / currentFps;
-
-                    currentFps = 0;
-                    currentFrameTime = 0;
-                    watch.Restart();
+                    catch (Exception ex)
+                    {
+                        Trace.WriteLine($"Exception during task execution: {ex.Message}");
+                    }
                 }
-
-                // Delay to maintain target frame rate
-                var delay = optimalFrameTime - frameTime;
-                if (delay > 0) Thread.Sleep((int)delay);
-
-                //Trace.WriteLine($"Draw Execution Time: {frameTime} ms");
+            }
+            catch (TaskCanceledException)
+            {
+                Trace.WriteLine("Task cancelled");
             }
         }
 

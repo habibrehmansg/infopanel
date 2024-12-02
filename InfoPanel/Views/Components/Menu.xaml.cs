@@ -19,13 +19,10 @@ namespace InfoPanel.Views.Components
             InitializeComponent();
         }
 
-        private void MenuItemExit_Click(object sender, RoutedEventArgs e)
+        private async void MenuItemExit_Click(object sender, RoutedEventArgs e)
         {
-            PanelDrawTask.Instance.Stop();
-            GraphDrawTask.Instance.Stop();
-            BeadaPanelTask.Instance.Stop();
-
-            Task.Delay(500).Wait();
+            await PanelDrawTask.Instance.StopAsync();
+            await BeadaPanelTask.Instance.StopAsync();
 
             Environment.Exit(0);
         }

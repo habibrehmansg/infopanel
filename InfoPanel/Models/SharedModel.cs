@@ -315,6 +315,14 @@ namespace InfoPanel
                 }
             }
 
+            if (ConfigModel.Instance.Settings.TuringPanelE)
+            {
+                if (ConfigModel.Instance.Settings.TuringPanelEProfile == profile.Guid)
+                {
+                    TuringPanelETask.Instance.UpdateBuffer(bitmap);
+                }
+            }
+
             if (ConfigModel.Instance.Settings.WebServer)
             {
                 WebServerTask.Instance.UpdateBuffer(profile, bitmap);

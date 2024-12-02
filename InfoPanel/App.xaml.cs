@@ -101,7 +101,7 @@ namespace InfoPanel
         [DllImport("user32.dll")]
         static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             //WpfSingleInstance.Make("InfoPanel");
 
@@ -181,8 +181,7 @@ namespace InfoPanel
             HWHash.SetDelay(100);
             HWHash.Launch();
 
-            PanelDrawTask.Instance.Start();
-            //GraphDrawTask.Instance.Start();
+            await PanelDrawTask.Instance.StartAsync();
 
             StartPanels();
 
@@ -216,17 +215,22 @@ namespace InfoPanel
         {
             if (ConfigModel.Instance.Settings.BeadaPanel)
             {
-                BeadaPanelTask.Instance.Start();
+                BeadaPanelTask.Instance.StartAsync();
             }
 
             if (ConfigModel.Instance.Settings.TuringPanelA)
             {
-                TuringPanelATask.Instance.Start();
+                TuringPanelATask.Instance.StartAsync();
             }
 
             if (ConfigModel.Instance.Settings.TuringPanelC)
             {
-                TuringPanelCTask.Instance.Start();
+                TuringPanelCTask.Instance.StartAsync();
+            }
+
+            if (ConfigModel.Instance.Settings.TuringPanelE)
+            {
+                TuringPanelETask.Instance.StartAsync();
             }
 
             if (ConfigModel.Instance.Settings.WebServer)
@@ -235,31 +239,24 @@ namespace InfoPanel
             }
         }
 
-        private void App_Exit(object sender, ExitEventArgs e)
+        private async Task StopPanels()
         {
-            ShutDown();
+            await PanelDrawTask.Instance.StopAsync();
+            await BeadaPanelTask.Instance.StopAsync();
+            //TuringPanelATask.Instance.Stop()?.Wait();
+            //TuringPanelCTask.Instance.Stop()?.Wait();
+            //TuringPanelETask.Instance.Stop()?.Wait();
+
+        }
+
+        private async void App_Exit(object sender, ExitEventArgs e)
+        {
+
         }
 
         void MenuExit_Click(object? sender, EventArgs e)
         {
-            Shutdown();
-            Environment.Exit(0);
-        }
-
-        private void ShutDown()
-        {
-            PanelDrawTask.Instance.Stop();
-            GraphDrawTask.Instance.Stop();
-            StopPanels();
-            Task.Delay(500).Wait();
-        }
-
-        private void StopPanels()
-        {
-            BeadaPanelTask.Instance.Stop();
-            TuringPanelATask.Instance.Stop();
-            TuringPanelCTask.Instance.Stop();
-            WebServerTask.Instance.Stop();
+            MainWindow.Close();
         }
 
         public void ShowDesign(Profile profile)

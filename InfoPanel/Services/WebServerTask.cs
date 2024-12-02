@@ -12,6 +12,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Windows.UI.WebUI;
 
 namespace InfoPanel
 {
@@ -182,13 +183,12 @@ namespace InfoPanel
             _task = _webApplication.RunAsync();
         }
 
-        public void Stop()
+
+        public Task? Stop()
         {
-            if (_cts != null)
-            {
-                _cts.Cancel();
-                _webApplication?.StopAsync();
-            }
+            _cts?.Cancel(); 
+            _webApplication?.StopAsync();
+            return _task;
         }
 
     }
