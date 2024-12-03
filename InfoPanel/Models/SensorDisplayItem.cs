@@ -11,11 +11,6 @@ namespace InfoPanel.Models
     [Serializable]
     public class SensorDisplayItem : TextDisplayItem, ISensorItem
     {
-        public enum SensorValueType
-        {
-            NOW, MIN, MAX, AVERAGE
-        }
-
         private string _sensorName = string.Empty;
         public string SensorName
         {
@@ -255,12 +250,14 @@ namespace InfoPanel.Models
 
         public SensorDisplayItem(string name, string libreSensorId) : base(name)
         {
+            SensorName = name;
             SensorType = SensorType.Libre;
             LibreSensorId = libreSensorId;
         }
 
         public SensorDisplayItem(string name, uint id, uint instance, uint entryId) : base(name)
         {
+            SensorName = name;
             SensorType = SensorType.HwInfo;
             Id = id;
             Instance = instance;

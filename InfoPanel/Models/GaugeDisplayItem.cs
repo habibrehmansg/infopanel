@@ -74,6 +74,16 @@ namespace InfoPanel.Models
             }
         }
 
+        public SensorValueType _valueType = SensorValueType.NOW;
+        public SensorValueType ValueType
+        {
+            get { return _valueType; }
+            set
+            {
+                SetProperty(ref _valueType, value);
+            }
+        }
+
         private double _minValue = 0.0;
         public double MinValue
         {
@@ -167,12 +177,14 @@ namespace InfoPanel.Models
 
         public GaugeDisplayItem(string name, string libreSensorId) : base(name)
         {
+            SensorName = name;
             SensorType = SensorType.Libre;
             LibreSensorId = libreSensorId;
         }
 
         public GaugeDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name)
         {
+            SensorName = name;
             SensorType = SensorType.HwInfo;
             Id = id;
             Instance = instance;

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -15,7 +16,7 @@ namespace InfoPanel.Views.Components
         public ImageProperties()
         {
             InitializeComponent();
-        }
+         }
 
         private void ButtonSelect_Click(object sender, RoutedEventArgs e)
         {

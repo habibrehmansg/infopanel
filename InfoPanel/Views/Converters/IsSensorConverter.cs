@@ -14,7 +14,10 @@ namespace InfoPanel
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            return SharedModel.Instance.SelectedItem is SensorDisplayItem || SharedModel.Instance.SelectedItem is ChartDisplayItem || SharedModel.Instance.SelectedItem is GaugeDisplayItem;
+            return SharedModel.Instance.SelectedItem is SensorDisplayItem 
+                || SharedModel.Instance.SelectedItem is ChartDisplayItem 
+                || SharedModel.Instance.SelectedItem is GaugeDisplayItem 
+                || SharedModel.Instance.SelectedItem is SensorImageDisplayItem;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

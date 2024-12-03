@@ -57,6 +57,15 @@ namespace InfoPanel.Drawing
                             break;
                         }
                     case ImageDisplayItem imageDisplayItem:
+                        if(imageDisplayItem is SensorImageDisplayItem sensorImageDisplayItem)
+                        {
+                            if (!sensorImageDisplayItem.ShouldShow())
+                            {
+                                break;
+                            }
+                            
+                        }
+
                         if (imageDisplayItem.CalculatedPath != null)
                         {
                             var cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);

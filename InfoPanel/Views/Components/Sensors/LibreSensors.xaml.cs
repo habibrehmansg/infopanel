@@ -125,7 +125,6 @@ namespace InfoPanel.Views.Components
                     Font = SharedModel.Instance.SelectedProfile!.Font,
                     FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
                     Color = SharedModel.Instance.SelectedProfile!.Color,
-                    SensorName = sensorItem.Name,
                     Unit = sensorItem.Unit,
                 };
 
@@ -159,6 +158,13 @@ namespace InfoPanel.Views.Components
                     gaugeDisplayItem.SensorName = sensorItem.Name;
                     gaugeDisplayItem.SensorType = Models.SensorType.Libre;
                     gaugeDisplayItem.LibreSensorId = sensorItem.SensorId;
+                }
+                else if (SharedModel.Instance.SelectedItem is SensorImageDisplayItem sensorImageDisplayItem)
+                {
+                    sensorImageDisplayItem.Name = sensorItem.Name;
+                    sensorImageDisplayItem.SensorName = sensorItem.Name;
+                    sensorImageDisplayItem.SensorType = Models.SensorType.Libre;
+                    sensorImageDisplayItem.LibreSensorId = sensorItem.SensorId;
                 }
             }
         }
@@ -198,6 +204,16 @@ namespace InfoPanel.Views.Components
             if (ViewModel.SelectedItem is LibreSensorItem sensorItem)
             {
                 var item = new GaugeDisplayItem(sensorItem.Name, sensorItem.SensorId);
+                SharedModel.Instance.AddDisplayItem(item);
+                SharedModel.Instance.SelectedItem = item;
+            }
+        }
+
+        private void ButtonAddSensorImage_Click(object sender, RoutedEventArgs e)
+        {
+            if (ViewModel.SelectedItem is LibreSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
+            {
+                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile.Guid, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }

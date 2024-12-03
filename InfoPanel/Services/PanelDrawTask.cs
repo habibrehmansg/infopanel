@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -41,23 +42,22 @@ namespace InfoPanel
                         // Start timing the frame
                         var frameStart = watch.ElapsedMilliseconds;
 
-                        var profiles = ConfigModel.Instance.GetProfilesCopy();
+                        var profiles = ConfigModel.Instance.GetProfilesCopy().Where(profile =>
+                        (profile.Active && !profile.Direct2DMode)
+                        || (ConfigModel.Instance.Settings.BeadaPanel && ConfigModel.Instance.Settings.BeadaPanelProfile == profile.Guid)
+                        || (ConfigModel.Instance.Settings.TuringPanelA && ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid)
+                        || (ConfigModel.Instance.Settings.TuringPanelC && ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid)
+                        || (ConfigModel.Instance.Settings.TuringPanelE && ConfigModel.Instance.Settings.TuringPanelEProfile == profile.Guid))
+                            .ToList();
 
-                        profiles.ForEach(profile =>
-                        {
-                            if ((profile.Active && !profile.Direct2DMode)
-                            || (ConfigModel.Instance.Settings.BeadaPanel && ConfigModel.Instance.Settings.BeadaPanelProfile == profile.Guid)
-                            || ConfigModel.Instance.Settings.TuringPanelA && ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid
-                            || ConfigModel.Instance.Settings.TuringPanelC && ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid
-                            || ConfigModel.Instance.Settings.TuringPanelE && ConfigModel.Instance.Settings.TuringPanelEProfile == profile.Guid)
+                         Parallel.ForEach(profiles, profile =>
+                         {
+                            var lockedBitmap = Render(profile);
+
+                            lockedBitmap.Access(bitmap =>
                             {
-                                var lockedBitmap = Render(profile);
-
-                                lockedBitmap.Access(bitmap =>
-                                {
-                                    SharedModel.Instance.SetPanelBitmap(profile, bitmap);
-                                });
-                            }
+                                SharedModel.Instance.SetPanelBitmap(profile, bitmap);
+                            });
                         });
 
                         // Calculate the elapsed time for this frame
