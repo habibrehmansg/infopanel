@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace InfoPanel.Extensions
@@ -49,9 +50,9 @@ namespace InfoPanel.Extensions
             }
         }
 
-        public static List<Point> GetChangedSectors(Bitmap bitmap1, Bitmap bitmap2, int sectorWidth, int sectorHeight)
+        public static List<Rectangle> GetChangedSectors(Bitmap bitmap1, Bitmap bitmap2, int sectorWidth, int sectorHeight, int maxSectorWidth = 32, int maxSectorHeight = 32)
         {
-            List<Point> changedSectors = [];
+            List<Rectangle> changedSectors = new List<Rectangle>();
 
             // Ensure bitmaps are the same size
             if (bitmap1.Width != bitmap2.Width || bitmap1.Height != bitmap2.Height)
@@ -62,16 +63,20 @@ namespace InfoPanel.Extensions
             int width = bitmap1.Width;
             int height = bitmap1.Height;
 
-            // Lock bitmap data for faster access
             BitmapData data1 = bitmap1.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, bitmap1.PixelFormat);
             BitmapData data2 = bitmap2.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, bitmap2.PixelFormat);
 
             try
             {
-                // Parallelize the outer loop for performance on large images
-                Parallel.For(0, height / sectorHeight + 1, (sectorY) =>
+                int sectorCountX = (width + sectorWidth - 1) / sectorWidth;
+                int sectorCountY = (height + sectorHeight - 1) / sectorHeight;
+
+                // Store sector changes in a concurrent collection for thread safety
+                var localChanges = new List<Rectangle>[sectorCountY];
+                Parallel.For(0, sectorCountY, sectorY =>
                 {
-                    for (int sectorX = 0; sectorX < width / sectorWidth + 1; sectorX++)
+                    localChanges[sectorY] = new List<Rectangle>();
+                    for (int sectorX = 0; sectorX < sectorCountX; sectorX++)
                     {
                         int startX = sectorX * sectorWidth;
                         int startY = sectorY * sectorHeight;
@@ -80,13 +85,16 @@ namespace InfoPanel.Extensions
 
                         if (!AreSectorsEqual(data1, data2, startX, startY, currentSectorWidth, currentSectorHeight, width))
                         {
-                            lock (changedSectors) // Ensure thread safety when adding to the list
-                            {
-                                changedSectors.Add(new Point(startX, startY));
-                            }
+                            localChanges[sectorY].Add(new Rectangle(startX, startY, currentSectorWidth, currentSectorHeight));
                         }
                     }
                 });
+
+                // Combine results from all threads
+                foreach (var sectorList in localChanges)
+                {
+                    changedSectors.AddRange(sectorList);
+                }
             }
             finally
             {
@@ -94,7 +102,7 @@ namespace InfoPanel.Extensions
                 bitmap2.UnlockBits(data2);
             }
 
-            return changedSectors;
+            return CombineRectangles(changedSectors, maxSectorWidth, maxSectorHeight);
         }
 
         public static unsafe bool AreSectorsEqual(BitmapData data1, BitmapData data2, int startX, int startY, int sectorWidth, int sectorHeight, int bitmapWidth)
@@ -105,17 +113,13 @@ namespace InfoPanel.Extensions
 
             for (int y = startY; y < startY + sectorHeight; y++)
             {
-                for (int x = startX; x < startX + sectorWidth; x++)
+                byte* row1 = ptr1 + y * data1.Stride;
+                byte* row2 = ptr2 + y * data2.Stride;
+                for (int x = startX * bytesPerPixel; x < (startX + sectorWidth) * bytesPerPixel; x++)
                 {
-                    byte* pixel1 = ptr1 + (y * data1.Stride) + (x * bytesPerPixel);
-                    byte* pixel2 = ptr2 + (y * data2.Stride) + (x * bytesPerPixel);
-
-                    for (int i = 0; i < bytesPerPixel; i++)
+                    if (row1[x] != row2[x])
                     {
-                        if (pixel1[i] != pixel2[i])
-                        {
-                            return false;
-                        }
+                        return false;
                     }
                 }
             }
@@ -131,6 +135,72 @@ namespace InfoPanel.Extensions
             Bitmap sectorBitmap = sourceBitmap.Clone(sector, sourceBitmap.PixelFormat);
 
             return sectorBitmap;
+        }
+
+        public static List<Rectangle> CombineRectangles(List<Rectangle> rectangles, int maxWidth, int maxHeight)
+        {
+            if (rectangles == null || rectangles.Count == 0)
+                return new List<Rectangle>();
+
+            // Sort rectangles to make processing predictable
+            rectangles = rectangles.OrderBy(r => r.Y).ThenBy(r => r.X).ToList();
+
+            List<Rectangle> result = new List<Rectangle>();
+
+            // Loop through rectangles and merge them
+            while (rectangles.Count > 0)
+            {
+                var current = rectangles[0];
+                rectangles.RemoveAt(0);
+
+                bool merged;
+                do
+                {
+                    merged = false;
+
+                    for (int i = 0; i < rectangles.Count; i++)
+                    {
+                        var candidate = rectangles[i];
+
+                        if (AreAdjacent(current, candidate) && CanMerge(current, candidate, maxWidth, maxHeight))
+                        {
+                            current = Merge(current, candidate);
+                            rectangles.RemoveAt(i);
+                            merged = true;
+                            break;
+                        }
+                    }
+                } while (merged);
+
+                result.Add(current);
+            }
+
+            return result;
+        }
+
+        private static bool AreAdjacent(Rectangle a, Rectangle b)
+        {
+            // Check if rectangles share an edge or corner
+            return a.IntersectsWith(b) ||
+                   a.Right == b.Left && (a.Bottom >= b.Top && a.Top <= b.Bottom) || // Adjacent on the left-right
+                   a.Bottom == b.Top && (a.Right >= b.Left && a.Left <= b.Right);  // Adjacent on the top-bottom
+        }
+
+        private static bool CanMerge(Rectangle a, Rectangle b, int maxWidth, int maxHeight)
+        {
+            var merged = Merge(a, b);
+            return merged.Width <= maxWidth && merged.Height <= maxHeight;
+        }
+
+        private static Rectangle Merge(Rectangle a, Rectangle b)
+        {
+            // Create a rectangle that encompasses both a and b
+            int x = Math.Min(a.X, b.X);
+            int y = Math.Min(a.Y, b.Y);
+            int right = Math.Max(a.Right, b.Right);
+            int bottom = Math.Max(a.Bottom, b.Bottom);
+
+            return new Rectangle(x, y, right - x, bottom - y);
         }
     }
 }

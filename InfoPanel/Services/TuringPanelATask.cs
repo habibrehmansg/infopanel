@@ -56,21 +56,24 @@ namespace InfoPanel
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
-            using var screen = ScreenFactory.Create(ScreenType.RevisionA, ConfigModel.Instance.Settings.TuringPanelAPort);
-
-            if (screen == null)
+            try
             {
-                Trace.WriteLine("TuringPanelA: Screen not found");
-                ConfigModel.Instance.Settings.TuringPanelA = false;
-                return;
+                using var screen = ScreenFactory.Create(ScreenType.RevisionA, ConfigModel.Instance.Settings.TuringPanelAPort);
+
+                if (screen == null)
+                {
+                    Trace.WriteLine("TuringPanelA: Screen not found");
+                    return;
             }
 
-            Trace.WriteLine("TuringPanelA: Screen found");
-            var watch = new Stopwatch();
+            Trace.WriteLine("TuringPanelA: Screen found"); 
+            SharedModel.Instance.TuringPanelARunning = true;
+                //var watch = new Stopwatch();
 
-            screen.SetBrightness(100);
             screen.Orientation = ScreenOrientation.Landscape;
-           
+
+            var brightness = ConfigModel.Instance.Settings.TuringPanelABrightness;
+            screen.SetBrightness((byte)brightness);
 
             try
             {
@@ -78,6 +81,12 @@ namespace InfoPanel
 
                 while (!token.IsCancellationRequested)
                 {
+                    if (brightness != ConfigModel.Instance.Settings.TuringPanelABrightness)
+                    {
+                        brightness = ConfigModel.Instance.Settings.TuringPanelABrightness;
+                        screen.SetBrightness((byte)brightness);
+                    }
+
                     var bitmap = LCD_BUFFER;
                     //var stopwatch = new Stopwatch();
 
@@ -91,11 +100,11 @@ namespace InfoPanel
                         else
                         {
                             //stopwatch.Start();
-                            var sectors = BitmapExtensions.GetChangedSectors(sentBitmap, bitmap, 16, 16);
+                            var sectors = BitmapExtensions.GetChangedSectors(sentBitmap, bitmap, 10, 10, 20, 80);
                             //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
                             //stopwatch.Restart();
 
-                            if (sectors.Count > 480)
+                            if (sectors.Count > 76)
                             {
                                 screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
                             }
@@ -103,7 +112,7 @@ namespace InfoPanel
                             {
                                 foreach (var sector in sectors)
                                 {
-                                   screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, 16, 16));
+                                   screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
                                 }
                             }
 
@@ -134,8 +143,15 @@ namespace InfoPanel
                 Trace.WriteLine("Resetting screen");
                 screen.Reset();
             }
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLine("TuringPanelA: Init error");
+            }
+            finally
+            {
+                SharedModel.Instance.TuringPanelARunning = false;
+            }
         }
-
-      
     }
 }

@@ -190,9 +190,9 @@ namespace InfoPanel.Views.Windows
         {
             await PanelDrawTask.Instance.StopAsync();
             await BeadaPanelTask.Instance.StopAsync();
-            //TuringPanelATask.Instance.Stop()?.Wait();
+            await TuringPanelATask.Instance.StopAsync();
             await TuringPanelCTask.Instance.StopAsync();
-            //TuringPanelETask.Instance.Stop()?.Wait();
+            await TuringPanelETask.Instance.StopAsync();
 
         }
     }

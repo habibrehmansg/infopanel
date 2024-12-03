@@ -55,6 +55,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private int _beadaPanelBrightness = 100;
+        public int BeadaPanelBrightness
+        {
+            get { return _beadaPanelBrightness; }
+            set
+            {
+                SetProperty(ref _beadaPanelBrightness, value);
+            }
+        }
+
         private bool _turingPanelA = false;
         public bool TuringPanelA
         {
@@ -83,6 +93,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _turingPanelARotation, value);
+            }
+        }
+
+        private int _turingPanelABrightness = 100;
+        public int TuringPanelABrightness
+        {
+            get { return _turingPanelABrightness; }
+            set
+            {
+                SetProperty(ref _turingPanelABrightness, value);
             }
         }
 
@@ -117,6 +137,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private int _turingPanelCBrightness = 100;
+        public int TuringPanelCBrightness
+        {
+            get { return _turingPanelCBrightness; }
+            set
+            {
+                SetProperty(ref _turingPanelCBrightness, value);
+            }
+        }
+
         private bool _turingPanelE = false;
         public bool TuringPanelE
         {
@@ -145,6 +175,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _turingPanelERotation, value);
+            }
+        }
+
+        private int _turingPanelEBrightness = 100;
+        public int TuringPanelEBrightness
+        {
+            get { return _turingPanelEBrightness; }
+            set
+            {
+                SetProperty(ref _turingPanelEBrightness, value);
             }
         }
 

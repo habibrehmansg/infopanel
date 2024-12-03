@@ -16,7 +16,7 @@ namespace InfoPanel.Drawing
             stopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = false)
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true)
         {
             g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
 

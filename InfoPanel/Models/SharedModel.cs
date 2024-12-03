@@ -39,6 +39,50 @@ namespace InfoPanel
             }
         }
 
+        private bool _beadaPanelRunning = false;
+
+        public bool BeadaPanelRunning
+        {
+            get { return _beadaPanelRunning; }
+            set
+            {
+                SetProperty(ref _beadaPanelRunning, value);
+            }
+        }
+
+        private bool _turingPanelARunning = false;
+
+        public bool TuringPanelARunning
+        {
+            get { return _turingPanelARunning; }
+            set
+            {
+                SetProperty(ref _turingPanelARunning, value);
+            }
+        }
+
+        private bool _turingPanelCRunning = false;
+
+        public bool TuringPanelCRunning
+        {
+            get { return _turingPanelCRunning; }
+            set
+            {
+                SetProperty(ref _turingPanelCRunning, value);
+            }
+        }
+
+        private bool _turingPanelERunning = false;
+
+        public bool TuringPanelERunning
+        {
+            get { return _turingPanelERunning; }
+            set
+            {
+                SetProperty(ref _turingPanelERunning, value);
+            }
+        }
+
         private int _currentFrameRate = 0;
         public int CurrentFrameRate
         {

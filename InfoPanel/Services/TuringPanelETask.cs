@@ -10,7 +10,7 @@ using TuringSmartScreenLib;
 
 namespace InfoPanel
 {
-    public sealed class TuringPanelETask: BackgroundTask
+    public sealed class TuringPanelETask : BackgroundTask
     {
         private static readonly Lazy<TuringPanelETask> _instance = new(() => new TuringPanelETask());
         public static TuringPanelETask Instance => _instance.Value;
@@ -55,51 +55,113 @@ namespace InfoPanel
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
-            using var screen = ScreenFactory.Create(ScreenType.RevisionE, ConfigModel.Instance.Settings.TuringPanelEPort);
-
-            if (screen == null)
-            {
-                Trace.WriteLine("TuringPanelE: Screen not found");
-                ConfigModel.Instance.Settings.TuringPanelE = false;
-                return;
-            }
-
-            Trace.WriteLine("TuringPanelE: Screen found");
-
-            screen.SetBrightness(100);
-            screen.Orientation = TuringSmartScreenLib.ScreenOrientation.Landscape;
-
             try
             {
-                while (!token.IsCancellationRequested)
-                {
-                    var bitmap = LCD_BUFFER;
+                using var screen = ScreenFactory.Create(ScreenType.RevisionE, ConfigModel.Instance.Settings.TuringPanelEPort);
 
-                    if (bitmap != null)
+                if (screen == null)
+                {
+                    Trace.WriteLine("TuringPanelE: Screen not found");
+                    return;
+                }
+
+                Trace.WriteLine("TuringPanelE: Screen found");
+                SharedModel.Instance.TuringPanelERunning = true;
+
+                var brightness = ConfigModel.Instance.Settings.TuringPanelEBrightness;
+                screen.SetBrightness((byte)brightness);
+
+                try
+                {
+                    Bitmap? sentBitmap = null;
+
+                    while (!token.IsCancellationRequested)
                     {
-                        screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
-                        LCD_BUFFER = null;
-                    }
-                    else
-                    {
-                        await Task.Delay(50, token);
+                        if (brightness != ConfigModel.Instance.Settings.TuringPanelEBrightness)
+                        {
+                            brightness = ConfigModel.Instance.Settings.TuringPanelEBrightness;
+                            screen.SetBrightness((byte)brightness);
+                        }
+
+                        var bitmap = LCD_BUFFER;
+                        //var stopwatch = new Stopwatch();
+
+                        if (bitmap != null)
+                        {
+                            if (sentBitmap == null || !screen.CanDisplayPartialBitmap())
+                            {
+                                sentBitmap = bitmap;
+                                //stopwatch.Start();
+                                screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
+                                //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
+                                //stopwatch.Stop();
+                            }
+                            else
+                            {
+                                //stopwatch.Start();
+                                var sectors = BitmapExtensions.GetChangedSectors(sentBitmap, bitmap, 20, 20, 160, 100);
+                                //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
+                                //stopwatch.Restart();
+
+                                if (sectors.Count > 46)
+                                {
+                                    //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
+                                    screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                                }
+                                else
+                                {
+                                    if (sectors.Count > 0)
+                                    {
+                                        foreach (var sector in sectors)
+                                        {
+                                            screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
+                                        }
+
+                                        //stopwatch.Stop();
+                                        //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
+                                    }
+                                    else
+                                    {
+                                        //Trace.WriteLine("No changes to update");
+                                        await Task.Delay(50, token);
+                                    }
+                                }
+
+                                sentBitmap = bitmap;
+                            }
+
+                            LCD_BUFFER = null;
+                        }
+                        else
+                        {
+                            //Trace.WriteLine("No image to update");
+                            await Task.Delay(50, token);
+                        }
                     }
                 }
+                catch (TaskCanceledException)
+                {
+                    Trace.WriteLine("Task cancelled");
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"Exception during work: {ex.Message}");
+                }
+                finally
+                {
+                    Trace.WriteLine("Resetting screen");
+                    screen.Clear();
+                    screen.Reset();
+                }
             }
-            catch (TaskCanceledException)
+            catch (Exception e)
             {
-                Trace.WriteLine("Task cancelled");
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"Exception during work: {ex.Message}");
+                Trace.WriteLine("TuringPanelE: Init error");
             }
             finally
             {
-                Trace.WriteLine("Resetting screen");
-                screen.Clear();
-                screen.Reset();
+                SharedModel.Instance.TuringPanelERunning = false;
             }
         }
     }
- }
+}
