@@ -86,6 +86,11 @@ namespace InfoPanel.Views.Pages
                 {
                     ConfigModel.Instance.Settings.TuringPanelCProfile = ConfigModel.Instance.Profiles.First().Guid;
                 }
+
+                if (ConfigModel.Instance.Settings.TuringPanelEProfile == Guid.Empty)
+                {
+                    ConfigModel.Instance.Settings.TuringPanelEProfile = ConfigModel.Instance.Profiles.First().Guid;
+                }
             };
 
             debounceTimer.Elapsed += DebounceTimer_Elapsed;
@@ -124,6 +129,7 @@ namespace InfoPanel.Views.Pages
                 }
                 ComboBoxTuringPanelAPort.SelectedValue = ConfigModel.Instance.Settings.TuringPanelAPort;
                 ComboBoxTuringPanelCPort.SelectedValue = ConfigModel.Instance.Settings.TuringPanelCPort;
+                ComboBoxTuringPanelEPort.SelectedValue = ConfigModel.Instance.Settings.TuringPanelEPort;
             }));
           
         }
@@ -164,6 +170,14 @@ namespace InfoPanel.Views.Pages
             if(ComboBoxTuringPanelCPort.SelectedValue is string value)
             {
                 ConfigModel.Instance.Settings.TuringPanelCPort = value;
+            }
+        }
+
+        private void ComboBoxTuringPanelEPort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ComboBoxTuringPanelEPort.SelectedValue is string value)
+            {
+                ConfigModel.Instance.Settings.TuringPanelEPort = value;
             }
         }
     }

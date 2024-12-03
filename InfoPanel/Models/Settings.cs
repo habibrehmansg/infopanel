@@ -55,6 +55,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private int _beadaPanelBrightness = 100;
+        public int BeadaPanelBrightness
+        {
+            get { return _beadaPanelBrightness; }
+            set
+            {
+                SetProperty(ref _beadaPanelBrightness, value);
+            }
+        }
+
         private bool _turingPanelA = false;
         public bool TuringPanelA
         {
@@ -86,6 +96,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private int _turingPanelABrightness = 100;
+        public int TuringPanelABrightness
+        {
+            get { return _turingPanelABrightness; }
+            set
+            {
+                SetProperty(ref _turingPanelABrightness, value);
+            }
+        }
+
         private bool _turingPanelC = false;
         public bool TuringPanelC
         {
@@ -114,6 +134,57 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _turingPanelCRotation, value);
+            }
+        }
+
+        private int _turingPanelCBrightness = 100;
+        public int TuringPanelCBrightness
+        {
+            get { return _turingPanelCBrightness; }
+            set
+            {
+                SetProperty(ref _turingPanelCBrightness, value);
+            }
+        }
+
+        private bool _turingPanelE = false;
+        public bool TuringPanelE
+        {
+            get { return _turingPanelE; }
+            set { SetProperty(ref _turingPanelE, value); }
+        }
+
+        private string _turingPanelEPort = String.Empty;
+        public string TuringPanelEPort
+        {
+            get { return _turingPanelEPort; }
+            set { SetProperty(ref _turingPanelEPort, value); }
+        }
+
+        private Guid _turingPanelEProfile = Guid.Empty;
+        public Guid TuringPanelEProfile
+        {
+            get { return _turingPanelEProfile; }
+            set { SetProperty(ref _turingPanelEProfile, value); }
+        }
+
+        private LCD_ROTATION _turingPanelERotation = LCD_ROTATION.Rotate90FlipNone;
+        public LCD_ROTATION TuringPanelERotation
+        {
+            get { return _turingPanelERotation; }
+            set
+            {
+                SetProperty(ref _turingPanelERotation, value);
+            }
+        }
+
+        private int _turingPanelEBrightness = 100;
+        public int TuringPanelEBrightness
+        {
+            get { return _turingPanelEBrightness; }
+            set
+            {
+                SetProperty(ref _turingPanelEBrightness, value);
             }
         }
 

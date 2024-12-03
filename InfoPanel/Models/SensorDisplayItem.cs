@@ -86,8 +86,8 @@ namespace InfoPanel.Models
             }
         }
 
-        private int _threshold1 = 0;
-        public int Threshold1
+        private double _threshold1 = 0;
+        public double Threshold1
         {
             get { return _threshold1; }
             set
@@ -122,8 +122,8 @@ namespace InfoPanel.Models
             }
         }
 
-        private int _threshold2 = 0;
-        public int Threshold2
+        private double _threshold2 = 0;
+        public double Threshold2
         {
             get { return _threshold2; }
             set

@@ -18,13 +18,17 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\TuringSmartScreenLib.Helpers.SkiaSharp\TuringSmartScreenLib.Helpers.SkiaSharp.csproj" />
-		<ProjectReference Include="..\TuringSmartScreenLib\TuringSmartScreenLib.csproj" />
 		<Reference Include="d2dlibexport">
 			<HintPath>Lib\d2dlibexport.dll</HintPath>
 		</Reference>
 		<Reference Include="d2dwinform">
 			<HintPath>Lib\d2dwinform.dll</HintPath>
+		</Reference>
+		<Reference Include="TuringSmartScreenLib">
+		  <HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
+		</Reference>
+		<Reference Include="TuringSmartScreenLib.Helpers.GDI">
+		  <HintPath>Lib\TuringSmartScreenLib.Helpers.GDI.dll</HintPath>
 		</Reference>
 	</ItemGroup>
 
@@ -55,6 +59,38 @@
 		<None Remove="Resources\Images\home.jpg" />
 		<None Remove="Resources\Images\hwinfo_icon.ico" />
 		<None Remove="Resources\Images\hwinfo_logo_white.png" />
+		<None Remove="Resources\Images\Libre\amd.png" />
+		<None Remove="Resources\Images\Libre\ati.png" />
+		<None Remove="Resources\Images\Libre\barback.png" />
+		<None Remove="Resources\Images\Libre\barblue.png" />
+		<None Remove="Resources\Images\Libre\battery.png" />
+		<None Remove="Resources\Images\Libre\chip.png" />
+		<None Remove="Resources\Images\Libre\clock.png" />
+		<None Remove="Resources\Images\Libre\computer.png" />
+		<None Remove="Resources\Images\Libre\control.png" />
+		<None Remove="Resources\Images\Libre\cpu.png" />
+		<None Remove="Resources\Images\Libre\current.png" />
+		<None Remove="Resources\Images\Libre\data.png" />
+		<None Remove="Resources\Images\Libre\empty.png" />
+		<None Remove="Resources\Images\Libre\factor.png" />
+		<None Remove="Resources\Images\Libre\fan.png" />
+		<None Remove="Resources\Images\Libre\flow.png" />
+		<None Remove="Resources\Images\Libre\hdd.png" />
+		<None Remove="Resources\Images\Libre\humidity.png" />
+		<None Remove="Resources\Images\Libre\intel.png" />
+		<None Remove="Resources\Images\Libre\level.png" />
+		<None Remove="Resources\Images\Libre\load.png" />
+		<None Remove="Resources\Images\Libre\loudspeaker.png" />
+		<None Remove="Resources\Images\Libre\mainboard.png" />
+		<None Remove="Resources\Images\Libre\nic.png" />
+		<None Remove="Resources\Images\Libre\nvidia.png" />
+		<None Remove="Resources\Images\Libre\power-supply.png" />
+		<None Remove="Resources\Images\Libre\power.png" />
+		<None Remove="Resources\Images\Libre\ram.png" />
+		<None Remove="Resources\Images\Libre\temperature.png" />
+		<None Remove="Resources\Images\Libre\throughput.png" />
+		<None Remove="Resources\Images\Libre\time.png" />
+		<None Remove="Resources\Images\Libre\voltage.png" />
 		<None Remove="Resources\Images\libre_icon.ico" />
 		<None Remove="Resources\Images\no_image.png" />
 	</ItemGroup>
@@ -65,6 +101,38 @@
 		</Resource>
 		<Resource Include="Resources\Images\home.jpg" />
 		<Resource Include="Resources\Images\hwinfo_logo_white.png" />
+		<Resource Include="Resources\Images\Libre\amd.png" />
+		<Resource Include="Resources\Images\Libre\ati.png" />
+		<Resource Include="Resources\Images\Libre\barback.png" />
+		<Resource Include="Resources\Images\Libre\barblue.png" />
+		<Resource Include="Resources\Images\Libre\battery.png" />
+		<Resource Include="Resources\Images\Libre\chip.png" />
+		<Resource Include="Resources\Images\Libre\clock.png" />
+		<Resource Include="Resources\Images\Libre\computer.png" />
+		<Resource Include="Resources\Images\Libre\control.png" />
+		<Resource Include="Resources\Images\Libre\cpu.png" />
+		<Resource Include="Resources\Images\Libre\current.png" />
+		<Resource Include="Resources\Images\Libre\data.png" />
+		<Resource Include="Resources\Images\Libre\empty.png" />
+		<Resource Include="Resources\Images\Libre\factor.png" />
+		<Resource Include="Resources\Images\Libre\fan.png" />
+		<Resource Include="Resources\Images\Libre\flow.png" />
+		<Resource Include="Resources\Images\Libre\hdd.png" />
+		<Resource Include="Resources\Images\Libre\humidity.png" />
+		<Resource Include="Resources\Images\Libre\intel.png" />
+		<Resource Include="Resources\Images\Libre\level.png" />
+		<Resource Include="Resources\Images\Libre\load.png" />
+		<Resource Include="Resources\Images\Libre\loudspeaker.png" />
+		<Resource Include="Resources\Images\Libre\mainboard.png" />
+		<Resource Include="Resources\Images\Libre\nic.png" />
+		<Resource Include="Resources\Images\Libre\nvidia.png" />
+		<Resource Include="Resources\Images\Libre\power-supply.png" />
+		<Resource Include="Resources\Images\Libre\power.png" />
+		<Resource Include="Resources\Images\Libre\ram.png" />
+		<Resource Include="Resources\Images\Libre\temperature.png" />
+		<Resource Include="Resources\Images\Libre\throughput.png" />
+		<Resource Include="Resources\Images\Libre\time.png" />
+		<Resource Include="Resources\Images\Libre\voltage.png" />
 		<Resource Include="Resources\Images\libre_icon.ico" />
 		<Resource Include="Resources\Images\no_image.png" />
 		<Content Include="index.html">
@@ -74,19 +142,18 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-		<PackageReference Include="AnimatedImage.Wpf" Version="1.0.4" />
+		<PackageReference Include="AnimatedImage.Wpf" Version="2.0.0" />
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
-		<PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.2.0" />
-		<PackageReference Include="Magick.NET.SystemDrawing" Version="8.0.2" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
 		<PackageReference Include="Microsoft.AppCenter.Analytics" Version="5.0.2" />
 		<PackageReference Include="Microsoft.AppCenter.Crashes" Version="5.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
 		<PackageReference Include="Prise" Version="6.0.0" />
+		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
 		<PackageReference Include="TaskScheduler" Version="2.11.1" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
@@ -113,7 +180,7 @@
 		<Compile Update="Views\Components\Chart\DonutProperties.xaml.cs">
 		  <SubType>Code</SubType>
 		</Compile>
-		<Compile Update="Views\Components\HWiNFO\LibreSensors.xaml.cs">
+		<Compile Update="Views\Components\Sensors\LibreSensors.xaml.cs">
 		  <SubType>Code</SubType>
 		</Compile>
 		<Compile Update="Views\Pages\UpdatesPage.xaml.cs">

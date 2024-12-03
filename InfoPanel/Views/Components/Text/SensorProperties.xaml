@@ -165,12 +165,12 @@
 
                     <StackPanel>
                         <ui:NumberBox Name="NumberBoxThreshold1" Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="0" ToolTip="Change color when sensor ≥ value"
+                                     FontSize="14" MaxDecimalPlaces="3" SmallChange="1" Minimum="0" ToolTip="Change color when sensor ≥ value"
                                       TextChanged="NumberBoxThreshold1_TextChanged"
                                      Text="{Binding Threshold1}"
                                      Value="{Binding Threshold1}"/>
                         <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" 
-                                   Text="Threshold #1" FontSize="12" Margin="5,0,0,0" />
+                                   Text="≥ Threshold #1" FontSize="12" Margin="5,0,0,0" />
                     </StackPanel>
 
 
@@ -192,12 +192,12 @@
 
                     <StackPanel>
                         <ui:NumberBox Name="NumberBoxThreshold2" Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="0" ToolTip="Change color when sensor ≥ value"
+                                     FontSize="14" MaxDecimalPlaces="3" SmallChange="1" Minimum="0" ToolTip="Change color when sensor ≥ value"
                                       TextChanged="NumberBoxThreshold2_TextChanged"
                                      Text="{Binding Threshold2}"
                                      Value="{Binding Threshold2}"/>
                         <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" 
-                                   Text="Threshold #2" FontSize="12" Margin="5,0,0,0" />
+                                   Text="≥ Threshold #2" FontSize="12" Margin="5,0,0,0" />
                     </StackPanel>
 
 

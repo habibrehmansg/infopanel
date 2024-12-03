@@ -7,6 +7,7 @@
              xmlns:app="clr-namespace:InfoPanel"
              xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
              xmlns:models="clr-namespace:InfoPanel.Models"
+             xmlns:anim="https://github.com/whistyun/AnimatedImage.Wpf"
              xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
@@ -195,7 +196,7 @@
         </Grid>-->
 
         <Image x:Name="ImagePreview" Grid.Column="2" Height="150" Margin="10,0,0,0"
-               Source="{Binding DisplayImage, Converter={StaticResource CacheImageConverter}, Mode=OneWay}"/>
+               anim:ImageBehavior.AnimatedSource="{Binding DisplayImage, Mode=OneWay}"/>
 
     </Grid>
 </UserControl>

@@ -13,6 +13,8 @@ namespace InfoPanel.Models
         UInt32 Instance { get; set; }
         UInt32 EntryId { get; set; }
 
+        string LibreSensorId { get; set; }
+
         SensorReading? GetValue();
     }
 }

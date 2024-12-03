@@ -39,6 +39,50 @@ namespace InfoPanel
             }
         }
 
+        private bool _beadaPanelRunning = false;
+
+        public bool BeadaPanelRunning
+        {
+            get { return _beadaPanelRunning; }
+            set
+            {
+                SetProperty(ref _beadaPanelRunning, value);
+            }
+        }
+
+        private bool _turingPanelARunning = false;
+
+        public bool TuringPanelARunning
+        {
+            get { return _turingPanelARunning; }
+            set
+            {
+                SetProperty(ref _turingPanelARunning, value);
+            }
+        }
+
+        private bool _turingPanelCRunning = false;
+
+        public bool TuringPanelCRunning
+        {
+            get { return _turingPanelCRunning; }
+            set
+            {
+                SetProperty(ref _turingPanelCRunning, value);
+            }
+        }
+
+        private bool _turingPanelERunning = false;
+
+        public bool TuringPanelERunning
+        {
+            get { return _turingPanelERunning; }
+            set
+            {
+                SetProperty(ref _turingPanelERunning, value);
+            }
+        }
+
         private int _currentFrameRate = 0;
         public int CurrentFrameRate
         {
@@ -315,6 +359,14 @@ namespace InfoPanel
                 }
             }
 
+            if (ConfigModel.Instance.Settings.TuringPanelE)
+            {
+                if (ConfigModel.Instance.Settings.TuringPanelEProfile == profile.Guid)
+                {
+                    TuringPanelETask.Instance.UpdateBuffer(bitmap);
+                }
+            }
+
             if (ConfigModel.Instance.Settings.WebServer)
             {
                 WebServerTask.Instance.UpdateBuffer(profile, bitmap);
@@ -509,7 +561,7 @@ namespace InfoPanel
                         {
                             foreach (DisplayItem displayItem in displayItems)
                             {
-                                if (displayItem is SensorDisplayItem sensorDisplayItem)
+                                if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
                                     {
@@ -523,7 +575,7 @@ namespace InfoPanel
                                         }
                                     }
                                 }
-                                else if (displayItem is ChartDisplayItem chartDisplayItem)
+                                else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
                                     {
@@ -537,7 +589,7 @@ namespace InfoPanel
                                         }
                                     }
                                 }
-                                else if (displayItem is GaugeDisplayItem gaugeDisplayItem)
+                                else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
                                     {

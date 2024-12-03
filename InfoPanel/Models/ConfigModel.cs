@@ -138,11 +138,12 @@ namespace InfoPanel
                 taskDefinition.Settings.AllowHardTerminate = true;
                 taskDefinition.Settings.ExecutionTimeLimit = TimeSpan.Zero;
 
-                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition, TaskCreation.CreateOrUpdate, null);
+                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition, TaskCreation.CreateOrUpdate,
+                    System.Security.Principal.WindowsIdentity.GetCurrent().Name, null, TaskLogonType.InteractiveToken);
             }
         }
 
-        private void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(Settings.AutoStart))
             {
@@ -152,33 +153,44 @@ namespace InfoPanel
             {
                 if (Settings.BeadaPanel)
                 {
-                    BeadaPanelTask.Instance.Start();
+                    await BeadaPanelTask.Instance.StartAsync();
                 }
                 else
                 {
-                    BeadaPanelTask.Instance.Stop();
+                    await BeadaPanelTask.Instance.StopAsync();
                 }
             }
             else if (e.PropertyName == nameof(Settings.TuringPanelA))
             {
                 if (Settings.TuringPanelA)
                 {
-                    TuringPanelATask.Instance.Start();
+                    await TuringPanelATask.Instance.StartAsync();
                 }
                 else
                 {
-                    TuringPanelATask.Instance.Stop();
+                    await TuringPanelATask.Instance.StopAsync();
                 }
             }
             else if (e.PropertyName == nameof(Settings.TuringPanelC))
             {
                 if (Settings.TuringPanelC)
                 {
-                    TuringPanelCTask.Instance.Start();
+                    await TuringPanelCTask.Instance.StartAsync();
                 }
                 else
                 {
-                    TuringPanelCTask.Instance.Stop();
+                    await TuringPanelCTask.Instance.StopAsync();
+                }
+            }
+            else if (e.PropertyName == nameof(Settings.TuringPanelE))
+            {
+                if (Settings.TuringPanelE)
+                {
+                    await TuringPanelETask.Instance.StartAsync();
+                }
+                else
+                {
+                    await TuringPanelETask.Instance.StopAsync();
                 }
             }
             else if (e.PropertyName == nameof(Settings.WebServer))
@@ -256,17 +268,29 @@ namespace InfoPanel
                                 Settings.TargetFrameRate = settings.TargetFrameRate;
                                 Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
                                 Settings.Version = settings.Version;
+
                                 Settings.BeadaPanel = settings.BeadaPanel;
                                 Settings.BeadaPanelProfile = settings.BeadaPanelProfile;
                                 Settings.BeadaPanelRotation = settings.BeadaPanelRotation;
+                                Settings.BeadaPanelBrightness = settings.BeadaPanelBrightness;
+
                                 Settings.TuringPanelA = settings.TuringPanelA;
                                 Settings.TuringPanelAProfile = settings.TuringPanelAProfile;
                                 Settings.TuringPanelAPort = settings.TuringPanelAPort;
                                 Settings.TuringPanelARotation = settings.TuringPanelARotation;
+                                Settings.TuringPanelABrightness = settings.TuringPanelABrightness;
+
                                 Settings.TuringPanelC = settings.TuringPanelC;
                                 Settings.TuringPanelCProfile = settings.TuringPanelCProfile;
                                 Settings.TuringPanelCPort = settings.TuringPanelCPort;
                                 Settings.TuringPanelCRotation = settings.TuringPanelCRotation;
+                                Settings.TuringPanelCBrightness = settings.TuringPanelCBrightness;
+
+                                Settings.TuringPanelE = settings.TuringPanelE;
+                                Settings.TuringPanelEProfile = settings.TuringPanelEProfile;
+                                Settings.TuringPanelEPort = settings.TuringPanelEPort;
+                                Settings.TuringPanelERotation = settings.TuringPanelERotation;
+                                Settings.TuringPanelEBrightness = settings.TuringPanelEBrightness;
                             }
 
                             ValidateStartup();

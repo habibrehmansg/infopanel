@@ -5,6 +5,7 @@ using Wpf.Ui.Mvvm.Contracts;
 using System.Windows.Controls;
 using Wpf.Ui.Controls.Interfaces;
 using System.ComponentModel;
+using System.Threading.Tasks;
 
 namespace InfoPanel.Views.Windows
 {
@@ -169,13 +170,30 @@ namespace InfoPanel.Views.Windows
 
         #endregion INavigationWindow methods
 
-        private void UiWindow_Closing(object sender, CancelEventArgs e)
+        private async void UiWindow_Closing(object sender, CancelEventArgs e)
         {
-            PanelDrawTask.Instance.Stop();
-            GraphDrawTask.Instance.Stop();
-            BeadaPanelTask.Instance.Stop();
+            e.Cancel = true;
+            //perform shutdown operations here
+            await CleanShutDown();
 
+            //shutdown
             Application.Current.Shutdown();
+        }
+
+        private async Task CleanShutDown()
+        {
+            await StopPanels();
+            //WebServerTask.Instance.Stop();
+        }
+
+        private async Task StopPanels()
+        {
+            await PanelDrawTask.Instance.StopAsync();
+            await BeadaPanelTask.Instance.StopAsync();
+            await TuringPanelATask.Instance.StopAsync();
+            await TuringPanelCTask.Instance.StopAsync();
+            await TuringPanelETask.Instance.StopAsync();
+
         }
     }
 }

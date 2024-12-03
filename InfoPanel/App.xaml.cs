@@ -101,7 +101,7 @@ namespace InfoPanel
         [DllImport("user32.dll")]
         static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             //WpfSingleInstance.Make("InfoPanel");
 
@@ -178,19 +178,16 @@ namespace InfoPanel
 
             }
 
-            HWHash.SetDelay(100);
+            HWHash.SetDelay(300);
             HWHash.Launch();
 
-            PanelDrawTask.Instance.Start();
-            //GraphDrawTask.Instance.Start();
-
-            StartPanels();
+            LibreMonitor.Launch();
 
             SystemEvents.SessionEnding += OnSessionEnding;
             SystemEvents.PowerModeChanged += OnPowerChange;
             Exit += App_Exit;
 
-            LibreMonitor.Launch();
+            await StartPanels();
         }
 
         private void OnSessionEnding(object sender, SessionEndingEventArgs e)
@@ -198,35 +195,42 @@ namespace InfoPanel
             Shutdown();
         }
 
-        private void OnPowerChange(object sender, PowerModeChangedEventArgs e)
+        private async void OnPowerChange(object sender, PowerModeChangedEventArgs e)
         {
 
             switch (e.Mode)
             {
                 case PowerModes.Resume:
-                    StartPanels();
+                    await StartPanels();
                     break;
                 case PowerModes.Suspend:
-                    StopPanels();
+                    await StopPanels();
                     break;
             }
         }
 
-        private void StartPanels()
+        private async Task StartPanels()
         {
+            await PanelDrawTask.Instance.StartAsync();
+
             if (ConfigModel.Instance.Settings.BeadaPanel)
             {
-                BeadaPanelTask.Instance.Start();
+                await BeadaPanelTask.Instance.StartAsync();
             }
 
             if (ConfigModel.Instance.Settings.TuringPanelA)
             {
-                TuringPanelATask.Instance.Start();
+                await TuringPanelATask.Instance.StartAsync();
             }
 
             if (ConfigModel.Instance.Settings.TuringPanelC)
             {
-                TuringPanelCTask.Instance.Start();
+                await TuringPanelCTask.Instance.StartAsync();
+            }
+
+            if (ConfigModel.Instance.Settings.TuringPanelE)
+            {
+                await TuringPanelETask.Instance.StartAsync();
             }
 
             if (ConfigModel.Instance.Settings.WebServer)
@@ -235,31 +239,24 @@ namespace InfoPanel
             }
         }
 
-        private void App_Exit(object sender, ExitEventArgs e)
+        private async Task StopPanels()
         {
-            ShutDown();
+            await PanelDrawTask.Instance.StopAsync();
+            await BeadaPanelTask.Instance.StopAsync();
+            await TuringPanelATask.Instance.StopAsync();
+            await TuringPanelCTask.Instance.StopAsync();
+            await TuringPanelETask.Instance.StopAsync();
+
+        }
+
+        private async void App_Exit(object sender, ExitEventArgs e)
+        {
+
         }
 
         void MenuExit_Click(object? sender, EventArgs e)
         {
-            Shutdown();
-            Environment.Exit(0);
-        }
-
-        private void ShutDown()
-        {
-            PanelDrawTask.Instance.Stop();
-            GraphDrawTask.Instance.Stop();
-            StopPanels();
-            Task.Delay(500).Wait();
-        }
-
-        private void StopPanels()
-        {
-            BeadaPanelTask.Instance.Stop();
-            TuringPanelATask.Instance.Stop();
-            TuringPanelCTask.Instance.Stop();
-            WebServerTask.Instance.Stop();
+            MainWindow.Close();
         }
 
         public void ShowDesign(Profile profile)
