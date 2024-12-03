@@ -382,13 +382,11 @@ namespace InfoPanel
             }
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
 
-            XmlSerializer xs = new XmlSerializer(typeof(List<DisplayItem>), new Type[] { typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem) });
+            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem)]);
 
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-            using (var wr = XmlWriter.Create(fileName, settings))
-            {
-                xs.Serialize(wr, displayItems);
-            }
+            using var wr = XmlWriter.Create(fileName, settings);
+            xs.Serialize(wr, displayItems);
         }
 
         public void SaveDisplayItems(Profile profile)
@@ -459,22 +457,22 @@ namespace InfoPanel
                 using (ZipArchive archive = ZipFile.Open(exportFilePath, ZipArchiveMode.Create))
                 {
                     //add profile settings
-                    var exportProfile = new Profile(SelectedProfile.Name, SelectedProfile.Width, SelectedProfile.Height);
-                    exportProfile.BackgroundColor = SelectedProfile.BackgroundColor;
-                    exportProfile.Font = SelectedProfile.Font;
-                    exportProfile.FontSize = SelectedProfile.FontSize;
-                    exportProfile.Color = SelectedProfile.Color;
+                    var exportProfile = new Profile(SelectedProfile.Name, SelectedProfile.Width, SelectedProfile.Height)
+                    {
+                        BackgroundColor = SelectedProfile.BackgroundColor,
+                        Font = SelectedProfile.Font,
+                        FontSize = SelectedProfile.FontSize,
+                        Color = SelectedProfile.Color
+                    };
 
                     var entry = archive.CreateEntry("Profile.xml");
 
                     using (Stream entryStream = entry.Open())
                     {
-                        XmlSerializer xs = new XmlSerializer(typeof(Profile));
+                        XmlSerializer xs = new(typeof(Profile));
                         var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-                        using (var wr = XmlWriter.Create(entryStream, settings))
-                        {
-                            xs.Serialize(wr, exportProfile);
-                        }
+                        using var wr = XmlWriter.Create(entryStream, settings);
+                        xs.Serialize(wr, exportProfile);
                     }
 
                     //add displayitems
@@ -646,8 +644,8 @@ namespace InfoPanel
         {
             lock (_displayItemsLock)
             {
-                if (SelectedProfile == null) { return new List<DisplayItem>(); }
-                return GetProfileDisplayItems(SelectedProfile).ToList();
+                if (SelectedProfile == null) { return []; }
+                return [.. GetProfileDisplayItems(SelectedProfile)];
             }
         }
 
@@ -661,14 +659,15 @@ namespace InfoPanel
 
         public void LoadDisplayItems()
         {
-            LoadDisplayItems(SelectedProfile);
+            if (SelectedProfile != null)
+            {
+                LoadDisplayItems(SelectedProfile);
+            }
         }
 
         public void LoadDisplayItems(Profile profile)
         {
-            ObservableCollection<DisplayItem>? displayItems;
-
-            if (!ProfileDisplayItems.TryGetValue(profile.Guid, out displayItems))
+            if (!ProfileDisplayItems.TryGetValue(profile.Guid, out ObservableCollection<DisplayItem>? displayItems))
             {
                 displayItems = new ObservableCollection<DisplayItem>();
                 ProfileDisplayItems[profile.Guid] = displayItems;
@@ -701,8 +700,8 @@ namespace InfoPanel
             var fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
             if (File.Exists(fileName))
             {
-                XmlSerializer xs = new XmlSerializer(typeof(List<DisplayItem>),
-                    new Type[] { typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem) });
+                XmlSerializer xs = new(typeof(List<DisplayItem>),
+                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem),typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem)]);
 
                 using var rd = XmlReader.Create(fileName);
                 try

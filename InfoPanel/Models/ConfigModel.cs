@@ -20,12 +20,12 @@ namespace InfoPanel
     {
         private const int CurrentVersion = 123;
         private const string RegistryRunKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
-        private static readonly Lazy<ConfigModel> lazy = new Lazy<ConfigModel>(() => new ConfigModel());
+        private static readonly Lazy<ConfigModel> lazy = new(() => new ConfigModel());
 
         public static ConfigModel Instance { get { return lazy.Value; } }
 
         public ObservableCollection<Profile> Profiles { get; private set; }
-        private readonly object _profilesLock = new object();
+        private readonly object _profilesLock = new();
 
         public Settings Settings { get; private set; }
         private readonly object _settingsLock = new object();
@@ -45,13 +45,12 @@ namespace InfoPanel
                 }
             }
 
-            Profiles = new ObservableCollection<Profile>();
+            Profiles = [];
             Profiles.CollectionChanged += Profiles_CollectionChanged;
 
             LoadProfiles();
 
             Settings.PropertyChanged += Settings_PropertyChanged;
-
         }
 
         private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -212,7 +211,7 @@ namespace InfoPanel
         {
             lock (_profilesLock)
             {
-                return Profiles.ToList();
+                return [.. Profiles];
             }
         }
 
@@ -231,13 +230,11 @@ namespace InfoPanel
                 var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
                 Directory.CreateDirectory(folder);
                 var fileName = Path.Combine(folder, "settings.xml");
-                XmlSerializer xs = new XmlSerializer(typeof(Settings));
+                XmlSerializer xs = new(typeof(Settings));
 
                 var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-                using (var wr = XmlWriter.Create(fileName, settings))
-                {
-                    xs.Serialize(wr, Settings);
-                }
+                using var wr = XmlWriter.Create(fileName, settings);
+                xs.Serialize(wr, Settings);
             }
         }
 
@@ -248,56 +245,52 @@ namespace InfoPanel
             if (File.Exists(fileName))
             {
                 XmlSerializer xs = new XmlSerializer(typeof(Settings));
-                using (var rd = XmlReader.Create(fileName))
+                using var rd = XmlReader.Create(fileName);
+                try
                 {
-                    try
+                    if (xs.Deserialize(rd) is Settings settings)
                     {
-                        var settings = xs.Deserialize(rd) as Settings;
-
-                        if (settings != null)
+                        lock (_settingsLock)
                         {
-                            lock (_settingsLock)
-                            {
-                                Settings.AutoStart = settings.AutoStart;
-                                Settings.StartMinimized = settings.StartMinimized;
-                                Settings.MinimizeToTray = settings.MinimizeToTray;
-                                Settings.WebServer = settings.WebServer;
-                                Settings.WebServerListenIp = settings.WebServerListenIp;
-                                Settings.WebServerListenPort = settings.WebServerListenPort;
-                                Settings.WebServerRefreshRate = settings.WebServerRefreshRate;
-                                Settings.TargetFrameRate = settings.TargetFrameRate;
-                                Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
-                                Settings.Version = settings.Version;
+                            Settings.AutoStart = settings.AutoStart;
+                            Settings.StartMinimized = settings.StartMinimized;
+                            Settings.MinimizeToTray = settings.MinimizeToTray;
+                            Settings.WebServer = settings.WebServer;
+                            Settings.WebServerListenIp = settings.WebServerListenIp;
+                            Settings.WebServerListenPort = settings.WebServerListenPort;
+                            Settings.WebServerRefreshRate = settings.WebServerRefreshRate;
+                            Settings.TargetFrameRate = settings.TargetFrameRate;
+                            Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
+                            Settings.Version = settings.Version;
 
-                                Settings.BeadaPanel = settings.BeadaPanel;
-                                Settings.BeadaPanelProfile = settings.BeadaPanelProfile;
-                                Settings.BeadaPanelRotation = settings.BeadaPanelRotation;
-                                Settings.BeadaPanelBrightness = settings.BeadaPanelBrightness;
+                            Settings.BeadaPanel = settings.BeadaPanel;
+                            Settings.BeadaPanelProfile = settings.BeadaPanelProfile;
+                            Settings.BeadaPanelRotation = settings.BeadaPanelRotation;
+                            Settings.BeadaPanelBrightness = settings.BeadaPanelBrightness;
 
-                                Settings.TuringPanelA = settings.TuringPanelA;
-                                Settings.TuringPanelAProfile = settings.TuringPanelAProfile;
-                                Settings.TuringPanelAPort = settings.TuringPanelAPort;
-                                Settings.TuringPanelARotation = settings.TuringPanelARotation;
-                                Settings.TuringPanelABrightness = settings.TuringPanelABrightness;
+                            Settings.TuringPanelA = settings.TuringPanelA;
+                            Settings.TuringPanelAProfile = settings.TuringPanelAProfile;
+                            Settings.TuringPanelAPort = settings.TuringPanelAPort;
+                            Settings.TuringPanelARotation = settings.TuringPanelARotation;
+                            Settings.TuringPanelABrightness = settings.TuringPanelABrightness;
 
-                                Settings.TuringPanelC = settings.TuringPanelC;
-                                Settings.TuringPanelCProfile = settings.TuringPanelCProfile;
-                                Settings.TuringPanelCPort = settings.TuringPanelCPort;
-                                Settings.TuringPanelCRotation = settings.TuringPanelCRotation;
-                                Settings.TuringPanelCBrightness = settings.TuringPanelCBrightness;
+                            Settings.TuringPanelC = settings.TuringPanelC;
+                            Settings.TuringPanelCProfile = settings.TuringPanelCProfile;
+                            Settings.TuringPanelCPort = settings.TuringPanelCPort;
+                            Settings.TuringPanelCRotation = settings.TuringPanelCRotation;
+                            Settings.TuringPanelCBrightness = settings.TuringPanelCBrightness;
 
-                                Settings.TuringPanelE = settings.TuringPanelE;
-                                Settings.TuringPanelEProfile = settings.TuringPanelEProfile;
-                                Settings.TuringPanelEPort = settings.TuringPanelEPort;
-                                Settings.TuringPanelERotation = settings.TuringPanelERotation;
-                                Settings.TuringPanelEBrightness = settings.TuringPanelEBrightness;
-                            }
-
-                            ValidateStartup();
+                            Settings.TuringPanelE = settings.TuringPanelE;
+                            Settings.TuringPanelEProfile = settings.TuringPanelEProfile;
+                            Settings.TuringPanelEPort = settings.TuringPanelEPort;
+                            Settings.TuringPanelERotation = settings.TuringPanelERotation;
+                            Settings.TuringPanelEBrightness = settings.TuringPanelEBrightness;
                         }
+
+                        ValidateStartup();
                     }
-                    catch { }
                 }
+                catch { }
             }
         }
 
@@ -444,8 +437,8 @@ namespace InfoPanel
                 foreach (var file in Directory.GetFiles(profilesFolder))
                 {
                     //read the file
-                    XmlSerializer xs = new XmlSerializer(typeof(List<DisplayItem>),
-                       new Type[] { typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(ImageDisplayItem) });
+                    XmlSerializer xs = new(typeof(List<DisplayItem>),
+                       [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(ImageDisplayItem)]);
 
                     List<DisplayItem>? displayItems = null;
                     using (var rd = XmlReader.Create(file))
@@ -482,10 +475,8 @@ namespace InfoPanel
 
                         //write back
                         var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-                        using (var wr = XmlWriter.Create(file, settings))
-                        {
-                            xs.Serialize(wr, displayItems);
-                        }
+                        using var wr = XmlWriter.Create(file, settings);
+                        xs.Serialize(wr, displayItems);
                     }
                 }
             }

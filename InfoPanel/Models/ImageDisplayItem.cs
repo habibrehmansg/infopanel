@@ -100,7 +100,7 @@ namespace InfoPanel.Models
         }
 
         //for serialisation only
-        private ImageDisplayItem()
+        public ImageDisplayItem()
         { }
 
         public ImageDisplayItem(string name, Guid profileGuid): base()
