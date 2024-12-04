@@ -116,6 +116,17 @@ namespace InfoPanel.Views.Common
             ResizeTimer.Stop();
             ResizeTimer.Tick -= ResizeTimer_Tick;
             SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
+
+            if (Direct2DMode)
+            {
+                SharedModel.Instance.GetProfileDisplayItemsCopy(Profile).ForEach(item =>
+                {
+                    if(item is ImageDisplayItem imageDisplayItem)
+                    {
+                        Cache.GetLocalImage(imageDisplayItem)?.DisposeD2DAssets();
+                    }
+                });
+            }
         }
 
         private void Profile_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -589,8 +600,6 @@ namespace InfoPanel.Views.Common
         static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
         private const int GWL_EX_STYLE = -20;
         private const int WS_EX_APPWINDOW = 0x00040000, WS_EX_TOOLWINDOW = 0x00000080;
-
-
     }
 }
 

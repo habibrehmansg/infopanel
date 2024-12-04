@@ -50,6 +50,26 @@ namespace InfoPanel
             }
         }
 
+        private int _beadaPanelFrameRate = 0;
+        public int BeadaPanelFrameRate
+        {
+            get { return _beadaPanelFrameRate; }
+            set
+            {
+                SetProperty(ref _beadaPanelFrameRate, value);
+            }
+        }
+
+        private long _beadaPanelFrameTime = 0;
+        public long BeadaPanelFrameTime
+        {
+            get { return _beadaPanelFrameTime; }
+            set
+            {
+                SetProperty(ref _beadaPanelFrameTime, value);
+            }
+        }
+
         private bool _turingPanelARunning = false;
 
         public bool TuringPanelARunning
@@ -58,6 +78,26 @@ namespace InfoPanel
             set
             {
                 SetProperty(ref _turingPanelARunning, value);
+            }
+        }
+
+        private int _turingPanelAFrameRate = 0;
+        public int TuringPanelAFrameRate
+        {
+            get { return _turingPanelAFrameRate; }
+            set
+            {
+                SetProperty(ref _turingPanelAFrameRate, value);
+            }
+        }
+
+        private long _turingPanelAFrameTime = 0;
+        public long TuringPanelAFrameTime
+        {
+            get { return _turingPanelAFrameTime; }
+            set
+            {
+                SetProperty(ref _turingPanelAFrameTime, value);
             }
         }
 
@@ -72,6 +112,27 @@ namespace InfoPanel
             }
         }
 
+        private int _turingPanelCFrameRate = 0;
+
+        public int TuringPanelCFrameRate
+        {
+            get { return _turingPanelCFrameRate; }
+            set
+            {
+                SetProperty(ref _turingPanelCFrameRate, value);
+            }
+        }
+
+        private long _turingPanelCFrameTime = 0;
+        public long TuringPanelCFrameTime
+        {
+            get { return _turingPanelCFrameTime; }
+            set
+            {
+                SetProperty(ref _turingPanelCFrameTime, value);
+            }
+        }
+
         private bool _turingPanelERunning = false;
 
         public bool TuringPanelERunning
@@ -80,6 +141,47 @@ namespace InfoPanel
             set
             {
                 SetProperty(ref _turingPanelERunning, value);
+            }
+        }
+
+        private int _turingPanelEFrameRate = 0;
+
+        public int TuringPanelEFrameRate
+        {
+            get { return _turingPanelEFrameRate; }
+            set
+            {
+                SetProperty(ref _turingPanelEFrameRate, value);
+            }
+        }
+
+        private long _turingPanelEFrameTime = 0;
+        public long TuringPanelEFrameTime
+        {
+            get { return _turingPanelEFrameTime; }
+            set
+            {
+                SetProperty(ref _turingPanelEFrameTime, value);
+            }
+        }
+
+        private int _webserverFrameRate = 0;
+        public int WebserverFrameRate
+        {
+            get { return _webserverFrameRate; }
+            set
+            {
+                SetProperty(ref _webserverFrameRate, value);
+            }
+        }
+
+        private int _webserverFrameTime = 0;
+        public int WebserverFrameTime
+        {
+            get { return _webserverFrameTime; }
+            set
+            {
+                SetProperty(ref _webserverFrameTime, value);
             }
         }
 
@@ -333,43 +435,6 @@ namespace InfoPanel
             if (profile.Active)
             {
                 UpdatePanel(profile, bitmap);
-            }
-
-            if (ConfigModel.Instance.Settings.BeadaPanel)
-            {
-                if(ConfigModel.Instance.Settings.BeadaPanelProfile == profile.Guid)
-                {
-                    BeadaPanelTask.Instance.UpdateBuffer(bitmap);
-                }
-            }
-
-            if(ConfigModel.Instance.Settings.TuringPanelA)
-            {
-                if (ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid)
-                {
-                    TuringPanelATask.Instance.UpdateBuffer(bitmap);
-                }
-            }
-
-            if (ConfigModel.Instance.Settings.TuringPanelC)
-            {
-                if (ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid)
-                {
-                    TuringPanelCTask.Instance.UpdateBuffer(bitmap);
-                }
-            }
-
-            if (ConfigModel.Instance.Settings.TuringPanelE)
-            {
-                if (ConfigModel.Instance.Settings.TuringPanelEProfile == profile.Guid)
-                {
-                    TuringPanelETask.Instance.UpdateBuffer(bitmap);
-                }
-            }
-
-            if (ConfigModel.Instance.Settings.WebServer)
-            {
-                WebServerTask.Instance.UpdateBuffer(profile, bitmap);
             }
         }
 

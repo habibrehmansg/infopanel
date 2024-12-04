@@ -89,7 +89,7 @@ namespace InfoPanel
 
         public Dictionary<Guid, DisplayWindow> DisplayWindows = [];
 
-        public static T GetService<T>()
+        public static T? GetService<T>()
         where T : class
         {
             return _host.Services.GetService(typeof(T)) as T;
@@ -235,28 +235,29 @@ namespace InfoPanel
 
             if (ConfigModel.Instance.Settings.WebServer)
             {
-                WebServerTask.Instance.Start();
+                await WebServerTask.Instance.StartAsync();
             }
         }
 
-        private async Task StopPanels()
+        private static async Task StopPanels()
         {
             await PanelDrawTask.Instance.StopAsync();
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelATask.Instance.StopAsync();
             await TuringPanelCTask.Instance.StopAsync();
             await TuringPanelETask.Instance.StopAsync();
-
         }
 
-        private async void App_Exit(object sender, ExitEventArgs e)
+        private void App_Exit(object sender, ExitEventArgs e)
         {
 
         }
 
-        void MenuExit_Click(object? sender, EventArgs e)
+        public static async Task CleanShutDown()
         {
-            MainWindow.Close();
+            await StopPanels();
+            //shutdown
+            Application.Current.Shutdown();
         }
 
         public void ShowDesign(Profile profile)

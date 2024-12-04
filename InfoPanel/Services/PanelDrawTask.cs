@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -14,9 +15,6 @@ namespace InfoPanel
     public sealed class PanelDrawTask : BackgroundTask
     {
         private static readonly Lazy<PanelDrawTask> _instance = new(() => new PanelDrawTask());
-        private static readonly object _lock = new object();
-
-        private static ConcurrentDictionary<Guid, LockedBitmap> BitmapCache = new ConcurrentDictionary<Guid, LockedBitmap>();
         public static PanelDrawTask Instance => _instance.Value;
         private PanelDrawTask() { }
 
@@ -24,64 +22,40 @@ namespace InfoPanel
         {
             await Task.Delay(300, token);
 
-            int currentFps = 0;
-            long currentFrameTime = 0;
-
             var watch = new Stopwatch();
             watch.Start();
 
             try
             {
+                var fpsCounter = new FpsCounter();
+                var stopwatch = new Stopwatch();
+
                 while (!token.IsCancellationRequested)
                 {
                     try
                     {
-                        var frameRateLimit = ConfigModel.Instance.Settings.TargetFrameRate;
-                        var optimalFrameTime = 1000.0 / frameRateLimit; // Target frame time in ms
-
-                        // Start timing the frame
-                        var frameStart = watch.ElapsedMilliseconds;
+                        stopwatch.Restart();
 
                         var profiles = ConfigModel.Instance.GetProfilesCopy().Where(profile =>
-                        (profile.Active && !profile.Direct2DMode)
-                        || (ConfigModel.Instance.Settings.BeadaPanel && ConfigModel.Instance.Settings.BeadaPanelProfile == profile.Guid)
-                        || (ConfigModel.Instance.Settings.TuringPanelA && ConfigModel.Instance.Settings.TuringPanelAProfile == profile.Guid)
-                        || (ConfigModel.Instance.Settings.TuringPanelC && ConfigModel.Instance.Settings.TuringPanelCProfile == profile.Guid)
-                        || (ConfigModel.Instance.Settings.TuringPanelE && ConfigModel.Instance.Settings.TuringPanelEProfile == profile.Guid))
-                            .ToList();
+                        (profile.Active && !profile.Direct2DMode)).ToList();
 
                          Parallel.ForEach(profiles, profile =>
                          {
-                            var lockedBitmap = Render(profile);
+                             using var bitmap = Render(profile);
+                             SharedModel.Instance.SetPanelBitmap(profile, bitmap);
+                         });
 
-                            lockedBitmap.Access(bitmap =>
-                            {
-                                SharedModel.Instance.SetPanelBitmap(profile, bitmap);
-                            });
-                        });
+                        fpsCounter.Update();
+                        SharedModel.Instance.CurrentFrameRate = fpsCounter.FramesPerSecond;
+                        SharedModel.Instance.CurrentFrameTime = stopwatch.ElapsedMilliseconds;
 
-                        // Calculate the elapsed time for this frame
-                        var frameTime = watch.ElapsedMilliseconds - frameStart;
-
-                        // Update FPS and average frame time once per second
-                        currentFrameTime += frameTime;
-                        currentFps++;
-
-                        if (frameStart >= 1000)
+                        var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
+                        if (stopwatch.ElapsedMilliseconds < targetFrameTime)
                         {
-                            SharedModel.Instance.CurrentFrameRate = currentFps;
-                            SharedModel.Instance.CurrentFrameTime = currentFrameTime / currentFps;
-
-                            currentFps = 0;
-                            currentFrameTime = 0;
-                            watch.Restart();
+                            var sleep = (int)(targetFrameTime - stopwatch.ElapsedMilliseconds);
+                            //Trace.WriteLine($"Sleep {sleep}ms");
+                            await Task.Delay(sleep, token);
                         }
-
-                        // Delay to maintain target frame rate
-                        var delay = optimalFrameTime - frameTime;
-                        if (delay > 0) await Task.Delay((int)delay, token);
-
-                        //Trace.WriteLine($"Draw Execution Time: {frameTime} ms");
                     }
                     catch (Exception ex)
                     {
@@ -95,31 +69,19 @@ namespace InfoPanel
             }
         }
 
-        public static LockedBitmap Render(Profile profile, bool drawSelected = true)
+        public static Bitmap Render(Profile profile, bool drawSelected = true, PixelFormat pixelFormat = PixelFormat.Format32bppArgb)
         {
-            if (!BitmapCache.TryGetValue(profile.Guid, out var lockedBitmap)
-                || lockedBitmap.Width != profile.Width || lockedBitmap.Height != profile.Height
-                || lockedBitmap.OverrideDpi != profile.OverrideDpi)
+            var bitmap = new Bitmap(profile.Width, profile.Height, pixelFormat);
+
+            if (profile.OverrideDpi)
             {
-                lockedBitmap?.Dispose();
-                var bitmap = new Bitmap(profile.Width, profile.Height, PixelFormat.Format32bppArgb);
-
-                if (profile.OverrideDpi)
-                {
-                    bitmap.SetResolution(96, 96);
-                }
-
-                lockedBitmap = new LockedBitmap(bitmap, profile.OverrideDpi);
-                BitmapCache[profile.Guid] = lockedBitmap;
+                bitmap.SetResolution(96, 96);
             }
 
-            lockedBitmap.Access(bitmap =>
-            {
-                using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
-                PanelDraw.Run(profile, g, drawSelected);
-            });
+            using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
+            PanelDraw.Run(profile, g, drawSelected);
 
-            return lockedBitmap;
+            return bitmap;
         }
     }
 }

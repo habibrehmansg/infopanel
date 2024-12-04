@@ -1,4 +1,6 @@
 ﻿using InfoPanel.Extensions;
+using InfoPanel.Models;
+using InfoPanel.Utils;
 using MadWizard.WinUSBNet;
 using System;
 using System.Buffers.Binary;
@@ -19,7 +21,6 @@ namespace InfoPanel
 
         private volatile int _panelWidth = 0;
         private volatile int _panelHeight = 0;
-        private volatile byte[]? _lcdBuffer;
 
         public static BeadaPanelTask Instance => _instance.Value;
 
@@ -59,10 +60,13 @@ namespace InfoPanel
             }
         }
 
-        public void UpdateBuffer(Bitmap bitmap)
+        public byte[]? GenerateLcdBuffer()
         {
-            if (_lcdBuffer == null)
+            var profileGuid = ConfigModel.Instance.Settings.BeadaPanelProfile;
+
+            if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
+                using var bitmap = PanelDrawTask.Render(profile, false, PixelFormat.Format16bppRgb565);
                 var rotation = ConfigModel.Instance.Settings.BeadaPanelRotation;
                 if (rotation != ViewModels.LCD_ROTATION.RotateNone)
                 {
@@ -71,17 +75,13 @@ namespace InfoPanel
                 }
 
                 using var resizedBitmap = (_panelWidth == 0 || _panelHeight == 0)
-                    ? BitmapExtensions.EnsureBitmapSize(bitmap, bitmap.Width, bitmap.Height)
-                    : BitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight);
+                   ? BitmapExtensions.EnsureBitmapSize(bitmap, bitmap.Width, bitmap.Height)
+                   : BitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight);
 
-                if (rotation != ViewModels.LCD_ROTATION.RotateNone)
-                {
-                    var rotateFlipType = (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), 4 - rotation);
-                    bitmap.RotateFlip(rotateFlipType);
-                }
-
-                _lcdBuffer = BitmapToRgb16(resizedBitmap);
+                return BitmapToRgb16(resizedBitmap);
             }
+
+            return null;
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
@@ -126,8 +126,13 @@ namespace InfoPanel
 
                 try
                 {
+                    var fpsCounter = new FpsCounter();
+                    var stopwatch = new Stopwatch();
+
                     while (!token.IsCancellationRequested)
                     {
+                        stopwatch.Restart();
+
                         if (brightness != ConfigModel.Instance.Settings.BeadaPanelBrightness)
                         {
                             brightness = ConfigModel.Instance.Settings.BeadaPanelBrightness;
@@ -135,16 +140,21 @@ namespace InfoPanel
                             iface.Pipes[0x2].Write(brightnessTag.ToBuffer());
                         }
 
-                        byte[]? buffer = _lcdBuffer;
-
-                        if (buffer != null)
+                        if (GenerateLcdBuffer() is byte[] buffer)
                         {
-                            iface.OutPipe.Write(buffer);
-                            _lcdBuffer = null;
+                            iface.Pipes[0x1].Write(buffer);
                         }
-                        else
+
+                        fpsCounter.Update();
+                        SharedModel.Instance.BeadaPanelFrameRate = fpsCounter.FramesPerSecond;
+                        SharedModel.Instance.BeadaPanelFrameTime = stopwatch.ElapsedMilliseconds;
+
+                        var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
+                        if (stopwatch.ElapsedMilliseconds < targetFrameTime)
                         {
-                            await Task.Delay(50, token);
+                            var sleep = (int)(targetFrameTime - stopwatch.ElapsedMilliseconds);
+                            //Trace.WriteLine($"Sleep {sleep}ms");
+                            await Task.Delay(sleep, token);
                         }
                     }
                 }

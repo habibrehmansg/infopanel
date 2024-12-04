@@ -115,7 +115,7 @@
                                         Margin="0,5,0,0"
                                         FontSize="12"
                                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="The rate at which panels are updated." />
+                                        Text="The rate at which panels (including LCD) are rendered (excluding Direct2D acceleration)." />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" Margin="0,0,0,0">
@@ -160,7 +160,7 @@
                                             Margin="5,0,0,0"
                                             FontSize="12"
                                             Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                            Text="Target Frame Rate" />
+                                            Text="Target framerate" />
                                         <TextBlock
                                             Grid.Column="1"
                                             Margin="5,0,0,0"
@@ -189,7 +189,7 @@
                                             Margin="5,0,0,0"
                                             FontSize="12"
                                             Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                            Text="Target Graph Update Rate (ms)" />
+                                            Text="Target graph update rate (ms)" />
                                         <TextBlock
                                             Grid.Column="1"
                                             Margin="5,0,0,0"
@@ -221,7 +221,7 @@
                                             Margin="5,4,0,0"
                                             FontSize="12"
                                             Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                            Text="Current Frame Rate" />
+                                            Text="Current non-lcd panels framerate" />
                                         <TextBlock
                                             Grid.Column="1"
                                             Margin="0,4,0,0"
@@ -284,12 +284,26 @@
                                         Text="Works with any model." />
                                     <!--  start display status  -->
                                     <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanel, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <TextBlock
+                                        <StackPanel
                                             Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Green"
-                                            Text="Display is running OK."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=BeadaPanelRunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            Orientation="Horizontal"
+                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=BeadaPanelRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="Panel is running:" />
+                                            <TextBlock
+                                                Margin="10,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=BeadaPanelFrameRate, StringFormat={}{0} FPS}" />
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=BeadaPanelFrameTime, StringFormat={} @ {0}ms}" />
+                                        </StackPanel>
                                         <TextBlock
                                             Margin="0,5,0,0"
                                             FontSize="12"
@@ -386,12 +400,26 @@
                                         Text="Also known as Revision A." />
                                     <!--  start display status  -->
                                     <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelA, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <TextBlock
+                                        <StackPanel
                                             Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Green"
-                                            Text="Display is running OK."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelARunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            Orientation="Horizontal"
+                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelARunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="Panel is running." />
+                                            <TextBlock
+                                                Margin="10,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelAFrameRate, StringFormat={}{0} FPS}" />
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelAFrameTime, StringFormat={} @ {0}ms}" />
+                                        </StackPanel>
                                         <TextBlock
                                             Margin="0,5,0,0"
                                             FontSize="12"
@@ -500,12 +528,26 @@
                                         Text="Also known as Revision C." />
                                     <!--  start display status  -->
                                     <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelC, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <TextBlock
+                                        <StackPanel
                                             Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Green"
-                                            Text="Display is running OK."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCRunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            Orientation="Horizontal"
+                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="Panel is running." />
+                                            <TextBlock
+                                                Margin="10,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCFrameRate, StringFormat={}{0} FPS}" />
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCFrameTime, StringFormat={} @ {0}ms}" />
+                                        </StackPanel>
                                         <TextBlock
                                             Margin="0,5,0,0"
                                             FontSize="12"
@@ -615,12 +657,26 @@
                                         Text="Also known as Revision E." />
                                     <!--  start display status  -->
                                     <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelE, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <TextBlock
+                                        <StackPanel
                                             Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Green"
-                                            Text="Display is running OK."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelERunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            Orientation="Horizontal"
+                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelERunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="Panel is running." />
+                                            <TextBlock
+                                                Margin="10,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelEFrameRate, StringFormat={}{0} FPS}" />
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelEFrameTime, StringFormat={} @ {0}ms}" />
+                                        </StackPanel>
                                         <TextBlock
                                             Margin="0,5,0,0"
                                             FontSize="12"

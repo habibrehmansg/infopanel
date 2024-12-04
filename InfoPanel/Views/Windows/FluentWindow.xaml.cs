@@ -120,7 +120,7 @@ namespace InfoPanel.Views.Windows
                         Navigate(typeof(Pages.AboutPage));
                         break;
                     case "close":
-                        Application.Current.Shutdown();
+                        Close();
                         break;
                     default:
                         RestoreWindow();
@@ -174,26 +174,17 @@ namespace InfoPanel.Views.Windows
         {
             e.Cancel = true;
             //perform shutdown operations here
-            await CleanShutDown();
 
-            //shutdown
-            Application.Current.Shutdown();
-        }
+            if (WindowState != WindowState.Minimized)
+            {
+                var closingWindow = new ClosingWindow
+                {
+                    Owner = this
+                };
+                closingWindow.Show();
+            }
 
-        private async Task CleanShutDown()
-        {
-            await StopPanels();
-            //WebServerTask.Instance.Stop();
-        }
-
-        private async Task StopPanels()
-        {
-            await PanelDrawTask.Instance.StopAsync();
-            await BeadaPanelTask.Instance.StopAsync();
-            await TuringPanelATask.Instance.StopAsync();
-            await TuringPanelCTask.Instance.StopAsync();
-            await TuringPanelETask.Instance.StopAsync();
-
+            await App.CleanShutDown();
         }
     }
 }

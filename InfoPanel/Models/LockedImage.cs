@@ -11,11 +11,11 @@ namespace InfoPanel.Models
     {
         public readonly string ImagePath;
         private Image? Image;
-        private Bitmap?[] BitmapCache;
-        private FrameDimension FrameDimension;
+        private Bitmap?[]? BitmapCache;
+        private FrameDimension? FrameDimension;
         //private MagickImageCollection? ImageCollection;
         private IntPtr? D2DHandle;
-        private D2DBitmap[]? D2DBitmapCache;
+        private D2DBitmap?[]? D2DBitmapCache;
         public int Width = 0;
         public int Height = 0;
 
@@ -40,8 +40,6 @@ namespace InfoPanel.Models
                 lock (Lock) { 
                     try
                     {
-                        DisposeAssets();
-
                         Image?.Dispose();
 
                         //double convert to release lock on file
@@ -59,17 +57,10 @@ namespace InfoPanel.Models
                         FrameDimension = new FrameDimension(Image.FrameDimensionsList[0]);
                         Frames = Image.GetFrameCount(FrameDimension);
 
+                        DisposeAssets();
                         BitmapCache = new Bitmap[Frames];
 
-                        //ImageCollection = new MagickImageCollection(ImagePath);
-                        //ImageCollection.Coalesce();
-
-                        //Width = (int)ImageCollection[0].Width;
-                        //Height = (int)ImageCollection[0].Height;
-                        //Frames = ImageCollection.Count;
-
                         DisposeD2DAssets();
-
                         D2DBitmapCache = new D2DBitmap[Frames];
 
                         //only animate if there are multiple frames (gif)
@@ -88,11 +79,6 @@ namespace InfoPanel.Models
                                     totalDuration += frameDelay;
                                 }
                             }
-
-                            //foreach (var image in ImageCollection)
-                            //{
-                            //    totalDuration += (int)image.AnimationDelay * 10;
-                            //}
 
                             //default to 1 second if no delay is found
                             if (totalDuration == 0)
@@ -182,8 +168,11 @@ namespace InfoPanel.Models
                             d2dbitmap = device.CreateBitmapFromFile(ImagePath);
                         } else
                         {
-                            //var bitmap = ImageCollection?[frame].ToBitmap();
-                            Image.SelectActiveFrame(FrameDimension, frame);
+                            if (FrameDimension != null)
+                            {
+                                Image.SelectActiveFrame(FrameDimension, frame);
+                            }
+
                             d2dbitmap = device.CreateBitmapFromGDIBitmap((Bitmap)Image, true);
                         }
 
@@ -214,7 +203,11 @@ namespace InfoPanel.Models
 
                     if (bitmap == null && Image != null)
                     {
-                        Image.SelectActiveFrame(FrameDimension, frame);
+                        if(FrameDimension != null)
+                        {
+                            Image.SelectActiveFrame(FrameDimension, frame);
+                        }
+
                         bitmap = new Bitmap(Image);
 
                         if (cache)
@@ -228,31 +221,34 @@ namespace InfoPanel.Models
             }
         }
 
-        private void DisposeD2DAssets()
+        public void DisposeD2DAssets()
         {
-            if (D2DBitmapCache != null)
+            lock (Lock)
             {
-                for(int i = 0; i< D2DBitmapCache.Length; i++)
+                if (D2DBitmapCache != null)
                 {
-                    D2DBitmapCache[i]?.Dispose();
-                    D2DBitmapCache[i] = null;
+                    for (int i = 0; i < D2DBitmapCache.Length; i++)
+                    {
+                        D2DBitmapCache[i]?.Dispose();
+                        D2DBitmapCache[i] = null;
+                    }
                 }
             }
         }
 
-        private void DisposeAssets()
+        public void DisposeAssets()
         {
-            if(BitmapCache != null)
+            lock (Lock)
             {
-                for (int i = 0; i < BitmapCache.Length; i++)
+                if (BitmapCache != null)
                 {
-                    BitmapCache[i]?.Dispose();
-                    BitmapCache[i] = null;
+                    for (int i = 0; i < BitmapCache.Length; i++)
+                    {
+                        BitmapCache[i]?.Dispose();
+                        BitmapCache[i] = null;
+                    }
                 }
             }
-
-            //ImageCollection?.Dispose();
-            //ImageCollection = null;
         }
 
         public void Dispose()

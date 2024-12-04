@@ -1,13 +1,9 @@
-﻿using InfoPanel.Drawing;
-using InfoPanel.Models;
+﻿using InfoPanel.Utils;
 using System;
 using System.Diagnostics;
-using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Timers;
 using System.Windows;
 using System.Windows.Interop;
-using System.Windows.Media;
 using unvell.D2DLib;
 
 namespace InfoPanel.Views.Common
@@ -18,11 +14,10 @@ namespace InfoPanel.Views.Common
         private D2DDevice? Device;
         private D2DGraphics? Graphics;
 
-        private readonly Timer Timer = new (TimeSpan.FromMilliseconds(10));
+        private readonly Timer Timer = new (TimeSpan.FromMilliseconds(16));
 
         internal bool ShowFps = false;
-        private int FrameCounter = 0, LastFPSValue;
-        private readonly Stopwatch FpsStopwatch = new();
+        private readonly FpsCounter FpsCounter = new();
 
         internal readonly bool D2DDraw;
 
@@ -113,27 +108,15 @@ namespace InfoPanel.Views.Common
 
                 try
                 {
-                    FpsStopwatch.Start();
-
                     this.Graphics.BeginRender(D2DColor.Transparent);
-
                     this.OnRender(this.Graphics);
-
-                    ++FrameCounter;
-
-                    if (FpsStopwatch.ElapsedMilliseconds >= 1000)
-                    {
-                        int fps = (int)((FrameCounter * TimeSpan.TicksPerSecond) / FpsStopwatch.ElapsedTicks);
-                        LastFPSValue = fps;
-                        FpsStopwatch.Reset();
-                        FrameCounter = 0;
-                    }
 
                     if (ShowFps)
                     {
+                        FpsCounter.Update();
                         var rect = new D2DRect(this._width - 40, 0, 40, 30);
                         this.Graphics.FillRectangle(rect, D2DColor.FromGDIColor(System.Drawing.Color.FromArgb(100, 0, 0, 0)));
-                        this.Graphics.DrawTextCenter($"{LastFPSValue}", D2DColor.FromGDIColor(System.Drawing.Color.FromArgb(255, 0, 255, 0)),
+                        this.Graphics.DrawTextCenter($"{FpsCounter.FramesPerSecond}", D2DColor.FromGDIColor(System.Drawing.Color.FromArgb(255, 0, 255, 0)),
                             "Arial", 18, rect);
                     }
 

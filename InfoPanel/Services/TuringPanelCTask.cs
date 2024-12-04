@@ -1,4 +1,6 @@
 ﻿using InfoPanel.Extensions;
+using InfoPanel.Models;
+using InfoPanel.Utils;
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -14,25 +16,19 @@ namespace InfoPanel
         private static readonly Lazy<TuringPanelCTask> _instance = new(() => new TuringPanelCTask());
         public static TuringPanelCTask Instance => _instance.Value;
 
-        private Bitmap? LCD_BUFFER;
+        private readonly int _panelWidth = 800;
+        private readonly int _panelHeight = 480;
 
         private TuringPanelCTask()
         { }
-        public static byte[] BitmapToRgb16(Bitmap bitmap)
-        {
-            BitmapData bmpData = bitmap.LockBits(new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format16bppRgb565);
-            int stride = bmpData.Stride;
-            int size = bmpData.Height * stride;
-            byte[] data = new byte[size];
-            System.Runtime.InteropServices.Marshal.Copy(bmpData.Scan0, data, 0, size);
-            bitmap.UnlockBits(bmpData);
-            return data;
-        }
 
-        public void UpdateBuffer(Bitmap bitmap)
+        public Bitmap? GenerateLcdBitmap()
         {
-            if (LCD_BUFFER == null)
+            var profileGuid = ConfigModel.Instance.Settings.TuringPanelCProfile;
+
+            if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
+                var bitmap = PanelDrawTask.Render(profile, false);
                 var rotation = ConfigModel.Instance.Settings.TuringPanelCRotation;
                 if (rotation != ViewModels.LCD_ROTATION.RotateNone)
                 {
@@ -40,14 +36,17 @@ namespace InfoPanel
                     bitmap.RotateFlip(rotateFlipType);
                 }
 
-                LCD_BUFFER = BitmapExtensions.EnsureBitmapSize(bitmap, 800, 480);
+                var ensuredBitmap = BitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight);
 
-                if (rotation != ViewModels.LCD_ROTATION.RotateNone)
+                if (!ReferenceEquals(bitmap, ensuredBitmap))
                 {
-                    var rotateFlipType = (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), 4 - rotation);
-                    bitmap.RotateFlip(rotateFlipType);
+                    bitmap.Dispose();
                 }
+
+                return ensuredBitmap;
             }
+
+            return null;
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
@@ -71,37 +70,37 @@ namespace InfoPanel
                 var brightness = ConfigModel.Instance.Settings.TuringPanelCBrightness;
                 screen.SetBrightness((byte)brightness);
 
+                Bitmap? sentBitmap = null;
+
                 try
                 {
-                    Bitmap? sentBitmap = null;
+                    var fpsCounter = new FpsCounter();
+                    var stopwatch = new Stopwatch();
 
                     while (!token.IsCancellationRequested)
                     {
+                        stopwatch.Restart();
+
                         if (brightness != ConfigModel.Instance.Settings.TuringPanelCBrightness)
                         {
                             brightness = ConfigModel.Instance.Settings.TuringPanelCBrightness;
                             screen.SetBrightness((byte)brightness);
                         }
 
-                        var bitmap = LCD_BUFFER;
-                        //var stopwatch = new Stopwatch();
+                        var bitmap = GenerateLcdBitmap();
 
                         if (bitmap != null)
                         {
                             if (sentBitmap == null || !screen.CanDisplayPartialBitmap())
                             {
                                 sentBitmap = bitmap;
-                                //stopwatch.Start();
                                 screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
                                 //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
-                                //stopwatch.Stop();
                             }
                             else
                             {
-                                //stopwatch.Start();
                                 var sectors = BitmapExtensions.GetChangedSectors(sentBitmap, bitmap, 20, 20, 120, 80);
                                 //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
-                                //stopwatch.Restart();
 
                                 if (sectors.Count > 30)
                                 {
@@ -110,30 +109,29 @@ namespace InfoPanel
                                 }
                                 else
                                 {
-                                    if (sectors.Count > 0)
+                                    foreach (var sector in sectors)
                                     {
-                                        foreach (var sector in sectors)
-                                        {
-                                            screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
-                                        }
+                                        screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
+                                    }
 
-                                        //stopwatch.Stop();
-                                        //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
-                                    }
-                                    else
-                                    {
-                                        await Task.Delay(50, token);
-                                    }
+                                    //stopwatch.Stop();
+                                    //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
                                 }
-
+                                sentBitmap?.Dispose();
                                 sentBitmap = bitmap;
                             }
-
-                            LCD_BUFFER = null;
                         }
-                        else
+
+                        fpsCounter.Update();
+                        SharedModel.Instance.TuringPanelCFrameRate = fpsCounter.FramesPerSecond;
+                        SharedModel.Instance.TuringPanelCFrameTime = stopwatch.ElapsedMilliseconds;
+
+                        var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
+                        if (stopwatch.ElapsedMilliseconds < targetFrameTime)
                         {
-                            await Task.Delay(50, token);
+                            var sleep = (int)(targetFrameTime - stopwatch.ElapsedMilliseconds);
+                            //Trace.WriteLine($"Sleep {sleep}ms");
+                            await Task.Delay(sleep, token);
                         }
                     }
                 }
@@ -147,6 +145,7 @@ namespace InfoPanel
                 }
                 finally
                 {
+                    sentBitmap?.Dispose();
                     Trace.WriteLine("Resetting screen");
                     screen.Clear();
                     screen.Reset();

@@ -209,7 +209,7 @@ namespace InfoPanel.Models
             set { SetProperty(ref _webServerListenPort, value); }
         }
 
-        private int _webServerRefreshRate = 100;
+        private int _webServerRefreshRate = 66;
         public int WebServerRefreshRate
         {
             get { return _webServerRefreshRate; }

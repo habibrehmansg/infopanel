@@ -40,7 +40,7 @@ namespace InfoPanel
 
         public static LockedImage? GetLocalImage(string path)
         {
-            ImageCache.TryGetValue(path, out LockedImage result);
+            ImageCache.TryGetValue(path, out LockedImage? result);
 
             if (result != null)
             {
@@ -55,11 +55,6 @@ namespace InfoPanel
                     {
                         result = new LockedImage(path);
                     }
-                    //else
-                    //{
-                    //    using var stream = Application.GetResourceStream(new Uri("Images/no_image.png", UriKind.Relative)).Stream;
-                    //    result = new LockedImage((Bitmap)Image.FromStream(stream));
-                    //}
 
                     ImageCache.Set(path, result, new MemoryCacheEntryOptions
                     {
@@ -82,7 +77,6 @@ namespace InfoPanel
                     Trace.WriteLine(e.ToString());
                 }
             }
-
             return result;
         }
     }

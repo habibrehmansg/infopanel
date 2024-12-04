@@ -14,12 +14,12 @@ namespace InfoPanel.Extensions
             // Check if the bitmap is already the desired size
             if (sourceBitmap.Width == desiredWidth && sourceBitmap.Height == desiredHeight)
             {
-                return new Bitmap(sourceBitmap);
+                return sourceBitmap;
             }
             else
             {
                 // Create a new bitmap of the desired size
-                Bitmap resizedBitmap = new Bitmap(desiredWidth, desiredHeight);
+                Bitmap resizedBitmap = new(desiredWidth, desiredHeight, sourceBitmap.PixelFormat);
 
                 // Calculate scale factors
                 double scaleX = (double)desiredWidth / sourceBitmap.Width;

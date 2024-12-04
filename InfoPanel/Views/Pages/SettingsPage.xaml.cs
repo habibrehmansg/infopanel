@@ -21,7 +21,7 @@ namespace InfoPanel.Views.Pages
     {
         public SettingsViewModel ViewModel { get; }
 
-        private static Timer debounceTimer = new Timer(500);  // 500 ms debounce period
+        private static readonly Timer debounceTimer = new Timer(500);  // 500 ms debounce period
         private static bool deviceInserted = false;
         private static bool deviceRemoved = false;
 
@@ -59,6 +59,10 @@ namespace InfoPanel.Views.Pages
             ComboBoxListenPort.Items.Add("10000");
             ComboBoxListenPort.Items.Add("10001");
 
+            ComboBoxRefreshRate.Items.Add(16);
+            ComboBoxRefreshRate.Items.Add(33);
+            ComboBoxRefreshRate.Items.Add(50);
+            ComboBoxRefreshRate.Items.Add(66);
             ComboBoxRefreshRate.Items.Add(100);
             ComboBoxRefreshRate.Items.Add(200);
             ComboBoxRefreshRate.Items.Add(300);

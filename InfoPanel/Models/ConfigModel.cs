@@ -196,11 +196,11 @@ namespace InfoPanel
             {
                 if (Settings.WebServer)
                 {
-                    WebServerTask.Instance.Start();
+                    await WebServerTask.Instance.StartAsync();
                 }
                 else
                 {
-                    WebServerTask.Instance.Stop();
+                   await WebServerTask.Instance.StopAsync();
                 }
             }
 
