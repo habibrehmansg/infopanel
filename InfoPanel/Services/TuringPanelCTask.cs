@@ -76,6 +76,7 @@ namespace InfoPanel
                 {
                     var fpsCounter = new FpsCounter();
                     var stopwatch = new Stopwatch();
+                    var canDisplayPartialBitmap = false;
 
                     while (!token.IsCancellationRequested)
                     {
@@ -91,10 +92,10 @@ namespace InfoPanel
 
                         if (bitmap != null)
                         {
-                            if (sentBitmap == null || !screen.CanDisplayPartialBitmap())
+                            if (sentBitmap == null || !canDisplayPartialBitmap)
                             {
                                 sentBitmap = bitmap;
-                                screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
+                                canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
                                 //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                             }
                             else
@@ -104,14 +105,14 @@ namespace InfoPanel
 
                                 if (sectors.Count > 30)
                                 {
-                                    screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                                    canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
                                     //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                                 }
                                 else
                                 {
                                     foreach (var sector in sectors)
                                     {
-                                        screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
+                                        canDisplayPartialBitmap = screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
                                     }
 
                                     //stopwatch.Stop();
@@ -147,8 +148,12 @@ namespace InfoPanel
                 {
                     sentBitmap?.Dispose();
                     Trace.WriteLine("Resetting screen");
-                    screen.Clear();
-                    screen.Reset();
+                    //screen.Clear();
+
+                    using var bitmap = PanelDrawTask.RenderSplash(screen.Width, screen.Height,
+                        rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.TuringPanelCRotation));
+                    screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                    //screen.Reset();
                 }
             }
             catch (Exception e)

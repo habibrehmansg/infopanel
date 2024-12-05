@@ -8,6 +8,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
 using TuringSmartScreenLib;
 
 namespace InfoPanel
@@ -74,7 +75,8 @@ namespace InfoPanel
                 try
                 {
                     var fpsCounter = new FpsCounter();
-                    var stopwatch = new Stopwatch();
+                    var stopwatch = new Stopwatch(); 
+                    var canDisplayPartialBitmap = true;
 
                     while (!token.IsCancellationRequested)
                     {
@@ -90,10 +92,10 @@ namespace InfoPanel
 
                         if (bitmap != null)
                         {
-                            if (sentBitmap == null || !screen.CanDisplayPartialBitmap())
+                            if (sentBitmap == null || !canDisplayPartialBitmap)
                             {
                                 sentBitmap = bitmap;
-                                screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
+                                canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
                                 //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                             }
                             else
@@ -104,13 +106,13 @@ namespace InfoPanel
                                 if (sectors.Count > 46)
                                 {
                                     //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
-                                    screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                                    canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
                                 }
                                 else
                                 {
                                     foreach (var sector in sectors)
                                     {
-                                        screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
+                                        canDisplayPartialBitmap = screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
                                     }
 
                                     //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
@@ -145,8 +147,12 @@ namespace InfoPanel
                 {
                     sentBitmap?.Dispose();
                     Trace.WriteLine("Resetting screen");
-                    screen.Clear();
-                    screen.Reset();
+                    //screen.Clear();
+
+                    using var bitmap = PanelDrawTask.RenderSplash(screen.Width, screen.Height, 
+                        rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.TuringPanelERotation));
+                    screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                    //screen.Reset();
                 }
             }
             catch (Exception e)

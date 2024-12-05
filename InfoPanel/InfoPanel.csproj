@@ -92,6 +92,7 @@
 		<None Remove="Resources\Images\Libre\time.png" />
 		<None Remove="Resources\Images\Libre\voltage.png" />
 		<None Remove="Resources\Images\libre_icon.ico" />
+		<None Remove="Resources\Images\logo.png" />
 		<None Remove="Resources\Images\no_image.png" />
 	</ItemGroup>
 
@@ -134,6 +135,7 @@
 		<Resource Include="Resources\Images\Libre\time.png" />
 		<Resource Include="Resources\Images\Libre\voltage.png" />
 		<Resource Include="Resources\Images\libre_icon.ico" />
+		<Resource Include="Resources\Images\logo.png" />
 		<Resource Include="Resources\Images\no_image.png" />
 		<Content Include="index.html">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -158,13 +160,7 @@
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
 	</ItemGroup>
-
-	<ItemGroup>
-		<Content Include="hwinfo_logo_white.png">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-	</ItemGroup>
-
+	
 	<ItemGroup>
 	  <Resource Include="Resources\Images\hwinfo_icon.ico">
 	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
