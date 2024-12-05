@@ -68,8 +68,8 @@
                                     FontSize="14"
                                     TextAlignment="Justify"
                                     TextWrapping="Wrap">
-                                    If you are seeing this, InfoPanel is<Bold Foreground="Orange">unable</Bold>
-                                    to communicate with HWiNFO via the Shared Memory Interface (SHM).<LineBreak /><LineBreak />
+                                    If you are seeing this, InfoPanel is &#32;<Bold Foreground="Orange">unable</Bold>
+                                    &#32; to communicate with HWiNFO via the Shared Memory Interface (SHM).<LineBreak /><LineBreak />
                                     Ensure that HWiNFO is installed, running and the following are set in settings:<LineBreak /><LineBreak />
                                     1. 'Show sensors on startup' is enabled.<LineBreak />
                                     2. 'Shared Memory Support' is enabled.</TextBlock>

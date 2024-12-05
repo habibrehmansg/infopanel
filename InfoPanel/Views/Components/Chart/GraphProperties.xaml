@@ -1,70 +1,108 @@
-﻿<UserControl x:Class="InfoPanel.Views.Components.GraphProperties"
-      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-      xmlns:local="clr-namespace:InfoPanel.Views.Components"
-      xmlns:app="clr-namespace:InfoPanel"
-      xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
-      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-      mc:Ignorable="d"
-      d:DesignWidth="200">
+﻿<UserControl
+    x:Class="InfoPanel.Views.Components.GraphProperties"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="clr-namespace:InfoPanel"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:InfoPanel.Views.Components"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    d:DesignWidth="200"
+    mc:Ignorable="d">
 
     <Grid Margin="10,10,10,10">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
         <Grid Margin="0,0,0,0">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="1" Margin="0,0,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*"/>
-                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="1*" />
+                    <ColumnDefinition Width="1*" />
+                    <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Margin="0,0,0,0">
-                    <ui:NumberBox Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Text="{Binding Width}"
-                                     Value="{Binding Width}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Width" FontSize="12" Margin="5,0,0,0" />
+                    <ui:NumberBox
+                        Margin="0,0,0,0"
+                        FontSize="14"
+                        MaxDecimalPlaces="0"
+                        SmallChange="1"
+                        Text="{Binding Width}"
+                        Value="{Binding Width}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Width" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                    <ui:NumberBox Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Text="{Binding Height}"
-                                     Value="{Binding Height}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Height" FontSize="12" Margin="5,0,0,0" />
+                    <ui:NumberBox
+                        Margin="0,0,0,0"
+                        FontSize="14"
+                        MaxDecimalPlaces="0"
+                        SmallChange="1"
+                        Text="{Binding Height}"
+                        Value="{Binding Height}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Height" />
                 </StackPanel>
+
+                <CheckBox
+                    x:Name="CheckBoxFlip"
+                    Grid.Column="2"
+                    Margin="0,0,10,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Content="Flip Horizontally"
+                    IsChecked="{Binding FlipX}" />
 
             </Grid>
 
-            <metro:ColorPicker Grid.Row="2"  Background="Transparent" Height="40" Margin="0,10,0,0"
-                               metro:TextBoxHelper.UseFloatingWatermark="True"
-                               metro:TextBoxHelper.Watermark="Graph Color"
-                               SelectedColor="{Binding Color, Mode=TwoWay}"/>
+            <metro:ColorPicker
+                Grid.Row="2"
+                Height="40"
+                Margin="0,10,0,0"
+                metro:TextBoxHelper.UseFloatingWatermark="True"
+                metro:TextBoxHelper.Watermark="Graph Color"
+                Background="Transparent"
+                SelectedColor="{Binding Color, Mode=TwoWay}" />
 
             <Grid Grid.Row="3" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1*" />
                     <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
-                <CheckBox x:Name="CheckBoxFill" Grid.Column="0" IsChecked="{Binding Fill}" Margin="0,10,0,10" Content="Fill Graph"/>
-                <metro:ColorPicker Grid.Column="1"  Background="Transparent" Height="40" Margin="0,10,0,0"
-                               metro:TextBoxHelper.UseFloatingWatermark="True"
-                               metro:TextBoxHelper.Watermark="Fill color"
-                               SelectedColor="{Binding FillColor, Mode=TwoWay}"/>
+                <CheckBox
+                    x:Name="CheckBoxFill"
+                    Grid.Column="0"
+                    Margin="0,10,0,10"
+                    Content="Fill Graph"
+                    IsChecked="{Binding Fill}" />
+                <metro:ColorPicker
+                    Grid.Column="1"
+                    Height="40"
+                    Margin="0,10,0,0"
+                    metro:TextBoxHelper.UseFloatingWatermark="True"
+                    metro:TextBoxHelper.Watermark="Fill color"
+                    Background="Transparent"
+                    SelectedColor="{Binding FillColor, Mode=TwoWay}" />
 
             </Grid>
 
@@ -73,11 +111,20 @@
                     <ColumnDefinition Width="1*" />
                     <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
-                <CheckBox x:Name="CheckBoxFrame" Grid.Column="0" IsChecked="{Binding Frame}" Margin="0,10,0,10" Content="Show Frame"/>
-                <metro:ColorPicker Grid.Column="1"  Background="Transparent" Height="40" Margin="0,10,0,0"
-                               metro:TextBoxHelper.UseFloatingWatermark="True"
-                               metro:TextBoxHelper.Watermark="Frame color"
-                               SelectedColor="{Binding FrameColor, Mode=TwoWay}"/>
+                <CheckBox
+                    x:Name="CheckBoxFrame"
+                    Grid.Column="0"
+                    Margin="0,10,0,10"
+                    Content="Show Frame"
+                    IsChecked="{Binding Frame}" />
+                <metro:ColorPicker
+                    Grid.Column="1"
+                    Height="40"
+                    Margin="0,10,0,0"
+                    metro:TextBoxHelper.UseFloatingWatermark="True"
+                    metro:TextBoxHelper.Watermark="Frame color"
+                    Background="Transparent"
+                    SelectedColor="{Binding FrameColor, Mode=TwoWay}" />
             </Grid>
 
             <Grid Grid.Row="5" Margin="0,10,0,0">
@@ -85,92 +132,141 @@
                     <ColumnDefinition Width="1*" />
                     <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
-                <CheckBox x:Name="CheckBoxBackground" Grid.Row="5" IsChecked="{Binding Background}" Margin="0,10,0,10" Content="Show Background"/>
-                <metro:ColorPicker Grid.Column="1"  Background="Transparent" Height="40" Margin="0,10,0,0"
-                               metro:TextBoxHelper.UseFloatingWatermark="True"
-                               metro:TextBoxHelper.Watermark="Background color"
-                               SelectedColor="{Binding BackgroundColor, Mode=TwoWay}"/>
+                <CheckBox
+                    x:Name="CheckBoxBackground"
+                    Grid.Row="5"
+                    Margin="0,10,0,10"
+                    Content="Show Background"
+                    IsChecked="{Binding Background}" />
+                <metro:ColorPicker
+                    Grid.Column="1"
+                    Height="40"
+                    Margin="0,10,0,0"
+                    metro:TextBoxHelper.UseFloatingWatermark="True"
+                    metro:TextBoxHelper.Watermark="Background color"
+                    Background="Transparent"
+                    SelectedColor="{Binding BackgroundColor, Mode=TwoWay}" />
             </Grid>
 
         </Grid>
 
         <Grid Grid.Column="1" Margin="20,0,0,0">
             <Grid.RowDefinitions>
-                <RowDefinition Height="auto"/>
-                <RowDefinition Height="auto"/>
-                <RowDefinition Height="auto"/>
-                <RowDefinition Height="auto"/>
-                <RowDefinition Height="auto"/>
-                <RowDefinition Height="auto"/>
+                <RowDefinition Height="auto" />
+                <RowDefinition Height="auto" />
+                <RowDefinition Height="auto" />
+                <RowDefinition Height="auto" />
+                <RowDefinition Height="auto" />
+                <RowDefinition Height="auto" />
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Margin="0,0,0,0">
-                    <TextBox IsReadOnly="True" Margin="0,0,0,0"
-                     Text="{Binding SensorName}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Sensor" FontSize="12" Margin="5,0,0,0" />
+                    <TextBox
+                        Margin="0,0,0,0"
+                        IsReadOnly="True"
+                        Text="{Binding SensorName}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Sensor" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                    <ComboBox
-                      x:Name="ComboBoxType"
-                      SelectedValue="{Binding Type}">
-                    </ComboBox>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Type" FontSize="12" Margin="5,0,0,0" />
+                    <ComboBox x:Name="ComboBoxType" SelectedValue="{Binding Type}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Type" />
                 </StackPanel>
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*"/>
-                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="1*" />
+                    <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Margin="0,0,0,0">
-                    <ui:NumberBox Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Text="{Binding Step}"
-                                     Value="{Binding Step}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Step" FontSize="12" Margin="5,0,0,0" />
+                    <ui:NumberBox
+                        Margin="0,0,0,0"
+                        FontSize="14"
+                        MaxDecimalPlaces="0"
+                        SmallChange="1"
+                        Text="{Binding Step}"
+                        Value="{Binding Step}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Step" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                    <ui:NumberBox Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Text="{Binding Thickness}"
-                                     Value="{Binding Thickness}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Thickness" FontSize="12" Margin="5,0,0,0" />
+                    <ui:NumberBox
+                        Margin="0,0,0,0"
+                        FontSize="14"
+                        MaxDecimalPlaces="0"
+                        SmallChange="1"
+                        Text="{Binding Thickness}"
+                        Value="{Binding Thickness}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Thickness" />
                 </StackPanel>
 
             </Grid>
 
             <Grid Grid.Row="2" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*"/>
-                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="1*" />
+                    <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Margin="0,0,0,0">
-                    <ui:NumberBox Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" IsEnabled="{Binding AutoValue, Converter={StaticResource InverseBooleanConverter}}"
-                                     Text="{Binding MinValue}"
-                                     Value="{Binding MinValue}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Min" FontSize="12" Margin="5,0,0,0" />
+                    <ui:NumberBox
+                        Margin="0,0,0,0"
+                        FontSize="14"
+                        IsEnabled="{Binding AutoValue, Converter={StaticResource InverseBooleanConverter}}"
+                        MaxDecimalPlaces="0"
+                        SmallChange="1"
+                        Text="{Binding MinValue}"
+                        Value="{Binding MinValue}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Min" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                    <ui:NumberBox Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" IsEnabled="{Binding AutoValue, Converter={StaticResource InverseBooleanConverter}}"
-                                     Text="{Binding MaxValue}"
-                                     Value="{Binding MaxValue}"/>
-                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Max" FontSize="12" Margin="5,0,0,0" />
-                    <ToggleButton Grid.Column="2" HorizontalAlignment="Right" Margin="0,-5,0,0"
-                              IsChecked="{Binding AutoValue}">
-                        <ui:SymbolIcon Symbol="ArrowAutofitHeightDotted20" ToolTip="Auto"/>
+                    <ui:NumberBox
+                        Margin="0,0,0,0"
+                        FontSize="14"
+                        IsEnabled="{Binding AutoValue, Converter={StaticResource InverseBooleanConverter}}"
+                        MaxDecimalPlaces="0"
+                        SmallChange="1"
+                        Text="{Binding MaxValue}"
+                        Value="{Binding MaxValue}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Max" />
+                    <ToggleButton
+                        Grid.Column="2"
+                        Margin="0,-5,0,0"
+                        HorizontalAlignment="Right"
+                        IsChecked="{Binding AutoValue}">
+                        <ui:SymbolIcon Symbol="ArrowAutofitHeightDotted20" ToolTip="Auto" />
                     </ToggleButton>
                 </StackPanel>
             </Grid>

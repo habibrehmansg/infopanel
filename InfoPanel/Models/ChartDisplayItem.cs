@@ -136,6 +136,17 @@ namespace InfoPanel.Models
             }
         }
 
+        private bool _flipX = false;
+
+        public bool FlipX
+        {
+            get { return _flipX; }
+            set
+            {
+                SetProperty(ref _flipX, value);
+            }
+        }
+
         private bool _frame = true;
         public bool Frame
         {

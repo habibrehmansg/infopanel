@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Numerics;
+using Windows.Graphics.Imaging;
 
 namespace InfoPanel.Drawing
 {
@@ -116,11 +118,17 @@ namespace InfoPanel.Drawing
                     case ChartDisplayItem chartDisplayItem:
                         if (g is CompatGraphics)
                         {
-                            var width = (int) Math.Ceiling(chartDisplayItem.Width * scale);
-                            var height = (int) Math.Ceiling(chartDisplayItem.Height * scale);
+                            var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
+                            var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
                             using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
                             using var g1 = CompatGraphics.FromBitmap(graphBitmap);
                             GraphDraw.Run(chartDisplayItem, g1);
+
+                            if (chartDisplayItem.FlipX)
+                            {
+                                graphBitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                            }
+
                             g.DrawBitmap(graphBitmap, x, y, width, height);
                         }
                         else if (g is AcceleratedGraphics acceleratedGraphics)
@@ -132,10 +140,19 @@ namespace InfoPanel.Drawing
                             {
                                 d2dGraphics.SetDPI(96, 96);
                                 d2dGraphics.Antialias = true;
+
+                                if (chartDisplayItem.FlipX)
+                                {
+                                    var flipMatrix = Matrix3x2.CreateScale(-1.0f, 1.0f) *
+                                         Matrix3x2.CreateTranslation(chartDisplayItem.Width, 0);
+                                    d2dGraphics.SetTransform(flipMatrix);
+                                }
+
                                 using var g1 = AcceleratedGraphics.FromD2DGraphics(d2dGraphics, acceleratedGraphics);
                                 d2dGraphics.BeginRender();
                                 GraphDraw.Run(chartDisplayItem, g1);
                                 d2dGraphics.EndRender();
+
 
                                 g.DrawBitmap(d2dGraphics, chartDisplayItem.X, chartDisplayItem.Y, chartDisplayItem.Width, chartDisplayItem.Height);
                             }

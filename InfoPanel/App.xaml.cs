@@ -4,24 +4,21 @@ using InfoPanel.Services;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Common;
 using InfoPanel.Views.Windows;
-using Microsoft.AppCenter;
-using Microsoft.AppCenter.Analytics;
-using Microsoft.AppCenter.Crashes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Win32;
 using Prise.DependencyInjection;
+using Sentry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Wpf.Ui.Mvvm.Contracts;
 using Wpf.Ui.Mvvm.Services;
 
@@ -101,10 +98,32 @@ namespace InfoPanel
         [DllImport("user32.dll")]
         static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+        public App()
+        {
+            DispatcherUnhandledException += App_DispatcherUnhandledException;
+            SentrySdk.Init(o =>
+            {
+                o.Dsn = "https://5ca30f9d2faba70d50918db10cee0d26@o4508414465146880.ingest.us.sentry.io/4508414467833856";
+                o.Debug = true;
+                o.AutoSessionTracking = true;
+            });
+        }
+
+        void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+        {
+            SentrySdk.CaptureException(e.Exception);
+
+            // If you want to avoid the application from crashing:
+            e.Handled = true;
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            base.OnExit(e);
+        }
+
         protected override async void OnStartup(StartupEventArgs e)
         {
-            //WpfSingleInstance.Make("InfoPanel");
-
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
 
             Process proc = Process.GetCurrentProcess();
@@ -125,15 +144,6 @@ namespace InfoPanel
             }
 
             base.OnStartup(e);
-
-            System.Windows.Forms.Application.ThreadException += (sender, args) =>
-            {
-                Crashes.TrackError(args.Exception);
-            };
-            var countryCode = RegionInfo.CurrentRegion.TwoLetterISORegionName;
-            AppCenter.SetCountryCode(countryCode);
-            AppCenter.Start("c955c460-19db-487a-abe1-dff3dd59bb56",
-                  typeof(Analytics), typeof(Crashes));
 
             var updateFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "updates", "InfoPanelSetup.exe");
 

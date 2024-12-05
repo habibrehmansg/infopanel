@@ -1,11 +1,7 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
-using InfoPanel.Views.Components.Custom;
-using Newtonsoft.Json.Linq;
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Drawing;
 using System.Linq;
-using System.Reflection;
 using System.Windows;
 
 namespace InfoPanel.Models

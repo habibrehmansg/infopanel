@@ -12,6 +12,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
+using Windows.Storage.Streams;
 
 namespace InfoPanel
 {
@@ -170,9 +172,13 @@ namespace InfoPanel
                 {
                     try
                     {
-                        var resetTag = new PanelLinkStreamTag(3);
-                        iface.OutPipe.Write(resetTag.ToBuffer());
-                        Trace.WriteLine("Sent ResetTag to clear screen");
+                        //var resetTag = new PanelLinkStreamTag(3);
+                        //iface.OutPipe.Write(resetTag.ToBuffer());
+                        //Trace.WriteLine("Sent ResetTag to clear screen");
+
+                        using var bitmap = PanelDrawTask.RenderSplash(_panelWidth, _panelHeight,
+                        rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.BeadaPanelRotation));
+                        iface.Pipes[0x1].Write(BitmapToRgb16(bitmap));
                     }
                     catch (Exception ex)
                     {
@@ -227,7 +233,7 @@ namespace InfoPanel
 
             // Calculate checksum
             ushort[] ushortBufferWithoutChecksum = new ushort[(buffer.Length - 3) / 2];
-            Buffer.BlockCopy(buffer, 0, ushortBufferWithoutChecksum, 0, buffer.Length - 3);
+            System.Buffer.BlockCopy(buffer, 0, ushortBufferWithoutChecksum, 0, buffer.Length - 3);
             _checksum = CalculateChecksum(ushortBufferWithoutChecksum, ushortBufferWithoutChecksum.Length);
 
             // Add checksum to the end of the buffer
@@ -300,7 +306,7 @@ namespace InfoPanel
 
             // Calculate checksum using the first 268 bytes of the buffer
             ushort[] ushortBuffer = new ushort[134]; // 268 bytes divided by 2 (size of ushort)
-            Buffer.BlockCopy(buffer, 0, ushortBuffer, 0, 268);
+            System.Buffer.BlockCopy(buffer, 0, ushortBuffer, 0, 268);
 
             // Call the external checksum function
             _checksum = CalculateChecksum(ushortBuffer, ushortBuffer.Length);

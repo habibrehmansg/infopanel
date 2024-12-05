@@ -388,12 +388,12 @@ namespace InfoPanel.Drawing
                                 GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
                             }
 
-                            var offset = 2;
+                            var offset = 1;
 
                             g.FillDonut(frameRect.X + offset, frameRect.Y + offset, (frameRect.Width / 2) - offset, donutDisplayItem.Thickness,
                                  donutDisplayItem.Rotation, (int)value, donutDisplayItem.Color,
                                 donutDisplayItem.Background ? donutDisplayItem.BackgroundColor : "#00000000",
-                                donutDisplayItem.Frame ? 2 : 0, donutDisplayItem.FrameColor);
+                                donutDisplayItem.Frame ? 1 : 0, donutDisplayItem.FrameColor);
 
                             break;
                         }
@@ -401,7 +401,13 @@ namespace InfoPanel.Drawing
 
                 if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem.Frame)
                 {
-                    g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width - 1, chartDisplayItem.Height - 1);
+                    if(g is CompatGraphics)
+                    {
+                        g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width - 1, chartDisplayItem.Height - 1);
+                    } else
+                    {
+                        g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
+                    }
                 }
             }
         }

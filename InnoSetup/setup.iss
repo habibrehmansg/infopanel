@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "InfoPanel"
-#define MyAppVersion "1.2.7"
+#define MyAppVersion "1.2.8"
 #define MyAppPublisher "Habib Rehman"
 #define MyAppURL "https://infopanel.net"
 #define MyAppExeName "InfoPanel.exe"
@@ -34,7 +34,6 @@ CloseApplications=force
 UninstallDisplayIcon={app}\InfoPanel.exe
 UninstallDisplayName={#MyAppName}
 
-
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
@@ -42,11 +41,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}";
 
 [Files]
-Source: "..\build\*"; Excludes: "*.pdb"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\InfoPanel\bin\publish\win-x64\*"; Excludes: "*.pdb"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
-
-[InstallDelete]
-Type: filesandordirs; Name: "{app}\*"
 
 [Code]
 procedure TaskKill(FileName: String);
@@ -57,11 +53,13 @@ begin
      ewWaitUntilTerminated, ResultCode);
 end;
 
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\*"
+
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
-
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runascurrentuser

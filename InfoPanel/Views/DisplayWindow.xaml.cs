@@ -117,16 +117,20 @@ namespace InfoPanel.Views.Common
             ResizeTimer.Tick -= ResizeTimer_Tick;
             SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
 
-            if (Direct2DMode)
+            SharedModel.Instance.GetProfileDisplayItemsCopy(Profile).ForEach(item =>
             {
-                SharedModel.Instance.GetProfileDisplayItemsCopy(Profile).ForEach(item =>
+                if (item is ImageDisplayItem imageDisplayItem)
                 {
-                    if(item is ImageDisplayItem imageDisplayItem)
+                    if (Direct2DMode)
                     {
                         Cache.GetLocalImage(imageDisplayItem)?.DisposeD2DAssets();
                     }
-                });
-            }
+                    else
+                    {
+                        Cache.GetLocalImage(imageDisplayItem)?.DisposeAssets();
+                    }
+                }
+            });
         }
 
         private void Profile_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -165,7 +169,8 @@ namespace InfoPanel.Views.Common
                 {
                     ResizeMode = ResizeMode.NoResize;
                 }
-            }else if(e.PropertyName == nameof(Profile.Direct2DModeFps))
+            }
+            else if (e.PropertyName == nameof(Profile.Direct2DModeFps))
             {
                 ShowFps = Profile.Direct2DModeFps;
             }
