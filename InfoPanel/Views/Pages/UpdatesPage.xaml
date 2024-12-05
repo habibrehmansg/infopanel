@@ -188,6 +188,7 @@
                                 Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                 TextWrapping="Wrap">
                                 - Optimised and enabled resizing with responsive layout for InfoPanel for better low-resolution support.<LineBreak />
+                                - Add chart horizontal flip option.
                                 - Added GIF image preview support.<LineBreak />
                                 - Squashed some UI bugs.</TextBlock>
 
