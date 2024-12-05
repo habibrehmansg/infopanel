@@ -25,7 +25,7 @@ jobs:
     - name: Build InfoPanel
       run: |
         dotnet restore
-        dotnet publish InfoPanel\InfoPanel.csproj -c Release -o "${{ github.workspace }}\build"        
+        dotnet publish InfoPanel\InfoPanel.csproj -c Release -o "${{ github.workspace }}InfoPanel\bin\publish\win-x64" -r win-x64 --self-contained -p:PublishReadyToRun=true       
 
     - name: Install and Compile Inno Setup Installer
       shell: powershell
