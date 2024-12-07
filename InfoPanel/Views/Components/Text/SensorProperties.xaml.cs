@@ -38,8 +38,7 @@ namespace InfoPanel.Views.Components
             }
 
             var numBox = ((NumberBox)sender);
-            double newValue;
-            if (double.TryParse(numBox.Text, out newValue))
+            if (double.TryParse(numBox.Text, out double newValue))
             {
                 numBox.Value = newValue;
                 SensorDisplayItem.Precision = (int)newValue;
@@ -54,11 +53,10 @@ namespace InfoPanel.Views.Components
             }
 
             var numBox = ((NumberBox)sender);
-            double newValue;
-            if (double.TryParse(numBox.Text, out newValue))
+            if (double.TryParse(numBox.Text, out double newValue))
             {
                 numBox.Value = newValue;
-                SensorDisplayItem.Threshold1 = (int)newValue;
+                SensorDisplayItem.Threshold1 = newValue;
             }
         }
 
@@ -70,11 +68,10 @@ namespace InfoPanel.Views.Components
             }
 
             var numBox = ((NumberBox)sender);
-            double newValue;
-            if (double.TryParse(numBox.Text, out newValue))
+            if (double.TryParse(numBox.Text, out double newValue))
             {
                 numBox.Value = newValue;
-                SensorDisplayItem.Threshold2 = (int)newValue;
+                SensorDisplayItem.Threshold2 = newValue;
             }
         }
 
@@ -86,11 +83,10 @@ namespace InfoPanel.Views.Components
             }
 
             var numBox = ((NumberBox)sender);
-            double newValue;
-            if (double.TryParse(numBox.Text, out newValue))
+            if (double.TryParse(numBox.Text, out double newValue))
             {
                 numBox.Value = newValue;
-                SensorDisplayItem.AdditionModifier = (int)newValue;
+                SensorDisplayItem.AdditionModifier = newValue;
             }
         }
 
