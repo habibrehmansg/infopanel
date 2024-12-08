@@ -53,6 +53,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private bool _cache = true;
+        public bool Cache
+        {
+            get { return _cache; }
+            set
+            {
+                SetProperty(ref _cache, value);
+            }
+        }
+
         private int _scale = 100;
         public int Scale
         {
@@ -136,7 +146,7 @@ namespace InfoPanel.Models
 
             if (CalculatedPath != null)
             {
-                var cachedImage = Cache.GetLocalImage(CalculatedPath);
+                var cachedImage = InfoPanel.Cache.GetLocalImage(CalculatedPath);
                 if (cachedImage != null)
                 {
                     result.Width = cachedImage.Width * Scale / 100.0f;

@@ -68,21 +68,38 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
+
+
+                    <CheckBox
+                        x:Name="CheckBoxCache"
+                        Grid.Row="0"
+                        Margin="0,10,0,0"
+                        Content="Cache the image"
+                        IsChecked="{Binding Cache}"
+                        Unchecked="CheckBoxCache_Unchecked" />
+                    <TextBlock
+                        Margin="0,0,0,0"
+                        FontSize="12"
+                        Foreground="LightGray"
+                        TextWrapping="Wrap">
+                        Lower CPU usage but higher RAM.
+                    </TextBlock>
+
                     <StackPanel>
+                        <CheckBox
+                            x:Name="CheckBoxLayer"
+                            Grid.Row="0"
+                            Margin="0,10,0,0"
+                            Content="Add Fill Layer"
+                            IsChecked="{Binding Layer}" />
                         <metro:ColorPicker
                             Grid.Row="1"
                             Height="40"
-                            Margin="0,10,0,0"
+                            Margin="0,0,0,0"
                             metro:TextBoxHelper.UseFloatingWatermark="True"
                             metro:TextBoxHelper.Watermark="Fill color"
                             Background="Transparent"
                             SelectedColor="{Binding LayerColor, Mode=TwoWay}" />
-                        <CheckBox
-                            x:Name="CheckBoxLayer"
-                            Grid.Row="0"
-                            Margin="0,0,0,0"
-                            Content="Add Fill Layer"
-                            IsChecked="{Binding Layer}" />
                     </StackPanel>
                     <StackPanel Margin="0,10,0,0">
                         <Slider
@@ -112,7 +129,6 @@
                                 Text="{Binding Scale, Mode=OneWay}" />
                         </Grid>
                     </StackPanel>
-
                 </StackPanel>
 
                 <Image

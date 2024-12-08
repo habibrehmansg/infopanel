@@ -70,7 +70,7 @@ namespace InfoPanel.Drawing
             {
                 if (d2dBitmap != null)
                     this.D2DGraphics.DrawBitmap(d2dBitmap, new D2DRect(x, y, width, height));
-            });
+            }, cache);
         }
 
         public override void DrawBitmap(Bitmap bitmap, int x, int y)

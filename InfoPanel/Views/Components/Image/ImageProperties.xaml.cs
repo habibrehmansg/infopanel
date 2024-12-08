@@ -61,6 +61,17 @@ namespace InfoPanel.Views.Components
             }
         }
 
+        private void CheckBoxCache_Unchecked(object sender, RoutedEventArgs e)
+        {
+            if (SharedModel.Instance.SelectedItem is ImageDisplayItem imageDisplayItem && !imageDisplayItem.Cache
+                && imageDisplayItem.CalculatedPath is string path
+                && Cache.GetLocalImage(path) is LockedImage lockedImage)
+            {
+                lockedImage.DisposeAssets();
+                lockedImage.DisposeD2DAssets();
+            }
+        }
+
         //public static void OptimizeGif(string filePath, int optimalFrameCount = 60)
         //{
         //    // Load the GIF as a collection

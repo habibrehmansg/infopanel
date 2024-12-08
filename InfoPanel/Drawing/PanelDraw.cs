@@ -65,7 +65,6 @@ namespace InfoPanel.Drawing
                             {
                                 break;
                             }
-                            
                         }
 
                         if (imageDisplayItem.CalculatedPath != null)
@@ -77,7 +76,7 @@ namespace InfoPanel.Drawing
                                 var scaledWidth = (int) Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
                                 var scaledHeight = (int) Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
 
-                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, cache);
+                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Cache && cache);
 
                                 if (imageDisplayItem.Layer)
                                 {

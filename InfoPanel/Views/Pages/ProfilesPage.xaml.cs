@@ -182,14 +182,17 @@ namespace InfoPanel.Views.Pages
 
         private void ButtonExportProfile_Click(object sender, RoutedEventArgs e)
         {
-            FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
-            if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
+            if (ViewModel.Profile is Profile profile)
             {
-                string selectedFolderPath = folderBrowserDialog.SelectedPath;
-                string? result = SharedModel.Instance.ExportProfile(ViewModel.Profile, selectedFolderPath);
-                if (result != null)
+                FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
+                if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
                 {
-                    _snackbarControl.ShowAsync("Profile Exported", $"{result}");
+                    string selectedFolderPath = folderBrowserDialog.SelectedPath;
+                    string? result = SharedModel.Instance.ExportProfile(profile, selectedFolderPath);
+                    if (result != null)
+                    {
+                        _snackbarControl.ShowAsync("Profile Exported", $"{result}");
+                    }
                 }
             }
         }

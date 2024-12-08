@@ -161,29 +161,39 @@ namespace InfoPanel.Models
                     var frame = GetCurrentFrameCount();
                     d2dbitmap = D2DBitmapCache[frame];
 
-                    if (d2dbitmap == null)
+                    try
                     {
-                        if(Frames == 1)
+                        if (d2dbitmap == null)
                         {
-                            d2dbitmap = device.CreateBitmapFromFile(ImagePath);
-                        } else
-                        {
-                            if (FrameDimension != null)
+                            if (Frames == 1)
                             {
-                                Image.SelectActiveFrame(FrameDimension, frame);
+                                d2dbitmap = device.CreateBitmapFromFile(ImagePath);
+                            }
+                            else
+                            {
+                                if (FrameDimension != null)
+                                {
+                                    Image.SelectActiveFrame(FrameDimension, frame);
+                                }
+
+                                d2dbitmap = device.CreateBitmapFromGDIBitmap((Bitmap)Image, true);
                             }
 
-                            d2dbitmap = device.CreateBitmapFromGDIBitmap((Bitmap)Image, true);
+                            if (d2dbitmap != null && cache)
+                            {
+                                D2DBitmapCache[frame] = d2dbitmap;
+                            }
                         }
-
-                        if (d2dbitmap != null)
+                        action(d2dbitmap);
+                    }finally
+                    {
+                        if (!cache)
                         {
-                            D2DBitmapCache[frame] = d2dbitmap;
+                            D2DBitmapCache[frame] = null;
+                            d2dbitmap?.Dispose();
                         }
                     }
                 }
-
-                action(d2dbitmap);
             }
         }
 
@@ -201,22 +211,33 @@ namespace InfoPanel.Models
                     var frame = GetCurrentFrameCount();
                     var bitmap = BitmapCache[frame];
 
-                    if (bitmap == null && Image != null)
+                    try
                     {
-                        if(FrameDimension != null)
+                        if (bitmap == null && Image != null)
                         {
-                            Image.SelectActiveFrame(FrameDimension, frame);
+                            if (FrameDimension != null)
+                            {
+                                Image.SelectActiveFrame(FrameDimension, frame);
+                            }
+
+                            bitmap = new Bitmap(Image);
+
+                            if (cache)
+                            {
+                                BitmapCache[frame] = bitmap;
+                            }
                         }
 
-                        bitmap = new Bitmap(Image);
-
-                        if (cache)
+                        access(bitmap);
+                    }
+                    finally
+                    {
+                        if (!cache)
                         {
-                            BitmapCache[frame] = bitmap;
+                            BitmapCache[frame] = null;
+                            bitmap?.Dispose();
                         }
                     }
-
-                    access(bitmap);
                 }
             }
         }

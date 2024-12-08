@@ -47,14 +47,17 @@ namespace InfoPanel
                              SharedModel.Instance.SetPanelBitmap(profile, bitmap);
                          });
 
+                        var frameTime = stopwatch.ElapsedMilliseconds;
+                        //Trace.WriteLine($"Frametime: {frameTime}");
+
                         fpsCounter.Update();
                         SharedModel.Instance.CurrentFrameRate = fpsCounter.FramesPerSecond;
-                        SharedModel.Instance.CurrentFrameTime = stopwatch.ElapsedMilliseconds;
+                        SharedModel.Instance.CurrentFrameTime = frameTime;
 
-                        var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
-                        if (stopwatch.ElapsedMilliseconds < targetFrameTime)
+                        var targetFrameTime = 1000.0 / (ConfigModel.Instance.Settings.TargetFrameRate * 1.03);
+                        if (frameTime < targetFrameTime)
                         {
-                            var sleep = (int)(targetFrameTime - stopwatch.ElapsedMilliseconds);
+                            var sleep = (int)(targetFrameTime - frameTime);
                             //Trace.WriteLine($"Sleep {sleep}ms");
                             await Task.Delay(sleep, token);
                         }
