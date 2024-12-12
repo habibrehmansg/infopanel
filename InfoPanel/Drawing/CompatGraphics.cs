@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Linq;
+using System.Reflection.Metadata;
 using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
@@ -64,28 +65,56 @@ namespace InfoPanel.Drawing
             this.Graphics.DrawString(text, font, brush, new PointF(x, y), format);
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, bool cache = true)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, bool cache = true)
         {
             lockedImage.Access(bitmap =>
             {
                 if (bitmap != null)
-                    this.Graphics.DrawImage(bitmap, x, y, width, height);
+                    this.DrawBitmap(bitmap, x, y, width, height, rotation);
             }, cache);
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int rotation = 0)
         {
-            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height);
+            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height, rotation);
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0)
         {
-            this.Graphics.DrawImage(bitmap, x, y, width, height);
+            if (rotation != 0)
+            {
+                var state = Graphics.Save();
+                // Move the origin to the center of the image
+                Graphics.TranslateTransform(x + width / 2, y + height / 2);
+
+                // Rotate the graphics context
+                Graphics.RotateTransform(rotation);
+
+                // Move the origin back
+                Graphics.TranslateTransform(-(x + width / 2), -(y + height / 2));
+                this.Graphics.DrawImage(bitmap, x, y, width, height);
+
+                // Restore the graphics context to the state before rotation
+                Graphics.Restore(state);
+            } else
+            {
+                this.Graphics.DrawImage(bitmap, x, y, width, height);
+            }
         }
 
-        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height)
+        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height, int rotation = 0)
         {
-            throw new System.NotSupportedException();
+            throw new NotSupportedException();
+        }
+
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int rotation = 0)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0)
+        {
+            throw new NotSupportedException();
         }
 
         public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
@@ -102,8 +131,7 @@ namespace InfoPanel.Drawing
 
         public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height)
         {
-            using var pen = new Pen(ColorTranslator.FromHtml(color), strokeWidth);
-            this.Graphics.DrawRectangle(pen, x, y, width, height);
+            this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height);
         }
 
         public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null)

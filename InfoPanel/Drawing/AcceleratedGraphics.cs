@@ -1,8 +1,9 @@
 ﻿using InfoPanel.Models;
-using Microsoft.AspNetCore.Http.HttpResults;
+using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Numerics;
+using System.Reflection.Metadata;
 using unvell.D2DLib;
 using unvell.D2DLib.WinForm;
 
@@ -65,26 +66,58 @@ namespace InfoPanel.Drawing
                    rect);
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, bool cache = true)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, bool cache = true)
         {
             lockedImage.AccessD2D(this.D2DDevice, this.Handle, d2dBitmap =>
             {
                 if (d2dBitmap != null)
-                    this.D2DGraphics.DrawBitmap(d2dBitmap, new D2DRect(x, y, width, height));
+                    this.DrawBitmap(d2dBitmap, x, y, width, height, rotation);
             }, cache);
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y)
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int rotation = 0)
         {
-            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height);
+            this.DrawBitmap(bitmap, x, y, (int)bitmap.Width, (int) bitmap.Height, rotation);
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height)
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0)
+        {
+            if (rotation != 0)
+            {
+                // Calculate the center of the image for rotation
+                float centerX = x + width / 2.0f;
+                float centerY = y + height / 2.0f;
+
+                // Save the current transform state
+                var originalTransform = this.D2DGraphics.GetTransform();
+
+                // Create a rotation matrix
+                var radians = (float)(rotation * (Math.PI / 180.0));
+                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(centerX, centerY));
+
+                // Apply the rotation transformation
+                this.D2DGraphics.SetTransform(rotationMatrix);
+                this.D2DGraphics.DrawBitmap(bitmap, new D2DRect(x, y, width, height));
+                // Undo the transformation
+                this.D2DGraphics.SetTransform(originalTransform);
+            }
+            else
+            {
+                this.D2DGraphics.DrawBitmap(bitmap, new D2DRect(x, y, width, height));
+            }
+        }
+
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int rotation = 0)
+        {
+            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height, rotation);
+        }
+
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0)
         {
             this.D2DGraphics.DrawBitmap(bitmap, new D2DRect(x, y, width, height), alpha: true);
         }
 
-        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height)
+        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height, int rotation = 0)
         {
             this.D2DGraphics.DrawBitmap(bitmapGraphics, new D2DRect(x, y, width, height));
         }
@@ -101,7 +134,7 @@ namespace InfoPanel.Drawing
 
         public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height)
         {
-            this.D2DGraphics.DrawRectangle(x, y, width, height, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)), strokeWidth);
+            this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height);
         }
 
         public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null)

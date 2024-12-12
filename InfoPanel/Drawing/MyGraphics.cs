@@ -12,10 +12,12 @@ namespace InfoPanel.Drawing
             bool bold = false, bool italic = false, bool underline = false, bool strikeout = false);
         public abstract void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false,
             bool bold = false, bool italic = false, bool underline = false, bool strikeout = false);
-        public abstract void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, bool cache = true);
-        public abstract void DrawBitmap(Bitmap bitmap, int x, int y);
-        public abstract void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height);
-        public abstract void DrawBitmap(D2DBitmapGraphics bitmap, int x, int y, int width, int height);
+        public abstract void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, bool cache = true);
+        public abstract void DrawBitmap(Bitmap bitmap, int x, int y, int rotation = 0);
+        public abstract void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0);
+        public abstract void DrawBitmap(D2DBitmap bitmap, int x, int y, int rotation = 0);
+        public abstract void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0);
+        public abstract void DrawBitmap(D2DBitmapGraphics bitmap, int x, int y, int width, int height, int rotation = 0);
         public abstract void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth);
         public abstract void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height);
         public abstract void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height);

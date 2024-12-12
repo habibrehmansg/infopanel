@@ -3,17 +3,27 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Numerics;
 using Windows.Graphics.Imaging;
 
 namespace InfoPanel.Drawing
 {
+    struct SelectedRectangle(int x, int y, int width, int height, int rotation = 0)
+    {
+        public readonly int X = x;
+        public readonly int Y = y;
+        public readonly int Width = width;
+        public readonly int Height = height;
+        public readonly int Rotation = rotation;
+    }
+
     internal class PanelDraw
     {
-        private static Stopwatch stopwatch = new Stopwatch();
+        private static readonly Stopwatch stopwatch = new Stopwatch();
 
-        static PanelDraw ()
+        static PanelDraw()
         {
             stopwatch.Start();
         }
@@ -23,21 +33,21 @@ namespace InfoPanel.Drawing
             g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
 
             DisplayItem? selectedItem = SharedModel.Instance.SelectedItem;
-            List<Rectangle> selectedRectangles = [];
+            List<SelectedRectangle> selectedRectangles = [];
 
             foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))
             {
                 if (displayItem.Hidden) continue;
-                
-                var x = (int) Math.Ceiling(displayItem.X * scale);
-                var y = (int) Math.Ceiling(displayItem.Y * scale);
+
+                var x = (int)Math.Ceiling(displayItem.X * scale);
+                var y = (int)Math.Ceiling(displayItem.Y * scale);
 
                 switch (displayItem)
                 {
                     case TextDisplayItem textDisplayItem:
                         {
                             (var text, var color) = textDisplayItem.EvaluateTextAndColor();
-                            var fontSize = (int) Math.Ceiling(textDisplayItem.FontSize * scale);
+                            var fontSize = (int)Math.Ceiling(textDisplayItem.FontSize * scale);
 
                             g.DrawString(text, textDisplayItem.Font, fontSize, color, x, y, textDisplayItem.RightAlign,
                                 textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
@@ -48,18 +58,18 @@ namespace InfoPanel.Drawing
 
                                 if (textDisplayItem.RightAlign)
                                 {
-                                    selectedRectangles.Add(new Rectangle((int)(x - textWidth), y - 2, (int)textWidth, (int)(textHeight - 4)));
+                                    selectedRectangles.Add(new SelectedRectangle((int)(x - textWidth), y - 2, (int)textWidth, (int)(textHeight - 4)));
                                 }
                                 else
                                 {
-                                    selectedRectangles.Add(new Rectangle(x, y, (int)textWidth, (int)(textHeight)));
+                                    selectedRectangles.Add(new SelectedRectangle(x, y, (int)textWidth, (int)(textHeight)));
                                 }
                             }
 
                             break;
                         }
                     case ImageDisplayItem imageDisplayItem:
-                        if(imageDisplayItem is SensorImageDisplayItem sensorImageDisplayItem)
+                        if (imageDisplayItem is SensorImageDisplayItem sensorImageDisplayItem)
                         {
                             if (!sensorImageDisplayItem.ShouldShow())
                             {
@@ -73,10 +83,10 @@ namespace InfoPanel.Drawing
 
                             if (cachedImage != null)
                             {
-                                var scaledWidth = (int) Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
-                                var scaledHeight = (int) Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
+                                var scaledWidth = (int)Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
+                                var scaledHeight = (int)Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
 
-                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Cache && cache);
+                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, imageDisplayItem.Cache && cache);
 
                                 if (imageDisplayItem.Layer)
                                 {
@@ -85,7 +95,7 @@ namespace InfoPanel.Drawing
 
                                 if (displayItem.Selected)
                                 {
-                                    selectedRectangles.Add(new Rectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4));
+                                    selectedRectangles.Add(new SelectedRectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4, imageDisplayItem.Rotation));
                                 }
                             }
                         }
@@ -101,19 +111,19 @@ namespace InfoPanel.Drawing
 
                                 if (cachedImage != null)
                                 {
-                                    var scaledWidth = (int) Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
-                                    var scaledHeight = (int) Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
+                                    var scaledWidth = (int)Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
+                                    var scaledHeight = (int)Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
 
-                                    g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, cache);
+                                    g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, cache);
 
                                     if (displayItem.Selected)
                                     {
-                                        selectedRectangles.Add(new Rectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4));
+                                        selectedRectangles.Add(new SelectedRectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4));
                                     }
                                 }
                             }
                             break;
-                         }
+                        }
                     case ChartDisplayItem chartDisplayItem:
                         if (g is CompatGraphics)
                         {
@@ -134,7 +144,7 @@ namespace InfoPanel.Drawing
                         {
                             using var d2dGraphics = acceleratedGraphics.D2DDevice
                                 .CreateBitmapGraphics(chartDisplayItem.Width, chartDisplayItem.Height);
-                            
+
                             if (d2dGraphics != null)
                             {
                                 d2dGraphics.SetDPI(96, 96);
@@ -159,7 +169,7 @@ namespace InfoPanel.Drawing
 
                         if (displayItem.Selected)
                         {
-                            selectedRectangles.Add(new Rectangle(chartDisplayItem.X - 2, chartDisplayItem.Y - 2, chartDisplayItem.Width + 4, chartDisplayItem.Height + 4));
+                            selectedRectangles.Add(new SelectedRectangle(chartDisplayItem.X - 2, chartDisplayItem.Y - 2, chartDisplayItem.Width + 4, chartDisplayItem.Height + 4));
                         }
 
                         break;
@@ -180,33 +190,47 @@ namespace InfoPanel.Drawing
                 {
                     foreach (var rectangle in selectedRectangles)
                     {
-                        // pen width
+                        // Pen width
                         int penWidth = 2;
 
-                        // Clamp the top-left corner of the rectangle, considering the pen thickness
-                        var x = Math.Clamp(rectangle.X, penWidth / 2, profile.Width - penWidth / 2);
-                        var y = Math.Clamp(rectangle.Y, penWidth / 2, profile.Height - penWidth / 2);
+                        // Calculate the center of the rectangle
+                        var centerX = rectangle.X + rectangle.Width / 2;
+                        var centerY = rectangle.Y + rectangle.Height / 2;
 
-                        // Adjust width and height to ensure the rectangle stays within bounds
-                        var width = rectangle.Width - (x - rectangle.X);
-                        var height = rectangle.Height - (y - rectangle.Y);
+                        // Create a matrix for transformation
+                        var matrix = new Matrix();
 
-                        // Ensure the width does not extend beyond the right boundary, considering the pen thickness
-                        if (x + width + penWidth / 2 > profile.Width)
-                        {
-                            width = profile.Width - x - penWidth / 2;
-                        }
+                        // Translate to the center, rotate, then translate back
+                        matrix.Translate(centerX, centerY);
+                        matrix.Rotate(rectangle.Rotation);
+                        matrix.Translate(-centerX, -centerY);
 
-                        // Ensure the height does not extend beyond the bottom boundary, considering the pen thickness
-                        if (y + height + penWidth / 2 > profile.Height)
-                        {
-                            height = profile.Height - y - penWidth / 2;
-                        }
+                        // Define the rectangle points
+                        PointF[] points =
+                        [
+                            new PointF(rectangle.X, rectangle.Y),
+                            new PointF(rectangle.X + rectangle.Width, rectangle.Y),
+                            new PointF(rectangle.X + rectangle.Width, rectangle.Y + rectangle.Height),
+                            new PointF(rectangle.X, rectangle.Y + rectangle.Height)
+                        ];
 
-                        // draw the rectangle
-                        g.DrawRectangle(Color.FromArgb(255, 0, 255, 0), penWidth,
-                            x, y,
-                            width, height);
+                        // Apply the transformation
+                        matrix.TransformPoints(points);
+
+                        // Find the bounding box of the transformed points
+                        float minX = points.Min(p => p.X);
+                        float minY = points.Min(p => p.Y);
+                        float maxX = points.Max(p => p.X);
+                        float maxY = points.Max(p => p.Y);
+
+                        // Clamp the bounding box
+                        minX = Math.Clamp(minX, penWidth / 2, profile.Width - penWidth / 2);
+                        minY = Math.Clamp(minY, penWidth / 2, profile.Height - penWidth / 2);
+                        maxX = Math.Clamp(maxX, penWidth / 2, profile.Width - penWidth / 2);
+                        maxY = Math.Clamp(maxY, penWidth / 2, profile.Height - penWidth / 2);
+
+                        // Draw the rectangle using the bounding box
+                        g.DrawRectangle(Color.FromArgb(255, 0, 255, 0), penWidth, (int)minX, (int)minY, (int)(maxX - minX), (int)(maxY - minY)); // Rotation already applied
                     }
                 }
             }

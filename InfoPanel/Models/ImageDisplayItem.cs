@@ -72,6 +72,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private int _rotation = 0;
+        public int Rotation
+        {
+            get { return _rotation; }
+            set
+            {
+                SetProperty(ref _rotation, value);
+            }
+        }
+
         private bool _layer = false;
         public bool Layer
         {

@@ -130,6 +130,33 @@
                                 Text="{Binding Scale, Mode=OneWay}" />
                         </Grid>
                     </StackPanel>
+                    <StackPanel Margin="0,5,0,0">
+                        <Slider
+                            Grid.Column="1"
+                            Margin="0,0,0,0"
+                            Maximum="180"
+                            Minimum="-180"
+                            Value="{Binding Rotation}" />
+
+                        <Grid Margin="5,0,5,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                Grid.Column="0"
+                                Margin="0,0,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                Text="Rotation" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Margin="0,0,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                Text="{Binding Rotation, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
                 </StackPanel>
 
                 <controls:MyImage

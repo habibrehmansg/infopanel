@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Timers;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace InfoPanel.Views.Controls
 {
@@ -17,7 +18,8 @@ namespace InfoPanel.Views.Controls
             DependencyProperty.Register(
                 "ImagePath",
                 typeof(string),
-                typeof(MyImage));
+                typeof(MyImage),
+                new PropertyMetadata(string.Empty, OnImagePathChanged));
 
         public string ImagePath
         {
@@ -32,6 +34,21 @@ namespace InfoPanel.Views.Controls
         {
             Loaded += OnLoaded;
             Unloaded += MyImage_Unloaded;
+        }
+
+        private static void OnImagePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var control = (MyImage)d;
+            string newImagePath = (string)e.NewValue;
+
+            if (string.IsNullOrEmpty(newImagePath))
+            {
+                control.Source = null;
+            }
+            else
+            {
+                control.Source = control._writeableBitmap;
+            }
         }
 
         private void MyImage_Unloaded(object sender, RoutedEventArgs e)
