@@ -144,7 +144,6 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-		<PackageReference Include="AnimatedImage.Wpf" Version="2.0.0" />
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
@@ -154,6 +153,7 @@
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
 		<PackageReference Include="Prise" Version="6.0.0" />
 		<PackageReference Include="Sentry" Version="4.13.0" />
+		<PackageReference Include="SkiaSharp" Version="3.116.1" />
 		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
 		<PackageReference Include="TaskScheduler" Version="2.11.1" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />

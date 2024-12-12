@@ -1,8 +1,10 @@
-﻿using System;
+﻿using InfoPanel.Extensions;
+using SkiaSharp;
+using System;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using unvell.D2DLib;
 
 namespace InfoPanel.Models
@@ -10,22 +12,25 @@ namespace InfoPanel.Models
     public partial class LockedImage : IDisposable
     {
         public readonly string ImagePath;
-        private Image? Image;
         private Bitmap?[]? BitmapCache;
-        private FrameDimension? FrameDimension;
-        //private MagickImageCollection? ImageCollection;
         private IntPtr? D2DHandle;
         private D2DBitmap?[]? D2DBitmapCache;
         public int Width = 0;
         public int Height = 0;
 
         public int Frames = 0;
-        public int FrameTime = 0;
+        public long TotalFrameTime = 0;
+
+        private SKCodec? _codec;
+        private FileStream? _fileStream;
+        private SKBitmap? _compositeBitmap;
+        private int _lastRenderedFrame = -1;
+        private long[]? _cumulativeFrameTimes;
 
         private readonly object Lock = new();
         private bool IsDisposed = false;
 
-        private readonly Stopwatch Stopwatch = new Stopwatch();
+        private readonly Stopwatch Stopwatch = new();
 
         public LockedImage(string imagePath)
         {
@@ -37,25 +42,25 @@ namespace InfoPanel.Models
         {
             if (ImagePath != null && File.Exists(ImagePath))
             {
-                lock (Lock) { 
+                lock (Lock)
+                {
                     try
                     {
-                        Image?.Dispose();
+                        _codec?.Dispose();
+                        _fileStream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read);
 
-                        //double convert to release lock on file
-                        using var temp = Image.FromFile(ImagePath);
+                        _codec = SKCodec.Create(_fileStream);
 
-                        var stream = new MemoryStream();
-                        temp.Save(stream, temp.RawFormat);
-                        stream.Position = 0;
+                        Width = _codec.Info.Width;
+                        Height = _codec.Info.Height;
 
-                        Image = Image.FromStream(stream);
+                        Frames = _codec.FrameCount;
 
-                        Width = Image.Width;
-                        Height = Image.Height;
-
-                        FrameDimension = new FrameDimension(Image.FrameDimensionsList[0]);
-                        Frames = Image.GetFrameCount(FrameDimension);
+                        //ensure at least 1 frame
+                        if (Frames == 0)
+                        {
+                            Frames = 1;
+                        }
 
                         DisposeAssets();
                         BitmapCache = new Bitmap[Frames];
@@ -63,36 +68,25 @@ namespace InfoPanel.Models
                         DisposeD2DAssets();
                         D2DBitmapCache = new D2DBitmap[Frames];
 
-                        //only animate if there are multiple frames (gif)
+                        _cumulativeFrameTimes = new long[Frames];
+
                         if (Frames > 1)
                         {
-                            var totalDuration = 0;
-
                             for (int i = 0; i < Frames; i++)
                             {
-                                Image.SelectActiveFrame(FrameDimension, i);
-                                var delayPropertyBytes = Image.GetPropertyItem(20736)?.Value;
+                                var frameDelay = _codec.FrameInfo[i].Duration;
 
-                                if (delayPropertyBytes != null)
+                                if(frameDelay == 0)
                                 {
-                                    var frameDelay = BitConverter.ToInt32(delayPropertyBytes, i * 4) * 10;
-                                    totalDuration += frameDelay;
+                                    frameDelay = 100;
                                 }
-                            }
 
-                            //default to 1 second if no delay is found
-                            if (totalDuration == 0)
-                            {
-                                totalDuration = 1000;
+                                TotalFrameTime += frameDelay;
+                                _cumulativeFrameTimes[i] = TotalFrameTime;
                             }
-
-                            FrameTime = totalDuration / Frames;
 
                             //start the stopwatch
                             Stopwatch.Start();
-                        } else
-                        {
-                            Stopwatch.Stop();
                         }
                     }
                     catch { }
@@ -100,38 +94,119 @@ namespace InfoPanel.Models
             }
         }
 
+        static Bitmap SKBitmapToBitmap(SKBitmap skBitmap)
+        {
+            // Create a new Bitmap with the same dimensions
+            Bitmap bitmap = new(skBitmap.Width, skBitmap.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+            // Lock the bitmap's bits
+            var data = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                System.Drawing.Imaging.ImageLockMode.WriteOnly,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+            // Calculate the number of bytes in the bitmap
+            int byteCount = skBitmap.Width * skBitmap.Height * 4; // 4 bytes per pixel for 32bpp
+
+            // Allocate a managed array to hold the pixel data
+            byte[] pixels = new byte[byteCount];
+
+            // Copy the pixel data from the unmanaged memory (IntPtr) to the managed array
+            Marshal.Copy(skBitmap.GetPixels(), pixels, 0, byteCount);
+
+            // Copy the managed array to the Bitmap's locked bits
+            Marshal.Copy(pixels, 0, data.Scan0, byteCount);
+
+            // Unlock the bits
+            bitmap.UnlockBits(data);
+
+            return bitmap;
+        }
+
+        private Bitmap? GetBitmapFromSK(int frame)
+        {
+            if (_fileStream != null && _codec != null)
+            {
+                _compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
+
+                if (frame != _lastRenderedFrame)
+                {
+                    if (_lastRenderedFrame >= frame)
+                    {
+                        ResetCompositeBitmap(_compositeBitmap);
+                        _lastRenderedFrame = -1;
+                    }
+
+                    for (int i = _lastRenderedFrame + 1; i <= frame; i++)
+                    {
+
+                        if (_codec.FrameCount > 0)
+                        {
+                            var frameInfo = _codec.FrameInfo[i];
+                            if (frameInfo.DisposalMethod == SKCodecAnimationDisposalMethod.RestoreBackgroundColor)
+                            {
+                                ResetCompositeBitmap(_compositeBitmap);
+                            }
+                        }
+
+                        var options = new SKCodecOptions(i, i - 1);
+                        try
+                        {
+                            _codec.GetPixels(_codec.Info, _compositeBitmap.GetPixels(), options);
+                        }
+                        catch { }
+                    }
+
+                    _lastRenderedFrame = frame;
+                }
+
+                // Convert SKBitmap to System.Drawing.Bitmap
+                return SKBitmapToBitmap(_compositeBitmap);
+            }
+
+            return null;
+        }
+
+        private static void ResetCompositeBitmap(SKBitmap bitmap)
+        {
+            using var canvas = new SKCanvas(bitmap);
+            canvas.Clear(SKColors.Transparent);
+        }
+
         private int GetCurrentFrameCount()
         {
-            if (Frames > 1)
-            {
-                var elapsedTime = Stopwatch.ElapsedMilliseconds;
-                int elapsedFrames = 0;
-
-                if (FrameTime > 0)
-                {
-                    elapsedFrames = (int)(elapsedTime / FrameTime);
-                }
-
-                //reset every day
-                if (elapsedTime > 86400000)
-                {
-                    Stopwatch.Restart();
-                }
-
-                var currentFrame = elapsedFrames % Frames;
-
-                //ensure the frame is within bounds
-                if (currentFrame >= Frames)
-                {
-                    currentFrame = Frames - 1;
-                }
-
-                return currentFrame;
-            }
-            else
+            if (_codec == null || _cumulativeFrameTimes == null || Frames <= 1 || TotalFrameTime == 0)
             {
                 return 0;
             }
+
+            var elapsedTime = Stopwatch.ElapsedMilliseconds;
+
+            // Reset stopwatch every day (24 hours).
+            if (elapsedTime >= 86400000)
+            {
+                Stopwatch.Restart();
+                elapsedTime = 0;
+            }
+
+            var elapsedFrameTime = elapsedTime % TotalFrameTime;
+
+            // Use binary search to find the current frame index
+            int index = Array.BinarySearch(_cumulativeFrameTimes, (int)elapsedFrameTime);
+
+            // BinarySearch returns a negative value if the exact value isn't found.
+            if (index < 0)
+            {
+                index = ~index;
+            }
+
+            // Handle wrapping around if needed
+            if (index >= _cumulativeFrameTimes.Length)
+            {
+                index = 0; // Wrap to the first frame
+            }
+
+            return index;
         }
 
         public void AccessD2D(D2DDevice device, IntPtr handle, Action<D2DBitmap?> action, bool cache = true)
@@ -157,10 +232,11 @@ namespace InfoPanel.Models
 
                 D2DBitmap? d2dbitmap = null;
 
-                if (Image != null && D2DBitmapCache != null) {
+                if (_codec != null && D2DBitmapCache != null)
+                {
                     var frame = GetCurrentFrameCount();
                     d2dbitmap = D2DBitmapCache[frame];
-
+                    var dispose = false;
                     try
                     {
                         if (d2dbitmap == null)
@@ -171,25 +247,29 @@ namespace InfoPanel.Models
                             }
                             else
                             {
-                                if (FrameDimension != null)
-                                {
-                                    Image.SelectActiveFrame(FrameDimension, frame);
-                                }
 
-                                d2dbitmap = device.CreateBitmapFromGDIBitmap((Bitmap)Image, true);
+                                using var bitmap = GetBitmapFromSK(frame);
+
+                                if (bitmap != null)
+                                {
+                                    d2dbitmap = device.CreateBitmapFromGDIBitmap(bitmap, true);
+                                }
                             }
 
                             if (d2dbitmap != null && cache)
                             {
                                 D2DBitmapCache[frame] = d2dbitmap;
+                            } else
+                            {
+                                dispose = true;
                             }
                         }
                         action(d2dbitmap);
-                    }finally
+                    }
+                    finally
                     {
-                        if (!cache)
+                        if (dispose)
                         {
-                            D2DBitmapCache[frame] = null;
                             d2dbitmap?.Dispose();
                         }
                     }
@@ -206,25 +286,24 @@ namespace InfoPanel.Models
 
             lock (Lock)
             {
-                if (Image != null && BitmapCache != null)
+                if (_codec != null && BitmapCache != null)
                 {
                     var frame = GetCurrentFrameCount();
                     var bitmap = BitmapCache[frame];
+                    var dispose = false;
 
                     try
                     {
-                        if (bitmap == null && Image != null)
+                        if (bitmap == null && _codec != null)
                         {
-                            if (FrameDimension != null)
-                            {
-                                Image.SelectActiveFrame(FrameDimension, frame);
-                            }
-
-                            bitmap = new Bitmap(Image);
+                            bitmap = GetBitmapFromSK(frame);
 
                             if (cache)
                             {
                                 BitmapCache[frame] = bitmap;
+                            } else
+                            {
+                                dispose = true;
                             }
                         }
 
@@ -232,14 +311,35 @@ namespace InfoPanel.Models
                     }
                     finally
                     {
-                        if (!cache)
+                        if (dispose)
                         {
-                            BitmapCache[frame] = null;
                             bitmap?.Dispose();
                         }
                     }
                 }
             }
+        }
+
+        public Bitmap? GetBitmapCopy(int width, int height)
+        {
+            Bitmap? result = null;
+
+            Access((bitmap) =>
+            {
+                if (bitmap != null)
+                {
+                    if (bitmap.Width == width && bitmap.Height == height)
+                    {
+                        result = new Bitmap(bitmap);
+                    }
+                    else
+                    {
+                        result = BitmapExtensions.EnsureBitmapSize(bitmap, width, height);
+                    }
+                }
+            }, false);
+
+            return result;
         }
 
         public void DisposeD2DAssets()
@@ -283,6 +383,9 @@ namespace InfoPanel.Models
                 {
                     DisposeAssets();
                     DisposeD2DAssets();
+                    _codec?.Dispose();
+                    _fileStream?.Dispose();
+                    _compositeBitmap?.Dispose();
                     IsDisposed = true;
                 }
             }

@@ -25,21 +25,21 @@ namespace InfoPanel
             return stream;
         }
 
-        public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem)
+        public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)
         {
             if (imageDisplayItem.CalculatedPath != null)
             {
-                return GetLocalImage(imageDisplayItem.CalculatedPath);
+                return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
             }
 
             return null;
         }
 
-        public static LockedImage? GetLocalImage(string path)
+        public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
         {
             ImageCache.TryGetValue(path, out LockedImage? result);
 
-            if (result != null)
+            if (result != null || !initialiseIfMissing)
             {
                 return result;
             }

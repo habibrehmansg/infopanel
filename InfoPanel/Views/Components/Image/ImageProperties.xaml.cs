@@ -25,7 +25,7 @@ namespace InfoPanel.Views.Components
                 Microsoft.Win32.OpenFileDialog openFileDialog = new()
                 {
                     Multiselect = false,
-                    Filter = "Image files (*.jpg, *.jpeg, *.png, *.gif)|*.jpg;*.jpeg;*.png;*.gif",
+                    Filter = "Image files (*.jpg, *.jpeg, *.png, *.gif, *.webp)|*.jpg;*.jpeg;*.png;*.gif;*.webp",
                     InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
                 };
                 if (openFileDialog.ShowDialog() == true)

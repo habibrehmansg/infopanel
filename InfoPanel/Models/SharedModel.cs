@@ -694,9 +694,8 @@ namespace InfoPanel
 
         private ObservableCollection<DisplayItem> GetProfileDisplayItems(Profile profile)
         {
-            ObservableCollection<DisplayItem>? displayItems;
 
-            if (!ProfileDisplayItems.TryGetValue(profile.Guid, out displayItems))
+            if (!ProfileDisplayItems.TryGetValue(profile.Guid, out ObservableCollection<DisplayItem>? displayItems))
             {
                 LoadDisplayItems(profile);
                 displayItems = ProfileDisplayItems[profile.Guid];
@@ -718,7 +717,7 @@ namespace InfoPanel
         {
             lock (_displayItemsLock)
             {
-                return GetProfileDisplayItems(profile).ToList();
+                return [.. GetProfileDisplayItems(profile)];
             }
         }
 

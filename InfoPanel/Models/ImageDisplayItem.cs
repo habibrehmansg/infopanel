@@ -2,7 +2,6 @@
 using System.Drawing;
 using System.IO;
 using System.Windows;
-using System.Windows.Media.Media3D;
 
 namespace InfoPanel.Models
 {
