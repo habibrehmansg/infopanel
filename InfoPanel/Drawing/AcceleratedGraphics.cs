@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Models;
+using Microsoft.AspNetCore.Http.HttpResults;
 using System;
 using System.Drawing;
 using System.Numerics;
@@ -121,18 +122,19 @@ namespace InfoPanel.Drawing
             }
         }
 
-        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, string color, string backgroundColor, int strokeWidth, string strokeColor)
+        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor)
         {
-            
             thickness = Math.Clamp(thickness, 0, radius);
             rotation = Math.Clamp(rotation, 0, 360);
             percentage = Math.Clamp(percentage, 0, 100);
+            span = Math.Clamp(span, 0, 360);
 
             var innerRadius = radius - thickness;
+
             // Create geometries for the outer and inner ellipses
             using var outerGeometry = this.D2DDevice.CreateEllipseGeometry(
                 new Vector2(x + radius, y + radius),
-                new D2DSize(radius , radius)
+                new D2DSize(radius, radius)
             );
 
             using var innerGeometry = this.D2DDevice.CreateEllipseGeometry(
@@ -147,33 +149,68 @@ namespace InfoPanel.Drawing
                 D2D1CombineMode.Exclude
             );
 
-            //draw outline
-            if (strokeWidth > 0)
+            //constrain drawing to this layer
+            using var layer = this.D2DGraphics.PushLayer(ringGeometry);
+
+            //debug
+            //this.D2DGraphics.DrawEllipse(new Vector2(x + radius, y + radius), radius, radius, D2DColor.Red);
+            //this.D2DGraphics.DrawEllipse(new Vector2(x + radius, y + radius), innerRadius, innerRadius, D2DColor.Red);
+            //this.D2DGraphics.FillPath(ringGeometry, D2DColor.Yellow);
+
+            // Fill background
+            if (span == 360)
             {
-                this.D2DGraphics.DrawPath(ringGeometry, D2DColor.FromGDIColor(ColorTranslator.FromHtml(strokeColor)), strokeWidth);
-            }
-
-            //fill background
-            this.D2DGraphics.FillPath(ringGeometry, D2DColor.FromGDIColor(ColorTranslator.FromHtml(backgroundColor)));
-
-            // Draw the pie slice
-           
-            var random = new Random();
-            var angleSpan = percentage * 360 / 100f;
-
-            if (angleSpan == 360)
-            {
-                this.D2DGraphics.FillPath(ringGeometry, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
+                this.D2DGraphics.FillPath(ringGeometry, D2DColor.FromGDIColor(ColorTranslator.FromHtml(backgroundColor)));
             }
             else
             {
-                using var layer = this.D2DGraphics.PushLayer(ringGeometry);
-                using var path = this.D2DDevice.CreatePieGeometry(new Vector2(x + radius, y + radius), new D2DSize(radius * 2, radius * 2), rotation, rotation + angleSpan);
-                this.D2DGraphics.FillPath(path, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color))); 
-                this.D2DGraphics.PopLayer();
+                using var backgroundPath = this.D2DDevice.CreatePieGeometry(
+                    new Vector2(x + radius, y + radius),
+                    new D2DSize(radius * 2, radius * 2),
+                    rotation, rotation + span
+                );
+                this.D2DGraphics.FillPath(backgroundPath, D2DColor.FromGDIColor(ColorTranslator.FromHtml(backgroundColor)));
             }
-          
+
+            // Adjusted angleSpan considering the span
+            var angleSpan = percentage * span / 100f; 
+
+            //Fill usage
+            using var path = this.D2DDevice.CreatePieGeometry(
+                new Vector2(x + radius, y + radius),
+                new D2DSize(radius * 2, radius * 2),
+                rotation, rotation + angleSpan
+            );
+            this.D2DGraphics.FillPath(path, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
+
+            // Draw outline
+            if (strokeWidth > 0)
+            {
+                if (span == 360)
+                {
+                    this.D2DGraphics.DrawPath(ringGeometry, D2DColor.FromGDIColor(ColorTranslator.FromHtml(strokeColor)), strokeWidth);
+                }
+                else
+                {
+                    using var strokePath = this.D2DDevice.CreatePieGeometry(
+                    new Vector2(x + radius, y + radius),
+                    new D2DSize(radius * 2, radius * 2),
+                    rotation, rotation + span
+                );
+                    this.D2DGraphics.DrawPath(strokePath, D2DColor.FromGDIColor(ColorTranslator.FromHtml(strokeColor)), strokeWidth);
+
+                    using var strokePath2 = this.D2DDevice.CreatePieGeometry(
+                     new Vector2(x + radius, y + radius),
+                     new D2DSize(innerRadius * 2, innerRadius * 2),
+                     rotation, rotation + span
+                 );
+                    this.D2DGraphics.DrawPath(strokePath2, D2DColor.FromGDIColor(ColorTranslator.FromHtml(strokeColor)), strokeWidth);
+                }
+            }
+
+            this.D2DGraphics.PopLayer();
         }
+
 
         private D2DPathGeometry CreateGraphicsPath(MyPoint[] points)
         {

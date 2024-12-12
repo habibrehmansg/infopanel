@@ -490,6 +490,21 @@ namespace InfoPanel.Models
             }
         }
 
+        private int _span = 360;
+
+        public int Span
+        {
+            get { return _span; }
+            set
+            {
+                if (value < 1 || value > 360)
+                {
+                    return;
+                }
+                SetProperty(ref _span, value);
+            }
+        }
+
         private int _rotation = 90;
         public int Rotation
         {

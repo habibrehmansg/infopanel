@@ -307,13 +307,9 @@ namespace InfoPanel.Drawing
                             value = value * Math.Max(frameRect.Width, frameRect.Height);
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
-                            if (g is AcceleratedGraphics)
-                            {
-                                //only interpolate for high fps
-                                GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                                value = Interpolate(lastValue, value, 0.05);
-                                GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
-                            }
+                            GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
+                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : SharedModel.Instance.CurrentFrameRate * 3);
+                            GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var usageRect = new Rectangle(frameRect.X, frameRect.Y, (int)value, frameRect.Height);
                             if (frameRect.Height > frameRect.Width)
@@ -380,18 +376,13 @@ namespace InfoPanel.Drawing
                             value = Math.Min(value, maxValue);
                             value = value / (maxValue - minValue) * 100;
 
-                            if (g is AcceleratedGraphics)
-                            {
-                                //only interpolate for high fps
-                                GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                                value = Interpolate(lastValue, value, 0.05);
-                                GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
-                            }
+                            GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
+                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 60 : SharedModel.Instance.CurrentFrameRate);
+                            GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var offset = 1;
-
                             g.FillDonut(frameRect.X + offset, frameRect.Y + offset, (frameRect.Width / 2) - offset, donutDisplayItem.Thickness,
-                                 donutDisplayItem.Rotation, (int)value, donutDisplayItem.Color,
+                                 donutDisplayItem.Rotation, (int)value, donutDisplayItem.Span, donutDisplayItem.Color,
                                 donutDisplayItem.Background ? donutDisplayItem.BackgroundColor : "#00000000",
                                 donutDisplayItem.Frame ? 1 : 0, donutDisplayItem.FrameColor);
 
@@ -415,6 +406,18 @@ namespace InfoPanel.Drawing
         public static double Interpolate(double A, double B, double t)
         {
             // Ensure t is clamped between 0 and 1
+            t = Math.Clamp(t, 0.0, 1.0);
+
+            return A + (B - A) * t;
+        }
+
+        public static double InterpolateWithCycles(double A, double B, int cycles)
+        {
+            double tolerance = 0.001;
+            double initialDifference = Math.Abs(B - A);
+            double decayFactor = Math.Pow(tolerance / initialDifference, 1.0 / cycles);
+            double t = 1 - decayFactor;
+
             t = Math.Clamp(t, 0.0, 1.0);
 
             return A + (B - A) * t;

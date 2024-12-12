@@ -22,7 +22,7 @@ namespace InfoPanel.Drawing
         public abstract void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null);
         public abstract void DrawPath(MyPoint[] points, string color, int strokeWidth);
         public abstract void FillPath(MyPoint[] points, string color);
-        public abstract void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, string color, string backgroundColor, int strokeWidth, string strokeColor);
+        public abstract void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor);
         public abstract void Dispose();
     }
 

@@ -155,7 +155,7 @@ namespace InfoPanel.Drawing
             this.Graphics.FillPath(brush, path);
         }
 
-        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, string color, string backgroundColor, int strokeWidth, string strokeColor)
+        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor)
         {
             thickness = Math.Clamp(thickness, 0, radius);
             rotation = Math.Clamp(rotation, 0, 360);
@@ -165,28 +165,44 @@ namespace InfoPanel.Drawing
 
             // Create ring path (outer ellipse minus inner ellipse)
             using var ringPath = new GraphicsPath();
-            ringPath.AddEllipse(x, y, 2 * radius, 2 * radius);
-            ringPath.AddEllipse(x + (radius - innerRadius), y + (radius - innerRadius), 2 * innerRadius, 2 * innerRadius);
+            ringPath.AddEllipse(x, y, 2 * (radius), 2 * (radius));
+            ringPath.AddEllipse(x + (radius - innerRadius), y + (radius - innerRadius), 2 * (innerRadius), 2 * (innerRadius));
 
-            //draw outline
-            if (strokeWidth > 0)
-            {
-                using var pen = new Pen(ColorTranslator.FromHtml(strokeColor), strokeWidth);
-                Graphics.DrawPath(pen, ringPath);
-            }
-
-            //fill background
-            using var backgroundBrush = new SolidBrush(ColorTranslator.FromHtml(backgroundColor));
-            Graphics.FillPath(backgroundBrush, ringPath);
+            //debug
+            //Graphics.FillPath(Brushes.Yellow, ringPath);
 
             // Clip to the ring region
             using var ringRegion = new Region(ringPath);
             Graphics.SetClip(ringRegion, CombineMode.Replace);
 
+            //fill background
+            using var backgroundBrush = new SolidBrush(ColorTranslator.FromHtml(backgroundColor));
+            Graphics.FillPie(backgroundBrush, x + strokeWidth, y + strokeWidth, 2 * (radius - strokeWidth), 2 * (radius - strokeWidth), rotation, span);
+
             // Draw the pie slice
-            float angleSpan = percentage * 360 / 100f;
+            float angleSpan = percentage * span / 100f;
             using var colorBrush = new SolidBrush(ColorTranslator.FromHtml(color));
-            Graphics.FillPie(colorBrush, x, y, 2 * radius, 2 * radius, rotation, angleSpan);
+            Graphics.FillPie(colorBrush, x + strokeWidth, y + strokeWidth, 2 * (radius - strokeWidth), 2 * (radius - strokeWidth), rotation, angleSpan);
+
+            //Graphics.ResetClip();
+
+            //draw outline
+            if (strokeWidth > 0)
+            {
+                using var pen = new Pen(ColorTranslator.FromHtml(strokeColor), strokeWidth);
+
+                if (span == 360)
+                {
+                    Graphics.DrawEllipse(pen, x + strokeWidth, y + strokeWidth, 2 * (radius - strokeWidth), 2 * (radius - strokeWidth));
+                    Graphics.DrawEllipse(pen, x + (radius - innerRadius) - strokeWidth, y + (radius - innerRadius) - strokeWidth, 2 * (innerRadius + strokeWidth), 2 * (innerRadius + strokeWidth));
+                }
+                else
+                {
+                    Graphics.DrawPie(pen, x + strokeWidth, y + strokeWidth, 2 * (radius - strokeWidth), 2 * (radius - strokeWidth), rotation, span);
+                    Graphics.DrawPie(pen, x + (radius - innerRadius) - strokeWidth, y + (radius - innerRadius) - strokeWidth, 2 * (innerRadius + strokeWidth), 2 * (innerRadius + strokeWidth), rotation, span);
+                }
+            }
+
             Graphics.ResetClip();
         }
 
