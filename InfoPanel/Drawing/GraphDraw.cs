@@ -322,40 +322,21 @@ namespace InfoPanel.Drawing
 
                             //g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height);
 
-                            if (barDisplayItem.Gradient)
-                            {
-                                if (usageRect.Width > 0 && usageRect.Height > 0)
-                                {
-                                    g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height, barDisplayItem.GradientColor);
-                                }
-                            }
-                            else
-                            {
-                                g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height);
-                            }
-
                             if (chartDisplayItem.Background)
                             {
-                                var remainderRect = new Rectangle(frameRect.X + (int)value, frameRect.Y, frameRect.Width - (int)value, frameRect.Height);
+                                g.FillRectangle(barDisplayItem.BackgroundColor, frameRect.X, frameRect.Y, frameRect.Width, frameRect.Height);
+                            }
 
-                                if (frameRect.Height > frameRect.Width)
-                                {
-                                    //top draw
-                                    remainderRect = new Rectangle(frameRect.X, frameRect.Y, frameRect.Width, frameRect.Height - (int)value);
-                                    //bottom draw
-                                    // remainderRect = new Rectangle(frameRect.X, (int)(frameRect.Y + frameRect.Height - value), frameRect.Width, (int)value);
-                                }
-
+                            if (usageRect.Width > 0 && usageRect.Height > 0)
+                            {
                                 if (barDisplayItem.Gradient)
                                 {
-                                    if (remainderRect.Width > 0 && remainderRect.Height > 0)
-                                    {
-                                        g.FillRectangle(barDisplayItem.BackgroundColor, remainderRect.X, remainderRect.Y, remainderRect.Width, remainderRect.Height, barDisplayItem.GradientColor);
-                                    }
+                                   g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height, barDisplayItem.GradientColor, frameRect.Width >= frameRect.Height);
+                                  
                                 }
                                 else
                                 {
-                                    g.FillRectangle(barDisplayItem.BackgroundColor, remainderRect.X, remainderRect.Y, remainderRect.Width, remainderRect.Height);
+                                    g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height);
                                 }
                             }
 

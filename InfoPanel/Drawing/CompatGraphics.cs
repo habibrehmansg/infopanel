@@ -3,8 +3,6 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
-using System.Linq;
-using System.Reflection.Metadata;
 using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
@@ -65,33 +63,33 @@ namespace InfoPanel.Drawing
             this.Graphics.DrawString(text, font, brush, new PointF(x, y), format);
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, bool cache = true)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true)
         {
             lockedImage.Access(bitmap =>
             {
                 if (bitmap != null)
-                    this.DrawBitmap(bitmap, x, y, width, height, rotation);
+                    this.DrawBitmap(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
             }, cache);
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y, int rotation = 0)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y)
         {
-            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height, rotation);
+            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height);
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             if (rotation != 0)
             {
                 var state = Graphics.Save();
                 // Move the origin to the center of the image
-                Graphics.TranslateTransform(x + width / 2, y + height / 2);
+                Graphics.TranslateTransform(rotationCenterX, rotationCenterY);
 
                 // Rotate the graphics context
                 Graphics.RotateTransform(rotation);
 
                 // Move the origin back
-                Graphics.TranslateTransform(-(x + width / 2), -(y + height / 2));
+                Graphics.TranslateTransform(-rotationCenterX, -rotationCenterY);
                 this.Graphics.DrawImage(bitmap, x, y, width, height);
 
                 // Restore the graphics context to the state before rotation
@@ -102,17 +100,17 @@ namespace InfoPanel.Drawing
             }
         }
 
-        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height, int rotation = 0)
+        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             throw new NotSupportedException();
         }
 
-        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int rotation = 0)
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y)
         {
             throw new NotSupportedException();
         }
 
-        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0)
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             throw new NotSupportedException();
         }
@@ -134,12 +132,19 @@ namespace InfoPanel.Drawing
             this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height);
         }
 
-        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null)
+        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true)
         {
             if (gradientColor != null)
             {
-                using var brush = new LinearGradientBrush(new Rectangle(x, y, width, height), ColorTranslator.FromHtml(color), ColorTranslator.FromHtml(gradientColor), LinearGradientMode.Vertical);
-                this.Graphics.FillRectangle(brush, x, y, width, height);
+                if (gradientHorizontal)
+                {
+                    using var brush = new LinearGradientBrush(new Rectangle(x, y, width + 1, height), ColorTranslator.FromHtml(color), ColorTranslator.FromHtml(gradientColor), LinearGradientMode.Horizontal);
+                    this.Graphics.FillRectangle(brush, x, y, width, height);
+                } else
+                {
+                    using var brush = new LinearGradientBrush(new Rectangle(x, y, width, height + 1),  ColorTranslator.FromHtml(gradientColor), ColorTranslator.FromHtml(color), LinearGradientMode.Vertical);
+                    this.Graphics.FillRectangle(brush, x, y, width, height);
+                }
             }
             else
             {

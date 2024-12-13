@@ -55,7 +55,7 @@ namespace InfoPanel.Drawing
 
             var rect = new D2DRect(x + TextXOffset, y + TextYOffset, float.MaxValue, 0);
 
-            if(rightAlign)
+            if (rightAlign)
             {
                 rect.X = 0;
                 rect.Width = x - TextXOffset;
@@ -66,34 +66,30 @@ namespace InfoPanel.Drawing
                    rect);
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, bool cache = true)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true)
         {
             lockedImage.AccessD2D(this.D2DDevice, this.Handle, d2dBitmap =>
             {
                 if (d2dBitmap != null)
-                    this.DrawBitmap(d2dBitmap, x, y, width, height, rotation);
+                    this.DrawBitmap(d2dBitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
             }, cache);
         }
 
-        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int rotation = 0)
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y)
         {
-            this.DrawBitmap(bitmap, x, y, (int)bitmap.Width, (int) bitmap.Height, rotation);
+            this.DrawBitmap(bitmap, x, y, (int)bitmap.Width, (int)bitmap.Height);
         }
 
-        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0)
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             if (rotation != 0)
             {
-                // Calculate the center of the image for rotation
-                float centerX = x + width / 2.0f;
-                float centerY = y + height / 2.0f;
-
                 // Save the current transform state
                 var originalTransform = this.D2DGraphics.GetTransform();
 
                 // Create a rotation matrix
                 var radians = (float)(rotation * (Math.PI / 180.0));
-                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(centerX, centerY));
+                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(rotationCenterX, rotationCenterY));
 
                 // Apply the rotation transformation
                 this.D2DGraphics.SetTransform(rotationMatrix);
@@ -107,17 +103,17 @@ namespace InfoPanel.Drawing
             }
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y, int rotation = 0)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y)
         {
-            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height, rotation);
+            this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height);
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             this.D2DGraphics.DrawBitmap(bitmap, new D2DRect(x, y, width, height), alpha: true);
         }
 
-        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height, int rotation = 0)
+        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             this.D2DGraphics.DrawBitmap(bitmapGraphics, new D2DRect(x, y, width, height));
         }
@@ -137,17 +133,32 @@ namespace InfoPanel.Drawing
             this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height);
         }
 
-        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null)
+        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true)
         {
             if (gradientColor != null)
             {
-                using var brush = this.D2DDevice.CreateLinearGradientBrush(
-                    new Vector2(0, 0), new Vector2(0, height),
-                   [
-                            new(0, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color))),
-                            new(1, D2DColor.FromGDIColor(ColorTranslator.FromHtml(gradientColor)))
-                   ]);
-                this.D2DGraphics.FillRectangle(new D2DRect(x, y, width, height), brush);
+                if (gradientHorizontal)
+                {
+                    using var brush = this.D2DDevice.CreateLinearGradientBrush(
+                     new Vector2(x, y),             
+                     new Vector2(x + width, y),   
+                     [
+                        new(0, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color))),         
+                        new(1, D2DColor.FromGDIColor(ColorTranslator.FromHtml(gradientColor)))  
+                     ]);
+                    this.D2DGraphics.FillRectangle(new D2DRect(x, y, width, height), brush);
+                } else
+                {
+                    using var brush = this.D2DDevice.CreateLinearGradientBrush(
+                     new Vector2(x, y),    
+                     new Vector2(x, y + height),
+                     [
+                        new(0, D2DColor.FromGDIColor(ColorTranslator.FromHtml(gradientColor))),
+                        new(1, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)))
+                     ]);
+                    this.D2DGraphics.FillRectangle(new D2DRect(x, y, width, height), brush);
+                }
+               
             }
             else
             {
@@ -206,11 +217,11 @@ namespace InfoPanel.Drawing
             }
 
             // Adjusted angleSpan considering the span
-            var angleSpan = percentage * span / 100f; 
+            var angleSpan = percentage * span / 100f;
 
             //Fill usage
             using var path = this.D2DDevice.CreatePieGeometry(
-                new Vector2(x + radius, y + radius),
+                new Vector2(x + radius, y + radius),  
                 new D2DSize(radius * 2, radius * 2),
                 rotation, rotation + angleSpan
             );
