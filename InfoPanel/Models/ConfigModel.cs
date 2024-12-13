@@ -409,20 +409,18 @@ namespace InfoPanel
             }
         }
 
-        private List<Profile>? LoadProfilesFromFile()
+        public static List<Profile>? LoadProfilesFromFile()
         {
             var fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles.xml");
             if (File.Exists(fileName))
             {
-                XmlSerializer xs = new XmlSerializer(typeof(List<Profile>));
-                using (var rd = XmlReader.Create(fileName))
+                XmlSerializer xs = new(typeof(List<Profile>));
+                using var rd = XmlReader.Create(fileName);
+                try
                 {
-                    try
-                    {
-                        return xs.Deserialize(rd) as List<Profile>;
-                    }
-                    catch { }
+                    return xs.Deserialize(rd) as List<Profile>;
                 }
+                catch { }
             }
 
             return null;

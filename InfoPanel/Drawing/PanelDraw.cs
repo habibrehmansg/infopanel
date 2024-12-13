@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Utils;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -6,6 +7,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Numerics;
+using System.Windows.Media.Media3D;
 using Windows.Graphics.Imaging;
 
 namespace InfoPanel.Drawing
@@ -28,9 +30,35 @@ namespace InfoPanel.Drawing
             stopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true)
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false)
         {
-            g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
+            //Compat graphics has background handled by WPF
+            if (g is AcceleratedGraphics || videoBackgroundFallback)
+            {
+                g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
+
+                if (profile.VideoBackgroundFilePath is string videoBackgroundFilePath)
+                {
+                    var videoBackgroundWebPFilePath = $"{FileUtil.GetRelativeAssetPath(profile, videoBackgroundFilePath)}.webp";
+                    var cachedImage = Cache.GetLocalImage(videoBackgroundWebPFilePath);
+
+                    if (cachedImage != null)
+                    {
+                        var scaledWidth = (int)Math.Ceiling(cachedImage.Width * scale);
+                        var scaledHeight = (int)Math.Ceiling(cachedImage.Height * scale);
+
+                        (int rotation, int centerX, int centerY) = profile.VideoBackgroundRotation switch
+                        {
+                            Enums.Rotation.Rotate90FlipNone => (90, scaledHeight / 2, scaledHeight / 2),
+                            Enums.Rotation.Rotate180FlipNone => (180, scaledWidth / 2, scaledHeight / 2),
+                            Enums.Rotation.Rotate270FlipNone => (270, scaledWidth / 2, scaledWidth / 2),
+                            _ => (0, 0, 0)
+                        };
+
+                        g.DrawImage(cachedImage, 0, 0, scaledWidth, scaledHeight, rotation, centerX, centerY, false);
+                    }
+                }
+            }
 
             DisplayItem? selectedItem = SharedModel.Instance.SelectedItem;
             List<SelectedRectangle> selectedRectangles = [];
@@ -86,7 +114,7 @@ namespace InfoPanel.Drawing
                                 var scaledWidth = (int)Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
                                 var scaledHeight = (int)Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
 
-                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, imageDisplayItem.Cache && cache);
+                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, (int)(x + scaledWidth / 2.0f), (int)(y + scaledHeight / 2.0f), imageDisplayItem.Cache && cache);
 
                                 if (imageDisplayItem.Layer)
                                 {
@@ -114,7 +142,7 @@ namespace InfoPanel.Drawing
                                     var scaledWidth = (int)Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
                                     var scaledHeight = (int)Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
 
-                                    g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, cache);
+                                    g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache);
 
                                     if (displayItem.Selected)
                                     {
@@ -161,7 +189,6 @@ namespace InfoPanel.Drawing
                                 d2dGraphics.BeginRender();
                                 GraphDraw.Run(chartDisplayItem, g1);
                                 d2dGraphics.EndRender();
-
 
                                 g.DrawBitmap(d2dGraphics, chartDisplayItem.X, chartDisplayItem.Y, chartDisplayItem.Width, chartDisplayItem.Height);
                             }

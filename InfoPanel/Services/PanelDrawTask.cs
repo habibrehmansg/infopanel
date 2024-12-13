@@ -74,7 +74,7 @@ namespace InfoPanel
             }
         }
 
-        public static Bitmap Render(Profile profile, bool drawSelected = true, PixelFormat pixelFormat = PixelFormat.Format32bppArgb)
+        public static Bitmap Render(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, PixelFormat pixelFormat = PixelFormat.Format32bppArgb)
         {
             var bitmap = new Bitmap(profile.Width, profile.Height, pixelFormat);
 
@@ -84,7 +84,7 @@ namespace InfoPanel
             }
 
             using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
-            PanelDraw.Run(profile, g, drawSelected);
+            PanelDraw.Run(profile, g, drawSelected, scale, cache, videoBackgroundFallback);
 
             return bitmap;
         }

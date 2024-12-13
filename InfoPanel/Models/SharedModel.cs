@@ -1,24 +1,22 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
+using InfoPanel.Views.Common;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Xml;
 using System.Xml.Serialization;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
-using System.Collections.Concurrent;
-using System.IO.Compression;
-using System.Diagnostics;
-using System.Windows.Navigation;
-using System.Windows.Threading;
-using InfoPanel.Views.Common;
 
 namespace InfoPanel
 {
@@ -460,43 +458,6 @@ namespace InfoPanel
             {
                 var displayItems = GetProfileDisplayItemsCopy(profile);
                 SaveDisplayItems(profile, displayItems);
-
-                //image cleanup
-                var assetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
-                if (Directory.Exists(assetFolder))
-                {
-                    var assetFiles = Directory.GetFiles(assetFolder).ToList();
-
-                    foreach (var item in displayItems)
-                    {
-                        if (item is ImageDisplayItem imageDisplayItem)
-                        {
-                            if (imageDisplayItem.CalculatedPath != null)
-                            {
-                                assetFiles.Remove(imageDisplayItem.CalculatedPath);
-                            }
-                        }
-                        else if (item is GaugeDisplayItem gaugeDisplayItem)
-                        {
-                            foreach (var image in gaugeDisplayItem.Images)
-                            {
-                                if (image.CalculatedPath != null)
-                                {
-                                    assetFiles.Remove(image.CalculatedPath);
-                                }
-                            }
-                        }
-                    }
-
-                    foreach (var assetFile in assetFiles)
-                    {
-                        try
-                        {
-                            File.Delete(assetFile);
-                        }
-                        catch { }
-                    }
-                }
             }
         }
 
@@ -733,33 +694,25 @@ namespace InfoPanel
         {
             if (!ProfileDisplayItems.TryGetValue(profile.Guid, out ObservableCollection<DisplayItem>? displayItems))
             {
-                displayItems = new ObservableCollection<DisplayItem>();
+                displayItems = [];
                 ProfileDisplayItems[profile.Guid] = displayItems;
             }
 
             lock (_displayItemsLock)
             {
                 displayItems.Clear();
-                LoadDisplayItemsFromFile(profile)?.ForEach(item =>
-                {
-                    if (item is ImageDisplayItem)
-                    {
-                        item.ProfileGuid = profile.Guid;
-                    }
-                    else if (item is GaugeDisplayItem gaugeDisplayItem)
-                    {
-                        foreach (ImageDisplayItem imageDisplayItem in gaugeDisplayItem.Images)
-                        {
-                            imageDisplayItem.ProfileGuid = profile.Guid;
-                        }
-                    }
 
-                    displayItems.Add(item);
-                });
+                if(LoadDisplayItemsFromFile(profile) is List<DisplayItem> items)
+                {
+                    foreach (var item in items)
+                    {
+                        displayItems.Add(item);
+                    }
+                }
             }
         }
 
-        private List<DisplayItem>? LoadDisplayItemsFromFile(Profile profile)
+        public static List<DisplayItem>? LoadDisplayItemsFromFile(Profile profile)
         {
             var fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
             if (File.Exists(fileName))
@@ -770,7 +723,23 @@ namespace InfoPanel
                 using var rd = XmlReader.Create(fileName);
                 try
                 {
-                    return xs.Deserialize(rd) as List<DisplayItem>;
+                    if (xs.Deserialize(rd) is List<DisplayItem> displayItems)
+                    {
+                        foreach (var displayItem in displayItems)
+                        {
+                            displayItem.ProfileGuid = profile.Guid;
+
+                            if (displayItem is GaugeDisplayItem gaugeDisplayItem)
+                            {
+                                foreach (var imageDisplayItem in gaugeDisplayItem.Images)
+                                {
+                                    imageDisplayItem.ProfileGuid = profile.Guid;
+                                }
+                            }
+                        }
+
+                        return displayItems;
+                    }
                 }
                 catch { }
             }

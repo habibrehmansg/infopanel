@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using Wpf.Ui.Controls.Interfaces;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using InfoPanel.Utils;
 
 namespace InfoPanel.Views.Windows
 {
@@ -177,13 +178,15 @@ namespace InfoPanel.Views.Windows
 
             if (WindowState != WindowState.Minimized)
             {
-                var closingWindow = new ClosingWindow
+                var loadingWindow = new LoadingWindow
                 {
                     Owner = this
                 };
-                closingWindow.Show();
+                loadingWindow.SetText("Cleaning up..");
+                loadingWindow.Show();
             }
 
+            await FileUtil.CleanupAssets();
             await App.CleanShutDown();
         }
     }

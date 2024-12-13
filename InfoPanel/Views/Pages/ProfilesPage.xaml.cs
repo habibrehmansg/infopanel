@@ -1,15 +1,9 @@
-﻿
-
-
-using CommunityToolkit.Mvvm.ComponentModel;
-using InfoPanel.Drawing;
+﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.ViewModels;
-using InfoPanel.Views.Components;
+using InfoPanel.Views.Windows;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
@@ -20,12 +14,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using Wpf.Ui.Common.Interfaces;
-using Wpf.Ui.Controls;
 using Wpf.Ui.Controls.Interfaces;
 using Wpf.Ui.Mvvm.Contracts;
-using Wpf.Ui.Mvvm.Interfaces;
 
 namespace InfoPanel.Views.Pages
 {
@@ -113,7 +104,7 @@ namespace InfoPanel.Views.Pages
 
                     using var bitmap = new Bitmap(width, height);
                     using var g = CompatGraphics.FromBitmap(bitmap);
-                    PanelDraw.Run(profile, g, false, scale, false);
+                    PanelDraw.Run(profile, g, false, scale, false, true);
 
                     System.Windows.Application.Current.Dispatcher.Invoke(() =>
                     {
@@ -176,8 +167,12 @@ namespace InfoPanel.Views.Pages
 
         private void ButtonSave_Click(object sender, System.Windows.RoutedEventArgs e)
         {
-            ConfigModel.Instance.SaveProfiles();
-            _snackbarControl.ShowAsync("Profile Saved", $"{ViewModel.Profile.Name}");
+            if(ViewModel.Profile is Profile profile)
+            {
+                ConfigModel.Instance.SaveProfiles();
+                SharedModel.Instance.SaveDisplayItems(profile);
+                _snackbarControl.ShowAsync("Profile Saved", $"{profile.Name}");
+            }
         }
 
         private void ButtonExportProfile_Click(object sender, RoutedEventArgs e)
@@ -246,6 +241,61 @@ namespace InfoPanel.Views.Pages
         private void ToggleSwitch_Checked(object sender, RoutedEventArgs e)
         {
             ConfigModel.Instance.SaveProfiles();
+        }
+
+        private async void ButtonVideoBackground_Click(object sender, RoutedEventArgs e)
+        {
+            if(ViewModel.Profile is Profile profile)
+            {
+                Microsoft.Win32.OpenFileDialog openFileDialog = new()
+                {
+                    Multiselect = false,
+                    Filter = "Video files (*.mp4)|*.mp4",
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
+                };
+                if (openFileDialog.ShowDialog() == true)
+                {
+                    var imageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
+                    if (!Directory.Exists(imageFolder))
+                    {
+                        Directory.CreateDirectory(imageFolder);
+                    }
+
+                    try
+                    {
+                        var loadingWindow = new LoadingWindow
+                        {
+                            Owner = App.Current.MainWindow
+                        };
+                        loadingWindow.SetText("Processing video..");
+                        loadingWindow.Show();
+
+                        var videoFilePath = Path.Combine(imageFolder, openFileDialog.SafeFileName);
+                        await VideoBackgroundHelper.GenerateMP4(openFileDialog.FileName, videoFilePath);
+
+                        loadingWindow.SetText("Almost there..");
+
+                        var webPFilePath = $"{videoFilePath}.webp";
+                        await VideoBackgroundHelper.GenerateWebP(videoFilePath, webPFilePath);
+
+                        loadingWindow.Close();
+                        profile.VideoBackgroundFilePath = openFileDialog.SafeFileName;
+                    }
+                    catch
+                    {
+
+                    }
+
+                }
+            }
+        }
+
+        private void ButtonRemoveVideoBackground_Click(object sender, RoutedEventArgs e)
+        {
+            if (ViewModel.Profile is Profile profile)
+            {
+                profile.VideoBackgroundFilePath = null;
+            }
         }
     }
 }
