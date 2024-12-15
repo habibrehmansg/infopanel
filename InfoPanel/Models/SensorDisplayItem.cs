@@ -402,6 +402,9 @@ namespace InfoPanel.Models
             {
                 switch (sensorReading.Unit.ToLower())
                 {
+                    case "gb":
+                        value = string.Format("{0:0.0}", sensorReadingValue);
+                        break;
                     case "kb/s":
                     case "mb/s":
                     case "mbar/min":

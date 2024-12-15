@@ -34,7 +34,8 @@ namespace InfoPanel.Drawing
                                      (strikeout ? FontStyle.Strikeout : FontStyle.Regular);
 
             using var font = new Font(fontName, fontSize, fontStyle);
-            var size = this.Graphics.MeasureString(text, font);
+           
+            var size = this.Graphics.MeasureString(text, font, 0, StringFormat.GenericTypographic);
             return (size.Width, size.Height);
         }
 
@@ -50,7 +51,7 @@ namespace InfoPanel.Drawing
             using var font = new Font(fontName, fontSize, fontStyle);
             using var brush = new SolidBrush(ColorTranslator.FromHtml(color));
 
-            using var format = new StringFormat();
+            using StringFormat format = (StringFormat)StringFormat.GenericTypographic.Clone();
             if (rightAlign)
             {
                 format.Alignment = StringAlignment.Far;
