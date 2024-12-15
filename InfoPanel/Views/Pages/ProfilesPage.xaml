@@ -1,72 +1,108 @@
-﻿<Page 
-      x:Class="InfoPanel.Views.Pages.ProfilesPage"
-      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-      xmlns:local="clr-namespace:InfoPanel"
-      xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
-      xmlns:components="clr-namespace:InfoPanel.Views.Components"
-      xmlns:models="clr-namespace:InfoPanel.Models"
-      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-      xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
-      d:DesignHeight="450" d:DesignWidth="800"
-      Title="DesignPage"
-      mc:Ignorable="d" >
+﻿<Page
+    x:Class="InfoPanel.Views.Pages.ProfilesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:anim="https://github.com/whistyun/AnimatedImage.Wpf"
+    xmlns:components="clr-namespace:InfoPanel.Views.Components"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:InfoPanel"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
+    xmlns:models="clr-namespace:InfoPanel.Models"
+    xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="DesignPage"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
 
-    <Grid Margin="0,60,0,20" MaxWidth="1400">
+    <Grid MaxWidth="1400" Margin="0,60,0,20">
         <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,-40,50,0">
-            <ui:Button Name="ButtonImport" Grid.Row="0" Margin="0,0,0,0"
-        Click="ButtonImportProfile_Click" Width="150"
-        VerticalAlignment="Top" HorizontalAlignment="Right" Appearance="Secondary" Content="Import Profile" />
+        <StackPanel
+            Margin="0,-40,50,0"
+            HorizontalAlignment="Right"
+            Orientation="Horizontal">
+            <ui:Button
+                Name="ButtonImport"
+                Grid.Row="0"
+                Width="150"
+                Margin="0,0,0,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Appearance="Secondary"
+                Click="ButtonImportProfile_Click"
+                Content="Import Profile" />
 
-            <ui:Button Name="ButtonAdd" Grid.Row="0" Margin="10,0,0,0"
-                   Click="ButtonAdd_Click" Width="150"
-                   VerticalAlignment="Top" HorizontalAlignment="Right" Appearance="Primary" Content="New Profile" />
+            <ui:Button
+                Name="ButtonAdd"
+                Grid.Row="0"
+                Width="150"
+                Margin="10,0,0,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Appearance="Primary"
+                Click="ButtonAdd_Click"
+                Content="New Profile" />
         </StackPanel>
 
-        <ListView x:Name="ListViewProfiles" Grid.Row="0" Margin="0,20,0,0"
-                SelectionMode="Single"
-                ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                SelectedItem="{Binding ViewModel.Profile}">
+        <ListView
+            x:Name="ListViewProfiles"
+            Grid.Row="0"
+            Margin="0,20,0,0"
+            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+            SelectedItem="{Binding ViewModel.Profile}"
+            SelectionMode="Single">
             <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                <Style BasedOn="{StaticResource {x:Type ListViewItem}}" TargetType="ListViewItem">
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListViewItem">
-                                <Border Background="#601A1a1a" Margin="0,0,0,20" 
-                            CornerRadius="8,8,8,8" Width="260">
+                                <Border
+                                    Width="260"
+                                    Margin="0,0,0,20"
+                                    Background="#601A1a1a"
+                                    CornerRadius="8,8,8,8">
                                     <Grid>
-                                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="8,8,8,8"
-                                                 Visibility="{Binding IsSelected,
-                                        RelativeSource={RelativeSource TemplatedParent},
-                                        Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}"/>
+                                        <Border
+                                            Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                            CornerRadius="8,8,8,8"
+                                            Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
                                         <StackPanel>
-                                            <Image Height="150" Margin="20,20,20,20"
-                            Source="{Binding BitmapImagePreview}"/>
+                                            <Image
+                                                Height="150"
+                                                Margin="20,20,20,20"
+                                                Source="{Binding BitmapImagePreview}" />
                                             <Border Background="#FF1A1a1a" CornerRadius="0,0,8,8">
                                                 <Grid Margin="10,0,10,0">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="auto"/>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <Label Margin="10,10,10,10">
-                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                                     </Label>
-                                                    <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding Active}" Unchecked="ToggleSwitch_Checked" Checked="ToggleSwitch_Checked"/>
+                                                    <ui:ToggleSwitch
+                                                        Grid.Column="1"
+                                                        Checked="ToggleSwitch_Checked"
+                                                        IsChecked="{Binding Active}"
+                                                        Unchecked="ToggleSwitch_Checked" />
                                                 </Grid>
                                             </Border>
                                         </StackPanel>
-                                        <ui:Button Name="ButtonExport" Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="10,10,0,0"
-                               Appearance="Success" Content="Export" Click="ButtonExportProfile_Click"
-                                                   Visibility="{Binding IsSelected,
-                                        RelativeSource={RelativeSource TemplatedParent},
-                                        Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}">
+                                        <ui:Button
+                                            Name="ButtonExport"
+                                            Grid.Column="1"
+                                            Margin="10,10,0,0"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Top"
+                                            Appearance="Success"
+                                            Click="ButtonExportProfile_Click"
+                                            Content="Export"
+                                            Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}">
                                             <!--<ui:Button.Style>
                                                 <Style TargetType="{x:Type ui:Button}" BasedOn="{StaticResource {x:Type ui:Button}}">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -78,17 +114,23 @@
                                                 </Style>
                                             </ui:Button.Style>-->
                                         </ui:Button>
-                                        <ui:Button Name="ButtonDelete" Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,10,10,0"
-                               Appearance="Danger" Icon="Delete20" Content="" ToolTip="Delete Profile" Click="ButtonDeleteProfile_Click"
-                                                   Visibility="{Binding IsSelected,
-                                        RelativeSource={RelativeSource TemplatedParent},
-                                        Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}">
-                                        </ui:Button>
-                                        <Border CornerRadius="8,8,8,8" 
-                                                BorderThickness="1" BorderBrush="{DynamicResource SystemAccentColorPrimaryBrush}"
-                                                 Visibility="{Binding IsSelected,
-                                        RelativeSource={RelativeSource TemplatedParent},
-                                        Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}"/>
+                                        <ui:Button
+                                            Name="ButtonDelete"
+                                            Grid.Column="1"
+                                            Margin="0,10,10,0"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Top"
+                                            Appearance="Danger"
+                                            Click="ButtonDeleteProfile_Click"
+                                            Content=""
+                                            Icon="Delete20"
+                                            ToolTip="Delete Profile"
+                                            Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
+                                        <Border
+                                            BorderBrush="{DynamicResource SystemAccentColorPrimaryBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8,8,8,8"
+                                            Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
                                     </Grid>
                                 </Border>
                             </ControlTemplate>
@@ -106,20 +148,22 @@
             </ListView.ItemsPanel>
         </ListView>
 
-        <Expander Grid.Row="1" MaxWidth="1000" Background="#601A1a1a"
-                   IsExpanded="True"
-             Margin="0,20,0,0">
+        <Expander
+            Grid.Row="1"
+            MaxWidth="1000"
+            Margin="0,20,0,0"
+            Background="#601A1a1a"
+            IsExpanded="True">
 
             <Expander.Header>
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="auto"/>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="auto" />
                     </Grid.ColumnDefinitions>
 
                     <Label>
-                        <TextBlock FontWeight="Medium" Text="{Binding ViewModel.Profile, Converter={StaticResource SelectedItemTextConverter}, Mode=OneWay}">
-                        </TextBlock>
+                        <TextBlock FontWeight="Medium" Text="{Binding ViewModel.Profile, Converter={StaticResource SelectedItemTextConverter}, Mode=OneWay}" />
                     </Label>
                 </Grid>
             </Expander.Header>
@@ -135,40 +179,57 @@
                                         <ControlTemplate>
                                             <Grid Margin="10,0,10,10">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition/>
-                                                    <ColumnDefinition/>
-                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition />
+                                                    <ColumnDefinition />
+                                                    <ColumnDefinition />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Stretch" AllowDrop="False" Margin="0,0,0,0">
-        <Bold>Profile Guide:</Bold>
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>1.</Bold> Set profile settings such as width, height, background color and typography defaults and save them.
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>2.</Bold> Mouse over icons to see more details.
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>3.</Bold> Direct 2D Acceleration uses your GPU instead of CPU for faster frame rendering up to 100 FPS.
-       It also uses VRAM instead of memory to load images and GIFs. This results in faster GIF rendering and lower CPU usage for use cases with larger panel sizes and multiple high quality/high framerate images and GIFs.  <LineBreak/><LineBreak/>                                           
-            Direct2D is only available for HDMI/DP displays. Enabling for USB panels will not have an impact. USB displays are mostly limited by their update bus.
-                                                </TextBlock>
-                                                <TextBlock Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Stretch" AllowDrop="False" Margin="10,0,0,0">
-         <Bold>Direct2D Acceleration Notes:</Bold>
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>1.</Bold> Direct2D uses a different rendering engine. This results in different fonts being displayed differently when it is on versus off. This means that text may appear smaller or larger, and be offset lower, higher or more towards the left or right.                             
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>2.</Bold> Adjust Font Scale, Text X Offset and Text Y Offset accordingly for backward compatibility with Non-Direct2D profiles.
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>3.</Bold> Panel FPS shows the rendering speed of that particular panel. Although it uses mostly GPU, a CPU bottleneck by other non-Direct2D profiles or external applications can impact the speed as it is capped by the sensor calculations. The maximum FPS is 100.
-                                                </TextBlock>
-                                                <TextBlock Grid.Column="2" TextWrapping="Wrap" VerticalAlignment="Stretch" AllowDrop="False" Margin="10,0,0,0">
-         <Bold>Additional Notes:</Bold>
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>1.</Bold> This software is provided on a best effort basis. Expect bugs and/or crashes. You are encouraged to save often.
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>2.</Bold> Performance and memory usage is largely determined by the number of active profiles and <Bold Foreground="Orange">size of your panel and number of images and GIFs.</Bold>
-        <LineBreak/><LineBreak/>                                                        
-         <Bold>3.</Bold> Join our discord for support, feature requests and share your designs by using the export button to generate an .infopanel file for uploading.<LineBreak/>
-                                                    <LineBreak/> <LineBreak/> 
-        <Bold Foreground="OrangeRed">Lastly, remember to save your work. Updates are live but not auto saved.</Bold><LineBreak/>
+                                                <TextBlock
+                                                    Grid.Column="0"
+                                                    Margin="0,0,0,0"
+                                                    VerticalAlignment="Stretch"
+                                                    AllowDrop="False"
+                                                    TextWrapping="Wrap">
+                                                    <Bold>Profile Guide:</Bold>
+                                                    <LineBreak /><LineBreak />
+                                                    <Bold>1.</Bold>
+                                                    Set profile settings such as width, height, background color and typography defaults and save them.<LineBreak /><LineBreak />
+                                                    <Bold>2.</Bold>
+                                                    Mouse over icons to see more details.<LineBreak /><LineBreak />
+                                                    <Bold>3.</Bold>
+                                                    Direct 2D Acceleration uses your GPU instead of CPU for faster frame rendering up to 100 FPS.
+                                                    It also uses VRAM instead of memory to load images and GIFs. This results in faster GIF rendering and lower CPU usage for use cases with larger panel sizes and multiple high quality/high framerate images and GIFs.<LineBreak /><LineBreak />
+                                                    Direct2D is only available for HDMI/DP displays. Enabling for USB panels will not have an impact. USB displays are mostly limited by their update bus.</TextBlock>
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    Margin="10,0,0,0"
+                                                    VerticalAlignment="Stretch"
+                                                    AllowDrop="False"
+                                                    TextWrapping="Wrap">
+                                                    <Bold>Direct2D Acceleration Notes:</Bold>
+                                                    <LineBreak /><LineBreak />
+                                                    <Bold>1.</Bold>
+                                                    Direct2D uses a different rendering engine. This results in different fonts being displayed differently when it is on versus off. This means that text may appear smaller or larger, and be offset lower, higher or more towards the left or right.<LineBreak /><LineBreak />
+                                                    <Bold>2.</Bold>
+                                                    Adjust Font Scale, Text X Offset and Text Y Offset accordingly for backward compatibility with Non-Direct2D profiles.<LineBreak /><LineBreak />
+                                                    <Bold>3.</Bold>
+                                                    Panel FPS shows the rendering speed of that particular panel. Although it uses mostly GPU, a CPU bottleneck by other non-Direct2D profiles or external applications can impact the speed as it is capped by the sensor calculations. The maximum FPS is 100.</TextBlock>
+                                                <TextBlock
+                                                    Grid.Column="2"
+                                                    Margin="10,0,0,0"
+                                                    VerticalAlignment="Stretch"
+                                                    AllowDrop="False"
+                                                    TextWrapping="Wrap">
+                                                    <Bold>Additional Notes:</Bold>
+                                                    <LineBreak /><LineBreak />
+                                                    <Bold>1.</Bold>
+                                                    This software is provided on a best effort basis. Expect bugs and/or crashes. You are encouraged to save often.<LineBreak /><LineBreak />
+                                                    <Bold>2.</Bold>
+                                                    Performance and memory usage is largely determined by the number of active profiles and<Bold Foreground="Orange">size of your panel and number of images and GIFs.</Bold>
+                                                    <LineBreak /><LineBreak />
+                                                    <Bold>3.</Bold>
+                                                    Join our discord for support, feature requests and share your designs by using the export button to generate an .infopanel file for uploading.<LineBreak />
+                                                    <LineBreak /> <LineBreak />
+                                                    <Bold Foreground="OrangeRed">Lastly, remember to save your work. Updates are live but not auto saved.</Bold><LineBreak />
                                                 </TextBlock>
                                             </Grid>
                                         </ControlTemplate>
@@ -181,204 +242,320 @@
                 <ContentControl.Resources>
                     <DataTemplate DataType="{x:Type models:Profile}">
                         <StackPanel Height="400">
-                        <Grid Margin="10,10,10,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="1.5*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
+                            <Grid Margin="10,10,10,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.5*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                                <StackPanel Margin="0,0,0,0">
-                                    <TextBox MaxLength="25" 
-                                 Text="{Binding Name}"/>
-                                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Name" FontSize="12" Margin="5,0,0,0" />
-                                </StackPanel>
-
-                                <Grid Margin="0,10,0,0" IsEnabled="{Binding Active}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <Grid Margin="0,0,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <StackPanel Margin="0,0,0,0">
-                                            <TextBlock HorizontalAlignment="Left" Margin="10,5,0,0" 
-                                                       TextTrimming="CharacterEllipsis" Width="175"
-                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                       Text="{Binding TargetWindow.Name, Mode=OneWay}"/>
-                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                       Text="Window" FontSize="12" Margin="5,0,0,0" />
-                                        </StackPanel>
-
-                                        <StackPanel Grid.Column="1" 
-                                        HorizontalAlignment="Right" VerticalAlignment="Top"
-                                        Orientation="Horizontal">
-
-                                            <ToggleButton Margin="0,0,0,0"
-                                                          IsChecked="{Binding Topmost}" ToolTip="Topmost">
-                                                <ui:SymbolIcon Symbol="ArrowAutofitUp20" />
-                                            </ToggleButton>
-
-                                            <ToggleButton Margin="10,0,0,0" 
-                                                          IsChecked="{Binding Drag}" ToolTip="Draggable">
-                                                <ui:SymbolIcon Symbol="Drag20" />
-                                            </ToggleButton>
-
-                                            <ToggleButton Margin="10,0,0,0" 
-                                                          IsChecked="{Binding Resize}" ToolTip="Resizeable">
-                                                <ui:SymbolIcon Symbol="Resize20" />
-                                            </ToggleButton>
-
-                                        </StackPanel>
-                                    </Grid>
-
-                                </Grid>
-
-                                <Grid Margin="0,25,0,0" IsEnabled="{Binding Active}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="auto"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Margin="0,0,5,0">
-                                        <ui:NumberBox
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" LargeChange="10" Minimum="0" Maximum="3840"
-                                     Value="{Binding Width}" Text="{Binding Width}" />
-                                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Width" FontSize="12" Margin="5,0,0,0" />
+                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                    <StackPanel Margin="0,0,0,0">
+                                        <TextBox MaxLength="25" Text="{Binding Name}" />
+                                        <TextBlock
+                                            Margin="5,0,0,0"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Text="Name" />
                                     </StackPanel>
-
-                                    <StackPanel Grid.Column="1" Margin="5,0,5,0">
-                                        <ui:NumberBox
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="0" Maximum="3840"
-                                     Value="{Binding Height}" Text="{Binding Height}" />
-                                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Height" FontSize="12" Margin="5,0,0,0" />
-                                    </StackPanel>
-
-                                    <ui:Button Grid.Column="2" Margin="5,0,0,15" VerticalAlignment="Center" 
-                                   Content="" Appearance="Caution"
-                                   Name="ButtonMaximise" Icon="Maximize20"
-                                   ToolTip="Fill screen" Click="ButtonMaximise_Click"/>
-                                </Grid>
 
                                     <Grid Margin="0,10,0,0" IsEnabled="{Binding Active}">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="auto"/>
+                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
 
-                                        <StackPanel Grid.Column="0" Margin="0,0,5,0">
+                                        <Grid Margin="0,0,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Margin="0,0,0,0">
+                                                <TextBlock
+                                                    Margin="10,5,10,0"
+                                                    HorizontalAlignment="Left"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                    Text="{Binding TargetWindow.Name, Mode=OneWay}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock
+                                                    Margin="5,0,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Text="Window" />
+                                            </StackPanel>
+
+                                            <StackPanel
+                                                Grid.Column="1"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Top"
+                                                Orientation="Horizontal">
+
+                                                <ToggleButton
+                                                    Margin="0,0,0,0"
+                                                    IsChecked="{Binding StrictWindowMatching}"
+                                                    ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
+                                                    <ui:SymbolIcon Symbol="WindowInprivate20" />
+                                                </ToggleButton>
+
+                                                <ToggleButton
+                                                    Margin="10,0,0,0"
+                                                    IsChecked="{Binding OverrideDpi}"
+                                                    ToolTip="Override the desktop DPI. When enabled, maintain a standard DPI scaling ignoring Windows DPI settings.">
+                                                    <ui:SymbolIcon Symbol="ShareScreenPerson20" />
+                                                </ToggleButton>
+
+                                                <ToggleButton
+                                                    Margin="10,0,0,0"
+                                                    IsChecked="{Binding Topmost}"
+                                                    ToolTip="Keep panel visible on top of all other windows.">
+                                                    <ui:SymbolIcon Symbol="ShareScreenStart20" />
+                                                </ToggleButton>
+
+                                                <ToggleButton
+                                                    Margin="10,0,0,0"
+                                                    IsChecked="{Binding Drag}"
+                                                    ToolTip="Enables drag and drop placement of panel.">
+                                                    <ui:SymbolIcon Symbol="Drag20" />
+                                                </ToggleButton>
+
+                                                <ToggleButton
+                                                    Margin="10,0,0,0"
+                                                    IsChecked="{Binding Resize}"
+                                                    ToolTip="Enables drag resizing of panel.">
+                                                    <ui:SymbolIcon Symbol="Resize20" />
+                                                </ToggleButton>
+
+                                            </StackPanel>
+                                        </Grid>
+
+                                    </Grid>
+
+                                    <Grid Margin="0,25,0,0" IsEnabled="{Binding Active}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Margin="0,0,5,0">
                                             <ui:NumberBox
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Value="{Binding WindowX}" Text="{Binding WindowX}" />
-                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="X" FontSize="12" Margin="5,0,0,0" />
+                                                FontSize="14"
+                                                LargeChange="10"
+                                                MaxDecimalPlaces="0"
+                                                Maximum="3840"
+                                                Minimum="0"
+                                                SmallChange="1"
+                                                Text="{Binding Width}"
+                                                Value="{Binding Width}" />
+                                            <TextBlock
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="Width" />
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="1" Margin="5,0,5,0">
                                             <ui:NumberBox
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Value="{Binding WindowY}" Text="{Binding WindowY}"/>
-                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Y" FontSize="12" Margin="5,0,0,0" />
+                                                FontSize="14"
+                                                MaxDecimalPlaces="0"
+                                                Maximum="3840"
+                                                Minimum="0"
+                                                SmallChange="1"
+                                                Text="{Binding Height}"
+                                                Value="{Binding Height}" />
+                                            <TextBlock
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="Height" />
                                         </StackPanel>
 
-                                        <ui:Button Grid.Column="2" Margin="5,0,0,15" VerticalAlignment="Center" 
-                                   Content="" Appearance="Caution"
-                                   Name="ButtonResetPosition" Icon="ArrowReset20"
-                                   ToolTip="Reset window position" Click="ButtonResetPosition_Click"/>
+                                        <ui:Button
+                                            Name="ButtonMaximise"
+                                            Grid.Column="2"
+                                            Margin="5,0,0,15"
+                                            VerticalAlignment="Center"
+                                            Appearance="Caution"
+                                            Click="ButtonMaximise_Click"
+                                            Content=""
+                                            Icon="Maximize20"
+                                            ToolTip="Fill screen" />
+                                    </Grid>
+
+                                    <Grid Margin="0,10,0,0" IsEnabled="{Binding Active}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Margin="0,0,5,0">
+                                            <ui:NumberBox
+                                                FontSize="14"
+                                                MaxDecimalPlaces="0"
+                                                SmallChange="1"
+                                                Text="{Binding WindowX}"
+                                                Value="{Binding WindowX}" />
+                                            <TextBlock
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="X" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Margin="5,0,5,0">
+                                            <ui:NumberBox
+                                                FontSize="14"
+                                                MaxDecimalPlaces="0"
+                                                SmallChange="1"
+                                                Text="{Binding WindowY}"
+                                                Value="{Binding WindowY}" />
+                                            <TextBlock
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="Y" />
+                                        </StackPanel>
+
+                                        <ui:Button
+                                            Name="ButtonResetPosition"
+                                            Grid.Column="2"
+                                            Margin="5,0,0,15"
+                                            VerticalAlignment="Center"
+                                            Appearance="Caution"
+                                            Click="ButtonResetPosition_Click"
+                                            Content=""
+                                            Icon="ArrowReset20"
+                                            ToolTip="Reset window position" />
 
                                     </Grid>
                                 </StackPanel>
-                            
-                            
 
-                            <StackPanel Grid.Column="1" Margin="10,0,10,0">
-                                <StackPanel Grid.Column="1" Margin="0,0,0,0">
-                                    <metro:ColorPicker Grid.Row="7"  Background="Transparent" Height="35"
-                               metro:TextBoxHelper.UseFloatingWatermark="False"
-                               SelectedColor="{Binding BackgroundColor}"/>
-                                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Background Color" FontSize="12" Margin="5,0,0,0" />
-                                </StackPanel>
 
-                                <StackPanel Grid.Column="1" Margin="0,10,0,0">
-                                    <metro:ColorPicker Grid.Row="8"  Background="Transparent" Height="35"
-                               BorderThickness="1"
-                               metro:TextBoxHelper.UseFloatingWatermark="False"
-                               SelectedColor="{Binding Color}"/>
-                                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Default Text Color" FontSize="12" Margin="5,0,0,0" />
-                                </StackPanel>
 
-                                <StackPanel Grid.Column="1" Margin="0,10,0,0">
-                                    <ComboBox Grid.Column="1" ScrollViewer.VerticalScrollBarVisibility="Visible" SelectedValue="{Binding Font}"
-                          ItemsSource="{Binding InstalledFonts, RelativeSource={RelativeSource AncestorType=Page}}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding}" FontFamily="{Binding}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Default Font Family" FontSize="12" Margin="5,0,0,0" />
-                                </StackPanel>
-
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Grid.Column="0" Margin="0,0,0,0">
-                                        <ui:NumberBox Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="0" SmallChange="1"
-                                     Text="{Binding FontSize}"
-                                     Value="{Binding FontSize}"/>
-                                        <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Default Font Size" FontSize="12" Margin="5,0,0,0" />
+                                <StackPanel Grid.Column="1" Margin="10,0,10,0">
+                                    <StackPanel Grid.Column="1" Margin="0,0,0,0">
+                                        <metro:ColorPicker
+                                            Grid.Row="7"
+                                            Height="35"
+                                            metro:TextBoxHelper.UseFloatingWatermark="False"
+                                            Background="Transparent"
+                                            SelectedColor="{Binding BackgroundColor}" />
+                                        <TextBlock
+                                            Margin="5,0,0,0"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Text="Background Color" />
                                     </StackPanel>
-                                </Grid>
 
-                            </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="0,10,0,0">
+                                        <metro:ColorPicker
+                                            Grid.Row="8"
+                                            Height="35"
+                                            metro:TextBoxHelper.UseFloatingWatermark="False"
+                                            Background="Transparent"
+                                            BorderThickness="1"
+                                            SelectedColor="{Binding Color}" />
+                                        <TextBlock
+                                            Margin="5,0,0,0"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Text="Default Text Color" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Margin="0,10,0,0">
+                                        <ComboBox
+                                            Grid.Column="1"
+                                            ItemsSource="{Binding InstalledFonts, RelativeSource={RelativeSource AncestorType=Page}}"
+                                            ScrollViewer.VerticalScrollBarVisibility="Visible"
+                                            SelectedValue="{Binding Font}">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock FontFamily="{Binding}" Text="{Binding}" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                        <TextBlock
+                                            Margin="5,0,0,0"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Text="Default Font Family" />
+                                    </StackPanel>
+
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                                            <ui:NumberBox
+                                                Margin="0,0,0,0"
+                                                FontSize="14"
+                                                MaxDecimalPlaces="0"
+                                                SmallChange="1"
+                                                Text="{Binding FontSize}"
+                                                Value="{Binding FontSize}" />
+                                            <TextBlock
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="Default Font Size" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                </StackPanel>
 
 
                                 <StackPanel Grid.Column="2" Margin="10,0,0,0">
+                                    <StackPanel Margin="0,0,0,0">
+                                        <TextBox IsReadOnly="True" Text="{Binding VideoBackgroundFilePath}" />
+                                        <TextBlock
+                                            Margin="5,0,0,0"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Text="Video Background (30s,HD)" />
+                                    </StackPanel>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <!--<Image
+                                            Height="150"
+                                            Margin="0,0,0,0"
+                                            VerticalAlignment="Center" />-->
+                                        <ui:Button
+                                            x:Name="ButtonVideoBackground"
+                                            Grid.Column="0"
+                                            Margin="0,0,0,0"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Center"
+                                            Appearance="Primary"
+                                            Click="ButtonVideoBackground_Click"
+                                            Content="Select Background Video" />
+                                        <ui:Button
+                                            Name="ButtonRemoveVideoBackground"
+                                            Grid.Column="1"
+                                            Margin="10,0,0,0"
+                                            Appearance="Secondary"
+                                            Click="ButtonRemoveVideoBackground_Click"
+                                            Content="x"
+                                            Visibility="{Binding VideoBackgroundFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+                                    </Grid>
+                                    <!--  start rotation  -->
+                                    <ComboBox
+                                        Margin="0,30,0,0"
+                                        ItemsSource="{Binding Source={StaticResource RotationValues}}"
+                                        SelectedItem="{Binding VideoBackgroundRotation}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <!--  end rotation  -->
 
-                                    <ui:CardControl Margin="0,0,0,0">
-                                        <ui:CardControl.Header>
-                                            <Grid Margin="0,-5,0,-5">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                    <TextBlock
-                            FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Strict Window Matching" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </ui:CardControl.Header>
-                                        <ui:ToggleSwitch Margin="0,-5,0,-5"
-                            IsChecked="{Binding StrictWindowMatching}"/>
-                                    </ui:CardControl>
 
-                                    <ui:CardControl Margin="0,15,0,0">
-                                        <ui:CardControl.Header>
-                                            <Grid Margin="0,-5,0,-5">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                    <TextBlock
-                            FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Override DPI" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </ui:CardControl.Header>
-                                        <ui:ToggleSwitch Margin="0,-5,0,-5"
-                            IsChecked="{Binding OverrideDpi}"/>
-                                    </ui:CardControl>
                                 </StackPanel>
                             </Grid>
 
@@ -388,8 +565,12 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
 
-                                <Border BorderBrush="DarkGray" BorderThickness="1" CornerRadius="5" Margin="0,10,0,0">
-                                <StackPanel Margin="5,5,5,5">
+                                <Border
+                                    Margin="0,10,0,0"
+                                    BorderBrush="DarkGray"
+                                    BorderThickness="1"
+                                    CornerRadius="5">
+                                    <StackPanel Margin="5,5,5,5">
 
                                         <Grid Margin="0,0,0,0" IsEnabled="{Binding Active}">
                                             <Grid.ColumnDefinitions>
@@ -399,69 +580,127 @@
                                             <ui:CardControl Margin="0,0,0,0">
                                                 <ui:CardControl.Header>
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Direct2D Acceleration" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                            Text="Direct2D Acceleration" />
                                                     </StackPanel>
                                                 </ui:CardControl.Header>
                                                 <StackPanel>
-                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DMode}"/>
+                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DMode}" />
                                                 </StackPanel>
                                             </ui:CardControl>
 
-                                            <ui:CardControl Grid.Column="1" Margin="10,0,0,0"  IsEnabled="{Binding Direct2DMode}">
+                                            <ui:CardControl
+                                                Grid.Column="1"
+                                                Margin="10,0,0,0"
+                                                IsEnabled="{Binding Direct2DMode}">
                                                 <ui:CardControl.Header>
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Panel FPS" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                            Text="Panel FPS" />
                                                     </StackPanel>
                                                 </ui:CardControl.Header>
                                                 <StackPanel>
-                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DModeFps}"/>
+                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DModeFps}" />
                                                 </StackPanel>
                                             </ui:CardControl>
                                         </Grid>
 
 
                                         <Grid Margin="0,10,0,0" IsEnabled="{Binding Direct2DMode}">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" Margin="0,0,0,0" >
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="0,0,0,0">
                                                 <ui:NumberBox
-                                    FontSize="14" MaxDecimalPlaces="2" SmallChange="0.01" LargeChange="0.1" Minimum="0.01" Maximum="10"
-                                    Value="{Binding Direct2DFontScale}" Text="{Binding Direct2DFontScale}"  />
-                                                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Font Scale" FontSize="12" Margin="5,0,0,0" />
-                                        </StackPanel>
+                                                    FontSize="14"
+                                                    LargeChange="0.1"
+                                                    MaxDecimalPlaces="2"
+                                                    Maximum="10"
+                                                    Minimum="0.01"
+                                                    SmallChange="0.01"
+                                                    Text="{Binding Direct2DFontScale}"
+                                                    Value="{Binding Direct2DFontScale}" />
+                                                <TextBlock
+                                                    Margin="5,0,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Text="Font Scale" />
+                                            </StackPanel>
 
-                                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                                            <ui:NumberBox
-                                    FontSize="14" MaxDecimalPlaces="0" SmallChange="1" LargeChange="10" Minimum="-3840" Maximum="3840"
-                                    Value="{Binding Direct2DTextXOffset}" Text="{Binding Direct2DTextXOffset}" />
-                                            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text X (Left) Offset" FontSize="12" Margin="5,0,0,0" />
-                                        </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                                <ui:NumberBox
+                                                    FontSize="14"
+                                                    LargeChange="10"
+                                                    MaxDecimalPlaces="0"
+                                                    Maximum="3840"
+                                                    Minimum="-3840"
+                                                    SmallChange="1"
+                                                    Text="{Binding Direct2DTextXOffset}"
+                                                    Value="{Binding Direct2DTextXOffset}" />
+                                                <TextBlock
+                                                    Margin="5,0,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Text="Text X (Left) Offset" />
+                                            </StackPanel>
 
-                                        <StackPanel Grid.Column="2" Margin="10,0,0,0">
-                                    <ui:NumberBox
-                                    FontSize="14" MaxDecimalPlaces="0" SmallChange="1" Minimum="-3840" Maximum="3840"
-                                    Value="{Binding Direct2DTextYOffset}" Text="{Binding Direct2DTextYOffset}" />    
-                                                <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Text Y (Top) Offset" FontSize="12" Margin="5,0,0,0" />
-                                        </StackPanel>
-                                    </Grid>
+                                            <StackPanel Grid.Column="2" Margin="10,0,0,0">
+                                                <ui:NumberBox
+                                                    FontSize="14"
+                                                    MaxDecimalPlaces="0"
+                                                    Maximum="3840"
+                                                    Minimum="-3840"
+                                                    SmallChange="1"
+                                                    Text="{Binding Direct2DTextYOffset}"
+                                                    Value="{Binding Direct2DTextYOffset}" />
+                                                <TextBlock
+                                                    Margin="5,0,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Text="Text Y (Top) Offset" />
+                                            </StackPanel>
+                                        </Grid>
 
 
-                                </StackPanel>
-                            </Border>
+                                    </StackPanel>
+                                </Border>
 
-                                <Grid Grid.Column="2" Margin="10,0,10,0" VerticalAlignment="Bottom" HorizontalAlignment="Right">
+                                <Grid
+                                    Grid.Column="2"
+                                    Margin="10,0,10,0"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="auto" />
                                         <ColumnDefinition Width="auto" />
                                         <ColumnDefinition Width="auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <ui:Button Grid.Column="0" Margin="0,0,0,0" HorizontalAlignment="Stretch" Appearance="Primary" Content="Save profile changes" Click="ButtonSave_Click"/>
-                                    <ui:Button Grid.Column="1" Margin="10,0,0,0" Appearance="Danger" Content="Revert changes" Click="ButtonReload_Click"/>
-                                    <ui:Button Grid.Column="2" Margin="10,0,0,0" Appearance="Secondary"  Content="x" Click="ButtonClose_Click"/>
+                                    <ui:Button
+                                        Grid.Column="0"
+                                        Margin="0,0,0,0"
+                                        HorizontalAlignment="Stretch"
+                                        Appearance="Primary"
+                                        Click="ButtonSave_Click"
+                                        Content="Save profile changes" />
+                                    <ui:Button
+                                        Grid.Column="1"
+                                        Margin="10,0,0,0"
+                                        Appearance="Danger"
+                                        Click="ButtonReload_Click"
+                                        Content="Revert changes" />
+                                    <ui:Button
+                                        Grid.Column="2"
+                                        Margin="10,0,0,0"
+                                        Appearance="Secondary"
+                                        Click="ButtonClose_Click"
+                                        Content="x" />
                                 </Grid>
 
                             </Grid>

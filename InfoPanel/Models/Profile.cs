@@ -1,8 +1,8 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Enums;
 using System;
 using System.Drawing;
 using System.Linq;
-using System.Net.NetworkInformation;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Xml.Serialization;
@@ -134,6 +134,26 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _drag, value);
+            }
+        }
+
+        private string? _videoBackgroundFilePath;
+        public string? VideoBackgroundFilePath
+        {
+            get { return _videoBackgroundFilePath; }
+            set
+            {
+                SetProperty(ref _videoBackgroundFilePath, value);
+            }
+        }
+
+        private Enums.Rotation _videoBackgroundRotation = 0;
+        public Enums.Rotation VideoBackgroundRotation
+        {
+            get { return _videoBackgroundRotation; }
+            set
+            {
+                SetProperty(ref _videoBackgroundRotation, value);
             }
         }
 

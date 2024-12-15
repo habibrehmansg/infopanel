@@ -52,6 +52,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Remove="Effects\DeeperColor.fx" />
+		<None Remove="Effects\DeeperColor.ps" />
 		<None Remove="hwinfo_logo_white.png" />
 		<None Remove="index.html" />
 		<None Remove="Logo.png" />
@@ -97,6 +99,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<Resource Include="Effects\DeeperColor.fx" />
+		<Resource Include="Effects\DeeperColor.ps" />
 		<Resource Include="Resources\Images\favicon.ico">
 			<CopyToOutputDirectory></CopyToOutputDirectory>
 		</Resource>
@@ -144,7 +148,6 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-		<PackageReference Include="AnimatedImage.Wpf" Version="2.0.0" />
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
@@ -154,6 +157,7 @@
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
 		<PackageReference Include="Prise" Version="6.0.0" />
 		<PackageReference Include="Sentry" Version="4.13.0" />
+		<PackageReference Include="SkiaSharp" Version="3.116.1" />
 		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
 		<PackageReference Include="TaskScheduler" Version="2.11.1" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
@@ -224,6 +228,10 @@
 		</None>
 		<None Update="NunitoSans_7pt_Condensed-SemiBoldItalic.ttf">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="Resources\Binaries\ffmpeg.exe">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>ffmpeg.exe</Link>
 		</None>
 	</ItemGroup>
 

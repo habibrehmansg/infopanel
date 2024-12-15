@@ -11,44 +11,64 @@ namespace InfoPanel.Extensions
     {
         public static Bitmap EnsureBitmapSize(Bitmap sourceBitmap, int desiredWidth, int desiredHeight)
         {
-            // Check if the bitmap is already the desired size
-            if (sourceBitmap.Width == desiredWidth && sourceBitmap.Height == desiredHeight)
+            // Check if the bitmap exceeds the desired size
+            if (sourceBitmap.Width > desiredWidth || sourceBitmap.Height > desiredHeight)
             {
-                return sourceBitmap;
-            }
-            else
-            {
-                // Create a new bitmap of the desired size
-                Bitmap resizedBitmap = new(desiredWidth, desiredHeight, sourceBitmap.PixelFormat);
-
                 // Calculate scale factors
                 double scaleX = (double)desiredWidth / sourceBitmap.Width;
                 double scaleY = (double)desiredHeight / sourceBitmap.Height;
 
-                // Use the smallest scale factor to preserve aspect ratio
+                // Use the smallest scale factor to ensure the image does not exceed desired size
                 double scale = Math.Min(scaleX, scaleY);
 
                 // Calculate scaled width and height
                 int scaledWidth = (int)(sourceBitmap.Width * scale);
                 int scaledHeight = (int)(sourceBitmap.Height * scale);
 
-                // Draw the source bitmap onto the new bitmap
+                // Create a new bitmap of the scaled size
+                Bitmap resizedBitmap = new(scaledWidth, scaledHeight, sourceBitmap.PixelFormat);
+
                 using (Graphics graphics = Graphics.FromImage(resizedBitmap))
                 {
-                    // Clear with background color (optional)
-                    graphics.Clear(Color.Transparent);
+                    graphics.Clear(Color.Transparent); // Optional background
+                    graphics.DrawImage(sourceBitmap, 0, 0, scaledWidth, scaledHeight);
+                }
 
-                    // Calculate x and y positions to center the image
+                // Create a new bitmap with the desired dimensions and center the resized image
+                Bitmap finalBitmap = new(desiredWidth, desiredHeight, sourceBitmap.PixelFormat);
+
+                using (Graphics graphics = Graphics.FromImage(finalBitmap))
+                {
+                    graphics.Clear(Color.Transparent); // Optional background
+
                     int offsetX = (desiredWidth - scaledWidth) / 2;
                     int offsetY = (desiredHeight - scaledHeight) / 2;
 
-                    // Draw image with offset
-                    graphics.DrawImage(sourceBitmap, offsetX, offsetY, scaledWidth, scaledHeight);
+                    graphics.DrawImage(resizedBitmap, offsetX, offsetY, scaledWidth, scaledHeight);
                 }
 
-                return resizedBitmap;
+                return finalBitmap;
+            }
+            else
+            {
+                // Create a new bitmap with the desired dimensions
+                Bitmap expandedBitmap = new(desiredWidth, desiredHeight, sourceBitmap.PixelFormat);
+
+                using (Graphics graphics = Graphics.FromImage(expandedBitmap))
+                {
+                    graphics.Clear(Color.Transparent); // Optional background
+
+                    // Center the original image on the new canvas
+                    int offsetX = (desiredWidth - sourceBitmap.Width) / 2;
+                    int offsetY = (desiredHeight - sourceBitmap.Height) / 2;
+
+                    graphics.DrawImage(sourceBitmap, offsetX, offsetY, sourceBitmap.Width, sourceBitmap.Height);
+                }
+
+                return expandedBitmap;
             }
         }
+
 
         public static List<Rectangle> GetChangedSectors(Bitmap bitmap1, Bitmap bitmap2, int sectorWidth, int sectorHeight, int maxSectorWidth = 32, int maxSectorHeight = 32)
         {

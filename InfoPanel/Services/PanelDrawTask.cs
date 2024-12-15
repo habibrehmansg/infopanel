@@ -47,14 +47,17 @@ namespace InfoPanel
                              SharedModel.Instance.SetPanelBitmap(profile, bitmap);
                          });
 
+                        var frameTime = stopwatch.ElapsedMilliseconds;
+                        //Trace.WriteLine($"Frametime: {frameTime}");
+
                         fpsCounter.Update();
                         SharedModel.Instance.CurrentFrameRate = fpsCounter.FramesPerSecond;
-                        SharedModel.Instance.CurrentFrameTime = stopwatch.ElapsedMilliseconds;
+                        SharedModel.Instance.CurrentFrameTime = frameTime;
 
-                        var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
-                        if (stopwatch.ElapsedMilliseconds < targetFrameTime)
+                        var targetFrameTime = 1000.0 / (ConfigModel.Instance.Settings.TargetFrameRate * 1.03);
+                        if (frameTime < targetFrameTime)
                         {
-                            var sleep = (int)(targetFrameTime - stopwatch.ElapsedMilliseconds);
+                            var sleep = (int)(targetFrameTime - frameTime);
                             //Trace.WriteLine($"Sleep {sleep}ms");
                             await Task.Delay(sleep, token);
                         }
@@ -71,7 +74,7 @@ namespace InfoPanel
             }
         }
 
-        public static Bitmap Render(Profile profile, bool drawSelected = true, PixelFormat pixelFormat = PixelFormat.Format32bppArgb)
+        public static Bitmap Render(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, PixelFormat pixelFormat = PixelFormat.Format32bppArgb)
         {
             var bitmap = new Bitmap(profile.Width, profile.Height, pixelFormat);
 
@@ -81,7 +84,7 @@ namespace InfoPanel
             }
 
             using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
-            PanelDraw.Run(profile, g, drawSelected);
+            PanelDraw.Run(profile, g, drawSelected, scale, cache, videoBackgroundFallback);
 
             return bitmap;
         }

@@ -1,58 +1,88 @@
-﻿<UserControl x:Class="InfoPanel.Views.Components.CustomProperties"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:InfoPanel.Views.Components"
-             xmlns:app="clr-namespace:InfoPanel"
-             xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
-             xmlns:models="clr-namespace:InfoPanel.Models"
-             xmlns:anim="https://github.com/whistyun/AnimatedImage.Wpf"
-             xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
-             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-             mc:Ignorable="d">
-    
+﻿<UserControl
+    x:Class="InfoPanel.Views.Components.CustomProperties"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="clr-namespace:InfoPanel"
+    xmlns:controls="clr-namespace:InfoPanel.Views.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:InfoPanel.Views.Components"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
+    xmlns:models="clr-namespace:InfoPanel.Models"
+    xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    mc:Ignorable="d">
+
     <Grid Margin="10,10,10,10">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="1.5*"/>
-            <ColumnDefinition Width="1*"/>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="1.5*" />
+            <ColumnDefinition Width="1*" />
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" Margin="0,0,10,0">
-            <TextBlock Grid.Column="0" TextWrapping="Wrap" Margin="0,0,0,0"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+            <TextBlock
+                Grid.Column="0"
+                Margin="0,0,0,0"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap">
                 Select up to 101 images for display at certain sensor values.
             </TextBlock>
 
             <StackPanel Margin="0,10,0,0">
-                <ui:NumberBox Margin="0,0,0,0"
-                                     FontSize="14" MaxDecimalPlaces="3" SmallChange="1"
-                                     Text="{Binding MinValue}"/>
-                <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Min value (sensor lower bound)" FontSize="12" Margin="5,0,0,0" />
+                <ui:NumberBox
+                    Margin="0,0,0,0"
+                    FontSize="14"
+                    MaxDecimalPlaces="3"
+                    SmallChange="1"
+                    Text="{Binding MinValue}" />
+                <TextBlock
+                    Margin="5,0,0,0"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                    Text="Min value (sensor lower bound)" />
             </StackPanel>
 
             <StackPanel Margin="0,0,0,0">
-                <ui:NumberBox Margin="0,8,0,0"
-                                     FontSize="14" MaxDecimalPlaces="3" SmallChange="1"
-                                     Text="{Binding MaxValue}"/>
-                <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Max value (sensor upper bound)" FontSize="12" Margin="5,0,0,0" />
+                <ui:NumberBox
+                    Margin="0,8,0,0"
+                    FontSize="14"
+                    MaxDecimalPlaces="3"
+                    SmallChange="1"
+                    Text="{Binding MaxValue}" />
+                <TextBlock
+                    Margin="5,0,0,0"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                    Text="Max value (sensor upper bound)" />
             </StackPanel>
 
             <StackPanel Grid.Row="5" Margin="0,10,0,0">
-                <Slider Name="SliderFScale" Grid.Column="1" Value="{Binding Scale}" 
-                        Minimum="5" Maximum="200" Margin="0,0,0,0" />
+                <Slider
+                    Name="SliderFScale"
+                    Grid.Column="1"
+                    Margin="0,0,0,0"
+                    Maximum="200"
+                    Minimum="5"
+                    Value="{Binding Scale}" />
 
                 <Grid Margin="5,0,5,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="auto"/>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" FontSize="12" Margin="0,0,0,0"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Resize scale"  />
-                    <TextBlock Grid.Column="1" FontSize="12" Margin="0,0,0,0"
-                               Foreground="{DynamicResource TextFillColorDisabledBrush}" 
-                               Text="{Binding Scale, Mode=OneWay}"   />
+                    <TextBlock
+                        Grid.Column="0"
+                        Margin="0,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Resize scale" />
+                    <TextBlock
+                        Grid.Column="1"
+                        Margin="0,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="{Binding Scale, Mode=OneWay}" />
                 </Grid>
             </StackPanel>
 
@@ -62,43 +92,58 @@
 
         <Grid Grid.Column="1" Margin="10,0,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="auto" />
             </Grid.ColumnDefinitions>
 
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="auto"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="auto" />
+                    <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0" Margin="5,0,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="50"/>
-                        <ColumnDefinition Width="60"/>
-                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="60" />
+                        <ColumnDefinition Width="150" />
                     </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0"  Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                        <TextBlock Grid.Column="0" Text="Image" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    <Label Grid.Column="0" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        <TextBlock
+                            Grid.Column="0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Text="Image" />
                     </Label>
                     <Label Grid.Column="1">
-                        <TextBlock  Text="Step" VerticalAlignment="Center" HorizontalAlignment="Center"  Margin="10,0,0,0"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock
+                            Margin="10,0,0,0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="Step" />
                     </Label>
                     <Label Grid.Column="2">
                         <TextBlock>
-                            <TextBlock  Text="Path" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10,0,0,0"
-                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock
+                                Margin="10,0,0,0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="Path" />
                         </TextBlock>
                     </Label>
                 </Grid>
 
-                <ListView Name="ListViewItems" Grid.Row="1" Margin="0,10,0,0"
-                        ItemsSource="{Binding Images}"
-                                  SelectedItem="{Binding ViewModel.SelectedItem, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"
-                      ScrollViewer.VerticalScrollBarVisibility="Visible"
-                      ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                  SelectionMode="Extended">
+                <ListView
+                    Name="ListViewItems"
+                    Grid.Row="1"
+                    Margin="0,10,0,0"
+                    ItemsSource="{Binding Images}"
+                    ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                    ScrollViewer.VerticalScrollBarVisibility="Visible"
+                    SelectedItem="{Binding ViewModel.SelectedItem, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"
+                    SelectionMode="Extended">
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
                             <Setter Property="Margin" Value="0,0,0,5" />
@@ -109,17 +154,22 @@
                         <DataTemplate>
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="50"/>
-                                    <ColumnDefinition Width="60"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="50" />
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="150" />
                                 </Grid.ColumnDefinitions>
 
                                 <Label Grid.Column="0" HorizontalAlignment="Left">
-                                    <Image Width="35" Height="35"
-                                   Source="{Binding CalculatedPath, Converter={StaticResource CacheImageConverter}, Mode=OneWay}"  />
+                                    <Image
+                                        Width="35"
+                                        Height="35"
+                                        Source="{Binding CalculatedPath, Converter={StaticResource CacheImageConverter}, Mode=OneWay}" />
                                 </Label>
 
-                                <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="10,0,0,0"
+                                    VerticalAlignment="Center">
                                     <TextBlock.Text>
                                         <MultiBinding StringFormat="{}{0}">
                                             <Binding Converter="{StaticResource CustomStepIndexConverter}" />
@@ -127,11 +177,14 @@
                                     </TextBlock.Text>
                                 </TextBlock>
 
-                                <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="10,0,0,0"
-                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Margin="10,0,0,0"
+                                    VerticalAlignment="Center"
+                                    TextTrimming="CharacterEllipsis">
                                     <TextBlock.Text>
                                         <MultiBinding StringFormat="{}{0}">
-                                            <Binding Path="FilePath" Mode="OneWay" />
+                                            <Binding Mode="OneWay" Path="FilePath" />
                                         </MultiBinding>
                                     </TextBlock.Text>
                                 </TextBlock>
@@ -144,15 +197,35 @@
 
             </Grid>
 
-            <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Center" Margin="10,0,0,0">
-                <ui:Button Icon="SaveCopy20" ToolTip="Select new images" Click="ButtonAddStep_Click" />
-                <ui:Button Icon="ArrowUp20"  Margin="0,10,0,0"
-                           IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}" ToolTip="Move up" Click="ButtonStepUp_Click"/>
-                <ui:Button Icon="ArrowDown20" Margin="0,10,0,0"
-                           IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}" ToolTip="Move down" Click="ButtonStepDown_Click"/>
-                <ui:Button x:Name="ButtonDelete" Icon="Delete20" Appearance="Danger" Margin="0,10,0,0"
-                         ToolTip="Delete selected item" Click="ButtonDelete_Click" 
-                        IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"/>
+            <StackPanel
+                Grid.Column="1"
+                Margin="10,0,0,0"
+                VerticalAlignment="Center"
+                Orientation="Vertical">
+                <ui:Button
+                    Click="ButtonAddStep_Click"
+                    Icon="SaveCopy20"
+                    ToolTip="Select new images" />
+                <ui:Button
+                    Margin="0,10,0,0"
+                    Click="ButtonStepUp_Click"
+                    Icon="ArrowUp20"
+                    IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"
+                    ToolTip="Move up" />
+                <ui:Button
+                    Margin="0,10,0,0"
+                    Click="ButtonStepDown_Click"
+                    Icon="ArrowDown20"
+                    IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"
+                    ToolTip="Move down" />
+                <ui:Button
+                    x:Name="ButtonDelete"
+                    Margin="0,10,0,0"
+                    Appearance="Danger"
+                    Click="ButtonDelete_Click"
+                    Icon="Delete20"
+                    IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"
+                    ToolTip="Delete selected item" />
             </StackPanel>
         </Grid>
 
@@ -165,14 +238,14 @@
             <TextBlock Grid.Column="0" TextWrapping="Wrap">
                 E.g. 0, 100 for % based sensors and 0, 3400 for a 3400Mhz CPU.
             </TextBlock>
-            <metro:NumericUpDown Grid.Column="1" Height="30" Margin="0,0,10,22" 
+            <metro:NumericUpDown Grid.Column="1" Height="30" Margin="0,0,10,22"
                                      BorderThickness="0,0,0,1"
                                      FontSize="14" TextAlignment="Left"
                                      Interval="1" StringFormat="0"
                                         Maximum="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.MaxValue}"
                                      ToolTip="Sensor lower bound"
                                      Value="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.MinValue}"/>
-            <metro:NumericUpDown Grid.Column="2" Height="30" Margin="0,0,10,22" 
+            <metro:NumericUpDown Grid.Column="2" Height="30" Margin="0,0,10,22"
                                      BorderThickness="0,0,0,1"
                                      FontSize="14" TextAlignment="Left"
                                       Interval="1" StringFormat="0"
@@ -186,7 +259,7 @@
                 <ColumnDefinition Width="100"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-            <metro:NumericUpDown Grid.Column="0" Height="30" Margin="0,0,10,22" 
+            <metro:NumericUpDown Grid.Column="0" Height="30" Margin="0,0,10,22"
                                      BorderThickness="0,0,0,1"
                                      FontSize="14" TextAlignment="Left"
                                      Minimum="5" Maximum="200" Interval="1" StringFormat="0"
@@ -195,8 +268,13 @@
             <Slider Name="SliderFScale" Grid.Column="1" Value="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Scale}" Minimum="5" Maximum="200" Margin="10,0,0,0" />
         </Grid>-->
 
-        <Image x:Name="ImagePreview" Grid.Column="2" Height="150" Margin="10,0,0,0"
-               anim:ImageBehavior.AnimatedSource="{Binding DisplayImage, Mode=OneWay}"/>
+        <controls:MyImage
+            x:Name="ImagePreview"
+            Grid.Column="2"
+            Width="150"
+            Height="150"
+            Margin="10,0,0,0"
+            ImagePath="{Binding DisplayImage, Mode=OneWay}" />
 
     </Grid>
 </UserControl>

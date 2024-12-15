@@ -25,7 +25,7 @@ namespace InfoPanel.Views.Components
                 Microsoft.Win32.OpenFileDialog openFileDialog = new()
                 {
                     Multiselect = false,
-                    Filter = "Image files (*.jpg, *.jpeg, *.png, *.gif)|*.jpg;*.jpeg;*.png;*.gif",
+                    Filter = "Image files (*.jpg, *.jpeg, *.png, *.gif, *.webp)|*.jpg;*.jpeg;*.png;*.gif;*.webp",
                     InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
                 };
                 if (openFileDialog.ShowDialog() == true)
@@ -58,6 +58,17 @@ namespace InfoPanel.Views.Components
                         }
                     }
                 }
+            }
+        }
+
+        private void CheckBoxCache_Unchecked(object sender, RoutedEventArgs e)
+        {
+            if (SharedModel.Instance.SelectedItem is ImageDisplayItem imageDisplayItem && !imageDisplayItem.Cache
+                && imageDisplayItem.CalculatedPath is string path
+                && Cache.GetLocalImage(path) is LockedImage lockedImage)
+            {
+                lockedImage.DisposeAssets();
+                lockedImage.DisposeD2DAssets();
             }
         }
 

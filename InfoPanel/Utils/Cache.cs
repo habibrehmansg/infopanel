@@ -1,13 +1,10 @@
 ﻿using InfoPanel.Models;
 using Microsoft.Extensions.Caching.Memory;
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Windows;
 
 namespace InfoPanel
 {
@@ -28,21 +25,21 @@ namespace InfoPanel
             return stream;
         }
 
-        public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem)
+        public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)
         {
             if (imageDisplayItem.CalculatedPath != null)
             {
-                return GetLocalImage(imageDisplayItem.CalculatedPath);
+                return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
             }
 
             return null;
         }
 
-        public static LockedImage? GetLocalImage(string path)
+        public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
         {
             ImageCache.TryGetValue(path, out LockedImage? result);
 
-            if (result != null)
+            if (result != null || !initialiseIfMissing)
             {
                 return result;
             }

@@ -3,7 +3,6 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
-using System.Linq;
 using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
@@ -64,12 +63,12 @@ namespace InfoPanel.Drawing
             this.Graphics.DrawString(text, font, brush, new PointF(x, y), format);
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, bool cache = true)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true)
         {
             lockedImage.Access(bitmap =>
             {
                 if (bitmap != null)
-                    this.Graphics.DrawImage(bitmap, x, y, width, height);
+                    this.DrawBitmap(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
             }, cache);
         }
 
@@ -78,14 +77,42 @@ namespace InfoPanel.Drawing
             this.DrawBitmap(bitmap, x, y, bitmap.Width, bitmap.Height);
         }
 
-        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height)
+        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
-            this.Graphics.DrawImage(bitmap, x, y, width, height);
+            if (rotation != 0)
+            {
+                var state = Graphics.Save();
+                // Move the origin to the center of the image
+                Graphics.TranslateTransform(rotationCenterX, rotationCenterY);
+
+                // Rotate the graphics context
+                Graphics.RotateTransform(rotation);
+
+                // Move the origin back
+                Graphics.TranslateTransform(-rotationCenterX, -rotationCenterY);
+                this.Graphics.DrawImage(bitmap, x, y, width, height);
+
+                // Restore the graphics context to the state before rotation
+                Graphics.Restore(state);
+            } else
+            {
+                this.Graphics.DrawImage(bitmap, x, y, width, height);
+            }
         }
 
-        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height)
+        public override void DrawBitmap(D2DBitmapGraphics bitmapGraphics, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
-            throw new System.NotSupportedException();
+            throw new NotSupportedException();
+        }
+
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
+        {
+            throw new NotSupportedException();
         }
 
         public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
@@ -102,16 +129,22 @@ namespace InfoPanel.Drawing
 
         public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height)
         {
-            using var pen = new Pen(ColorTranslator.FromHtml(color), strokeWidth);
-            this.Graphics.DrawRectangle(pen, x, y, width, height);
+            this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height);
         }
 
-        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null)
+        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true)
         {
             if (gradientColor != null)
             {
-                using var brush = new LinearGradientBrush(new Rectangle(x, y, width, height), ColorTranslator.FromHtml(color), ColorTranslator.FromHtml(gradientColor), LinearGradientMode.Vertical);
-                this.Graphics.FillRectangle(brush, x, y, width, height);
+                if (gradientHorizontal)
+                {
+                    using var brush = new LinearGradientBrush(new Rectangle(x, y, width + 1, height), ColorTranslator.FromHtml(color), ColorTranslator.FromHtml(gradientColor), LinearGradientMode.Horizontal);
+                    this.Graphics.FillRectangle(brush, x, y, width, height);
+                } else
+                {
+                    using var brush = new LinearGradientBrush(new Rectangle(x, y, width, height + 1),  ColorTranslator.FromHtml(gradientColor), ColorTranslator.FromHtml(color), LinearGradientMode.Vertical);
+                    this.Graphics.FillRectangle(brush, x, y, width, height);
+                }
             }
             else
             {
@@ -155,7 +188,7 @@ namespace InfoPanel.Drawing
             this.Graphics.FillPath(brush, path);
         }
 
-        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, string color, string backgroundColor, int strokeWidth, string strokeColor)
+        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor)
         {
             thickness = Math.Clamp(thickness, 0, radius);
             rotation = Math.Clamp(rotation, 0, 360);
@@ -165,28 +198,44 @@ namespace InfoPanel.Drawing
 
             // Create ring path (outer ellipse minus inner ellipse)
             using var ringPath = new GraphicsPath();
-            ringPath.AddEllipse(x, y, 2 * radius, 2 * radius);
-            ringPath.AddEllipse(x + (radius - innerRadius), y + (radius - innerRadius), 2 * innerRadius, 2 * innerRadius);
+            ringPath.AddEllipse(x, y, 2 * (radius), 2 * (radius));
+            ringPath.AddEllipse(x + (radius - innerRadius), y + (radius - innerRadius), 2 * (innerRadius), 2 * (innerRadius));
 
-            //draw outline
-            if (strokeWidth > 0)
-            {
-                using var pen = new Pen(ColorTranslator.FromHtml(strokeColor), strokeWidth);
-                Graphics.DrawPath(pen, ringPath);
-            }
-
-            //fill background
-            using var backgroundBrush = new SolidBrush(ColorTranslator.FromHtml(backgroundColor));
-            Graphics.FillPath(backgroundBrush, ringPath);
+            //debug
+            //Graphics.FillPath(Brushes.Yellow, ringPath);
 
             // Clip to the ring region
             using var ringRegion = new Region(ringPath);
             Graphics.SetClip(ringRegion, CombineMode.Replace);
 
+            //fill background
+            using var backgroundBrush = new SolidBrush(ColorTranslator.FromHtml(backgroundColor));
+            Graphics.FillPie(backgroundBrush, x + strokeWidth, y + strokeWidth, 2 * (radius - strokeWidth), 2 * (radius - strokeWidth), rotation, span);
+
             // Draw the pie slice
-            float angleSpan = percentage * 360 / 100f;
+            float angleSpan = percentage * span / 100f;
             using var colorBrush = new SolidBrush(ColorTranslator.FromHtml(color));
-            Graphics.FillPie(colorBrush, x, y, 2 * radius, 2 * radius, rotation, angleSpan);
+            Graphics.FillPie(colorBrush, x + strokeWidth, y + strokeWidth, 2 * (radius - strokeWidth), 2 * (radius - strokeWidth), rotation, angleSpan);
+
+            //Graphics.ResetClip();
+
+            //draw outline
+            if (strokeWidth > 0)
+            {
+                using var pen = new Pen(ColorTranslator.FromHtml(strokeColor), strokeWidth);
+
+                if (span == 360)
+                {
+                    Graphics.DrawEllipse(pen, x + strokeWidth, y + strokeWidth, 2 * (radius - strokeWidth), 2 * (radius - strokeWidth));
+                    Graphics.DrawEllipse(pen, x + (radius - innerRadius) - strokeWidth, y + (radius - innerRadius) - strokeWidth, 2 * (innerRadius + strokeWidth), 2 * (innerRadius + strokeWidth));
+                }
+                else
+                {
+                    Graphics.DrawPie(pen, x + strokeWidth, y + strokeWidth, 2 * (radius - strokeWidth), 2 * (radius - strokeWidth), rotation, span);
+                    Graphics.DrawPie(pen, x + (radius - innerRadius) - strokeWidth, y + (radius - innerRadius) - strokeWidth, 2 * (innerRadius + strokeWidth), 2 * (innerRadius + strokeWidth), rotation, span);
+                }
+            }
+
             Graphics.ResetClip();
         }
 

@@ -1,6 +1,7 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
+using InfoPanel.Utils;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Common;
 using InfoPanel.Views.Windows;
@@ -198,6 +199,11 @@ namespace InfoPanel
             Exit += App_Exit;
 
             await StartPanels();
+
+
+
+            //var video  = new VideoBackgroundItem("C:\\Users\\Habib\\Desktop\\88inchENG\\video\\rani.mp4");
+            //await video.Test();
         }
 
         private void OnSessionEnding(object sender, SessionEndingEventArgs e)

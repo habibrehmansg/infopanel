@@ -1,4 +1,5 @@
 ﻿using LibreHardwareMonitor.Hardware;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -26,13 +27,12 @@ namespace InfoPanel.Monitors
     internal class LibreMonitor
     {
         private static System.Timers.Timer aTimer = new(1000);
-        private static ConcurrentDictionary<string, IHardware> HEADER_DICT = new ();
+        private static ConcurrentDictionary<string, IHardware> HEADER_DICT = new();
         public static ConcurrentDictionary<string, ISensor> SENSORHASH = new();
         private static Thread? CoreThread;
         private static Computer? Computer;
 
         private static volatile bool IsOpen = false;
-        private static readonly object _lock = new();
 
         public static bool Launch()
         {
@@ -49,31 +49,44 @@ namespace InfoPanel.Monitors
 
         private static void Prepare()
         {
-            var stopwatch = new Stopwatch();
-            stopwatch.Start();
+            Trace.WriteLine("Prepare");
+            aTimer.Stop();
 
-            Computer = new Computer
+            try
             {
-                IsCpuEnabled = true,
-                IsGpuEnabled = true,
-                IsMemoryEnabled = true,
-                IsMotherboardEnabled = true,
-                IsControllerEnabled = true,
-                IsNetworkEnabled = true,
-                IsStorageEnabled = true,
-            };
+                var stopwatch = new Stopwatch();
+                stopwatch.Start();
 
-            Computer.Open();
-            
-            stopwatch.Stop();
-            Trace.WriteLine($"Computer open: {stopwatch.ElapsedMilliseconds}ms");
+                Computer = new Computer
+                {
+                    IsCpuEnabled = true,
+                    IsGpuEnabled = true,
+                    IsMemoryEnabled = true,
+                    IsMotherboardEnabled = true,
+                    IsControllerEnabled = true,
+                    IsNetworkEnabled = true,
+                    IsStorageEnabled = true,
+                };
 
-            aTimer.Start();
+                Computer.Open();
+                IsOpen = true;
+
+                stopwatch.Stop();
+                Trace.WriteLine($"Computer open: {stopwatch.ElapsedMilliseconds}ms");
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLine($"Error: {e.Message}");
+                Thread.Sleep(1000);
+            }
+            finally
+            {
+                aTimer.Start();
+            }
         }
 
         public static void TimedStart()
         {
-            Prepare();
             aTimer.Elapsed += new ElapsedEventHandler(PollSensorData);
             aTimer.Enabled = true;
         }
@@ -82,27 +95,39 @@ namespace InfoPanel.Monitors
 
         private static void PollSensorData(object? source, ElapsedEventArgs e)
         {
-            if(polling)
+            if (!IsOpen)
             {
-                return;
+                Prepare();
             }
+            else
+            {
+                if (polling)
+                {
+                    return;
+                }
 
-            polling = true;
-            Monitor();
-            polling = false;
+                try
+                {
+                    polling = true;
+                    Monitor();
+                }
+                catch (Exception ex) { Trace.WriteLine($"Error: {ex.Message}"); }
+                finally
+                { polling = false; }
+            }
         }
 
         private static readonly UpdateVisitor _updateVisitor = new();
 
         public static void Monitor()
         {
-            if(Computer == null)
+            if (Computer == null)
             {
                 return;
             }
 
             Computer.Accept(_updateVisitor);
-           
+
             foreach (IHardware hardware in Computer.Hardware)
             {
                 //Trace.WriteLine($"Hardware: {hardware.Name} id: {hardware.Identifier}");

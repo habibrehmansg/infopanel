@@ -1,8 +1,9 @@
-﻿using AutoMapper;
-using InfoPanel.Drawing;
+﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using Microsoft.Win32;
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -13,6 +14,7 @@ using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using unvell.D2DLib;
@@ -31,8 +33,13 @@ namespace InfoPanel.Views.Common
         private readonly DispatcherTimer ResizeTimer;
         public WriteableBitmap? WriteableBitmap;
 
+        private MediaTimeline mediaTimeline;
+        private MediaClock mediaClock;
+
         public DisplayWindow(Profile profile) : base(profile.Direct2DMode)
         {
+            RenderOptions.ProcessRenderMode = RenderMode.Default;
+
             Profile = profile;
             Width = Profile.Width;
             Height = Profile.Height;
@@ -123,17 +130,17 @@ namespace InfoPanel.Views.Common
                 {
                     if (Direct2DMode)
                     {
-                        Cache.GetLocalImage(imageDisplayItem)?.DisposeD2DAssets();
+                        Cache.GetLocalImage(imageDisplayItem, false)?.DisposeD2DAssets();
                     }
                     else
                     {
-                        Cache.GetLocalImage(imageDisplayItem)?.DisposeAssets();
+                        Cache.GetLocalImage(imageDisplayItem, false)?.DisposeAssets();
                     }
                 }
             });
         }
 
-        private void Profile_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        private async void Profile_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(Profile.Width))
             {
@@ -173,6 +180,17 @@ namespace InfoPanel.Views.Common
             else if (e.PropertyName == nameof(Profile.Direct2DModeFps))
             {
                 ShowFps = Profile.Direct2DModeFps;
+            }
+            else if (e.PropertyName == nameof(Profile.VideoBackgroundFilePath) || e.PropertyName == nameof(Profile.VideoBackgroundRotation))
+            {
+                if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
+                {
+                    var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
+                    await LoadVideoBackground(videoFilePath);
+                } else
+                {
+                    StopVideoBackground();
+                }
             }
         }
 
@@ -549,7 +567,7 @@ namespace InfoPanel.Views.Common
             Close();
         }
 
-        private void Window_Loaded(object sender, RoutedEventArgs e)
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             // Variable to hold the handle for the form
             var helper = new WindowInteropHelper(this).Handle;
@@ -559,7 +577,81 @@ namespace InfoPanel.Views.Common
             SetWindowPositionRelativeToScreen();
 
             SizeChanged += Window_SizeChanged;
+
+            VideoBackground.MediaOpened += VideoBackground_MediaOpened;
+
+            if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
+            {
+                var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
+                LoadVideoBackground(videoFilePath);
+            }
         }
+
+        private void VideoBackground_MediaOpened(object sender, RoutedEventArgs e)
+        {
+            double videoWidth = VideoBackground.NaturalVideoWidth;
+            double videoHeight = VideoBackground.NaturalVideoHeight;
+
+            Trace.WriteLine($"Video: {videoWidth} x {videoHeight}");
+
+            (double angle, double centerX, double centerY) = Profile.VideoBackgroundRotation switch
+            {
+                Enums.Rotation.Rotate90FlipNone => (90, videoHeight / 2, videoHeight / 2),
+                Enums.Rotation.Rotate180FlipNone => (180, videoWidth / 2, videoHeight / 2),
+                Enums.Rotation.Rotate270FlipNone => (270, videoWidth / 2, videoWidth / 2),
+                _ => (0, 0, 0)
+            };
+
+            RotateTransform rotateTransform = new()
+            {
+                Angle = angle,
+                CenterX = centerX,
+                CenterY = centerY,
+            };
+
+            Trace.WriteLine($"Transform {rotateTransform.Angle} {rotateTransform.CenterX} {rotateTransform.CenterY}");
+
+            VideoBackground.RenderTransform = rotateTransform;
+        }
+
+        private async Task LoadVideoBackground(string filePath)
+        {
+            try
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    VideoBackground.Visibility = Visibility.Visible;
+
+                    //stop existing video if any
+                    mediaClock?.Controller.Stop();
+
+                    // Load media asynchronously
+                   mediaTimeline = new MediaTimeline(new Uri(filePath, UriKind.Absolute))
+                    {
+                        RepeatBehavior = RepeatBehavior.Forever
+                    };
+
+                    mediaClock = mediaTimeline.CreateClock();
+                    VideoBackground.Clock = mediaClock;
+
+                    mediaClock.Controller.Begin();
+                });
+            }
+            catch (Exception ex)
+            {
+                // Handle exceptions
+                Console.WriteLine("Error loading media: " + ex.Message);
+            }
+        }
+
+        private void StopVideoBackground()
+        {
+            mediaClock?.Controller.Stop();
+            VideoBackground.Clock = null;
+            VideoBackground.Source = null;
+            VideoBackground.Visibility = Visibility.Hidden;
+        }
+
 
         //     [DllImport("user32.dll", SetLastError = true)]
         //     public static extern IntPtr FindWindowEx(IntPtr hP, IntPtr hC, string sC,

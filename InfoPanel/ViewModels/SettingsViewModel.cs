@@ -1,12 +1,8 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using InfoPanel.Models;
-using Microsoft.AspNetCore.Components;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Linq;
-using System.Management;
 using Wpf.Ui.Common.Interfaces;
 
 namespace InfoPanel.ViewModels
@@ -25,7 +21,7 @@ namespace InfoPanel.ViewModels
 
     public class SettingsViewModel : ObservableObject, INavigationAware
     {
-        private ObservableCollection<string> _comPorts = new ObservableCollection<string>();
+        private ObservableCollection<string> _comPorts = new();
         public ObservableCollection<LCD_ROTATION> RotationValues { get; set; }
 
         public SettingsViewModel()
