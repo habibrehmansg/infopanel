@@ -150,18 +150,26 @@ namespace InfoPanel.Views.Pages
             ListViewProfiles.ScrollIntoView(profile);
         }
 
-        private void ButtonImportProfile_Click(object sender, RoutedEventArgs e)
+        private async void ButtonImportProfile_Click(object sender, RoutedEventArgs e)
         {
             Microsoft.Win32.OpenFileDialog openFileDialog = new()
             {
                 Multiselect = false,
-                Filter = "Infopanel theme file (*.infopanel)|*.infopanel",
+                Filter = "All Supported Files|*.infopanel;*.sensorpanel;*.rslcd|InfoPanel Files (*.infopanel)|*.infopanel|SensorPanel Files (*.sensorpanel)|*.sensorpanel|RemoteSensor LCD Files (*.rslcd)|*.rslcd",
                 InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
             };
             if (openFileDialog.ShowDialog() == true)
             {
-                SharedModel.Instance.ImportProfile(openFileDialog.FileName);
-                _snackbarControl.ShowAsync("Profile Imported", $"{openFileDialog.FileName}");
+                if (openFileDialog.FileName.EndsWith(".infopanel"))
+                {
+                    SharedModel.Instance.ImportProfile(openFileDialog.FileName);
+                    await _snackbarControl.ShowAsync("Profile Imported", $"{openFileDialog.FileName}");
+                }
+                else if (openFileDialog.FileName.EndsWith(".sensorpanel") || openFileDialog.FileName.EndsWith(".rslcd"))
+                {
+                   await SharedModel.ImportSensorPanel(openFileDialog.FileName);
+                   await _snackbarControl.ShowAsync("Profile Imported", $"{openFileDialog.FileName}");
+                }
             }
         }
 

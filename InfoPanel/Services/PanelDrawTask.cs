@@ -11,6 +11,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace InfoPanel
 {
@@ -44,8 +45,8 @@ namespace InfoPanel
                          Parallel.ForEach(profiles, profile =>
                          {
                              using var bitmap = Render(profile);
-                             SharedModel.Instance.SetPanelBitmap(profile, bitmap);
-                         });
+                                 SharedModel.Instance.SetPanelBitmap(profile, bitmap);
+                             });
 
                         var frameTime = stopwatch.ElapsedMilliseconds;
                         //Trace.WriteLine($"Frametime: {frameTime}");

@@ -142,17 +142,11 @@ namespace InfoPanel.Models
 
         public override SizeF EvaluateSize()
         {
-            using (Bitmap bitmap = new Bitmap(1, 1))
-            {
-                using (Graphics g = Graphics.FromImage(bitmap))
-                {
-                    using (Font font = new Font(Font, FontSize))
-                    {
-                        var text = EvaluateText();
-                        return g.MeasureString(text, font);
-                    }
-                }
-            }
+            using Bitmap bitmap = new(1, 1);
+            using Graphics g = Graphics.FromImage(bitmap);
+            using Font font = new(Font, FontSize);
+            var text = EvaluateText();
+            return g.MeasureString(text, font, 0, StringFormat.GenericTypographic);
         }
 
         public override Rect EvaluateBounds()
