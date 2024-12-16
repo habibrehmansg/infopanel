@@ -57,6 +57,38 @@ namespace InfoPanel.Views.Components
 
         private void LoadSensorTree()
         {
+            //for (int parentIndex = ViewModel.Sensors.Count - 1; parentIndex >= 0; parentIndex--)
+            //{
+            //    var parent = ViewModel.Sensors[parentIndex];
+
+            //    for (int typeIndex = parent.Children.Count - 1; typeIndex >= 0; typeIndex--)
+            //    {
+            //        var type = parent.Children[typeIndex];
+
+            //        for (int i = type.Children.Count - 1; i >= 0; i--)
+            //        {
+            //            if (type.Children[i] is LibreSensorItem item)
+            //            {
+            //                if (!LibreMonitor.SENSORHASH.ContainsKey(item.SensorId))
+            //                {
+            //                    type.Children.RemoveAt(i);
+            //                }
+            //            }
+            //        }
+
+            //        if (type.Children.Count == 0)
+            //        {
+            //            parent.Children.RemoveAt(typeIndex);
+            //        }
+            //    }
+
+            //    if (parent.Children.Count == 0)
+            //    {
+            //        ViewModel.Sensors.RemoveAt(parentIndex);
+            //    }
+            //}
+
+
             foreach (ISensor hash in LibreMonitor.GetOrderedList())
             {
                 var parentIdentifier = hash.Hardware.Parent?.Identifier ?? hash.Hardware.Identifier;

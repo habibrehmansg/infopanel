@@ -1,6 +1,4 @@
 ﻿using InfoPanel.ViewModels;
-using InfoPanel.Views.Components.Custom;
-using Microsoft.AspNetCore.Components;
 using System;
 using System.Diagnostics;
 using System.IO;

@@ -24,6 +24,9 @@
 		<Reference Include="d2dwinform">
 			<HintPath>Lib\d2dwinform.dll</HintPath>
 		</Reference>
+		<Reference Include="LibreHardwareMonitorLib">
+		  <HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
+		</Reference>
 		<Reference Include="TuringSmartScreenLib">
 		  <HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
 		</Reference>
@@ -94,6 +97,7 @@
 		<None Remove="Resources\Images\Libre\time.png" />
 		<None Remove="Resources\Images\Libre\voltage.png" />
 		<None Remove="Resources\Images\libre_icon.ico" />
+		<None Remove="Resources\Images\libre_icon.png" />
 		<None Remove="Resources\Images\logo.png" />
 		<None Remove="Resources\Images\no_image.png" />
 	</ItemGroup>
@@ -139,6 +143,7 @@
 		<Resource Include="Resources\Images\Libre\time.png" />
 		<Resource Include="Resources\Images\Libre\voltage.png" />
 		<Resource Include="Resources\Images\libre_icon.ico" />
+		<Resource Include="Resources\Images\libre_icon.png" />
 		<Resource Include="Resources\Images\logo.png" />
 		<Resource Include="Resources\Images\no_image.png" />
 		<Content Include="index.html">
@@ -151,7 +156,7 @@
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
-		<PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
+		<PackageReference Include="HidSharp" Version="2.1.0" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
@@ -159,6 +164,8 @@
 		<PackageReference Include="Sentry" Version="4.13.0" />
 		<PackageReference Include="SkiaSharp" Version="3.116.1" />
 		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+		<PackageReference Include="System.IO.Ports" Version="9.0.0" />
+		<PackageReference Include="System.Management" Version="9.0.0" />
 		<PackageReference Include="TaskScheduler" Version="2.11.1" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
@@ -202,7 +209,7 @@
 
 	<ItemGroup>
 		<None Update="Lib\d2dlib64.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		  <CopyToOutputDirectory>Never</CopyToOutputDirectory>
 			<TargetPath>d2dlib64.dll</TargetPath>
 		</None>
 		<None Update="NunitoSans_7pt_Condensed-BlackItalic.ttf">

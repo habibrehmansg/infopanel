@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
+using InfoPanel.Monitors;
 using Microsoft.Win32;
 using Microsoft.Win32.TaskScheduler;
 using System;
@@ -148,6 +149,16 @@ namespace InfoPanel
             {
                 ValidateStartup();
             }
+            else if (e.PropertyName == nameof(Settings.LibreHardwareMonitor) || e.PropertyName == nameof(Settings.LibreHardMonitorRing0))
+            {
+                await LibreMonitor.Instance.StopAsync();
+
+                if (Settings.LibreHardwareMonitor)
+                {
+                    LibreMonitor.Instance.SetRing0(Settings.LibreHardMonitorRing0);
+                    await LibreMonitor.Instance.StartAsync();
+                }
+            }
             else if (e.PropertyName == nameof(Settings.BeadaPanel))
             {
                 if (Settings.BeadaPanel)
@@ -255,6 +266,8 @@ namespace InfoPanel
                             Settings.AutoStart = settings.AutoStart;
                             Settings.StartMinimized = settings.StartMinimized;
                             Settings.MinimizeToTray = settings.MinimizeToTray;
+                            Settings.LibreHardwareMonitor = settings.LibreHardwareMonitor;
+                            Settings.LibreHardMonitorRing0 = settings.LibreHardMonitorRing0;
                             Settings.WebServer = settings.WebServer;
                             Settings.WebServerListenIp = settings.WebServerListenIp;
                             Settings.WebServerListenPort = settings.WebServerListenPort;

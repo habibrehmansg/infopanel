@@ -73,6 +73,7 @@ namespace InfoPanel
            services.AddScoped<Views.Pages.ProfilesPage>();
            services.AddScoped<ProfilesViewModel>();
            services.AddScoped<Views.Pages.DesignPage>();
+           services.AddScoped<DesignViewModel>();
            services.AddScoped<Views.Pages.AboutPage>();
            services.AddScoped<AboutViewModel>();
            services.AddScoped<Views.Pages.SettingsPage>();
@@ -192,7 +193,7 @@ namespace InfoPanel
             HWHash.SetDelay(300);
             HWHash.Launch();
 
-            LibreMonitor.Launch();
+            await LibreMonitor.Instance.StartAsync();
 
             SystemEvents.SessionEnding += OnSessionEnding;
             SystemEvents.PowerModeChanged += OnPowerChange;
@@ -272,6 +273,7 @@ namespace InfoPanel
         public static async Task CleanShutDown()
         {
             await StopPanels();
+            await LibreMonitor.Instance.StopAsync();
             //shutdown
             Application.Current.Shutdown();
         }

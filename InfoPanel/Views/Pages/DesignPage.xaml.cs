@@ -1,4 +1,5 @@
 ﻿
+using InfoPanel.ViewModels;
 using System.Windows;
 
 namespace InfoPanel.Views.Pages
@@ -8,10 +9,16 @@ namespace InfoPanel.Views.Pages
     /// </summary>
     public partial class DesignPage
     {
-        public DesignPage()
+        public DesignViewModel ViewModel
         {
-            InitializeComponent();
+            get;
+        }
 
+        public DesignPage(DesignViewModel viewModel)
+        {
+            ViewModel = viewModel;
+            DataContext = this;
+            InitializeComponent();
             Unloaded += DesignPage_Unloaded;
         }
 

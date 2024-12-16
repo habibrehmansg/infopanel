@@ -31,6 +31,20 @@ namespace InfoPanel.Models
             set { SetProperty(ref _minimizeToTray, value); }
         }
 
+        private bool _libreHardwareMonitor = true;
+        public bool LibreHardwareMonitor
+        {
+            get { return _libreHardwareMonitor; }
+            set { SetProperty(ref _libreHardwareMonitor, value); }
+        }
+
+        private bool _libreHardMonitorRing0 = true;
+        public bool LibreHardMonitorRing0
+        {
+            get { return _libreHardMonitorRing0; }
+            set { SetProperty(ref _libreHardMonitorRing0, value); }
+        }
+
         private bool _beadaPanel = false;
         public bool BeadaPanel
         {
