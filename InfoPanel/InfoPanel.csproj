@@ -209,7 +209,7 @@
 
 	<ItemGroup>
 		<None Update="Lib\d2dlib64.dll">
-		  <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 			<TargetPath>d2dlib64.dll</TargetPath>
 		</None>
 		<None Update="NunitoSans_7pt_Condensed-BlackItalic.ttf">

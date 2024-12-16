@@ -33,8 +33,8 @@ namespace InfoPanel.Views.Common
         private readonly DispatcherTimer ResizeTimer;
         public WriteableBitmap? WriteableBitmap;
 
-        private MediaTimeline mediaTimeline;
-        private MediaClock mediaClock;
+        private MediaTimeline? mediaTimeline;
+        private MediaClock? mediaClock;
 
         public DisplayWindow(Profile profile) : base(profile.Direct2DMode)
         {
@@ -583,7 +583,7 @@ namespace InfoPanel.Views.Common
             if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
             {
                 var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
-                LoadVideoBackground(videoFilePath);
+                await LoadVideoBackground(videoFilePath);
             }
         }
 
