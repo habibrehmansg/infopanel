@@ -1,5 +1,8 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using HidSharp.Reports.Units;
+using InfoPanel.Extensions;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using InfoPanel.Views.Common;
 using System;
 using System.Collections.Concurrent;
@@ -13,9 +16,14 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Xml;
+using System.Xml.Linq;
 using System.Xml.Serialization;
 
 namespace InfoPanel
@@ -288,7 +296,7 @@ namespace InfoPanel
         {
             get
             {
-                return DisplayItems?.Where(item => item.Selected).ToList();                
+                return DisplayItems?.Where(item => item.Selected).ToList();
             }
         }
 
@@ -436,7 +444,7 @@ namespace InfoPanel
             }
         }
 
-        private void SaveDisplayItems(Profile profile, List<DisplayItem> displayItems)
+        private static void SaveDisplayItems(Profile profile, List<DisplayItem> displayItems)
         {
             var profileFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
             if (!Directory.Exists(profileFolder))
@@ -463,8 +471,8 @@ namespace InfoPanel
 
         public void SaveDisplayItems()
         {
-            if(SelectedProfile != null)
-            SaveDisplayItems(SelectedProfile);
+            if (SelectedProfile != null)
+                SaveDisplayItems(SelectedProfile);
         }
 
         public string? ExportProfile(Profile profile, string outputFolder)
@@ -503,7 +511,7 @@ namespace InfoPanel
 
                     //add displayitems
                     var profilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", SelectedProfile.Guid + ".xml");
-                    if(File.Exists(profilePath))
+                    if (File.Exists(profilePath))
                     {
                         archive.CreateEntryFromFile(profilePath, "DisplayItems.xml");
                     }
@@ -525,6 +533,611 @@ namespace InfoPanel
             }
 
             return null;
+        }
+
+       
+
+        public static async Task ImportSensorPanel(string importPath)
+        {
+            if (!File.Exists(importPath))
+            {
+                return;
+            }
+
+            var lines = File.ReadAllLines(importPath, Encoding.GetEncoding("iso-8859-1"));
+
+            if (lines.Length < 2)
+            {
+                Console.WriteLine("Invalid file format");
+                return;
+            }
+
+            int page = 0;
+            var items = new List<Dictionary<string, string>>();
+            string importBaseName = Path.GetFileNameWithoutExtension(importPath);
+
+            Regex openTagRegex = new(@"<LCDPAGE(\d+)>", RegexOptions.Compiled);
+            Regex closeTagRegex = new(@"</LCDPAGE(\d+)>", RegexOptions.Compiled);
+
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var openMatch = openTagRegex.Match(lines[i]);
+                if (openMatch.Success)
+                {
+                    page = int.Parse(openMatch.Groups[1].Value);
+                    continue;
+                }
+
+                var closeMatch = closeTagRegex.Match(lines[i]);
+                if (closeMatch.Success)
+                {
+                    await ProcessSensorPanelImport($"[Import] {importBaseName} - Page {page}", items);
+                    items.Clear();
+                    continue;
+                }
+
+                try
+                {
+                    var rootElement = XElement.Parse($"<Root>{EscapeContentWithinLBL(lines[i])}</Root>");
+
+                    var item = new Dictionary<string, string>();
+
+                    foreach (XElement element in rootElement.Elements())
+                    {
+                        item[element.Name.LocalName] = element.Value;
+                    }
+
+                    items.Add(item);
+                }
+                catch (Exception ex)
+                {
+                    // Handle parsing errors here
+                    Console.WriteLine($"Error parsing line {i}: {ex.Message}");
+                }
+            }
+
+            if(items.Count > 2)
+            {
+                await ProcessSensorPanelImport($"[Import] {Path.GetFileNameWithoutExtension(importPath)}", items);
+            }
+
+        }
+
+        private static async Task ProcessSensorPanelImport(string name, List<Dictionary<string, string>> items)
+        {
+            if (items.Count > 2)
+            {
+                var SPWIDTH = items[1].GetIntValue("SPWIDTH", 1024);
+                var SPHEIGHT = items[1].GetIntValue("SPHEIGHT", 600);
+                var LCDBGCOLOR = items[1].GetIntValue("LCDBGCOLOR", 0);
+                var SPBGCOLOR = items[1].GetIntValue("SPBGCOLOR", LCDBGCOLOR);
+
+                Profile profile = new(name, SPWIDTH, SPHEIGHT)
+                {
+                    BackgroundColor = DecimalBgrToHex(SPBGCOLOR)
+                };
+
+                List<DisplayItem> displayItems = [];
+
+                for (int i = 2; i < items.Count; i++)
+                {
+                    var item = items[i];
+                    var key = item.GetStringValue("ID", string.Empty);
+
+                    var hidden = false;
+                    var simple = false;
+                    var gauge = false;
+                    var graph = false;
+
+                    if (key.StartsWith('-'))
+                    {
+                        hidden = true;
+                        key = key[1..];
+                    }
+
+                    if (key.StartsWith("[SIMPLE]"))
+                    {
+                        simple = true;
+                        key = key[8..];
+                    }
+
+                    if (key.StartsWith("[GAUGE]"))
+                    {
+                        gauge = true;
+                        key = key[7..];
+                    }
+
+                    if (key.StartsWith("[GRAPH]"))
+                    {
+                        graph = true;
+                        key = key[7..];
+                    }
+
+                    //global items
+                    var ITMX = item.GetIntValue("ITMX", 0);
+                    var ITMY = item.GetIntValue("ITMY", 0);
+
+                    var LBL = item.GetStringValue("LBL", key);
+                    var TXTBIR = item.GetStringValue("TXTBIR", string.Empty);
+                    var FNTNAM = item.GetStringValue("FNTNAM", "Arial");
+                    var WID = item.GetIntValue("WID", -1);
+                    var HEI = item.GetIntValue("HEI", -1);
+                    var TYP = item.GetStringValue("TYP", string.Empty);
+                    var MINVAL = item.GetIntValue("MINVAL", 0);
+                    var MAXVAL = item.GetIntValue("MAXVAL", 100);
+
+                    var UNT = item.GetStringValue("UNT", string.Empty);
+                    var SHWUNT = item.GetIntValue("SHWUNT", 1);
+                    var UNTWID = item.GetIntValue("UNTWID", 0);
+                    var TXTSIZ = item.GetIntValue("TXTSIZ", 12);
+                    var LBLCOL = item.GetIntValue("LBLCOL", 0);
+                    var TXTCOL = item.GetIntValue("TXTCOL", LBLCOL);
+                    var VALCOL = item.GetIntValue("VALCOL", TXTCOL);
+
+                    var bold = false;
+                    var italic = false;
+                    var rightAlign = false;
+
+                    if (simple)
+                    {
+                        if (TXTBIR.Length == 3)
+                        {
+                            if (int.TryParse(TXTBIR.AsSpan(0, 1), out int _bold))
+                            {
+                                bold = _bold == 1;
+                            }
+                            if (int.TryParse(TXTBIR.AsSpan(1, 1), out int _italic))
+                            {
+                                italic = _italic == 1;
+                            }
+                            if (int.TryParse(TXTBIR.AsSpan(2, 1), out int _rightAlign))
+                            {
+                                rightAlign = _rightAlign == 1;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        //all other non-simple items are right align
+                        if (key != "LBL")
+                        {
+                            rightAlign = true;
+                        }
+                    }
+
+
+                    var adjustment = (WID != -1) ? WID : 0;
+
+                    //simple items have no width
+                    if (!simple && !gauge && !graph && SHWUNT == 1 && UNTWID != -1)
+                    {
+                        //adjustment -= UNTWID;
+
+                        using Bitmap bitmap = new(1, 1);
+                        using Graphics g = Graphics.FromImage(bitmap);
+                        using Font font = new(FNTNAM, TXTSIZ);
+                        var size = g.MeasureString(UNT, font, 0, StringFormat.GenericTypographic);
+
+
+
+                        if (size.Width < UNTWID)
+                        {
+                            adjustment -= (int)(UNTWID - size.Width);
+                        }
+                        else
+                        {
+                            //adjustment += (int)(size.Width - UNTWID);
+                            //if (UNT != string.Empty)
+                            //{
+                            //    adjustment += UNTWID;
+                            //}
+                            //else
+                            //{
+                            //    adjustment -= UNTWID;
+                            //}
+                        }
+                    }
+
+                    if (graph)
+                    {
+                        if (WID != -1 && HEI != -1)
+                        {
+                            GraphDisplayItem.GraphType? graphType = null;
+                            switch (TYP)
+                            {
+                                case "AG":
+                                case "LG":
+                                    graphType = GraphDisplayItem.GraphType.LINE;
+                                    break;
+                                case "HG":
+                                    graphType = GraphDisplayItem.GraphType.HISTOGRAM;
+                                    break;
+                            }
+
+                            if (graphType.HasValue)
+                            {
+                                var AUTSCL = item.GetIntValue("AUTSCL", 0);
+                                var GPHCOL = item.GetIntValue("GPHCOL", 0);
+                                var BGCOL = item.GetIntValue("BGCOL", 0);
+                                var FRMCOL = item.GetIntValue("FRMCOL", 0);
+
+                                //graph step
+                                var GPHSTP = item.GetIntValue("GPHSTP", 1);
+
+                                //graph thickness
+                                var GPHTCK = item.GetIntValue("GPHTCK", 1);
+
+                                //graph background, frame, grid
+                                var GPHBFG = item.GetStringValue("GPHBFG", "000");
+
+                                var background = false;
+                                var frame = false;
+                                if (GPHBFG.Length == 3)
+                                {
+                                    if (int.TryParse(GPHBFG.AsSpan(0, 1), out int _background))
+                                    {
+                                        background = _background == 1;
+                                    }
+                                    if (int.TryParse(GPHBFG.AsSpan(1, 1), out int _frame))
+                                    {
+                                        frame = _frame == 1;
+                                    }
+                                }
+
+                                var libreSensorId = SensorMapping.FindMatchingIdentifier(key) ?? "unknown";
+                                GraphDisplayItem graphDisplayItem = new(LBL, graphType.Value, libreSensorId)
+                                {
+                                    SensorName = key,
+                                    Width = WID,
+                                    Height = HEI,
+                                    MinValue = MINVAL,
+                                    MaxValue = MAXVAL,
+                                    AutoValue = AUTSCL == 1,
+                                    Step = GPHSTP,
+                                    Thickness = GPHTCK,
+                                    Background = background,
+                                    Frame = frame,
+                                    Fill = TYP != "LG",
+                                    FillColor = TYP == "AG" ? $"#7F{DecimalBgrToHex(GPHCOL).Substring(1)}" : DecimalBgrToHex(GPHCOL),
+                                    Color = DecimalBgrToHex(GPHCOL),
+                                    BackgroundColor = DecimalBgrToHex(BGCOL),
+                                    FrameColor = DecimalBgrToHex(FRMCOL),
+                                    X = ITMX,
+                                    Y = ITMY
+                                };
+
+                                displayItems.Add(graphDisplayItem);
+                            }
+                        }
+                    }
+                    else if (gauge)
+                    {
+                        var STAFLS = item.GetStringValue("STAFLS", string.Empty);
+
+                        if (TYP == "Custom" && STAFLS != string.Empty)
+                        {
+                            //var libreSensorId = SensorMapping.SensorPanel.GetStringValue(key, "unknown");
+                            var libreSensorId = SensorMapping.FindMatchingIdentifier(key) ?? "unknown";
+                            GaugeDisplayItem gaugeDisplayItem = new(LBL, libreSensorId)
+                            {
+                                SensorName = key,
+                                MinValue = MINVAL,
+                                MaxValue = MAXVAL,
+                                X = ITMX,
+                                Y = ITMY,
+                                Hidden = hidden
+                            };
+
+                            foreach (var image in STAFLS.Split('|'))
+                            {
+                                ImageDisplayItem imageDisplayItem = new(image, profile.Guid, image, true);
+                                gaugeDisplayItem.Images.Add(imageDisplayItem);
+                            }
+
+                            displayItems.Add(gaugeDisplayItem);
+                        }
+
+                    }
+                    else if (key == string.Empty)
+                    {
+                        var GAUSTAFNM = item.GetStringValue("GAUSTAFNM", string.Empty);
+                        var GAUSTADAT = item.GetStringValue("GAUSTADAT", string.Empty);
+
+                        if (GAUSTAFNM != string.Empty && GAUSTADAT != string.Empty)
+                        {
+                            var data = ConvertHexStringToByteArray(GAUSTADAT);
+                            await FileUtil.SaveAsset(profile, GAUSTAFNM, data);
+                        }
+                    }
+                    else if (key == "IMG")
+                    {
+                        var IMGFIL = item.GetStringValue("IMGFIL", string.Empty);
+                        var IMGDAT = item.GetStringValue("IMGDAT", string.Empty);
+
+                        if (IMGFIL != string.Empty && IMGDAT != string.Empty)
+                        {
+                            var data = ConvertHexStringToByteArray(IMGDAT);
+                            var result = await FileUtil.SaveAsset(profile, IMGFIL, data);
+                            if (result)
+                            {
+                                ImageDisplayItem imageDisplayItem = new(IMGFIL, profile.Guid, IMGFIL, true)
+                                {
+                                    X = ITMX,
+                                    Y = ITMY,
+                                    Hidden = hidden
+                                };
+                                displayItems.Add(imageDisplayItem);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        switch (key)
+                        {
+                            case "PROPERTIES":
+                                //do nothing
+                                break;
+                            case "LBL":
+                                TextDisplayItem textDisplayItem = new(LBL)
+                                {
+                                    Font = FNTNAM,
+                                    FontSize = TXTSIZ,
+                                    Color = DecimalBgrToHex(VALCOL),
+                                    RightAlign = rightAlign,
+                                    X = ITMX + adjustment,
+                                    Y = ITMY,
+                                    Hidden = hidden
+                                };
+                                displayItems.Add(textDisplayItem);
+                                break;
+                            case "SDATE":
+                                {
+                                    CalendarDisplayItem calendarDisplayItem = new(LBL)
+                                    {
+                                        Font = FNTNAM,
+                                        FontSize = TXTSIZ,
+                                        Color = DecimalBgrToHex(VALCOL),
+                                        Bold = bold,
+                                        Italic = italic,
+                                        RightAlign = rightAlign,
+                                        X = ITMX + (rightAlign ? adjustment : 0),
+                                        Y = ITMY,
+                                        Hidden = hidden
+                                    };
+                                    displayItems.Add(calendarDisplayItem);
+                                }
+                                break;
+                            case "STIME":
+                            case "STIMENS":
+                                {
+                                    ClockDisplayItem clockDisplayItem = new(LBL)
+                                    {
+                                        Font = FNTNAM,
+                                        FontSize = TXTSIZ,
+                                        Format = key == "STIME" ? "H:mm:ss" : "H:mm",
+                                        Color = DecimalBgrToHex(VALCOL),
+                                        Bold = bold,
+                                        Italic = italic,
+                                        RightAlign = rightAlign,
+                                        X = ITMX + (rightAlign ? adjustment : 0),
+                                        Y = ITMY,
+                                        Hidden = hidden
+                                    };
+                                    displayItems.Add(clockDisplayItem);
+                                }
+                                break;
+                            default:
+                                {
+                                    var SHWLBL = item.GetIntValue("SHWLBL", 0);
+
+                                    if (SHWLBL == 1)
+                                    {
+                                        var LBLBIS = item.GetStringValue("LBLBIS", string.Empty);
+
+                                        if (LBLBIS.Length == 3)
+                                        {
+                                            if (int.TryParse(LBLBIS.AsSpan(0, 1), out int _bold))
+                                            {
+                                                bold = _bold == 1;
+                                            }
+                                            if (int.TryParse(LBLBIS.AsSpan(1, 1), out int _italic))
+                                            {
+                                                italic = _italic == 1;
+                                            }
+                                        }
+
+                                        TextDisplayItem label = new TextDisplayItem(LBL)
+                                        {
+                                            Font = FNTNAM,
+                                            FontSize = TXTSIZ,
+                                            Color = DecimalBgrToHex(LBLCOL),
+                                            Bold = bold,
+                                            Italic = italic,
+                                            X = ITMX,
+                                            Y = ITMY
+                                        };
+                                        displayItems.Add(label);
+                                    }
+
+                                    var libreSensorId = SensorMapping.FindMatchingIdentifier(key) ?? "unknown";
+                                    var SHWVAL = item.GetIntValue("SHWVAL", 0);
+
+                                    if (simple || SHWVAL == 1)
+                                    {
+                                        var VALBIS = item.GetStringValue("VALBIS", string.Empty);
+
+                                        if (VALBIS.Length == 3)
+                                        {
+                                            if (int.TryParse(VALBIS.AsSpan(0, 1), out int _bold))
+                                            {
+                                                bold = _bold == 1;
+                                            }
+                                            if (int.TryParse(VALBIS.AsSpan(1, 1), out int _italic))
+                                            {
+                                                italic = _italic == 1;
+                                            }
+                                        }
+
+                                        SensorDisplayItem sensorDisplayItem = new(LBL, libreSensorId)
+                                        {
+                                            SensorName = key,
+                                            Font = FNTNAM,
+                                            FontSize = TXTSIZ,
+                                            Color = DecimalBgrToHex(VALCOL),
+                                            Unit = UNT,
+                                            ShowUnit = SHWUNT == 1,
+                                            OverrideUnit = SHWUNT == 1,
+                                            Bold = bold,
+                                            Italic = italic,
+                                            RightAlign = rightAlign,
+                                            X = ITMX + adjustment,
+                                            Y = ITMY,
+                                            Hidden = hidden
+                                        };
+                                        displayItems.Add(sensorDisplayItem);
+                                    }
+
+                                    var SHWBAR = item.GetIntValue("SHWBAR", 0);
+
+                                    if (SHWBAR == 1)
+                                    {
+                                        var BARWID = item.GetIntValue("BARWID", 400);
+                                        var BARHEI = item.GetIntValue("BARHEI", 50);
+                                        var BARMIN = item.GetIntValue("BARMIN", 0);
+                                        var BARMAX = item.GetIntValue("BARMAX", 100);
+                                        var BARFRMCOL = item.GetIntValue("BARFRMCOL", 0);
+                                        var BARMINFGC = item.GetIntValue("BARMINFGC", 0);
+                                        var BARMINBGC = item.GetIntValue("BARMINBGC", 0);
+
+                                        var BARLIM3FGC = item.GetIntValue("BARLIM3FGC", 0);
+                                        var BARLIM3BGC = item.GetIntValue("BARLIM3BGC", 0);
+
+                                        //frame, shadow, 3d, right to left
+                                        var BARFS = item.GetStringValue("BARFS", "0000");
+
+                                        //bar placement
+                                        var BARPLC = item.GetStringValue("BARPLC", "SEP");
+
+                                        var offset = 0;
+
+                                        if (BARPLC == "SEP" && SHWVAL == 1)
+                                        {
+                                            using Bitmap bitmap2 = new(1, 1);
+                                            using Graphics g2 = Graphics.FromImage(bitmap2);
+                                            using Font font2 = new(FNTNAM, TXTSIZ);
+                                            var size2 = g2.MeasureString("HELLO WORLD", font2, 0, StringFormat.GenericTypographic);
+
+                                            offset = (int)size2.Height;
+                                        }
+
+                                        using Bitmap bitmap = new(1, 1);
+                                        using Graphics g = Graphics.FromImage(bitmap);
+                                        using Font font = new(FNTNAM, TXTSIZ);
+                                        var size = g.MeasureString(UNT, font, 0, StringFormat.GenericTypographic);
+
+                                        var frame = false;
+                                        var gradient = false;
+                                        var flipX = false;
+
+                                        if (BARFS.Length == 4)
+                                        {
+                                            if (int.TryParse(BARFS.AsSpan(0, 1), out int _frame))
+                                            {
+                                                frame = _frame == 1;
+                                            }
+                                            if (int.TryParse(BARFS.AsSpan(2, 1), out int _gradient))
+                                            {
+                                                gradient = _gradient == 1;
+                                            }
+                                            if (int.TryParse(BARFS.AsSpan(3, 1), out int _flipX))
+                                            {
+                                                flipX = _flipX == 1;
+                                            }
+                                        }
+
+                                        BarDisplayItem barDisplayItem = new(LBL, libreSensorId)
+                                        {
+                                            SensorName = key,
+                                            Width = BARWID,
+                                            Height = BARHEI,
+                                            MinValue = BARMIN,
+                                            MaxValue = BARMAX,
+                                            Frame = frame,
+                                            FrameColor = DecimalBgrToHex(BARFRMCOL),
+                                            Color = DecimalBgrToHex(BARLIM3FGC),
+                                            Background = true,
+                                            BackgroundColor = DecimalBgrToHex(BARLIM3BGC),
+                                            Gradient = gradient,
+                                            GradientColor = DecimalBgrToHex(BARLIM3BGC),
+                                            FlipX = flipX,
+                                            X = ITMX,
+                                            Y = ITMY + offset,
+                                        };
+                                        displayItems.Add(barDisplayItem);
+                                    }
+                                }
+                                break;
+                        }
+                    }
+                }
+
+                Dispatcher.CurrentDispatcher.Invoke(() =>
+                {
+                    SaveDisplayItems(profile, displayItems);
+                    ConfigModel.Instance.AddProfile(profile);
+                    ConfigModel.Instance.SaveProfiles();
+                    SharedModel.Instance.SelectedProfile = profile;
+                });
+            }
+        }
+        private static byte[] ConvertHexStringToByteArray(string hex)
+        {
+            if (hex.Length % 2 != 0)
+                throw new ArgumentException("Hex string must have an even length.");
+
+            byte[] bytes = new byte[hex.Length / 2];
+            for (int i = 0; i < hex.Length; i += 2)
+            {
+                bytes[i / 2] = Convert.ToByte(hex.Substring(i, 2), 16);
+            }
+
+            return bytes;
+        }
+        private static string EscapeContentWithinLBL(string xmlContent)
+        {
+            // Regular expression to match content within <LBL>...</LBL>
+            string pattern = @"<LBL>(.*?)</LBL>";
+
+            // Use Regex.Replace to find each match and escape its content
+            string result = Regex.Replace(xmlContent, pattern, match =>
+            {
+                // Escape the inner content
+                string innerContent = match.Groups[1].Value;
+                string escapedContent = innerContent
+                    .Replace("<", "&lt;")
+                    .Replace(">", "&gt;");
+                return $"<LBL>{escapedContent}</LBL>";
+            }, RegexOptions.Singleline);
+
+            return result;
+        }
+
+        private static string DecimalBgrToHex(int bgrValue)
+        {
+            // Handle negative values explicitly
+            if (bgrValue < 0)
+            {
+                return "#000000";
+            }
+
+            // Extract the individual B, G, R components from the BGR integer
+            int blue = (bgrValue & 0xFF0000) >> 16;
+            int green = (bgrValue & 0x00FF00) >> 8;
+            int red = (bgrValue & 0x0000FF);
+
+            // Convert to hexadecimal string with leading #
+            return $"#{red:X2}{green:X2}{blue:X2}";
         }
 
         public void ImportProfile(string importPath)
@@ -655,14 +1268,16 @@ namespace InfoPanel
 
         private ObservableCollection<DisplayItem> GetProfileDisplayItems(Profile profile)
         {
-
-            if (!ProfileDisplayItems.TryGetValue(profile.Guid, out ObservableCollection<DisplayItem>? displayItems))
+            lock (_displayItemsLock)
             {
-                LoadDisplayItems(profile);
-                displayItems = ProfileDisplayItems[profile.Guid];
-            }
+                if (!ProfileDisplayItems.TryGetValue(profile.Guid, out ObservableCollection<DisplayItem>? displayItems))
+                {
+                    LoadDisplayItems(profile);
+                    displayItems = ProfileDisplayItems[profile.Guid];
+                }
 
-            return displayItems;
+                return displayItems;
+            }
         }
 
         public List<DisplayItem> GetProfileDisplayItemsCopy()
@@ -702,7 +1317,7 @@ namespace InfoPanel
             {
                 displayItems.Clear();
 
-                if(LoadDisplayItemsFromFile(profile) is List<DisplayItem> items)
+                if (LoadDisplayItemsFromFile(profile) is List<DisplayItem> items)
                 {
                     foreach (var item in items)
                     {
@@ -718,7 +1333,7 @@ namespace InfoPanel
             if (File.Exists(fileName))
             {
                 XmlSerializer xs = new(typeof(List<DisplayItem>),
-                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem),typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem)]);
+                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem)]);
 
                 using var rd = XmlReader.Create(fileName);
                 try

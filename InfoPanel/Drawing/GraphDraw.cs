@@ -67,16 +67,15 @@ namespace InfoPanel.Drawing
                     GraphDataCache.TryGetValue(key, out Queue<double>? queue);
                     if (queue != null)
                     {
-                        if (HWHash.SENSORHASH.TryGetValue(key, out HWHash.HWINFO_HASH value))
+                        HWHash.SENSORHASH.TryGetValue(key, out HWHash.HWINFO_HASH value);
+                        
+                        lock (queue)
                         {
-                            lock (queue)
-                            {
-                                queue.Enqueue(value.ValueNow);
+                            queue.Enqueue(value.ValueNow);
 
-                                if (queue.Count > 1000)
-                                {
-                                    queue.Dequeue();
-                                }
+                            if (queue.Count > 4096)
+                            {
+                                queue.Dequeue();
                             }
                         }
                     }
@@ -87,17 +86,14 @@ namespace InfoPanel.Drawing
                     GraphDataCache2.TryGetValue(key, out Queue<double>? queue);
                     if (queue != null)
                     {
-                        if (LibreMonitor.SENSORHASH.TryGetValue(key, out ISensor? value))
+                        LibreMonitor.SENSORHASH.TryGetValue(key, out ISensor? value);
+                        lock (queue)
                         {
+                            queue.Enqueue(value?.Value ?? 0);
 
-                            lock (queue)
+                            if (queue.Count > 4096)
                             {
-                                queue.Enqueue(value?.Value ?? 0);
-
-                                if (queue.Count > 1000)
-                                {
-                                    queue.Dequeue();
-                                }
+                                queue.Dequeue();
                             }
                         }
                     }
@@ -132,7 +128,7 @@ namespace InfoPanel.Drawing
                 {
                     tempValues = [.. queue];
                 }
-
+              
                 double minValue = chartDisplayItem.MinValue;
                 double maxValue = chartDisplayItem.MaxValue;
 

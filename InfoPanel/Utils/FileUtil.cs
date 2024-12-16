@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace InfoPanel.Utils
 {
@@ -40,6 +41,33 @@ namespace InfoPanel.Utils
         {
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profileGuid);
         }
+        public static string GetAssetDirectory()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets");
+        }
+
+        public static async Task<bool> SaveAsset(Profile profile, string fileName, byte[] data)
+        {
+            var assetPath = GetAssetPath(profile);
+
+            if (!Directory.Exists(assetPath))
+            {
+                Directory.CreateDirectory(assetPath);
+            }
+
+            var filePath = Path.Combine(assetPath, fileName);
+
+            try
+            {
+                await File.WriteAllBytesAsync(filePath, data);
+            }
+            catch
+            {
+                return false;
+            }
+
+            return true;
+        }
 
         public static async Task CleanupAssets()
         {
@@ -48,7 +76,7 @@ namespace InfoPanel.Utils
                 //load from file as there may be unsaved changes
                 if (ConfigModel.LoadProfilesFromFile() is List<Profile> profiles)
                 {
-                    var assetFolders = profiles.Select(p => GetAssetPath(p)).ToList();
+                    var assetFolders = Directory.GetDirectories(GetAssetDirectory()).ToList();
 
                     foreach (var profile in profiles)
                     {

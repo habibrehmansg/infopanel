@@ -222,6 +222,9 @@ namespace InfoPanel.Models
                     currentImageIndex = intermediateIndex;
 
                     result = Images[(int)Math.Round(intermediateIndex)];
+                } else
+                {
+                    result = Images[0];
                 }
             }
 
