@@ -2,18 +2,17 @@
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
-		<TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+		<TargetFramework>net8.0-windows</TargetFramework>
 		<Nullable>enable</Nullable>
 		<UseWPF>true</UseWPF>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<ApplicationIcon>Resources\Images\favicon.ico</ApplicationIcon>
-		<Platforms>x64;AnyCPU</Platforms>
+		<Platforms>x64</Platforms>
 		<FileVersion>$(AssemblyVersion)</FileVersion>
 		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
 		<Version>1.2.8.0</Version>
 		<UseWindowsForms>False</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-		<PlatformTarget>AnyCPU</PlatformTarget>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
 	</PropertyGroup>
 
@@ -160,7 +159,6 @@
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
-		<PackageReference Include="Prise" Version="6.0.0" />
 		<PackageReference Include="Sentry" Version="4.13.0" />
 		<PackageReference Include="SkiaSharp" Version="3.116.1" />
 		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
@@ -169,6 +167,11 @@
 		<PackageReference Include="TaskScheduler" Version="2.11.1" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
+	  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
 	</ItemGroup>
 	
 	<ItemGroup>
@@ -257,5 +260,13 @@
 			<SubType>Designer</SubType>
 		</Page>
 	</ItemGroup>
+
+	<!--<ItemGroup>
+		<Content Include="$(SolutionDir)InfoPanel.VolumePlugin\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\InfoPanel.VolumePlugin.dll">
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>plugins\InfoPanel.VolumePlugin.dll</TargetPath>
+		</Content>
+	</ItemGroup>-->
 
 </Project>

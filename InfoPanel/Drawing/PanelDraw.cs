@@ -7,8 +7,6 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Numerics;
-using System.Windows.Media.Media3D;
-using Windows.Graphics.Imaging;
 
 namespace InfoPanel.Drawing
 {

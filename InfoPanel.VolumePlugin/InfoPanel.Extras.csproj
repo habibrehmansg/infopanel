@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+	<EnableDynamicLoading>true</EnableDynamicLoading>
+	<Platforms>x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ini-parser" Version="2.5.2" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <PackageReference Include="OpenWeatherMap.Standard" Version="3.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+	  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj">
+		  <Private>false</Private>
+		  <ExcludeAssets>runtime</ExcludeAssets>
+	  </ProjectReference>
+  </ItemGroup>
+
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Exec Command="if not exist &quot;$(SolutionDir)InfoPanel\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\plugins&quot; mkdir &quot;$(SolutionDir)InfoPanel\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\plugins&quot;&#xD;&#xA;xcopy &quot;$(TargetDir)$(TargetFileName)&quot; &quot;$(SolutionDir)InfoPanel\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\plugins&quot; /Y /I&#xD;&#xA;" />
+	</Target>
+
+</Project>
