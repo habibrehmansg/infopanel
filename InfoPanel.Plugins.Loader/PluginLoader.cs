@@ -14,11 +14,11 @@ namespace InfoPanel.Plugins.Loader
        public void test(string folder)
         {
            var plugins= Directory.GetFiles(folder, "InfoPanel.*.dll");
-            IEnumerable<IPlugin> commands = plugins.SelectMany(pluginPath =>
-            {
-                Assembly pluginAssembly = LoadPlugin(pluginPath);
-                return CreateCommands(pluginAssembly);
-            }).ToList();
+            //IEnumerable<IPlugin> commands = plugins.SelectMany(pluginPath =>
+            //{
+            //    Assembly pluginAssembly = LoadPlugin(pluginPath);
+            //    return CreateCommands(pluginAssembly);
+            //}).ToList();
 
             //foreach (var command in commands)
             //{
