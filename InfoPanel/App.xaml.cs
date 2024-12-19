@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Monitors;
+using InfoPanel.Plugins.Loader;
 using InfoPanel.Services;
 using InfoPanel.Utils;
 using InfoPanel.ViewModels;
@@ -8,7 +9,6 @@ using InfoPanel.Views.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Win32;
-using Prise.DependencyInjection;
 using Sentry;
 using System;
 using System.Collections.Generic;
@@ -36,9 +36,6 @@ namespace InfoPanel
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
        .ConfigureServices((context, services) =>
        {
-           //add plugins
-           services.AddPrise();
-           
            // App Host
            services.AddHostedService<ApplicationHostService>();
 
@@ -116,7 +113,7 @@ namespace InfoPanel
             SentrySdk.CaptureException(e.Exception);
 
             // If you want to avoid the application from crashing:
-            e.Handled = true;
+            //e.Handled = true;
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -202,9 +199,7 @@ namespace InfoPanel
             await StartPanels();
 
 
-
-            //var video  = new VideoBackgroundItem("C:\\Users\\Habib\\Desktop\\88inchENG\\video\\rani.mp4");
-            //await video.Test();
+            testPlugin();
         }
 
         private void OnSessionEnding(object sender, SessionEndingEventArgs e)
@@ -337,9 +332,8 @@ namespace InfoPanel
 
         public void testPlugin()
         {
-           // var pluginPath = Path.Combine(AppContext.BaseDirectory, "plugins"); //set the path where people should put plugins. I chose a folder called plugins in the same directory as the exe
-
-            //var scanResult = await this._pluginLoader.FindPlugin<IPanelData>(pluginPath);
+            var pluginLoader = new PluginLoader();
+            pluginLoader.test("plugins");
         }
     }
 }
