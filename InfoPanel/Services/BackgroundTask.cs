@@ -70,8 +70,9 @@ namespace InfoPanel
         {
             Trace.WriteLine("Disposing resources");
             _cts?.Dispose();
-            _task = null;
+            _task?.Dispose();
             _cts = null;
+            _task = null;
         }
     }
 }

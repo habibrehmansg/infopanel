@@ -6,11 +6,10 @@ using System.Threading.Tasks;
 
 namespace InfoPanel.Plugins
 {
-    public interface IPluginSensor
+    public interface IPluginText
     {
         string Id { get; }
         string Name { get; }
-        float Value { get; set; }
-        string? Unit { get; }
+        string Value { get; set; }
     }
 }

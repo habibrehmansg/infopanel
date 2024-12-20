@@ -1,50 +1,83 @@
-﻿using InfoPanel.Plugins;
-using InfoPanel.Plugins.Loader;
+﻿using InfoPanel.Plugins.Loader;
+using System.Text;
 
 PluginLoader pluginLoader = new();
 
 //\InfoPanel\InfoPanel.Plugins.Simulator\bin\Debug\net8.0-windows
-var plugins = pluginLoader.InitializePlugin("..\\..\\..\\..\\InfoPanel.VolumePlugin\\bin\\x64\\Debug\\net8.0-windows\\InfoPanel.Extras.dll");
 
-List<IPlugin> loadedPlugins = [];
+var currentDirectory = Directory.GetCurrentDirectory();
+var pluginPath = Path.Combine(currentDirectory, "..\\..\\..\\..\\InfoPanel.Extras\\bin\\Debug\\net8.0-windows", "InfoPanel.Extras.dll");
+
+var plugins = pluginLoader.InitializePlugin(pluginPath);
+
+Dictionary<string, PluginWrapper> loadedPlugins = [];
 
 foreach (var plugin in plugins)
 {
-    loadedPlugins.Add(plugin);
-    plugin.Initialize(); 
+    PluginWrapper pluginWrapper = new(plugin);
+    if (loadedPlugins.TryAdd(pluginWrapper.Name, pluginWrapper))
+    {
+        try
+        {
+            await pluginWrapper.Initialize();
+            Console.WriteLine($"Plugin {pluginWrapper.Name} loaded successfully");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Plugin {pluginWrapper.Name} failed to load: {ex.Message}");
+        }
+    }
+    else
+    {
+        Console.WriteLine($"Plugin {pluginWrapper.Name} already loaded or duplicate plugin/name");
+    }
+
+    //break;
 }
 
-new Task(async () =>
-{
-    while (true)
-    {
-        foreach (var plugin in loadedPlugins)
-        {
-            await plugin.UpdateAsync();
-        }
-        await Task.Delay(300);
-    }
-}).Start();
+Thread.Sleep(1000);
+Console.Clear();
+
+StringBuilder buffer = new();
+string lastOutput = string.Empty;
 
 while (true)
 {
-    Console.Clear();
+    buffer.Clear();
 
-    foreach (var plugin in loadedPlugins)
+    foreach (var wrapper in loadedPlugins.Values)
     {
-        Console.Write("-");
-        Console.WriteLine($"{plugin.Name} ({plugin.GetType().FullName})");
-        var panelDatas = plugin.GetData();
+        wrapper.Update();
 
-        foreach (var panelData in panelDatas)
+        buffer.AppendLine($"-{wrapper.Name} ({wrapper.Plugin.GetType().FullName}) [UpdateInterval={wrapper.UpdateInterval.TotalMilliseconds}ms, UpdateTime={wrapper.UpdateTimeMilliseconds}ms]");
+
+        foreach (var container in wrapper.PluginContainers)
         {
-            Console.Write("--");
-            Console.WriteLine($"{panelData.Name}: {panelData.Value}{panelData.Unit}");
+            buffer.AppendLine($"--{container.Name}");
+            foreach (var text in container.Text)
+            {
+                var id = $"/{wrapper.Id}/{container.Id}/{text.Id}";
+                buffer.AppendLine($"---{text.Name}: {text.Value}");
+            }
+
+            foreach (var text in container.Sensors)
+            {
+                buffer.AppendLine($"---{text.Name}: {text.Value}{text.Unit}");
+            }
         }
 
-        Console.WriteLine();
+        buffer.AppendLine();
     }
 
-    Thread.Sleep(1000);
+    // Only update the console if the output has changed with double buffering to reduce flicker
+    var output = buffer.ToString();
+    if (output != lastOutput)
+    {
+        lastOutput = output;
+        Console.Clear();
+        Console.WriteLine(output);
+    }
+
+    Thread.Sleep(30);
 }
 

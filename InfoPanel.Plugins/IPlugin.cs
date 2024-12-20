@@ -2,10 +2,13 @@
 {
     public interface IPlugin
     {
+        string Id { get; }
         string Name { get; }
+        TimeSpan UpdateInterval { get; } 
         void Initialize();
-        List<IPluginSensor> GetData();
-        Task UpdateAsync();
+        void Load(List<IPluginContainer> containers);
+        void Update();
+        Task UpdateAsync(CancellationToken cancellationToken);
         void Close();
     }
 }

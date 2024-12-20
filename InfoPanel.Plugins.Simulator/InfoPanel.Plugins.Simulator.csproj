@@ -9,8 +9,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
-    <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
-    <ProjectReference Include="..\InfoPanel.VolumePlugin\InfoPanel.Extras.csproj" />
   </ItemGroup>
 
 </Project>

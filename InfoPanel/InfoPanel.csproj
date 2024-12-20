@@ -171,7 +171,6 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
-	  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
 	</ItemGroup>
 	
 	<ItemGroup>
