@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Monitors;
+using InfoPanel.Plugins;
 using LibreHardwareMonitor.Hardware;
 using Microsoft.Extensions.Caching.Memory;
 using System;
@@ -19,6 +20,7 @@ namespace InfoPanel.Drawing
         });
         private static readonly ConcurrentDictionary<(UInt32, UInt32, UInt32), Queue<double>> GraphDataCache = [];
         private static readonly ConcurrentDictionary<string, Queue<double>> GraphDataCache2 = [];
+        private static readonly ConcurrentDictionary<string, Queue<double>> GraphDataCache3 = [];
         private static readonly Stopwatch Stopwatch = new();
 
         static GraphDraw()
@@ -56,6 +58,21 @@ namespace InfoPanel.Drawing
             return result;
         }
 
+        private static Queue<double> GetGraphPluginDataQueue(string pluginSensorId)
+        {
+            var key = pluginSensorId;
+
+            GraphDataCache3.TryGetValue(key, out Queue<double>? result);
+
+            if (result == null)
+            {
+                result = new Queue<double>();
+                GraphDataCache3.TryAdd(key, result);
+            }
+
+            return result;
+        }
+
         public static void Run(ChartDisplayItem chartDisplayItem, MyGraphics g)
         {
             var elapsedMilliseconds = Stopwatch.ElapsedMilliseconds;
@@ -68,7 +85,7 @@ namespace InfoPanel.Drawing
                     if (queue != null)
                     {
                         HWHash.SENSORHASH.TryGetValue(key, out HWHash.HWINFO_HASH value);
-                        
+
                         lock (queue)
                         {
                             queue.Enqueue(value.ValueNow);
@@ -98,6 +115,28 @@ namespace InfoPanel.Drawing
                         }
                     }
                 }
+
+                foreach (var key in GraphDataCache3.Keys)
+                {
+                    GraphDataCache3.TryGetValue(key, out Queue<double>? queue);
+                    if (queue != null)
+                    {
+                        if(PluginMonitor.SENSORHASH.TryGetValue(key, out PluginMonitor.PluginReading value) && value.Data is PluginSensor sensor)
+                        {
+                            lock (queue)
+                            {
+                                queue.Enqueue(sensor.Value);
+
+                                if (queue.Count > 4096)
+                                {
+                                    queue.Dequeue();
+                                }
+                            }
+                        }
+                       
+                    }
+                }
+
                 Stopwatch.Restart();
             }
 
@@ -108,9 +147,13 @@ namespace InfoPanel.Drawing
 
                 Queue<double> queue;
 
-                if (chartDisplayItem.SensorType == Models.SensorType.Libre)
+                if (chartDisplayItem.SensorType == Enums.SensorType.Libre)
                 {
                     queue = GetGraphDataQueue(chartDisplayItem.LibreSensorId);
+                }
+                else if (chartDisplayItem.SensorType == Enums.SensorType.Plugin)
+                {
+                    queue = GetGraphPluginDataQueue(chartDisplayItem.PluginSensorId);
                 }
                 else
                 {
@@ -128,7 +171,7 @@ namespace InfoPanel.Drawing
                 {
                     tempValues = [.. queue];
                 }
-              
+
                 double minValue = chartDisplayItem.MinValue;
                 double maxValue = chartDisplayItem.MaxValue;
 
@@ -327,8 +370,8 @@ namespace InfoPanel.Drawing
                             {
                                 if (barDisplayItem.Gradient)
                                 {
-                                   g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height, barDisplayItem.GradientColor, frameRect.Width >= frameRect.Height);
-                                  
+                                    g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height, barDisplayItem.GradientColor, frameRect.Width >= frameRect.Height);
+
                                 }
                                 else
                                 {
@@ -369,10 +412,11 @@ namespace InfoPanel.Drawing
 
                 if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem.Frame)
                 {
-                    if(g is CompatGraphics)
+                    if (g is CompatGraphics)
                     {
                         g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width - 1, chartDisplayItem.Height - 1);
-                    } else
+                    }
+                    else
                     {
                         g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
                     }

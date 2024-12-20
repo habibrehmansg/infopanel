@@ -4,8 +4,6 @@
     {
         public string Id { get; } = IdUtil.Encode(name);
         public string Name { get; } = name;
-        public List<IPluginText> Text { get; } = [];
-
-        public List<IPluginSensor> Sensors { get; } = [];
+        public List<IPluginData> Entries { get; } = [];
     }
 }

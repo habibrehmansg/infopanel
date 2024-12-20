@@ -27,7 +27,7 @@ namespace InfoPanel.Extras
         public override void Load(List<IPluginContainer> containers)
         {
             var container = new PluginContainer("Default");
-            container.Sensors.Add(_volumeSensor);
+            container.Entries.Add(_volumeSensor);
             containers.Add(container);
         }
 

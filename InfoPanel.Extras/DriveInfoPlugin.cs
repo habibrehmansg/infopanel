@@ -24,14 +24,14 @@ namespace InfoPanel.Extras
                 if (drive.IsReady)
                 {
                     PluginContainer container = new(drive.Name);
-                    container.Text.Add(new PluginText("name", "Name", drive.Name));
-                    container.Text.Add(new PluginText("type", "Type", drive.DriveType.ToString()));
-                    container.Text.Add(new PluginText("volume_label", "Volume Label", drive.VolumeLabel));
-                    container.Text.Add(new PluginText("format", "Format", drive.DriveFormat));
-                    container.Sensors.Add(new PluginSensor("total_size", "Total Size", drive.TotalSize / 1024 / 1024, "MB"));
-                    container.Sensors.Add(new PluginSensor("free_space", "Free Space", drive.TotalFreeSpace / 1024 / 1024, "MB"));
-                    container.Sensors.Add(new PluginSensor("available_space", "Available Space", drive.AvailableFreeSpace / 1024 / 1024, "MB"));
-                    container.Sensors.Add(new PluginSensor("used_space", "Used Space", (drive.TotalSize - drive.TotalFreeSpace) / 1024 / 1024, "MB"));
+                    container.Entries.Add(new PluginText("name", "Name", drive.Name));
+                    container.Entries.Add(new PluginText("type", "Type", drive.DriveType.ToString()));
+                    container.Entries.Add(new PluginText("volume_label", "Volume Label", drive.VolumeLabel));
+                    container.Entries.Add(new PluginText("format", "Format", drive.DriveFormat));
+                    container.Entries.Add(new PluginSensor("total_size", "Total Size", drive.TotalSize / 1024 / 1024, "MB"));
+                    container.Entries.Add(new PluginSensor("free_space", "Free Space", drive.TotalFreeSpace / 1024 / 1024, "MB"));
+                    container.Entries.Add(new PluginSensor("available_space", "Available Space", drive.AvailableFreeSpace / 1024 / 1024, "MB"));
+                    container.Entries.Add(new PluginSensor("used_space", "Used Space", (drive.TotalSize - drive.TotalFreeSpace) / 1024 / 1024, "MB"));
 
                     _containers.Add(container);
                 }
@@ -56,37 +56,65 @@ namespace InfoPanel.Extras
 
                 if (drive.IsReady)
                 {
-                    foreach (var text in container.Text)
+                    foreach (var entry in container.Entries)
                     {
-                        switch (text.Id)
+                        switch (entry.Id)
                         {
                             case "type":
-                                text.Value = drive.DriveType.ToString();
+                                {
+                                    if (entry is PluginText text)
+                                    {
+                                        text.Value = drive.DriveType.ToString();
+                                    }
+                                }
                                 break;
                             case "volume_label":
-                                text.Value = drive.VolumeLabel;
+                                {
+                                    if (entry is PluginText text)
+                                    {
+                                        text.Value = drive.VolumeLabel;
+                                    }
+                                }
                                 break;
                             case "format":
-                                text.Value = drive.DriveFormat;
+                                {
+                                    if (entry is PluginText text)
+                                    {
+                                        text.Value = drive.DriveFormat;
+                                    }
+                                }
                                 break;
-                        }
-                    }
-
-                    foreach (var sensor in container.Sensors)
-                    {
-                        switch (sensor.Id)
-                        {
                             case "total_size":
-                                sensor.Value = drive.TotalSize / 1024 / 1024;
+                                {
+                                    if (entry is PluginSensor sensor)
+                                    {
+                                        sensor.Value = drive.TotalSize / 1024 / 1024;
+                                    }
+                                }
                                 break;
                             case "free_space":
-                                sensor.Value = drive.TotalFreeSpace / 1024 / 1024;
+                                {
+                                    if (entry is PluginSensor sensor)
+                                    {
+                                        sensor.Value = drive.TotalFreeSpace / 1024 / 1024;
+                                    }
+                                }
                                 break;
                             case "available_space":
-                                sensor.Value = drive.AvailableFreeSpace / 1024 / 1024;
+                                {
+                                    if (entry is PluginSensor sensor)
+                                    {
+                                        sensor.Value = drive.AvailableFreeSpace / 1024 / 1024;
+                                    }
+                                }
                                 break;
                             case "used_space":
-                                sensor.Value = (drive.TotalSize - drive.TotalFreeSpace) / 1024 / 1024;
+                                {
+                                    if (entry is PluginSensor sensor)
+                                    {
+                                        sensor.Value = (drive.TotalSize - drive.TotalFreeSpace) / 1024 / 1024;
+                                    }
+                                }
                                 break;
                         }
                     }

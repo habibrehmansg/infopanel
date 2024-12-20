@@ -26,10 +26,17 @@ namespace InfoPanel.Models
             Unit = unit;
         }
 
+        public SensorReading(string value)
+        {
+            ValueText = value;
+            Unit = string.Empty;
+        }
+
         public double ValueMin;
         public double ValueMax;
         public double ValueAvg;
         public double ValueNow;
+        public string? ValueText;
         public string Unit;
     }
 }

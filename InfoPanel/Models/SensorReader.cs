@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Monitors;
+using InfoPanel.Plugins;
 using LibreHardwareMonitor.Hardware;
 using System;
 
@@ -21,6 +22,22 @@ namespace InfoPanel.Models
             if (LibreMonitor.SENSORHASH.TryGetValue(sensorId, out ISensor? sensor))
             {
                 return new SensorReading(sensor.Min ?? 0, sensor.Max ?? 0, 0, sensor.Value ?? 0, sensor.GetUnit());
+            }
+            return null;
+        }
+
+        public static SensorReading? ReadPluginSensor(string sensorId)
+        {
+            if (PluginMonitor.SENSORHASH.TryGetValue(sensorId, out PluginMonitor.PluginReading reading))
+            {
+                if (reading.Data is IPluginSensor sensor)
+                {
+                    return new SensorReading(0, 0, 0, sensor.Value, sensor.Unit ?? "");
+                }
+                else if (reading.Data is IPluginText text)
+                {
+                    return new SensorReading(text.Value);
+                }
             }
             return null;
         }

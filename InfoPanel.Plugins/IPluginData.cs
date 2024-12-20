@@ -1,9 +1,8 @@
 ﻿namespace InfoPanel.Plugins
 {
-    public interface IPluginContainer
+    public interface IPluginData
     {
         string Id { get; }
         string Name { get; }
-        List<IPluginData> Entries { get; }
     }
 }

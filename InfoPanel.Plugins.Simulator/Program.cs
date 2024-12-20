@@ -1,4 +1,5 @@
-﻿using InfoPanel.Plugins.Loader;
+﻿using InfoPanel.Plugins;
+using InfoPanel.Plugins.Loader;
 using System.Text;
 
 PluginLoader pluginLoader = new();
@@ -54,15 +55,17 @@ while (true)
         foreach (var container in wrapper.PluginContainers)
         {
             buffer.AppendLine($"--{container.Name}");
-            foreach (var text in container.Text)
+            foreach (var entry in container.Entries)
             {
-                var id = $"/{wrapper.Id}/{container.Id}/{text.Id}";
-                buffer.AppendLine($"---{text.Name}: {text.Value}");
-            }
+                var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
 
-            foreach (var text in container.Sensors)
-            {
-                buffer.AppendLine($"---{text.Name}: {text.Value}{text.Unit}");
+                if(entry is IPluginText text)
+                {
+                    buffer.AppendLine($"---{text.Name}: {text.Value}");
+                }else if(entry is IPluginSensor sensor)
+                {
+                    buffer.AppendLine($"---{sensor.Name}: {sensor.Value}{sensor.Unit}");
+                }
             }
         }
 

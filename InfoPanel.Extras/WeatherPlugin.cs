@@ -81,8 +81,8 @@ namespace InfoPanel.Extras
             if (_city != null)
             {
                 var container = new PluginContainer(_city);
-                container.Text.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);
-                container.Sensors.AddRange([_temp, _maxTemp, _minTemp, _pressure, _seaLevel, _groundLevel, _feelsLike, _humidity, _windSpeed, _windDeg, _windGust, _clouds, _rain, _snow]);
+                container.Entries.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);
+                container.Entries.AddRange([_temp, _maxTemp, _minTemp, _pressure, _seaLevel, _groundLevel, _feelsLike, _humidity, _windSpeed, _windDeg, _windGust, _clouds, _rain, _snow]);
                 containers.Add(container);
             }
         }

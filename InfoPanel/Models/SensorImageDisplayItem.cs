@@ -1,4 +1,5 @@
-﻿using System;
+﻿using InfoPanel.Enums;
+using System;
 
 namespace InfoPanel.Models
 {
@@ -65,6 +66,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private string _pluginSensorId = string.Empty;
+        public string PluginSensorId
+        {
+            get { return _pluginSensorId; }
+            set
+            {
+                SetProperty(ref _pluginSensorId, value);
+            }
+        }
+
         public SensorValueType _valueType = SensorValueType.NOW;
         public SensorValueType ValueType
         {
@@ -98,6 +109,10 @@ namespace InfoPanel.Models
         public SensorImageDisplayItem(): base()
         { }
 
+        public SensorImageDisplayItem(string name, Guid profileGuid) : base(name, profileGuid)
+        {
+            SensorName = name;
+        }
         public SensorImageDisplayItem(string name, Guid profileGuid, uint id, uint instance, uint entryId) : base(name, profileGuid)
         {
             SensorName = name;
@@ -120,6 +135,7 @@ namespace InfoPanel.Models
             {
                 SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
                 SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
+                SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
                 _ => null,
             };
         }

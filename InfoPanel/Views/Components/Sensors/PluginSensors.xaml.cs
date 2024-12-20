@@ -1,7 +1,6 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.ViewModels.Components;
-using LibreHardwareMonitor.Hardware;
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -13,15 +12,15 @@ namespace InfoPanel.Views.Components
     /// <summary>
     /// Interaction logic for HWiNFOSensors.xaml
     /// </summary>
-    public partial class LibreSensors : System.Windows.Controls.UserControl
+    public partial class PluginSensors : System.Windows.Controls.UserControl
     {
-        private LibreSensorsVM ViewModel { get; set; }
+        private PluginSensorsVM ViewModel { get; set; }
 
         private readonly DispatcherTimer UpdateTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
-        public LibreSensors()
+        public PluginSensors()
         {
-            ViewModel = new LibreSensorsVM();
+            ViewModel = new PluginSensorsVM();
             DataContext = ViewModel;
 
             InitializeComponent();
@@ -88,43 +87,38 @@ namespace InfoPanel.Views.Components
             //    }
             //}
 
-
-            foreach (ISensor hash in LibreMonitor.GetOrderedList())
+            foreach (PluginMonitor.PluginReading reading in PluginMonitor.GetOrderedList())
             {
-                var parentIdentifier = hash.Hardware.Parent?.Identifier ?? hash.Hardware.Identifier;
-                var parentName = hash.Hardware.Parent?.Name ?? hash.Hardware.Name;
-                var hardwareType = hash.Hardware.Parent?.HardwareType ?? hash.Hardware.HardwareType;
-
-                //construct parent
-                var parent = ViewModel.FindParentSensorItem(parentIdentifier);
+                //construct plugin
+                var parent = ViewModel.FindParentSensorItem(reading.PluginId);
                 if (parent == null)
                 {
-                    parent = new LibreHardwareTreeItem(parentIdentifier, parentName, hardwareType);
+                    parent = new PluginTreeItem(reading.PluginId, reading.PluginName);
                     ViewModel.Sensors.Add(parent);
                 }
 
-                //construct type grouping
-                var group = parent.FindChild(hash.SensorType);
+                //construct container
+                var container = parent.FindChild(reading.ContainerId);
 
-                if (group == null)
+                if (container == null)
                 {
-                    group = new LibreGroupTreeItem(hash.SensorType, hash.SensorType.ToString(), hash.SensorType);
-                    parent.Children.Add(group);
+                    container = new PluginTreeItem(reading.ContainerId, reading.ContainerName);
+                    parent.Children.Add(container);
                 }
 
                 //construct actual sensor
-                var child = group.FindChild(hash.Identifier);
+                var child = container.FindChild(reading.Id);
                 if (child == null)
                 {
-                    child = new LibreSensorItem(hash.Identifier, hash.Name, hash.Identifier.ToString());
-                    group.Children.Add(child);
+                    child = new PluginSensorItem(reading.Id, reading.Name, reading.Id);
+                    container.Children.Add(child);
                 }
             }
         }
 
         private void TreeViewInfo_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
-            if (e.NewValue is LibreSensorItem sensorItem)
+            if (e.NewValue is PluginSensorItem sensorItem)
             {
                 ViewModel.SelectedItem = sensorItem;
                 sensorItem.Update();
@@ -150,10 +144,12 @@ namespace InfoPanel.Views.Components
 
         private void ButtonSelect_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is LibreSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
             {
-                var item = new SensorDisplayItem(sensorItem.Name, sensorItem.SensorId)
+                var item = new SensorDisplayItem(sensorItem.Name)
                 {
+                    SensorType = Enums.SensorType.Plugin,
+                    PluginSensorId = sensorItem.SensorId,
                     Font = SharedModel.Instance.SelectedProfile!.Font,
                     FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
                     Color = SharedModel.Instance.SelectedProfile!.Color,
@@ -167,45 +163,47 @@ namespace InfoPanel.Views.Components
 
         private void ButtonReplace_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is LibreSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
             {
                 if (SharedModel.Instance.SelectedItem is SensorDisplayItem displayItem)
                 {
                     displayItem.Name = sensorItem.Name;
                     displayItem.SensorName = sensorItem.Name;
-                    displayItem.SensorType = Enums.SensorType.Libre;
-                    displayItem.LibreSensorId = sensorItem.SensorId;
+                    displayItem.SensorType = Enums.SensorType.Plugin;
+                    displayItem.PluginSensorId = sensorItem.SensorId;
                     displayItem.Unit = sensorItem.Unit;
                 }
                 else if (SharedModel.Instance.SelectedItem is ChartDisplayItem chartDisplayItem)
                 {
                     chartDisplayItem.Name = sensorItem.Name;
                     chartDisplayItem.SensorName = sensorItem.Name;
-                    chartDisplayItem.SensorType = Enums.SensorType.Libre;
-                    chartDisplayItem.LibreSensorId = sensorItem.SensorId;
+                    chartDisplayItem.SensorType = Enums.SensorType.Plugin;
+                    chartDisplayItem.PluginSensorId = sensorItem.SensorId;
                 }
                 else if (SharedModel.Instance.SelectedItem is GaugeDisplayItem gaugeDisplayItem)
                 {
                     gaugeDisplayItem.Name = sensorItem.Name;
                     gaugeDisplayItem.SensorName = sensorItem.Name;
-                    gaugeDisplayItem.SensorType = Enums.SensorType.Libre;
-                    gaugeDisplayItem.LibreSensorId = sensorItem.SensorId;
+                    gaugeDisplayItem.SensorType = Enums.SensorType.Plugin;
+                    gaugeDisplayItem.PluginSensorId = sensorItem.SensorId;
                 }
                 else if (SharedModel.Instance.SelectedItem is SensorImageDisplayItem sensorImageDisplayItem)
                 {
                     sensorImageDisplayItem.Name = sensorItem.Name;
                     sensorImageDisplayItem.SensorName = sensorItem.Name;
-                    sensorImageDisplayItem.SensorType = Enums.SensorType.Libre;
-                    sensorImageDisplayItem.LibreSensorId = sensorItem.SensorId;
+                    sensorImageDisplayItem.SensorType = Enums.SensorType.Plugin;
+                    sensorImageDisplayItem.PluginSensorId = sensorItem.SensorId;
                 }
             }
         }
 
         private void ButtonAddGraph_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is LibreSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
             {
-                var item = new GraphDisplayItem(sensorItem.Name, GraphDisplayItem.GraphType.LINE, sensorItem.SensorId);
+                var item = new GraphDisplayItem(sensorItem.Name, GraphDisplayItem.GraphType.LINE);
+                item.PluginSensorId = sensorItem.SensorId;
+                item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -213,9 +211,11 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddBar_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is LibreSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
             {
-                var item = new BarDisplayItem(sensorItem.Name, sensorItem.SensorId);
+                var item = new BarDisplayItem(sensorItem.Name);
+                item.PluginSensorId = sensorItem.SensorId;
+                item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -223,9 +223,11 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddDonut_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is LibreSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
             {
-                var item = new DonutDisplayItem(sensorItem.Name, sensorItem.SensorId);
+                var item = new DonutDisplayItem(sensorItem.Name);
+                item.PluginSensorId = sensorItem.SensorId;
+                item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -233,9 +235,11 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddCustom_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is LibreSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
             {
-                var item = new GaugeDisplayItem(sensorItem.Name, sensorItem.SensorId);
+                var item = new GaugeDisplayItem(sensorItem.Name);
+                item.PluginSensorId = sensorItem.SensorId;
+                item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
@@ -243,9 +247,11 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddSensorImage_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is LibreSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile.Guid, sensorItem.SensorId);
+                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile.Guid);
+                item.PluginSensorId = sensorItem.SensorId;
+                item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }

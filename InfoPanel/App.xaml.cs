@@ -190,7 +190,13 @@ namespace InfoPanel
             HWHash.SetDelay(300);
             HWHash.Launch();
 
-            await LibreMonitor.Instance.StartAsync();
+            if (ConfigModel.Instance.Settings.LibreHardwareMonitor)
+            {
+                LibreMonitor.Instance.SetRing0(ConfigModel.Instance.Settings.LibreHardMonitorRing0);
+                await LibreMonitor.Instance.StartAsync();
+            }
+
+            await PluginMonitor.Instance.StartAsync();
 
             SystemEvents.SessionEnding += OnSessionEnding;
             SystemEvents.PowerModeChanged += OnPowerChange;

@@ -188,6 +188,9 @@
 		<Compile Update="Views\Components\Chart\DonutProperties.xaml.cs">
 		  <SubType>Code</SubType>
 		</Compile>
+		<Compile Update="Views\Components\Sensors\PluginSensors.xaml.cs">
+		  <SubType>Code</SubType>
+		</Compile>
 		<Compile Update="Views\Components\Sensors\LibreSensors.xaml.cs">
 		  <SubType>Code</SubType>
 		</Compile>

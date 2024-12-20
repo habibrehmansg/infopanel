@@ -23,8 +23,8 @@ namespace InfoPanel.Extras
         public override void Load(List<IPluginContainer> containers)
         {   
             var container = new PluginContainer("Public IP");
-            container.Text.Add(_ipv4Sensor);
-            container.Text.Add(_ipv6Sensor);
+            container.Entries.Add(_ipv4Sensor);
+            container.Entries.Add(_ipv6Sensor);
             containers.Add(container);
         }
 
