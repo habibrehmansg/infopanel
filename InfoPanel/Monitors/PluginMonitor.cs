@@ -71,7 +71,7 @@ namespace InfoPanel.Monitors
                 await load();
 
                 stopwatch.Stop();
-                Trace.WriteLine($"Computer open: {stopwatch.ElapsedMilliseconds}ms");
+                Trace.WriteLine($"Plugins loaded: {stopwatch.ElapsedMilliseconds}ms");
 
                 try
                 {
