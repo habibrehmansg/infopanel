@@ -40,11 +40,11 @@
 	<!-- Copy InfoPanel.Extras to publish dir -->
 	<Target Name="PublishCopyExtrasDll" AfterTargets="Publish">
 		<Message Text="Executing PublishCopyExtrasDll target" Importance="High" />
-		<MakeDir Directories="$(PublishDir)\InfoPanel.Extras" />
+		<MakeDir Directories="$(PublishDir)\plugins\InfoPanel.Extras" />
 		<ItemGroup>
 			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(PublishDir)\InfoPanel.Extras" SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(PublishDir)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="Sign" AfterTargets="Publish">
