@@ -203,9 +203,6 @@ namespace InfoPanel
             Exit += App_Exit;
 
             await StartPanels();
-
-
-            testPlugin();
         }
 
         private void OnSessionEnding(object sender, SessionEndingEventArgs e)
@@ -334,12 +331,6 @@ namespace InfoPanel
                 displayWindow.Closed -= DisplayWindow_Closed;
                 DisplayWindows.Remove(displayWindow.Profile.Guid);
             }
-        }
-
-        public void testPlugin()
-        {
-            var pluginLoader = new PluginLoader();
-            pluginLoader.test("plugins");
         }
     }
 }

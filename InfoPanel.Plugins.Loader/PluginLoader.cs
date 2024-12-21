@@ -1,40 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Reflection;
 
 namespace InfoPanel.Plugins.Loader
 {
     public class PluginLoader
     {
-       public void test(string folder)
-        {
-           //var plugins= Directory.GetFiles(folder, "InfoPanel.*.dll");
-            //IEnumerable<IPlugin> commands = plugins.SelectMany(pluginPath =>
-            //{
-            //    Assembly pluginAssembly = LoadPlugin(pluginPath);
-            //    return CreateCommands(pluginAssembly);
-            //}).ToList();
-
-            //foreach (var command in commands)
-            //{
-            //    Trace.WriteLine(command);
-            //    var panelDatas = command.GetData();
-            //    foreach(var panelData in panelDatas)
-            //    {
-            //        Trace.WriteLine(panelData.CollectionName);
-            //        foreach(var item in panelData.EntryList)
-            //        {
-            //            Trace.WriteLine($"{item.Name}: {item.Value} {item.Unit}");
-            //        }
-            //    }
-            //}
-        }
-
         public IEnumerable<IPlugin> InitializePlugin(string pluginPath)
         {
             Assembly pluginAssembly = LoadPlugin(pluginPath);
@@ -72,7 +41,5 @@ namespace InfoPanel.Plugins.Loader
                     $"Available types: {availableTypes}");
             }
         }
-
-
     }
 }

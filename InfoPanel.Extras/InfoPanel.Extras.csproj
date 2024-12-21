@@ -19,9 +19,4 @@
 		  <ExcludeAssets>runtime</ExcludeAssets>
 	  </ProjectReference>
   </ItemGroup>
-
-	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-		<Exec Command="if not exist &quot;$(SolutionDir)InfoPanel\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\plugins&quot; mkdir &quot;$(SolutionDir)InfoPanel\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\plugins&quot;&#xD;&#xA;xcopy &quot;$(TargetDir)$(TargetFileName)&quot; &quot;$(SolutionDir)InfoPanel\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\plugins&quot; /Y /I&#xD;&#xA;" />
-	</Target>
-
 </Project>

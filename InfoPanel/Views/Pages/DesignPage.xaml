@@ -159,7 +159,7 @@
                                 <Image
                                     Width="30"
                                     Height="30"
-                                    Source="/InfoPanel;component/Resources/Images/libre_icon.ico" />
+                                    Source="/InfoPanel;component/Resources/Images/logo.ico" />
                                 <TextBlock
                                     Grid.Column="0"
                                     Margin="10,0,0,0"

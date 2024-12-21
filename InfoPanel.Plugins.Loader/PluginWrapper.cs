@@ -126,6 +126,11 @@ namespace InfoPanel.Plugins.Loader
             _task?.Dispose();
             _cts = null;
             _task = null;
+
+            try
+            {
+                Plugin.Close();
+            }catch { }
         }
     }
 }

@@ -8,7 +8,7 @@ namespace InfoPanel.Extras
 
         private readonly List<PluginContainer> _containers = [];
 
-        public DriveInfoPlugin() : base("Drive Info Plugin")
+        public DriveInfoPlugin() : base("drive-info-plugin", "Drive Info")
         {
         }
 

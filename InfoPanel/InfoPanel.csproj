@@ -14,6 +14,36 @@
 		<UseWindowsForms>False</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
+		<ExtrasOutputDir>..\InfoPanel.Extras\bin\$(Platform)\$(Configuration)\$(TargetFramework)</ExtrasOutputDir>
+		<PluginOutputDir>bin\$(Platform)\$(Configuration)\$(TargetFramework)\plugins</PluginOutputDir>
+	</PropertyGroup>
+
+	<Target Name="BuildExtras" BeforeTargets="Build">
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" />
+	</Target>
+
+	<Target Name="CopyExtrasDll" AfterTargets="Build">
+		<MakeDir Directories="$(PluginOutputDir)\InfoPanel.Extras" />
+		<ItemGroup>
+			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(PluginOutputDir)\InfoPanel.Extras" SkipUnchangedFiles="true" />
+	</Target>
+
+	<Target Name="CleanPluginsDirectory" BeforeTargets="Clean">
+		<RemoveDir Directories="$(PluginOutputDir)" />
+	</Target>
+
+	<Target Name="Sign" AfterTargets="Publish">
+		 <!--<Exec WorkingDirectory="$(PublishDir)" Command="&quot;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe&quot; sign /a /t http://timestamp.sectigo.com /fd SHA256 /d &quot;InfoPanel&quot; /v InfoPanel.exe" />--> 
+	</Target>
+
+	<PropertyGroup Condition="'$(Configuration)'=='Debug'">
+		<DebugType>full</DebugType>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)'=='Release'">
+		<DebugType>none</DebugType>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -24,27 +54,15 @@
 			<HintPath>Lib\d2dwinform.dll</HintPath>
 		</Reference>
 		<Reference Include="LibreHardwareMonitorLib">
-		  <HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
+			<HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
 		</Reference>
 		<Reference Include="TuringSmartScreenLib">
-		  <HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
+			<HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
 		</Reference>
 		<Reference Include="TuringSmartScreenLib.Helpers.GDI">
-		  <HintPath>Lib\TuringSmartScreenLib.Helpers.GDI.dll</HintPath>
+			<HintPath>Lib\TuringSmartScreenLib.Helpers.GDI.dll</HintPath>
 		</Reference>
 	</ItemGroup>
-
-	<Target Name="Sign" AfterTargets="Publish">
-		 <!--<Exec WorkingDirectory="$(PublishDir)" Command="&quot;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe&quot; sign /a /t http://timestamp.sectigo.com /fd SHA256 /d &quot;InfoPanel&quot; /v InfoPanel.exe" />--> 
-	</Target>
-
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x86'">
-		<DebugType>full</DebugType>
-	</PropertyGroup>
-
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x86'">
-		<DebugType>full</DebugType>
-	</PropertyGroup>
 
 	<ItemGroup>
 	  <Compile Remove="Images\**" />
@@ -97,6 +115,7 @@
 		<None Remove="Resources\Images\Libre\voltage.png" />
 		<None Remove="Resources\Images\libre_icon.ico" />
 		<None Remove="Resources\Images\libre_icon.png" />
+		<None Remove="Resources\Images\logo.ico" />
 		<None Remove="Resources\Images\logo.png" />
 		<None Remove="Resources\Images\no_image.png" />
 	</ItemGroup>
@@ -143,6 +162,7 @@
 		<Resource Include="Resources\Images\Libre\voltage.png" />
 		<Resource Include="Resources\Images\libre_icon.ico" />
 		<Resource Include="Resources\Images\libre_icon.png" />
+		<Resource Include="Resources\Images\logo.ico" />
 		<Resource Include="Resources\Images\logo.png" />
 		<Resource Include="Resources\Images\no_image.png" />
 		<Content Include="index.html">

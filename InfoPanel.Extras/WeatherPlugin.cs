@@ -38,7 +38,7 @@ namespace InfoPanel.Extras
         private readonly PluginSensor _rain = new("rain", "Rain", 0, "mm/h");
         private readonly PluginSensor _snow = new("snow", "Snow", 0, "mm/h");
 
-        public WeatherPlugin() : base("Weather Plugin")
+        public WeatherPlugin() : base("weather-plugin","Weather Info - OpenWeatherMap")
         {
         }
 

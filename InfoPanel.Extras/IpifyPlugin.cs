@@ -12,7 +12,7 @@ namespace InfoPanel.Extras
 
         public override TimeSpan UpdateInterval => TimeSpan.FromMinutes(5);
 
-        public IpifyPlugin() : base("Ipify Plugin")
+        public IpifyPlugin() : base("ipify-plugin", "Public IP - Ipify")
         {
         }
 
