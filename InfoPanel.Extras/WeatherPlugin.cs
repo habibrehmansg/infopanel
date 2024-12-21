@@ -38,29 +38,31 @@ namespace InfoPanel.Extras
         private readonly PluginSensor _rain = new("rain", "Rain", 0, "mm/h");
         private readonly PluginSensor _snow = new("snow", "Snow", 0, "mm/h");
 
-        public WeatherPlugin() : base("weather-plugin","Weather Info - OpenWeatherMap")
+        public WeatherPlugin() : base("weather-plugin","Weather Info - OpenWeatherMap", "Retrieves weather information periodically from openweathermap.org. API key required.")
         {
         }
 
+        private string? _configFilePath = null;
+        public override string? ConfigFilePath => _configFilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromMinutes(1);
 
         public override void Initialize()
         {
             Assembly assembly = Assembly.GetExecutingAssembly();
-            var configPath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
+            _configFilePath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
 
             var parser = new FileIniDataParser();
             IniData config;
-            if (!File.Exists(configPath))
+            if (!File.Exists(_configFilePath))
             {
                 config = new IniData();
                 config["Weather Plugin"]["APIKey"] = "<your-open-weather-api-key>";
                 config["Weather Plugin"]["City"] = "Singapore";
-                parser.WriteFile(configPath, config);
+                parser.WriteFile(_configFilePath, config);
             }
             else
             {
-                config = parser.ReadFile(configPath);
+                config = parser.ReadFile(_configFilePath);
 
                 var apiKey = config["Weather Plugin"]["APIKey"];
                 _city = config["Weather Plugin"]["City"];

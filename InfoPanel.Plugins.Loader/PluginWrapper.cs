@@ -2,13 +2,16 @@
 
 namespace InfoPanel.Plugins.Loader
 {
-    public class PluginWrapper(IPlugin plugin)
+    public class PluginWrapper(string fileName, IPlugin plugin)
     {
+        public string FileName => fileName;
         public IPlugin Plugin { get; } = plugin;
         public List<IPluginContainer> PluginContainers { get; } = [];
 
         public string Id => Plugin.Id;
         public string Name => Plugin.Name;
+        public string Description => Plugin.Description;
+        public string? ConfigFilePath => Plugin.ConfigFilePath;
 
         public TimeSpan UpdateInterval => Plugin.UpdateInterval;
 

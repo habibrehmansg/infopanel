@@ -6,9 +6,11 @@ namespace InfoPanel.Extras
     {
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
+        public override string? ConfigFilePath => null;
+
         private readonly List<PluginContainer> _containers = [];
 
-        public DriveInfoPlugin() : base("drive-info-plugin", "Drive Info")
+        public DriveInfoPlugin() : base("drive-info-plugin", "Drive Info", "Retrieves local disk space information.")
         {
         }
 

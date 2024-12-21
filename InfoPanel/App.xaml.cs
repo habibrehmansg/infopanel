@@ -71,6 +71,8 @@ namespace InfoPanel
            services.AddScoped<ProfilesViewModel>();
            services.AddScoped<Views.Pages.DesignPage>();
            services.AddScoped<DesignViewModel>();
+           services.AddScoped<Views.Pages.PluginsPage>();
+           services.AddScoped<PluginsViewModel>();
            services.AddScoped<Views.Pages.AboutPage>();
            services.AddScoped<AboutViewModel>();
            services.AddScoped<Views.Pages.SettingsPage>();

@@ -10,10 +10,10 @@ namespace InfoPanel.Extras
 
         private MMDeviceEnumerator? _deviceEnumerator;
 
-        public VolumePlugin() : base("volume-plugin","Volume Info")
+        public VolumePlugin() : base("volume-plugin","Volume Info", "Retrieves audio output devices and relevant details. Powered by NAudio.")
         {
         }
-
+        public override string? ConfigFilePath => null;
         public override TimeSpan UpdateInterval => TimeSpan.FromMilliseconds(50);
 
         public override void Initialize()

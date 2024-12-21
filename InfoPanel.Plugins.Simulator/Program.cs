@@ -15,7 +15,7 @@ Dictionary<string, PluginWrapper> loadedPlugins = [];
 
 foreach (var plugin in plugins)
 {
-    PluginWrapper pluginWrapper = new(plugin);
+    PluginWrapper pluginWrapper = new(Path.GetFileName(pluginPath), plugin);
     if (loadedPlugins.TryAdd(pluginWrapper.Name, pluginWrapper))
     {
         try

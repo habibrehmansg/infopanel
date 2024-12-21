@@ -1,0 +1,155 @@
+﻿<Page
+    x:Class="InfoPanel.Views.Pages.PluginsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="clr-namespace:InfoPanel.Views.Components"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:InfoPanel"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:viewmodels="clr-namespace:InfoPanel.ViewModels"
+    Title="PluginsPage"
+    d:DataContext="{d:DesignInstance Type=viewmodels:PluginsViewModel}"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
+
+    <Grid Margin="0,60,0,20">
+        <ScrollViewer Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="1360" Margin="20,30,20,0">
+                <ui:CardControl Icon="PlugConnected20">
+                    <ui:CardControl.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="auto" />
+                                <ColumnDefinition Width="auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock
+                                    FontSize="13"
+                                    FontWeight="Medium"
+                                    Text="Plugin Framework" />
+
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Plugins are loaded at startup. Drop a plugin folder in and restart InfoPanel to activate." />
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="Orange">
+                                    <Bold>Warning!</Bold>
+                                    Plugins run under the same privileges as InfoPanel (Administrator). Do not load untrusted plugins. Always verify the source of the plugin.<LineBreak />
+                                    If unsure, do NOT use the plugin.</TextBlock>
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="If you would like to develop a plugin, visit our Github and reference Infopanel.Extras project for guidelines." />
+                            </StackPanel>
+                            <ui:Anchor
+                                Grid.Column="2"
+                                Width="150"
+                                VerticalAlignment="Center"
+                                Appearance="Secondary"
+                                Content="Open Plugins Folder"
+                                NavigateUri="{Binding PluginsFolder}" />
+
+
+                        </Grid>
+                    </ui:CardControl.Header>
+                </ui:CardControl>
+
+                <Label
+                    Margin="0,40,0,0"
+                    Content="Loaded Plugins"
+                    FontSize="14"
+                    FontWeight="Medium"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <ItemsControl ItemsSource="{Binding Plugins}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ui:CardControl Margin="0,10,0,0">
+                                <ui:CardControl.Header>
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                FontSize="13"
+                                                FontWeight="Medium"
+                                                Text="{Binding Name}" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding FileName}" />
+                                        </Grid>
+
+                                        <Grid Margin="0,5,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding Description}" />
+                                            <ui:Anchor
+                                                Grid.Column="2"
+                                                Width="150"
+                                                VerticalAlignment="Center"
+                                                Appearance="Secondary"
+                                                Content="Open Config File"
+                                                NavigateUri="{Binding ConfigFilePath}"
+                                                Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+                                        </Grid>
+
+                                    </StackPanel>
+
+                                    <!--<Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="auto" />
+                                            <ColumnDefinition Width="auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock
+                                                FontSize="13"
+                                                FontWeight="Medium"
+                                                Text="{Binding Name}" />
+
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding Description}" />
+                                        </StackPanel>
+
+                                        <ui:Anchor
+                                            Grid.Column="2"
+                                            Width="150"
+                                            Margin="0,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Appearance="Secondary"
+                                            Content="Config"
+                                            NavigateUri="C:\Users\Habib\VisualStudioProjects\infopanel\InfoPanel\bin\x64\Debug\net8.0-windows\plugins\InfoPanel.Extras\InfoPanel.Extras.dll.ini"
+                                            Visibility="{Binding Configurable, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    </Grid>-->
+                                </ui:CardControl.Header>
+                            </ui:CardControl>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -10,9 +10,10 @@ namespace InfoPanel.Extras
         private readonly PluginText _ipv6Sensor = new("IPv6", "-");
         private readonly HttpClient _httpClient = new();
 
+        public override string? ConfigFilePath => null;
         public override TimeSpan UpdateInterval => TimeSpan.FromMinutes(5);
 
-        public IpifyPlugin() : base("ipify-plugin", "Public IP - Ipify")
+        public IpifyPlugin() : base("ipify-plugin", "Public IP - Ipify", "IPv4 & IPv6 lookup via ipify.org API.")
         {
         }
 

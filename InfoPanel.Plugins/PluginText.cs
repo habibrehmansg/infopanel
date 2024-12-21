@@ -1,25 +1,15 @@
 ﻿namespace InfoPanel.Plugins
 {
-    public class PluginText : IPluginText
+    public class PluginText(string id, string name, string value) : IPluginText
     {
-        public string Id { get; }
+        public string Id { get; } = id;
 
-        public string Name { get; }
+        public string Name { get; } = name;
 
-        public string Value { get; set; }
+        public string Value { get; set; } = value;
 
-        public PluginText(string id, string name, string value)
+        public PluginText(string name, string value): this(IdUtil.Encode(name), name, value)
         {
-            Id = id;
-            Name = name;
-            Value = value;
-        }
-
-        public PluginText(string name, string value)
-        {
-            Id = IdUtil.Encode(name);
-            Name = name;
-            Value = value;
         }
     }
 }

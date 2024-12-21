@@ -1,30 +1,17 @@
 ﻿namespace InfoPanel.Plugins
 {
-    public class PluginSensor : IPluginSensor
+    public class PluginSensor(string id, string name, float value, string? unit = null) : IPluginSensor
     {
-        public string Id { get; }
+        public string Id { get; } = id;
 
-        public string Name { get; }
+        public string Name { get; } = name;
 
-        public float Value { get; set; }
+        public float Value { get; set; } = value;
 
-        public string? Unit { get; }
+        public string? Unit { get; } = unit;
 
-        public PluginSensor(string id, string name, float value, string? unit = null)
+        public PluginSensor(string name, float value, string? unit = null) : this(IdUtil.Encode(name), name, value, unit)
         {
-            Id = id;
-            Name = name;
-            Value = value;
-            Unit = unit;
-        }
-
-        public PluginSensor(string name, float value, string? unit = null)
-        {
-            Id = IdUtil.Encode(name);
-            Name = name;
-            Value = value;
-            Unit = unit;
-
         }
     }
 }

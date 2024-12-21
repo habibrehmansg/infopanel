@@ -18,7 +18,7 @@ namespace InfoPanel.Monitors
 
         public static readonly ConcurrentDictionary<string, PluginReading> SENSORHASH = new();
 
-        private readonly Dictionary<string, PluginWrapper> _loadedPlugins = [];
+        public readonly Dictionary<string, PluginWrapper> _loadedPlugins = [];
 
         private PluginMonitor() { }
 
@@ -82,7 +82,7 @@ namespace InfoPanel.Monitors
 
                     foreach (var plugin in plugins)
                     {
-                        PluginWrapper wrapper = new(plugin);
+                        PluginWrapper wrapper = new(Path.GetFileName(pluginFile), plugin);
                         if (_loadedPlugins.TryAdd(wrapper.Name, wrapper))
                         {
                             try

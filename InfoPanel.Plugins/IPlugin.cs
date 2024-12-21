@@ -4,6 +4,8 @@
     {
         string Id { get; }
         string Name { get; }
+        string Description { get; }
+        string? ConfigFilePath { get; }
         TimeSpan UpdateInterval { get; } 
         void Initialize();
         void Load(List<IPluginContainer> containers);

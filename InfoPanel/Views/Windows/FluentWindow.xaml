@@ -109,6 +109,11 @@
                         PageTag="updates"
                         PageType="{x:Type pages:UpdatesPage}" />
                     <ui:NavigationItem
+                        Content="Plugins"
+                        Icon="PlugConnected20"
+                        PageTag="plugins"
+                        PageType="{x:Type pages:PluginsPage}" />
+                    <ui:NavigationItem
                         Content="Settings"
                         Icon="Settings20"
                         PageTag="settings"
