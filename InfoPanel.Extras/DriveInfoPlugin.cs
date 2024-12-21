@@ -25,8 +25,8 @@ namespace InfoPanel.Extras
             {
                 if (drive.IsReady)
                 {
-                    PluginContainer container = new(drive.Name);
-                    container.Entries.Add(new PluginText("name", "Name", drive.Name));
+                    PluginContainer container = new(drive.Name.TrimEnd('\\'));
+                    container.Entries.Add(new PluginText("name", "Name", drive.Name.TrimEnd('\\')));
                     container.Entries.Add(new PluginText("type", "Type", drive.DriveType.ToString()));
                     container.Entries.Add(new PluginText("volume_label", "Volume Label", drive.VolumeLabel));
                     container.Entries.Add(new PluginText("format", "Format", drive.DriveFormat));

@@ -274,6 +274,7 @@ namespace InfoPanel
         {
             await StopPanels();
             await LibreMonitor.Instance.StopAsync();
+            await PluginMonitor.Instance.StopAsync();
             //shutdown
             Application.Current.Shutdown();
         }

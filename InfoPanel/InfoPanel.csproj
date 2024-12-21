@@ -3,6 +3,7 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0-windows</TargetFramework>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<Nullable>enable</Nullable>
 		<UseWPF>true</UseWPF>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -14,24 +15,36 @@
 		<UseWindowsForms>False</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
-		<ExtrasOutputDir>..\InfoPanel.Extras\bin\$(Platform)\$(Configuration)\$(TargetFramework)</ExtrasOutputDir>
-		<PluginOutputDir>bin\$(Platform)\$(Configuration)\$(TargetFramework)\plugins</PluginOutputDir>
+		<ExtrasOutputDir>..\InfoPanel.Extras\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)</ExtrasOutputDir>
 	</PropertyGroup>
 
+	<!-- Build InfoPanel.Extras -->
 	<Target Name="BuildExtras" BeforeTargets="Build">
-		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" />
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" Properties="SelfContained=false" />
 	</Target>
 
-	<Target Name="CopyExtrasDll" AfterTargets="Build">
-		<MakeDir Directories="$(PluginOutputDir)\InfoPanel.Extras" />
+	<!-- Copy InfoPanel.Extras to plugin dir -->
+	<Target Name="BuildCopyExtrasDll" AfterTargets="Build">
+		<Message Text="Executing BuildCopyExtrasDll target" Importance="High" />
+		<MakeDir Directories="$(OutputPath)plugins" />
 		<ItemGroup>
 			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(PluginOutputDir)\InfoPanel.Extras" SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(OutputPath)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="CleanPluginsDirectory" BeforeTargets="Clean">
-		<RemoveDir Directories="$(PluginOutputDir)" />
+		<RemoveDir Directories="$(OutputPath)\plugins" />
+	</Target>
+
+	<!-- Copy InfoPanel.Extras to publish dir -->
+	<Target Name="PublishCopyExtrasDll" AfterTargets="Publish">
+		<Message Text="Executing PublishCopyExtrasDll target" Importance="High" />
+		<MakeDir Directories="$(PublishDir)\InfoPanel.Extras" />
+		<ItemGroup>
+			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(PublishDir)\InfoPanel.Extras" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="Sign" AfterTargets="Publish">
