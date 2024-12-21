@@ -143,7 +143,7 @@ namespace InfoPanel.Views.Components
                 {
                     displayItem.Name = sensorItem.Name;
                     displayItem.SensorName = sensorItem.Name;
-                    displayItem.SensorType = SensorType.HwInfo;
+                    displayItem.SensorType = Enums.SensorType.HwInfo;
                     displayItem.Id = sensorItem.ParentId;
                     displayItem.Instance = sensorItem.ParentInstance;
                     displayItem.EntryId = sensorItem.SensorId;
@@ -153,7 +153,7 @@ namespace InfoPanel.Views.Components
                 {
                     chartDisplayItem.Name = sensorItem.Name;
                     chartDisplayItem.SensorName = sensorItem.Name;
-                    chartDisplayItem.SensorType = SensorType.HwInfo;
+                    chartDisplayItem.SensorType = Enums.SensorType.HwInfo;
                     chartDisplayItem.Id = sensorItem.ParentId;
                     chartDisplayItem.Instance = sensorItem.ParentInstance;
                     chartDisplayItem.EntryId = sensorItem.SensorId;
@@ -162,7 +162,7 @@ namespace InfoPanel.Views.Components
                 {
                     gaugeDisplayItem.Name = sensorItem.Name;
                     gaugeDisplayItem.SensorName = sensorItem.Name;
-                    gaugeDisplayItem.SensorType = SensorType.HwInfo;
+                    gaugeDisplayItem.SensorType = Enums.SensorType.HwInfo;
                     gaugeDisplayItem.Id = sensorItem.ParentId;
                     gaugeDisplayItem.Instance = sensorItem.ParentInstance;
                     gaugeDisplayItem.EntryId = sensorItem.SensorId;
@@ -170,7 +170,7 @@ namespace InfoPanel.Views.Components
                 {
                     sensorImageDisplayItem.Name = sensorItem.Name;
                     sensorImageDisplayItem.SensorName = sensorItem.Name;
-                    sensorImageDisplayItem.SensorType = SensorType.HwInfo;
+                    sensorImageDisplayItem.SensorType = Enums.SensorType.HwInfo;
                     sensorImageDisplayItem.Id = sensorItem.ParentId;
                     sensorImageDisplayItem.Instance = sensorItem.ParentInstance;
                     sensorImageDisplayItem.EntryId = sensorItem.SensorId;

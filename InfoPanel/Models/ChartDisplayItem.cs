@@ -1,4 +1,5 @@
-﻿using System;
+﻿using InfoPanel.Enums;
+using System;
 using System.Drawing;
 using System.Windows;
 
@@ -64,6 +65,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _libreSensorId, value);
+            }
+        }
+
+        private string _pluginSensorId = string.Empty;
+        public string PluginSensorId
+        {
+            get { return _pluginSensorId; }
+            set
+            {
+                SetProperty(ref _pluginSensorId, value);
             }
         }
 
@@ -248,6 +259,11 @@ namespace InfoPanel.Models
 
         public ChartDisplayItem() { }
 
+        public ChartDisplayItem(string name) : base(name)
+        {
+            SensorName = name;
+        }
+
         public ChartDisplayItem(string name, string libreSensorId) : base(name)
         {
             SensorName = name;
@@ -273,6 +289,7 @@ namespace InfoPanel.Models
             {
                 SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
                 SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
+                SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
                 _ => null,
             };
         }
@@ -388,6 +405,12 @@ namespace InfoPanel.Models
         {
             Name = "Graph";
         }
+
+        public GraphDisplayItem(string name, GraphType type) : base(name)
+        {
+            Type = type;
+        }
+
         public GraphDisplayItem(string name, GraphType type, string libreSensorId) : base(name, libreSensorId)
         {
             Type = type;
@@ -449,6 +472,9 @@ namespace InfoPanel.Models
         {
             Name = "Bar";
         }
+
+        public BarDisplayItem(string name) : base(name)
+        { }
 
         public BarDisplayItem(string name, string libreSensorId) : base(name, libreSensorId)
         { }
@@ -522,6 +548,13 @@ namespace InfoPanel.Models
         public DonutDisplayItem()
         {
             Name = "Donut";
+        }
+
+        public DonutDisplayItem(string name) : base(name)
+        {
+            Frame = false;
+            BackgroundColor = "#FFDCDCDC";
+            Width = 100; Height = 100;
         }
 
         public DonutDisplayItem(string name, string libreSensorId) : base(name, libreSensorId)

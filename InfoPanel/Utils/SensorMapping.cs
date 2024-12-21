@@ -3,7 +3,6 @@ using LibreHardwareMonitor.Hardware;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Windows.Media.Capture.Core;
 
 namespace InfoPanel.Utils
 {

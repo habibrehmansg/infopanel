@@ -1198,7 +1198,7 @@ namespace InfoPanel
                         {
                             foreach (DisplayItem displayItem in displayItems)
                             {
-                                if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == SensorType.HwInfo)
+                                if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
                                     {
@@ -1212,7 +1212,7 @@ namespace InfoPanel
                                         }
                                     }
                                 }
-                                else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == SensorType.HwInfo)
+                                else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
                                     {
@@ -1226,7 +1226,7 @@ namespace InfoPanel
                                         }
                                     }
                                 }
-                                else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == SensorType.HwInfo)
+                                else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
                                     {

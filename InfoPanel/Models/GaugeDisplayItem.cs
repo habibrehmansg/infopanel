@@ -1,4 +1,5 @@
-﻿using System;
+﻿using InfoPanel.Enums;
+using System;
 using System.Collections.ObjectModel;
 using System.Drawing;
 using System.Linq;
@@ -67,6 +68,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _libreSensorId, value);
+            }
+        }
+
+        private string _pluginSensorId = string.Empty;
+        public string PluginSensorId
+        {
+            get { return _pluginSensorId; }
+            set
+            {
+                SetProperty(ref _pluginSensorId, value);
             }
         }
 
@@ -171,6 +182,11 @@ namespace InfoPanel.Models
             Name = "Gauge";
         }
 
+        public GaugeDisplayItem(string name) : base(name)
+        {
+            SensorName = name;
+        }
+
         public GaugeDisplayItem(string name, string libreSensorId) : base(name)
         {
             SensorName = name;
@@ -193,6 +209,7 @@ namespace InfoPanel.Models
             {
                 SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
                 SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
+                SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
                 _ => null,
             };
         }

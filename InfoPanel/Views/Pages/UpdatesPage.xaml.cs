@@ -3,14 +3,13 @@ using Flurl.Http;
 using InfoPanel.Models;
 using InfoPanel.ViewModels;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Threading.Tasks;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using static InfoPanel.Views.Pages.AboutPage;
-using System.Diagnostics;
 
 namespace InfoPanel.Views.Pages
 {

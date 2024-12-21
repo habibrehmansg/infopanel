@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using InfoPanel.Enums;
+using System;
 
 namespace InfoPanel.Models
 {
@@ -20,6 +17,7 @@ namespace InfoPanel.Models
         UInt32 EntryId { get; set; }
 
         string LibreSensorId { get; set; }
+        string PluginSensorId { get; set; }
         SensorValueType ValueType { get; set; }
 
         SensorReading? GetValue();
