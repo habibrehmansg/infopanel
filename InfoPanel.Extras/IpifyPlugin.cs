@@ -5,7 +5,6 @@ namespace InfoPanel.Extras
 {
     public class IpifyPlugin : BasePlugin
     {
-        private readonly Stopwatch _stopwatch = new();
         private readonly PluginText _ipv4Sensor = new("IPv4", "-");
         private readonly PluginText _ipv6Sensor = new("IPv6", "-");
         private readonly HttpClient _httpClient = new();
@@ -41,12 +40,7 @@ namespace InfoPanel.Extras
 
         public override async Task UpdateAsync(CancellationToken cancellationToken)
         {
-            if (!_stopwatch.IsRunning || _stopwatch.ElapsedMilliseconds > 60000)
-            {
-                Trace.WriteLine("IpifyPlugin: Getting IP");
-                await GetIp(cancellationToken);
-                _stopwatch.Restart();
-            }
+            await GetIp(cancellationToken);
         }
 
         private async Task GetIp(CancellationToken cancellationToken)

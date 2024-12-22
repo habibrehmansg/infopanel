@@ -40,7 +40,7 @@ namespace InfoPanel.Monitors
                     {
                         try
                         {
-                            plugin.Update();
+                            //plugin.Update();
                         }
                         catch { }
                     }

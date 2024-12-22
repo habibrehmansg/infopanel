@@ -10,6 +10,8 @@ namespace InfoPanel.Extras
 
         private MMDeviceEnumerator? _deviceEnumerator;
 
+        private readonly Dictionary<string, MMDevice> _deviceCache = [];
+
         public VolumePlugin() : base("volume-plugin","Volume Info", "Retrieves audio output devices and relevant details. Powered by NAudio.")
         {
         }
@@ -37,13 +39,19 @@ namespace InfoPanel.Extras
                 container.Entries.Add(new PluginSensor("volume", "Volume", (float)Math.Round(device.AudioEndpointVolume.MasterVolumeLevelScalar * 100), "%"));
                 container.Entries.Add(new PluginText("mute", "Mute", device.AudioEndpointVolume.Mute.ToString()));
                 _containers.Add(container);
-                device.Dispose();
+
+                _deviceCache.TryAdd(device.ID, device);
             }
         }
 
         public override void Close()
         {
             _deviceEnumerator?.Dispose();
+            foreach (var device in _deviceCache.Values)
+            {
+                device.Dispose();
+            }
+            _deviceCache.Clear();
         }
 
         public override void Load(List<IPluginContainer> containers)
@@ -67,11 +75,24 @@ namespace InfoPanel.Extras
                 {
                     if (container.Name == "Default")
                     {
-                        device = _deviceEnumerator?.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                        var tempDevice = _deviceEnumerator?.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                        if (tempDevice != null)
+                        {
+                            device = _deviceCache.GetValueOrDefault(tempDevice.ID);
+
+                            if(device == null)
+                            {
+                                _deviceCache.TryAdd(tempDevice.ID, tempDevice);
+                                device = tempDevice;
+                            } else
+                            {
+                                tempDevice.Dispose();
+                            }
+                        }
                     }
                     else
                     {
-                        device = _deviceEnumerator?.GetDevice(container.Id);
+                        device = _deviceCache.GetValueOrDefault(container.Id);
                     }
 
                     if (device != null)
@@ -99,11 +120,7 @@ namespace InfoPanel.Extras
                             }
                         }
                     }
-                }
-                finally
-                {
-                    device?.Dispose();
-                }
+                }catch { }
             }
         }
     }

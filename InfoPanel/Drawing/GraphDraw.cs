@@ -340,7 +340,16 @@ namespace InfoPanel.Drawing
                                 }
                             }
 
-                            var value = Math.Max(tempValues.LastOrDefault(0.0) - minValue, 0);
+                            //var value = Math.Max(tempValues.LastOrDefault(0.0) - minValue, 0);
+
+                            var value = 0.0;
+                            var sensorReading = barDisplayItem.GetValue();
+
+                            if(sensorReading.HasValue)
+                            {
+                                value = sensorReading.Value.ValueNow;
+                            }
+
                             value = Math.Min(value, maxValue);
                             value = value / (maxValue - minValue);
                             value = value * Math.Max(frameRect.Width, frameRect.Height);
