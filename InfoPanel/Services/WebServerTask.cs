@@ -8,6 +8,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using InfoPanel.Models;
 
 namespace InfoPanel
 {
@@ -28,6 +29,30 @@ namespace InfoPanel
             // Save the bitmap directly to the memory stream in PNG format
             bitmap.Save(memoryStream, ImageFormat.Png);
             return memoryStream.ToArray();
+        }
+
+        private string GetAllSensorReadings()
+        {
+            StringBuilder sb = new();
+            foreach (var profile in ConfigModel.Instance.Profiles)
+            {
+                sb.AppendLine($"Profile: {profile.Name}");
+                var displayItems = SharedModel.Instance.GetProfileDisplayItemsCopy(profile);
+                foreach (var item in displayItems)
+                {
+                    if (item is SensorDisplayItem sensorItem)
+                    {
+                        var reading = sensorItem.GetValue();
+                        if (reading.HasValue)
+                        {
+                            string formattedReading = sensorItem.EvaluateText(reading.Value);
+                            sb.AppendLine($"{sensorItem.SensorName}: {formattedReading}");
+                        }
+                    }
+                }
+                sb.AppendLine();
+            }
+            return sb.ToString();
         }
 
         protected override Task DoWorkAsync(CancellationToken token)
@@ -84,6 +109,13 @@ namespace InfoPanel
                 {
                     context.Response.StatusCode = 404;
                 }
+            });
+
+            _webApplication.MapGet("/sensors/raw", async context =>
+            {
+                var sensorData = GetAllSensorReadings();
+                context.Response.ContentType = "text/plain";
+                await context.Response.WriteAsync(sensorData);
             });
 
             return _webApplication.RunAsync(token);
