@@ -190,6 +190,7 @@
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="HidSharp" Version="2.1.0" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
+		<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
 		<PackageReference Include="Sentry" Version="4.13.0" />
