@@ -2,15 +2,12 @@
 using IniParser;
 using IniParser.Model;
 using OpenWeatherMap.Standard;
-using System.Diagnostics;
 using System.Reflection;
 
 namespace InfoPanel.Extras
 {
     public class WeatherPlugin : BasePlugin
     {
-        private readonly Stopwatch _stopwatch = new();
-
         private Current? _current;
         private string? _city;
 
@@ -96,13 +93,7 @@ namespace InfoPanel.Extras
 
         public override async Task UpdateAsync(CancellationToken cancellationToken)
         {
-            // Update weather data every minute
-            if (!_stopwatch.IsRunning || _stopwatch.ElapsedMilliseconds > 60000)
-            {
-                Trace.WriteLine("WeatherPlugin: Getting weather data");
-                await GetWeather();
-                _stopwatch.Restart();
-            }
+            await GetWeather();
         }
 
         private async Task GetWeather()
