@@ -72,7 +72,7 @@ namespace InfoPanel.Monitors
         {
             PluginLoader pluginLoader = new();
 
-            var pluginDirectory = Path.Combine(Directory.GetCurrentDirectory(), "plugins");
+            var pluginDirectory = Globals.PluginsFolder;
 
             foreach (var directory in Directory.GetDirectories(pluginDirectory))
             {
