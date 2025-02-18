@@ -1,0 +1,177 @@
+﻿using InfoPanel.Plugins;
+using SpotifyAPI.Web;
+using SpotifyAPI.Web.Auth;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Diagnostics;
+using System.ComponentModel;
+using System.Web; // Add this using statement for HttpUtility
+
+namespace InfoPanel.Extras
+{
+    public class SpotifyPlugin : BasePlugin
+    {
+        private readonly PluginText _currentTrack = new("current-track", "Current Track", "-");
+        private readonly PluginText _artist = new("artist", "Artist", "-");
+        private readonly PluginText _coverArt = new("cover-art", "Cover Art", "-");
+
+        private readonly PluginSensor _elapsedTime = new("elapsed-time", "Elapsed Time", 0, "Time");
+        private readonly PluginSensor _remainingTime = new("remaining-time", "Remaining Time", 0, "Time");
+
+        private SpotifyClient? _spotifyClient;
+        private string? _verifier;
+        private EmbedIOAuthServer? _server;
+
+        public SpotifyPlugin() : base("spotify-plugin", "Spotify Info", "Displays the current Spotify track information.")
+        {
+        }
+
+        public override string? ConfigFilePath => null;
+        public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
+
+        public override void Initialize()
+        {
+            Debug.WriteLine("Initialize called");
+
+            // Generate verifier and challenge
+            var (verifier, challenge) = PKCEUtil.GenerateCodes();
+            _verifier = verifier;
+
+            // Start the embedded HTTP server
+            _server = new EmbedIOAuthServer(new Uri("http://localhost:5000/callback"), 5000);
+            _server.AuthorizationCodeReceived += OnAuthorizationCodeReceived;
+            _server.Start();
+
+            // Generate login URI
+            var loginRequest = new LoginRequest(
+                _server.BaseUri,
+                "8774b985b0e64df785cea99de08952f4",
+                LoginRequest.ResponseType.Code
+            )
+            {
+                CodeChallengeMethod = "S256",
+                CodeChallenge = challenge,
+                Scope = new[] { Scopes.UserReadPlaybackState, Scopes.UserReadCurrentlyPlaying }
+            };
+            var uri = loginRequest.ToUri();
+
+            // Redirect user to uri via your favorite web-server or open a local browser window
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = uri.ToString(),
+                UseShellExecute = true
+            });
+
+            Debug.WriteLine("Initialize completed");
+
+            // Initialize the container with default values
+            var container = new PluginContainer("Spotify");
+            container.Entries.AddRange([_currentTrack, _artist, _coverArt, _elapsedTime, _remainingTime]);
+            Load([container]);
+        }
+
+        private async Task OnAuthorizationCodeReceived(object sender, AuthorizationCodeResponse response)
+        {
+            if (_verifier == null)
+            {
+                throw new InvalidOperationException("Verifier is not initialized.");
+            }
+
+            // Exchange code for access token and refresh token
+            var initialResponse = await new OAuthClient().RequestToken(
+                new PKCETokenRequest("8774b985b0e64df785cea99de08952f4", response.Code, _server!.BaseUri, _verifier)
+            );
+
+            var authenticator = new PKCEAuthenticator("8774b985b0e64df785cea99de08952f4", initialResponse);
+            var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
+            _spotifyClient = new SpotifyClient(config);
+
+            // Stop the server after successful authentication
+            await _server.Stop();
+        }
+
+        public override void Close()
+        {
+            _server?.Dispose();
+        }
+
+        public override void Load(List<IPluginContainer> containers)
+        {
+            var container = new PluginContainer("Spotify");
+            container.Entries.AddRange([_currentTrack, _artist, _coverArt, _elapsedTime, _remainingTime]);
+            containers.Add(container);
+        }
+
+        public override void Update()
+        {
+            UpdateAsync(CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        public override async Task UpdateAsync(CancellationToken cancellationToken)
+        {
+            Debug.WriteLine("UpdateAsync called");
+            await GetSpotifyInfo();
+        }
+
+        private async Task GetSpotifyInfo()
+        {
+            Debug.WriteLine("GetSpotifyInfo called");
+
+            if (_spotifyClient == null)
+            {
+                Debug.WriteLine("Spotify client is not initialized.");
+                SetDefaultValues();
+                return;
+            }
+
+            try
+            {
+                var playback = await _spotifyClient.Player.GetCurrentPlayback();
+                if (playback?.Item is FullTrack result)
+                {
+                    // More explicit null checks and handling with encoding
+                    _currentTrack.Value = HttpUtility.HtmlEncode(!string.IsNullOrEmpty(result.Name) ? result.Name : "Unknown Track");
+                    _artist.Value = HttpUtility.HtmlEncode(string.Join(", ", result.Artists.Select(a => !string.IsNullOrEmpty(a.Name) ? a.Name : "Unknown").Where(n => !string.IsNullOrEmpty(n))));
+                    _coverArt.Value = result.Album.Images.FirstOrDefault()?.Url ?? string.Empty;
+
+                    _elapsedTime.Value = playback.ProgressMs / 1000.0f;
+                    _remainingTime.Value = (result.DurationMs - playback.ProgressMs) / 1000.0f;
+
+                    // Log updated values for debugging
+                    Debug.WriteLine($"Current track Value: {_currentTrack.Value}");
+                    Debug.WriteLine($"Artist Value: {_artist.Value}");
+                    Debug.WriteLine($"Elapsed Time Value: {_elapsedTime.Value}");
+                    Debug.WriteLine($"Remaining Time Value: {_remainingTime.Value}");
+                    Debug.WriteLine($"Cover Art Value: {_coverArt.Value}");
+                }
+                else
+                {
+                    Debug.WriteLine("No track is currently playing.");
+                    SetDefaultValues("No track playing");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error
+                Debug.WriteLine($"Error fetching Spotify playback information: {ex.Message}");
+                SetDefaultValues("Error updating");
+            }
+        }
+
+        private void SetDefaultValues(string message = "Unknown")
+        {
+            _currentTrack.Value = message;
+            _artist.Value = message;
+            _coverArt.Value = string.Empty;
+
+            _elapsedTime.Value = 0;
+            _remainingTime.Value = 0;
+
+            Debug.WriteLine($"Set default values for Spotify Info: {message}");
+        }
+    }
+
+}
