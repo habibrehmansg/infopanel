@@ -9,6 +9,9 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Web;
+using IniParser;
+using IniParser.Model;
+using System.Reflection;
 
 namespace InfoPanel.Extras
 {
@@ -24,48 +27,77 @@ namespace InfoPanel.Extras
         private SpotifyClient? _spotifyClient;
         private string? _verifier;
         private EmbedIOAuthServer? _server;
+        private string? _apiKey;
+        private string? _configFilePath;
 
         public SpotifyPlugin() : base("spotify-plugin", "Spotify Info", "Displays the current Spotify track information.")
         {
         }
 
-        public override string? ConfigFilePath => null;
+        public override string? ConfigFilePath => _configFilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
         public override void Initialize()
         {
             Debug.WriteLine("Initialize called");
 
-            // Generate verifier and challenge
-            var (verifier, challenge) = PKCEUtil.GenerateCodes();
-            _verifier = verifier;
+            // Determine the configuration file path
+            Assembly assembly = Assembly.GetExecutingAssembly();
+            _configFilePath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
 
-            // Start the embedded HTTP server
-            _server = new EmbedIOAuthServer(new Uri("http://localhost:5000/callback"), 5000);
-            _server.AuthorizationCodeReceived += OnAuthorizationCodeReceived;
-            _server.Start();
-
-            // Generate login URI
-            var loginRequest = new LoginRequest(
-                _server.BaseUri,
-                "8774b985b0e64df785cea99de08952f4",
-                LoginRequest.ResponseType.Code
-            )
+            var parser = new FileIniDataParser();
+            IniData config;
+            if (!File.Exists(_configFilePath))
             {
-                CodeChallengeMethod = "S256",
-                CodeChallenge = challenge,
-                Scope = new[] { Scopes.UserReadPlaybackState, Scopes.UserReadCurrentlyPlaying }
-            };
-            var uri = loginRequest.ToUri();
-
-            // Redirect user to uri via your favorite web-server or open a local browser window
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                config = new IniData();
+                config["Spotify Plugin"]["APIKey"] = "<your-spotify-api-key>"; // Default or placeholder value
+                parser.WriteFile(_configFilePath, config);
+            }
+            else
             {
-                FileName = uri.ToString(),
-                UseShellExecute = true
-            });
+                config = parser.ReadFile(_configFilePath);
 
-            Debug.WriteLine("Initialize completed");
+                _apiKey = config["Spotify Plugin"]["APIKey"];
+
+                if (!string.IsNullOrEmpty(_apiKey))
+                {
+                    // Generate verifier and challenge
+                    var (verifier, challenge) = PKCEUtil.GenerateCodes();
+                    _verifier = verifier;
+
+                    // Start the embedded HTTP server
+                    _server = new EmbedIOAuthServer(new Uri("http://localhost:5000/callback"), 5000);
+                    _server.AuthorizationCodeReceived += OnAuthorizationCodeReceived;
+                    _server.Start();
+
+                    // Generate login URI with the API key from configuration
+                    var loginRequest = new LoginRequest(
+                        _server.BaseUri,
+                        _apiKey,
+                        LoginRequest.ResponseType.Code
+                    )
+                    {
+                        CodeChallengeMethod = "S256",
+                        CodeChallenge = challenge,
+                        Scope = new[] { Scopes.UserReadPlaybackState, Scopes.UserReadCurrentlyPlaying }
+                    };
+                    var uri = loginRequest.ToUri();
+
+                    // Redirect user to uri via your favorite web-server or open a local browser window
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = uri.ToString(),
+                        UseShellExecute = true
+                    });
+
+                    Debug.WriteLine("Initialize completed");
+                }
+                else
+                {
+                    Debug.WriteLine("Spotify API Key is not set or is invalid.");
+                    return;
+                }
+            }
 
             // Initialize the container with default values
             var container = new PluginContainer("Spotify");
@@ -75,17 +107,17 @@ namespace InfoPanel.Extras
 
         private async Task OnAuthorizationCodeReceived(object sender, AuthorizationCodeResponse response)
         {
-            if (_verifier == null)
+            if (_verifier == null || _apiKey == null)
             {
-                throw new InvalidOperationException("Verifier is not initialized.");
+                throw new InvalidOperationException("Verifier or API Key is not initialized.");
             }
 
             // Exchange code for access token and refresh token
             var initialResponse = await new OAuthClient().RequestToken(
-                new PKCETokenRequest("8774b985b0e64df785cea99de08952f4", response.Code, _server!.BaseUri, _verifier)
+                new PKCETokenRequest(_apiKey, response.Code, _server!.BaseUri, _verifier)
             );
 
-            var authenticator = new PKCEAuthenticator("8774b985b0e64df785cea99de08952f4", initialResponse);
+            var authenticator = new PKCEAuthenticator(_apiKey, initialResponse);
             var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
             _spotifyClient = new SpotifyClient(config);
 
@@ -132,9 +164,9 @@ namespace InfoPanel.Extras
                 var playback = await _spotifyClient.Player.GetCurrentPlayback();
                 if (playback?.Item is FullTrack result)
                 {
-                    // More explicit null checks and handling with encoding
-                    _currentTrack.Value = HttpUtility.HtmlEncode(!string.IsNullOrEmpty(result.Name) ? result.Name : "Unknown Track");
-                    _artist.Value = HttpUtility.HtmlEncode(string.Join(", ", result.Artists.Select(a => !string.IsNullOrEmpty(a.Name) ? a.Name : "Unknown").Where(n => !string.IsNullOrEmpty(n))));
+                    // Handle foreign characters by not encoding unless necessary for HTML
+                    _currentTrack.Value = !string.IsNullOrEmpty(result.Name) ? result.Name : "Unknown Track";
+                    _artist.Value = string.Join(", ", result.Artists.Select(a => !string.IsNullOrEmpty(a.Name) ? a.Name : "Unknown").Where(n => !string.IsNullOrEmpty(n)));
                     _coverArt.Value = result.Album.Images.FirstOrDefault()?.Url ?? string.Empty;
 
                     // Format elapsed and remaining time in mm:ss
