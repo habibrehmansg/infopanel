@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.ComponentModel;
-using System.Web; // Add this using statement for HttpUtility
+using System.Web;
 
 namespace InfoPanel.Extras
 {
@@ -18,8 +18,8 @@ namespace InfoPanel.Extras
         private readonly PluginText _artist = new("artist", "Artist", "-");
         private readonly PluginText _coverArt = new("cover-art", "Cover Art", "-");
 
-        private readonly PluginSensor _elapsedTime = new("elapsed-time", "Elapsed Time", 0, "Time");
-        private readonly PluginSensor _remainingTime = new("remaining-time", "Remaining Time", 0, "Time");
+        private readonly PluginText _elapsedTime = new("elapsed-time", "Elapsed Time", "00:00");
+        private readonly PluginText _remainingTime = new("remaining-time", "Remaining Time", "00:00");
 
         private SpotifyClient? _spotifyClient;
         private string? _verifier;
@@ -137,8 +137,12 @@ namespace InfoPanel.Extras
                     _artist.Value = HttpUtility.HtmlEncode(string.Join(", ", result.Artists.Select(a => !string.IsNullOrEmpty(a.Name) ? a.Name : "Unknown").Where(n => !string.IsNullOrEmpty(n))));
                     _coverArt.Value = result.Album.Images.FirstOrDefault()?.Url ?? string.Empty;
 
-                    _elapsedTime.Value = playback.ProgressMs / 1000.0f;
-                    _remainingTime.Value = (result.DurationMs - playback.ProgressMs) / 1000.0f;
+                    // Format elapsed and remaining time in mm:ss
+                    var elapsedSeconds = playback.ProgressMs / 1000;
+                    var remainingSeconds = (result.DurationMs - playback.ProgressMs) / 1000;
+                    
+                    _elapsedTime.Value = TimeSpan.FromSeconds(elapsedSeconds).ToString(@"mm\:ss");
+                    _remainingTime.Value = TimeSpan.FromSeconds(remainingSeconds).ToString(@"mm\:ss");
 
                     // Log updated values for debugging
                     Debug.WriteLine($"Current track Value: {_currentTrack.Value}");
@@ -167,11 +171,10 @@ namespace InfoPanel.Extras
             _artist.Value = message;
             _coverArt.Value = string.Empty;
 
-            _elapsedTime.Value = 0;
-            _remainingTime.Value = 0;
+            _elapsedTime.Value = "00:00";
+            _remainingTime.Value = "00:00";
 
             Debug.WriteLine($"Set default values for Spotify Info: {message}");
         }
     }
-
 }
