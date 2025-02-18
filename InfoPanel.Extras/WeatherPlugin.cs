@@ -98,12 +98,12 @@ namespace InfoPanel.Extras
 
         private async Task GetWeather()
         {
-            if (_current == null)
+            if (_current == null || _city == null)
             {
                 return;
             }
 
-            var result = await _current.GetWeatherDataByCityNameAsync("Singapore");
+            var result = await _current.GetWeatherDataByCityNameAsync(_city);
 
             if (result != null)
             {
