@@ -473,71 +473,61 @@ namespace InfoPanel.Extras
         /// <summary>
         /// Downloads the cover art image from the provided URL and saves it to a local file.
         /// </summary>
-        private async Task<string?> DownloadAndSaveCoverArtAsync(string imageUrl)
+private static readonly HttpClient _httpClient = new HttpClient();
+
+private async Task<string?> DownloadAndSaveCoverArtAsync(string imageUrl)
+{
+    if (string.IsNullOrEmpty(_configFilePath))
+    {
+        Debug.WriteLine("Config file path is not set.");
+        return null;
+    }
+
+    var configDirectory = Path.GetDirectoryName(_configFilePath);
+    if (configDirectory == null)
+    {
+        Debug.WriteLine("Config directory is not valid.");
+        return null;
+    }
+
+    var filePath = Path.Combine(configDirectory, "spotifyCoverArt.png");
+
+    try
+    {
+        var imageBytes = await _httpClient.GetByteArrayAsync(imageUrl);
+
+        int retryCount = 0;
+        int maxRetries = 5;
+        int delay = 500;
+
+        while (retryCount < maxRetries)
         {
-            if (string.IsNullOrEmpty(_configFilePath))
-            {
-                Debug.WriteLine("Config file path is not set.");
-                return null;
-            }
-
-            var configDirectory = Path.GetDirectoryName(_configFilePath);
-            if (configDirectory == null)
-            {
-                Debug.WriteLine("Config directory is not valid.");
-                return null;
-            }
-
-            var filePath = Path.Combine(configDirectory, "spotifyCoverArt.png");
-
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
                 {
-                    var imageBytes = await client.GetByteArrayAsync(imageUrl);
-
-                    int retryCount = 0;
-                    int maxRetries = 5;
-                    int delay = 500;
-
-                    while (retryCount < maxRetries)
-                    {
-                        try
-                        {
-                            using (
-                                var fileStream = new FileStream(
-                                    filePath,
-                                    FileMode.OpenOrCreate,
-                                    FileAccess.Write,
-                                    FileShare.ReadWrite
-                                )
-                            )
-                            {
-                                await fileStream.WriteAsync(imageBytes, 0, imageBytes.Length);
-                            }
-                            Debug.WriteLine($"Successfully wrote to file: {filePath}");
-                            return filePath;
-                        }
-                        catch (IOException ioEx) when (IsFileLocked(ioEx))
-                        {
-                            retryCount++;
-                            Debug.WriteLine(
-                                $"File is locked, retrying... Attempt {retryCount}/{maxRetries}"
-                            );
-                            await Task.Delay(delay);
-                            delay *= 2; // Exponential backoff
-                        }
-                    }
-                    Debug.WriteLine("Failed to write cover art image after multiple attempts.");
-                    return null;
+                    await fileStream.WriteAsync(imageBytes, 0, imageBytes.Length);
                 }
+                Debug.WriteLine($"Successfully wrote to file: {filePath}");
+                return filePath;
             }
-            catch (Exception ex)
+            catch (IOException ioEx) when (IsFileLocked(ioEx))
             {
-                Debug.WriteLine($"Error downloading cover art image: {ex.Message}");
-                return null;
+                retryCount++;
+                Debug.WriteLine($"File is locked, retrying... Attempt {retryCount}/{maxRetries}");
+                await Task.Delay(delay);
+                delay *= 2; // Exponential backoff
             }
         }
+        Debug.WriteLine("Failed to write cover art image after multiple attempts.");
+        return null;
+    }
+    catch (Exception ex)
+    {
+        Debug.WriteLine($"Error downloading cover art image: {ex.Message}");
+        return null;
+    }
+}
 
         private bool IsFileLocked(IOException ioEx)
         {
