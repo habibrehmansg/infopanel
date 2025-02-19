@@ -1,27 +1,27 @@
-﻿using InfoPanel.Plugins;
-using SpotifyAPI.Web;
-using SpotifyAPI.Web.Auth;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Diagnostics;
-using System.ComponentModel;
-using System.Web;
-using IniParser;
-using IniParser.Model;
-using System.Reflection;
-using System.IO;
+﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Web;
+using InfoPanel.Plugins;
+using IniParser;
+using IniParser.Model;
+using SpotifyAPI.Web;
+using SpotifyAPI.Web.Auth;
 
 namespace InfoPanel.Extras
 {
     /// <summary>
-    /// InfoPanel Spotify Plugin - v.1.0.0
-    /// 
+    /// InfoPanel Spotify Plugin - v.1.0.1-beta
+    ///
     /// A plugin to display current Spotify track information in the InfoPanel application.
     /// </summary>
     public class SpotifyPlugin : BasePlugin
@@ -33,7 +33,11 @@ namespace InfoPanel.Extras
 
         // PluginText objects for displaying time information
         private readonly PluginText _elapsedTime = new("elapsed-time", "Elapsed Time", "00:00");
-        private readonly PluginText _remainingTime = new("remaining-time", "Remaining Time", "00:00");
+        private readonly PluginText _remainingTime = new(
+            "remaining-time",
+            "Remaining Time",
+            "00:00"
+        );
 
         // Spotify API client and authentication components
         private SpotifyClient? _spotifyClient;
@@ -46,9 +50,14 @@ namespace InfoPanel.Extras
         // Rate limiter to prevent exceeding API call limits
         private readonly RateLimiter _rateLimiter = new RateLimiter(180, TimeSpan.FromMinutes(1)); // Adjusted to 180 requests per minute
 
-        public SpotifyPlugin() : base("spotify-plugin", "Spotify Info", "Displays the current Spotify track information.")
-        {
-        }
+        private static readonly object _fileLock = new object();
+
+        public SpotifyPlugin()
+            : base(
+                "spotify-plugin",
+                "Spotify Info",
+                "Displays the current Spotify track information."
+            ) { }
 
         public override string? ConfigFilePath => _configFilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
@@ -105,7 +114,9 @@ namespace InfoPanel.Extras
 
             // Initialize the container with default values
             var container = new PluginContainer("Spotify");
-            container.Entries.AddRange([_currentTrack, _artist, _coverArt, _elapsedTime, _remainingTime]);
+            container.Entries.AddRange(
+                [_currentTrack, _artist, _coverArt, _elapsedTime, _remainingTime]
+            );
             Load([container]);
         }
 
@@ -128,8 +139,7 @@ namespace InfoPanel.Extras
                 );
 
                 var authenticator = new PKCEAuthenticator(_apiKey, response);
-                var config = SpotifyClientConfig.CreateDefault()
-                    .WithAuthenticator(authenticator);
+                var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
 
                 _spotifyClient = new SpotifyClient(config);
 
@@ -172,16 +182,18 @@ namespace InfoPanel.Extras
                 {
                     CodeChallengeMethod = "S256",
                     CodeChallenge = challenge,
-                    Scope = new[] { Scopes.UserReadPlaybackState, Scopes.UserReadCurrentlyPlaying }
+                    Scope = new[] { Scopes.UserReadPlaybackState, Scopes.UserReadCurrentlyPlaying },
                 };
                 var uri = loginRequest.ToUri();
 
                 Debug.WriteLine($"Authentication URI: {uri}");
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = uri.ToString(),
-                    UseShellExecute = true
-                });
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = uri.ToString(),
+                        UseShellExecute = true,
+                    }
+                );
 
                 Debug.WriteLine("Authentication process started.");
             }
@@ -194,7 +206,10 @@ namespace InfoPanel.Extras
         /// <summary>
         /// Event handler for when authorization code is received from Spotify.
         /// </summary>
-        private async Task OnAuthorizationCodeReceived(object sender, AuthorizationCodeResponse response)
+        private async Task OnAuthorizationCodeReceived(
+            object sender,
+            AuthorizationCodeResponse response
+        )
         {
             if (_verifier == null || _apiKey == null)
             {
@@ -221,8 +236,7 @@ namespace InfoPanel.Extras
                 }
 
                 var authenticator = new PKCEAuthenticator(_apiKey, initialResponse);
-                var config = SpotifyClientConfig.CreateDefault()
-                    .WithAuthenticator(authenticator);
+                var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
 
                 _spotifyClient = new SpotifyClient(config);
 
@@ -232,7 +246,7 @@ namespace InfoPanel.Extras
             catch (APIException apiEx)
             {
                 HandleError("API authentication error");
-                if (apiEx.Response != null && Debugger.IsAttached)  // Only log detailed error if debugger is attached
+                if (apiEx.Response != null && Debugger.IsAttached) // Only log detailed error if debugger is attached
                 {
                     Debug.WriteLine($"API Response Error: {apiEx.Message}");
                 }
@@ -270,7 +284,9 @@ namespace InfoPanel.Extras
         public override void Load(List<IPluginContainer> containers)
         {
             var container = new PluginContainer("Spotify");
-            container.Entries.AddRange([_currentTrack, _artist, _coverArt, _elapsedTime, _remainingTime]);
+            container.Entries.AddRange(
+                [_currentTrack, _artist, _coverArt, _elapsedTime, _remainingTime]
+            );
             containers.Add(container);
         }
 
@@ -309,11 +325,20 @@ namespace InfoPanel.Extras
 
             try
             {
-                var playback = await ExecuteWithRetry(() => _spotifyClient.Player.GetCurrentPlayback());
+                var playback = await ExecuteWithRetry(
+                    () => _spotifyClient.Player.GetCurrentPlayback()
+                );
                 if (playback?.Item is FullTrack result)
                 {
-                    _currentTrack.Value = !string.IsNullOrEmpty(result.Name) ? result.Name : "Unknown Track";
-                    _artist.Value = string.Join(", ", result.Artists.Select(a => !string.IsNullOrEmpty(a.Name) ? a.Name : "Unknown").Where(n => !string.IsNullOrEmpty(n)));
+                    _currentTrack.Value = !string.IsNullOrEmpty(result.Name)
+                        ? result.Name
+                        : "Unknown Track";
+                    _artist.Value = string.Join(
+                        ", ",
+                        result
+                            .Artists.Select(a => !string.IsNullOrEmpty(a.Name) ? a.Name : "Unknown")
+                            .Where(n => !string.IsNullOrEmpty(n))
+                    );
 
                     var coverArtUrl = result.Album.Images.FirstOrDefault()?.Url ?? string.Empty;
                     if (!string.IsNullOrEmpty(coverArtUrl))
@@ -331,7 +356,9 @@ namespace InfoPanel.Extras
                     var remainingSeconds = (result.DurationMs - playback.ProgressMs) / 1000;
 
                     _elapsedTime.Value = TimeSpan.FromSeconds(elapsedSeconds).ToString(@"mm\:ss");
-                    _remainingTime.Value = TimeSpan.FromSeconds(remainingSeconds).ToString(@"mm\:ss");
+                    _remainingTime.Value = TimeSpan
+                        .FromSeconds(remainingSeconds)
+                        .ToString(@"mm\:ss");
 
                     // Log updated values for debugging
                     Debug.WriteLine($"Current track Value: {_currentTrack.Value}");
@@ -368,9 +395,15 @@ namespace InfoPanel.Extras
                 {
                     return await operation();
                 }
-                catch (APIException apiEx) when (apiEx.Response != null && apiEx.Response.StatusCode == HttpStatusCode.TooManyRequests)
+                catch (APIException apiEx)
+                    when (apiEx.Response != null
+                        && apiEx.Response.StatusCode == HttpStatusCode.TooManyRequests
+                    )
                 {
-                    if (apiEx.Response.Headers.TryGetValue("Retry-After", out string? retryAfter) && retryAfter != null)
+                    if (
+                        apiEx.Response.Headers.TryGetValue("Retry-After", out string? retryAfter)
+                        && retryAfter != null
+                    )
                     {
                         if (int.TryParse(retryAfter, out int seconds))
                         {
@@ -388,7 +421,9 @@ namespace InfoPanel.Extras
                         throw; // If max attempts reached, rethrow the last exception
                     }
 
-                    Debug.WriteLine($"Rate limit hit, waiting for {delay.TotalSeconds} seconds before retry. Attempt {attempts}/{maxAttempts}.");
+                    Debug.WriteLine(
+                        $"Rate limit hit, waiting for {delay.TotalSeconds} seconds before retry. Attempt {attempts}/{maxAttempts}."
+                    );
                     await Task.Delay(delay);
                     delay = delay.Multiply(2); // Exponential backoff
                     delay = TimeSpan.FromSeconds((int)delay.TotalSeconds + new Random().Next(1, 3)); // Add some jitter
@@ -396,7 +431,9 @@ namespace InfoPanel.Extras
                 catch (HttpRequestException httpEx)
                 {
                     attempts++;
-                    Debug.WriteLine($"HTTP Request Exception: {httpEx.Message}. Inner Exception: {httpEx.InnerException?.Message}. Attempt {attempts}/{maxAttempts}.");
+                    Debug.WriteLine(
+                        $"HTTP Request Exception: {httpEx.Message}. Inner Exception: {httpEx.InnerException?.Message}. Attempt {attempts}/{maxAttempts}."
+                    );
                     if (attempts >= maxAttempts)
                     {
                         throw; // If max attempts reached, rethrow the last exception
@@ -433,6 +470,9 @@ namespace InfoPanel.Extras
             Debug.WriteLine($"Error occurred: {errorMessage}");
         }
 
+        /// <summary>
+        /// Downloads the cover art image from the provided URL and saves it to a local file.
+        /// </summary>
         private async Task<string?> DownloadAndSaveCoverArtAsync(string imageUrl)
         {
             if (string.IsNullOrEmpty(_configFilePath))
@@ -455,17 +495,55 @@ namespace InfoPanel.Extras
                 using (HttpClient client = new HttpClient())
                 {
                     var imageBytes = await client.GetByteArrayAsync(imageUrl);
-                    await File.WriteAllBytesAsync(filePath, imageBytes);
-                }
 
-                Debug.WriteLine($"Cover art image saved to {filePath}");
-                return filePath;
+                    int retryCount = 0;
+                    int maxRetries = 5;
+                    int delay = 500;
+
+                    while (retryCount < maxRetries)
+                    {
+                        try
+                        {
+                            using (
+                                var fileStream = new FileStream(
+                                    filePath,
+                                    FileMode.OpenOrCreate,
+                                    FileAccess.Write,
+                                    FileShare.ReadWrite
+                                )
+                            )
+                            {
+                                await fileStream.WriteAsync(imageBytes, 0, imageBytes.Length);
+                            }
+                            Debug.WriteLine($"Successfully wrote to file: {filePath}");
+                            return filePath;
+                        }
+                        catch (IOException ioEx) when (IsFileLocked(ioEx))
+                        {
+                            retryCount++;
+                            Debug.WriteLine(
+                                $"File is locked, retrying... Attempt {retryCount}/{maxRetries}"
+                            );
+                            await Task.Delay(delay);
+                            delay *= 2; // Exponential backoff
+                        }
+                    }
+                    Debug.WriteLine("Failed to write cover art image after multiple attempts.");
+                    return null;
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error downloading cover art image: {ex.Message}");
                 return null;
             }
+        }
+
+        private bool IsFileLocked(IOException ioEx)
+        {
+            int errorCode =
+                System.Runtime.InteropServices.Marshal.GetHRForException(ioEx) & ((1 << 16) - 1);
+            return errorCode == 32 || errorCode == 33;
         }
     }
 
