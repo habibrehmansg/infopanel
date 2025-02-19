@@ -34,7 +34,7 @@ namespace InfoPanel.Models
 
         private readonly Stopwatch Stopwatch = new();
 
-        private FileSystemWatcher _fileWatcher;
+        private FileSystemWatcher? _fileWatcher; // Make nullable for lazy initialization
         private DateTime _lastModified;
 
         public event EventHandler? ImageUpdated;
@@ -49,14 +49,17 @@ namespace InfoPanel.Models
 
         private void SetupFileWatcher()
         {
-            _fileWatcher = new FileSystemWatcher
+            if (_fileWatcher == null) // Lazy initialization
             {
-                Path = Path.GetDirectoryName(ImagePath),
-                Filter = Path.GetFileName(ImagePath),
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
-            };
-            _fileWatcher.Changed += FileChanged;
-            _fileWatcher.EnableRaisingEvents = true;
+                _fileWatcher = new FileSystemWatcher
+                {
+                    Path = Path.GetDirectoryName(ImagePath),
+                    Filter = Path.GetFileName(ImagePath),
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+                };
+                _fileWatcher.Changed += FileChanged;
+                _fileWatcher.EnableRaisingEvents = true;
+            }
         }
 
         private void FileChanged(object sender, FileSystemEventArgs e)
@@ -106,6 +109,7 @@ namespace InfoPanel.Models
         {
             if (ImagePath != null && File.Exists(ImagePath))
             {
+                // Lock only the critical section
                 lock (Lock)
                 {
                     try
@@ -369,6 +373,7 @@ namespace InfoPanel.Models
                 throw new ObjectDisposedException("LockedImage");
             }
 
+            // Lock only the critical section
             lock (Lock)
             {
                 if (_codec != null && BitmapCache != null)
