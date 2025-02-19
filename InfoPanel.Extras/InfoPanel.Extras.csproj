@@ -11,12 +11,15 @@
 
   <ItemGroup>
     <PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="OpenWeatherMap.Standard" Version="3.0.0" />
     <PackageReference Include="SpotifyAPI.Web" Version="7.2.1" />
     <PackageReference Include="SpotifyAPI.Web.Auth" Version="7.2.1" />
     <PackageReference Include="System.Collections.Concurrent" Version="4.3.0" />
     <PackageReference Include="System.Net.Http" Version="4.3.4" />
+    <PackageReference Include="PresentMonFps" Version="2.0.5" />
+    <PackageReference Include="Vanara.PInvoke.Shared" Version="4.0.5" />
   </ItemGroup>
 
   <ItemGroup>
