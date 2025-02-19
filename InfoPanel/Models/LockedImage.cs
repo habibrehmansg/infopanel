@@ -73,24 +73,21 @@ namespace InfoPanel.Models
             {
                 try
                 {
-                    if (File.Exists(ImagePath))
+                    var newLastModified = File.GetLastWriteTime(ImagePath);
+                    if (newLastModified != _lastModified)
                     {
-                        var newLastModified = File.GetLastWriteTime(ImagePath);
-                        if (newLastModified != _lastModified)
-                        {
-                            _lastModified = newLastModified;
-                            // Clear all resources before reloading
-                            DisposeAssets();
-                            DisposeD2DAssets();
-                            _codec?.Dispose();
-                            _fileStream?.Dispose();
-                            _compositeBitmap?.Dispose();
-                            _compositeBitmap = null;
-                            _lastRenderedFrame = -1;
-                            _cumulativeFrameTimes = null;
-                            LoadImage(); // Reload image to refresh all states
-                            OnImageUpdated();
-                        }
+                        _lastModified = newLastModified;
+                        // Clear all resources before reloading
+                        DisposeAssets();
+                        DisposeD2DAssets();
+                        _codec?.Dispose();
+                        _fileStream?.Dispose();
+                        _compositeBitmap?.Dispose();
+                        _compositeBitmap = null;
+                        _lastRenderedFrame = -1;
+                        _cumulativeFrameTimes = null;
+                        LoadImage(); // Reload image to refresh all states
+                        OnImageUpdated();
                     }
                 }
                 catch (Exception ex)
@@ -194,6 +191,53 @@ namespace InfoPanel.Models
             return bitmap;
         }
 
+        private static void ResetCompositeBitmap(SKBitmap bitmap)
+        {
+            using var canvas = new SKCanvas(bitmap);
+            canvas.Clear(SKColors.Transparent);
+        }
+
+        private int GetCurrentFrameCount()
+        {
+            if (
+                _codec == null
+                || _cumulativeFrameTimes == null
+                || Frames <= 1
+                || TotalFrameTime == 0
+            )
+            {
+                return 0;
+            }
+
+            var elapsedTime = Stopwatch.ElapsedMilliseconds;
+
+            // Reset stopwatch every day (24 hours).
+            if (elapsedTime >= 86400000)
+            {
+                Stopwatch.Restart();
+                elapsedTime = 0;
+            }
+
+            var elapsedFrameTime = elapsedTime % TotalFrameTime;
+
+            // Use binary search to find the current frame index
+            int index = Array.BinarySearch(_cumulativeFrameTimes, (int)elapsedFrameTime);
+
+            // BinarySearch returns a negative value if the exact value isn't found.
+            if (index < 0)
+            {
+                index = ~index;
+            }
+
+            // Handle wrapping around if needed
+            if (index >= _cumulativeFrameTimes.Length)
+            {
+                index = 0; // Wrap to the first frame
+            }
+
+            return index;
+        }
+
         private Bitmap? GetBitmapFromSK(int frame)
         {
             if (_fileStream != null && _codec != null)
@@ -240,53 +284,6 @@ namespace InfoPanel.Models
             }
 
             return null;
-        }
-
-        private static void ResetCompositeBitmap(SKBitmap bitmap)
-        {
-            using var canvas = new SKCanvas(bitmap);
-            canvas.Clear(SKColors.Transparent);
-        }
-
-        private int GetCurrentFrameCount()
-        {
-            if (
-                _codec == null
-                || _cumulativeFrameTimes == null
-                || Frames <= 1
-                || TotalFrameTime == 0
-            )
-            {
-                return 0;
-            }
-
-            var elapsedTime = Stopwatch.ElapsedMilliseconds;
-
-            // Reset stopwatch every day (24 hours).
-            if (elapsedTime >= 86400000)
-            {
-                Stopwatch.Restart();
-                elapsedTime = 0;
-            }
-
-            var elapsedFrameTime = elapsedTime % TotalFrameTime;
-
-            // Use binary search to find the current frame index
-            int index = Array.BinarySearch(_cumulativeFrameTimes, (int)elapsedFrameTime);
-
-            // BinarySearch returns a negative value if the exact value isn't found.
-            if (index < 0)
-            {
-                index = ~index;
-            }
-
-            // Handle wrapping around if needed
-            if (index >= _cumulativeFrameTimes.Length)
-            {
-                index = 0; // Wrap to the first frame
-            }
-
-            return index;
         }
 
         public void AccessD2D(
