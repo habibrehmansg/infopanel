@@ -15,6 +15,7 @@ using System.Reflection;
 using System.IO;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http;
 
 namespace InfoPanel.Extras
 {
@@ -313,7 +314,17 @@ namespace InfoPanel.Extras
                 {
                     _currentTrack.Value = !string.IsNullOrEmpty(result.Name) ? result.Name : "Unknown Track";
                     _artist.Value = string.Join(", ", result.Artists.Select(a => !string.IsNullOrEmpty(a.Name) ? a.Name : "Unknown").Where(n => !string.IsNullOrEmpty(n)));
-                    _coverArt.Value = result.Album.Images.FirstOrDefault()?.Url ?? string.Empty;
+
+                    var coverArtUrl = result.Album.Images.FirstOrDefault()?.Url ?? string.Empty;
+                    if (!string.IsNullOrEmpty(coverArtUrl))
+                    {
+                        var localCoverArtPath = await DownloadAndSaveCoverArtAsync(coverArtUrl);
+                        _coverArt.Value = localCoverArtPath ?? string.Empty;
+                    }
+                    else
+                    {
+                        _coverArt.Value = string.Empty;
+                    }
 
                     // Format elapsed and remaining time in mm:ss
                     var elapsedSeconds = playback.ProgressMs / 1000;
@@ -420,6 +431,41 @@ namespace InfoPanel.Extras
         {
             SetDefaultValues(errorMessage);
             Debug.WriteLine($"Error occurred: {errorMessage}");
+        }
+
+        private async Task<string?> DownloadAndSaveCoverArtAsync(string imageUrl)
+        {
+            if (string.IsNullOrEmpty(_configFilePath))
+            {
+                Debug.WriteLine("Config file path is not set.");
+                return null;
+            }
+
+            var configDirectory = Path.GetDirectoryName(_configFilePath);
+            if (configDirectory == null)
+            {
+                Debug.WriteLine("Config directory is not valid.");
+                return null;
+            }
+
+            var filePath = Path.Combine(configDirectory, "spotifyCoverArt.png");
+
+            try
+            {
+                using (HttpClient client = new HttpClient())
+                {
+                    var imageBytes = await client.GetByteArrayAsync(imageUrl);
+                    await File.WriteAllBytesAsync(filePath, imageBytes);
+                }
+
+                Debug.WriteLine($"Cover art image saved to {filePath}");
+                return filePath;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error downloading cover art image: {ex.Message}");
+                return null;
+            }
         }
     }
 
