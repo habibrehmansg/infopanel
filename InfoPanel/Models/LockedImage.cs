@@ -109,13 +109,16 @@ namespace InfoPanel.Models
         {
             if (ImagePath != null && File.Exists(ImagePath))
             {
-                // Lock only the critical section
                 lock (Lock)
                 {
                     try
                     {
+                        // Dispose resources before reinitializing
+                        DisposeAssets();
+                        DisposeD2DAssets();
                         _codec?.Dispose();
                         _fileStream?.Dispose();
+
                         _fileStream = new FileStream(
                             ImagePath,
                             FileMode.Open,
@@ -137,13 +140,9 @@ namespace InfoPanel.Models
                                 Frames = 1;
                             }
 
-                            // Clear the cache before reinitializing
-                            DisposeAssets();
+                            // Initialize caches
                             BitmapCache = new Bitmap[Frames];
-
-                            DisposeD2DAssets();
                             D2DBitmapCache = new D2DBitmap[Frames];
-
                             _cumulativeFrameTimes = new long[Frames];
 
                             if (Frames > 1)
@@ -152,11 +151,7 @@ namespace InfoPanel.Models
                                 for (int i = 0; i < Frames; i++)
                                 {
                                     var frameDelay = _codec.FrameInfo[i].Duration;
-
-                                    if (frameDelay == 0)
-                                    {
-                                        frameDelay = 100;
-                                    }
+                                    frameDelay = frameDelay == 0 ? 100 : frameDelay;
 
                                     TotalFrameTime += frameDelay;
                                     _cumulativeFrameTimes[i] = TotalFrameTime;
