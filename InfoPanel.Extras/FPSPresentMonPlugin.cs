@@ -4,42 +4,47 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Vanara.PInvoke;
+using static Vanara.PInvoke.User32;
+
+/*
+ * Summary of Changes:
+ * 1. Optimized Fullscreen Detection: Enhanced GetActiveFullscreenProcessIdAsync to verify fullscreen status by comparing window and monitor rectangles.
+ * 2. Efficient Monitoring Task Management: Modified StartFPSMonitoringAsync to manage a single monitoring task, canceling previous tasks on process change, running in background.
+ * 3. Fixed Type Mismatch: Cast Marshal.SizeOf<MONITORINFO>() from int to uint for MONITORINFO.cbSize to fix compilation error.
+ * 4. Added Static Import: Included 'using static Vanara.PInvoke.User32' to simplify User32 method calls.
+ * 5. Reset FPS on App Close: Added _fpsSensor.Value = 0 when no fullscreen app is detected in StartFPSMonitoringAsync and GetFpsAsync.
+ */
 
 namespace InfoPanel.Extras
 {
-    // FpsPlugin class extends BasePlugin to monitor FPS using PresentMonFPS
     public class FpsPlugin : BasePlugin
     {
-        // Sensor to store FPS values
         private readonly PluginSensor _fpsSensor = new("fps", "Frames Per Second", 0, "FPS");
-        // CancellationTokenSource to manage async task cancellation
         private CancellationTokenSource? _cancellationTokenSource;
+        private CancellationTokenSource? _monitoringCts; // For managing the monitoring task
+        private uint _currentPid; // Tracks the current fullscreen process ID
 
-        // Constructor initializing the base plugin with specific details
         public FpsPlugin() : base("fps-plugin", "FPS Info - PresentMonFPS", "Retrieves FPS information periodically using PresentMonFPS.")
         {
         }
 
-        // ConfigFilePath property returns null as no config file is used
         public override string? ConfigFilePath => null;
-        // UpdateInterval property specifies the update interval as 1 second
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
-        // Initialize method starts the FPS monitoring
         public override void Initialize()
         {
             _cancellationTokenSource = new CancellationTokenSource();
             _ = StartFPSMonitoringAsync(_cancellationTokenSource.Token);
         }
 
-        // Close method cancels and disposes the CancellationTokenSource
         public override void Close()
         {
             _cancellationTokenSource?.Cancel();
+            _monitoringCts?.Cancel();
             _cancellationTokenSource?.Dispose();
+            _monitoringCts?.Dispose();
         }
 
-        // Load method adds the FPS sensor to the provided containers
         public override void Load(List<IPluginContainer> containers)
         {
             var container = new PluginContainer("FPS");
@@ -47,116 +52,132 @@ namespace InfoPanel.Extras
             containers.Add(container);
         }
 
-        // Update method throws NotImplementedException as it's not implemented
         public override void Update()
         {
             throw new NotImplementedException();
         }
 
-        // UpdateAsync method retrieves FPS asynchronously
         public override async Task UpdateAsync(CancellationToken cancellationToken)
         {
+            // Note: Could be made a no-op if StartFPSMonitoringAsync is sufficient
             await GetFpsAsync().ConfigureAwait(false);
         }
 
-        // StartFPSMonitoringAsync method continuously monitors FPS
         private async Task StartFPSMonitoringAsync(CancellationToken cancellationToken)
         {
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    // Get the process ID of the active fullscreen application
                     uint pid = await GetActiveFullscreenProcessIdAsync().ConfigureAwait(false);
-                    if (pid == 0)
+
+                    if (pid == 0 || pid != _currentPid)
                     {
-                        // No fullscreen application found, wait for the next interval
-                        await Task.Delay(UpdateInterval, cancellationToken).ConfigureAwait(false);
-                        continue;
+                        _monitoringCts?.Cancel();
+                        _monitoringCts?.Dispose();
+                        _currentPid = 0;
+
+                        if (pid == 0)
+                        {
+                            // Change 5: Reset FPS to 0 when no fullscreen app is detected
+                            _fpsSensor.Value = 0;
+                        }
+                        else // New fullscreen process detected
+                        {
+                            _monitoringCts = new CancellationTokenSource();
+                            var fpsRequest = new FpsRequest { TargetPid = pid };
+                            _currentPid = pid;
+
+                            // Change 2: Run monitoring task in background, single instance
+                            _ = Task.Run(() => FpsInspector.StartForeverAsync(
+                                fpsRequest,
+                                (result) => _fpsSensor.Value = (float)result.Fps,
+                                _monitoringCts.Token), cancellationToken);
+                        }
                     }
 
-                    // Create an FPS request for the target process ID
-                    var fpsRequest = new FpsRequest
-                    {
-                        TargetPid = pid // Ensure TargetPid is set correctly
-                    };
-
-                    // Start continuous FPS monitoring
-                    await FpsInspector.StartForeverAsync(fpsRequest, (result) =>
-                    {
-                        // Update the FPS sensor value with the retrieved FPS
-                        _fpsSensor.Value = (float)result.Fps;
-                    }, cancellationToken).ConfigureAwait(false);
-
-                    // Wait for the next update interval
                     await Task.Delay(UpdateInterval, cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (TaskCanceledException)
             {
-                // Task was canceled, no need to handle this exception
             }
             catch (Exception)
             {
-                // Handle other exceptions if necessary
+                // Consider logging exceptions in a production environment
+            }
+            finally
+            {
+                _monitoringCts?.Cancel();
+                _monitoringCts?.Dispose();
+                // Optional: Reset FPS on shutdown
+                _fpsSensor.Value = 0;
             }
         }
 
-        // GetFpsAsync method retrieves FPS once
         private async Task GetFpsAsync()
         {
             try
             {
-                // Get the process ID of the active fullscreen application
                 uint pid = await GetActiveFullscreenProcessIdAsync().ConfigureAwait(false);
                 if (pid == 0)
                 {
-                    // No fullscreen application found, return
+                    // Change 5: Reset FPS to 0 for consistency when no fullscreen app
+                    _fpsSensor.Value = 0;
                     return;
                 }
 
-                // Create an FPS request for the target process ID
-                var fpsRequest = new FpsRequest
-                {
-                    TargetPid = pid // Ensure TargetPid is set correctly
-                };
-
-                // Retrieve FPS information once
+                var fpsRequest = new FpsRequest { TargetPid = pid };
                 var fpsResult = await FpsInspector.StartOnceAsync(fpsRequest).ConfigureAwait(false);
-                // Update the FPS sensor value with the retrieved FPS
                 _fpsSensor.Value = (float)fpsResult.Fps;
             }
             catch (Exception)
             {
-                // Handle exceptions if necessary
+                // Consider logging exceptions in a production environment
             }
         }
 
-        // GetActiveFullscreenProcessIdAsync method retrieves the process ID of the active fullscreen window
         private async Task<uint> GetActiveFullscreenProcessIdAsync()
         {
             return await Task.Run(() =>
             {
-                // Get the handle of the foreground window
                 var hWnd = GetForegroundWindow();
                 if (hWnd == IntPtr.Zero)
                 {
                     return 0u;
                 }
 
-                // Get the process ID associated with the foreground window
-                GetWindowThreadProcessId(hWnd, out uint pid);
-                return pid;
+                if (!GetWindowRect(hWnd, out RECT windowRect))
+                {
+                    return 0u;
+                }
+
+                var hMonitor = MonitorFromWindow(hWnd, MonitorFlags.MONITOR_DEFAULTTONEAREST);
+                if (hMonitor == IntPtr.Zero)
+                {
+                    return 0u;
+                }
+
+                // Change 3: Cast int to uint for cbSize to fix type mismatch
+                var monitorInfo = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
+                if (!GetMonitorInfo(hMonitor, ref monitorInfo))
+                {
+                    return 0u;
+                }
+
+                // Change 1: Compare window and monitor rectangles for fullscreen check
+                var monitorRect = monitorInfo.rcMonitor;
+                if (windowRect.left == monitorRect.left &&
+                    windowRect.top == monitorRect.top &&
+                    windowRect.right == monitorRect.right &&
+                    windowRect.bottom == monitorRect.bottom)
+                {
+                    GetWindowThreadProcessId(hWnd, out uint pid);
+                    return pid;
+                }
+
+                return 0u;
             }).ConfigureAwait(false);
         }
-
-        // Import GetForegroundWindow function from user32.dll
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-
-        // Import GetWindowThreadProcessId function from user32.dll
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
     }
 }
-

@@ -16,6 +16,7 @@
     <PackageReference Include="OpenWeatherMap.Standard" Version="3.0.0" />
     <PackageReference Include="PresentMonFps" Version="2.0.5" />
     <PackageReference Include="Vanara.PInvoke.Shared" Version="4.0.5" />
+    <PackageReference Include="Vanara.PInvoke.User32" Version="4.0.5" />
   </ItemGroup>
 
   <ItemGroup>
