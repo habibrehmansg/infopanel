@@ -11,7 +11,7 @@ namespace InfoPanel.Extras
     public class FpsPlugin : BasePlugin
     {
         // Sensor to store FPS values
-        private readonly PluginSensor _fpsSensor = new("fps", "Frames Per Second", 0, "FPS Presentmon");
+        private readonly PluginSensor _fpsSensor = new("fps", "Frames Per Second", 0, "FPS");
         // CancellationTokenSource to manage async task cancellation
         private CancellationTokenSource? _cancellationTokenSource;
 
