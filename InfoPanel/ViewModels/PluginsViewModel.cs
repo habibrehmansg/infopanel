@@ -9,12 +9,12 @@ namespace InfoPanel.ViewModels
 {
     public class PluginsViewModel: ObservableObject
     {
-        public string PluginsFolder { get; } = Globals.PluginsFolder;
+        public string PluginsFolder { get; }
         public ObservableCollection<PluginViewModel> Plugins { get; set; } = [];
 
         public PluginsViewModel() {
 
-            PluginsFolder = Globals.PluginsFolder;
+            PluginsFolder = Path.Combine(Directory.GetCurrentDirectory(), "plugins");
 
            foreach(var wrapper in PluginMonitor.Instance._loadedPlugins.Values)
             {
