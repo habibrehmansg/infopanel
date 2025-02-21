@@ -30,7 +30,7 @@
 		<ItemGroup>
 			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(LocalAppData)\InfoPanel\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(OutputPath)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="CleanPluginsDirectory" BeforeTargets="Clean">
