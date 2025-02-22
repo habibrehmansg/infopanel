@@ -195,6 +195,7 @@
 		<PackageReference Include="Sentry" Version="4.13.0" />
 		<PackageReference Include="SkiaSharp" Version="3.116.1" />
 		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+		<PackageReference Include="System.IO.Hashing" Version="9.0.2" />
 		<PackageReference Include="System.IO.Ports" Version="9.0.0" />
 		<PackageReference Include="System.Management" Version="9.0.0" />
 		<PackageReference Include="TaskScheduler" Version="2.11.1" />
