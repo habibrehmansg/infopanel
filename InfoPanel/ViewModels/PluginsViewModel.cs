@@ -23,6 +23,7 @@ namespace InfoPanel.ViewModels
         public ObservableCollection<PluginViewModel> Plugins { get; set; } = [];
         public ObservableCollection<PluginViewModel> AvailablePlugins { get; set; } = [];
         public ObservableCollection<string> PluginList { get; set; } = [];
+
         public ObservableCollection<PluginDisplayModel> AvailableDisplayPlugins { get; } = new();
         public ObservableCollection<PluginDisplayModel> EnabledDisplayPlugins { get; } = new();
 
@@ -115,6 +116,12 @@ namespace InfoPanel.ViewModels
             //}
 
         }
+
+
+
+
+
+
 
         [RelayCommand]
         private void GetAvailablePluginList()
