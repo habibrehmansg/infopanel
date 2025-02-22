@@ -10,7 +10,7 @@
     xmlns:viewmodels="clr-namespace:InfoPanel.ViewModels"
     Title="PluginsPage"
     d:DataContext="{d:DesignInstance Type=viewmodels:PluginsViewModel}"
-    d:DesignHeight="450"
+    d:DesignHeight="650"
     d:DesignWidth="800"
     mc:Ignorable="d">
 
@@ -71,88 +71,8 @@
                     FontSize="14"
                     FontWeight="Medium"
                     Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <ItemsControl ItemsSource="{Binding Plugins}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <ui:CardControl Margin="0,10,0,0">
-                                <ui:CardControl.Header>
-                                    <StackPanel>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                FontSize="13"
-                                                FontWeight="Medium"
-                                                Text="{Binding Name}" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                Text="{Binding FileName}" />
-                                        </Grid>
 
-                                        <Grid Margin="0,5,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                VerticalAlignment="Center"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                Text="{Binding Description}" />
-                                            <ui:Anchor
-                                                Grid.Column="2"
-                                                Width="150"
-                                                VerticalAlignment="Center"
-                                                Appearance="Secondary"
-                                                Content="Open Config File"
-                                                NavigateUri="{Binding ConfigFilePath}"
-                                                Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-                                        </Grid>
-
-                                    </StackPanel>
-
-                                    <!--<Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="auto" />
-                                            <ColumnDefinition Width="auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock
-                                                FontSize="13"
-                                                FontWeight="Medium"
-                                                Text="{Binding Name}" />
-
-                                            <TextBlock
-                                                Margin="0,5,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                Text="{Binding Description}" />
-                                        </StackPanel>
-
-                                        <ui:Anchor
-                                            Grid.Column="2"
-                                            Width="150"
-                                            Margin="0,0,0,0"
-                                            VerticalAlignment="Center"
-                                            Appearance="Secondary"
-                                            Content="Config"
-                                            NavigateUri="C:\Users\Habib\VisualStudioProjects\infopanel\InfoPanel\bin\x64\Debug\net8.0-windows\plugins\InfoPanel.Extras\InfoPanel.Extras.dll.ini"
-                                            Visibility="{Binding Configurable, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    </Grid>-->
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <Label Margin="0,40,0,0" Content="Available Plugins" FontSize="14" FontWeight="Medium"
-                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <ItemsControl ItemsSource="{Binding AvailablePlugins}" d:ItemsSource="{Binding AvailablePlugins}">
+                <ItemsControl ItemsSource="{Binding Plugins}" d:ItemsSource="{Binding Plugins}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <ui:CardControl Margin="0,10,0,0">
@@ -183,7 +103,7 @@
                                                 <CheckBox Content="Enable" IsChecked="{Binding IsEnabled, Mode=OneWayToSource}"/>
                                             </StackPanel>
 
-                                            
+
                                         </Grid>
 
                                     </StackPanel>
@@ -193,8 +113,185 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <ui:Anchor Grid.Column="2" Margin="20,20,0,0" Width="275" VerticalAlignment="Center"  Appearance="Secondary" Content="Update Activated Plugins (needs restart)"
-                           Command="{Binding SavePluginStatesCommand}" />
+                <Label Margin="0,40,0,0" Content="Available Plugins" FontSize="14" FontWeight="Medium"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <ItemsControl ItemsSource="{Binding AvailableDisplayPlugins}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Expander Margin="0,10,0,0">
+                                <Expander.Header>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                        <CheckBox Content="Activated" Margin="0,5,0,0" />
+                                    </StackPanel>
+                                </Expander.Header>
+                                <Expander.Content>
+                                    <ItemsControl ItemsSource="{Binding Plugins}" d:ItemsSource="{Binding Plugins}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <ui:CardControl Margin="0,10,0,0">
+                                                    <ui:CardControl.Header>
+                                                        <StackPanel>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock FontSize="13" FontWeight="Medium" Text="{Binding Name}" />
+                                                                <TextBlock Grid.Column="1" FontSize="12"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding FileName}" />
+                                                            </Grid>
+
+                                                            <Grid Margin="0,5,0,0">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="{Binding Description}" />
+
+                                                                <StackPanel Grid.Column="2">
+                                                                    <ui:Anchor Width="150" VerticalAlignment="Center" Appearance="Secondary"
+                                                                        Content="Open Config File" NavigateUri="{Binding ConfigFilePath}"
+                                                                        Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </StackPanel>
+                                                    </ui:CardControl.Header>
+                                                </ui:CardControl>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander.Content>
+
+                            </Expander>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <StackPanel Orientation="Horizontal">
+                    <ui:Anchor Grid.Column="2" Margin="20,20,0,0" Width="275" VerticalAlignment="Center"  Appearance="Secondary" Content="Update Activated Plugins (needs restart)"
+                        Command="{Binding SavePluginStatesCommand}" />
+                    <ui:Anchor Grid.Column="3" Margin="20,20,0,0" Width="175" VerticalAlignment="Center"  Appearance="Secondary" Content="Import Plugin Archive"
+                        Command="{Binding AddPluginFromZipCommand}" />
+                    <ui:Anchor Grid.Column="3" Margin="20,20,0,0" Width="175" VerticalAlignment="Center"  Appearance="Secondary" Content="Refresh Plugins"
+                        Command="{Binding RefreshPluginsCommand}" />
+
+
+                    
+                </StackPanel>
+
+                <ItemsControl ItemsSource="{Binding AvailableDisplayPlugins}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Expander Margin="0,10,0,0">
+                                <Expander.Header>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                        <CheckBox Content="Activated" Margin="0,5,0,0" />
+                                    </StackPanel>
+                                </Expander.Header>
+                                <Expander.Content>
+                                    <ItemsControl ItemsSource="{Binding Plugins}" d:ItemsSource="{Binding Plugins}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <ui:CardControl Margin="0,10,0,0">
+                                                    <ui:CardControl.Header>
+                                                        <StackPanel>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock FontSize="13" FontWeight="Medium" Text="{Binding Name}" />
+                                                                <TextBlock Grid.Column="1" FontSize="12"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding FileName}" />
+                                                            </Grid>
+
+                                                            <Grid Margin="0,5,0,0">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="{Binding Description}" />
+
+                                                                <StackPanel Grid.Column="2">
+                                                                    <ui:Anchor Width="150" VerticalAlignment="Center" Appearance="Secondary"
+                                                                        Content="Open Config File" NavigateUri="{Binding ConfigFilePath}"
+                                                                        Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </StackPanel>
+                                                    </ui:CardControl.Header>
+                                                </ui:CardControl>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander.Content>
+                                
+                            </Expander>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+
+
+
+                <Expander Margin="0,10,0,0"  HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock VerticalAlignment="Center">My Expander</TextBlock>
+                            <CheckBox Width="50" Content="Activated" Margin="20,0,0,0"/>
+                        </StackPanel>
+                        
+                    </Expander.Header>
+                    <Expander.Content>
+                        <ItemsControl ItemsSource="{Binding Plugins}" d:ItemsSource="{Binding Plugins}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ui:CardControl Margin="0,10,0,0">
+                                        <ui:CardControl.Header>
+                                            <StackPanel>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock FontSize="13" FontWeight="Medium" Text="{Binding Name}" />
+                                                    <TextBlock Grid.Column="1" FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="{Binding FileName}" />
+                                                </Grid>
+                                                
+                                                <Grid Margin="0,5,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                        Text="{Binding Description}" />
+
+                                                    <StackPanel Grid.Column="2">
+                                                        <ui:Anchor Width="150" VerticalAlignment="Center" Appearance="Secondary"
+                                                            Content="Open Config File" NavigateUri="{Binding ConfigFilePath}"
+                                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </StackPanel>
+                                        </ui:CardControl.Header>
+                                    </ui:CardControl>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Expander.Content>
+                </Expander>
+
+
+
+
+
+
+
 
 
 
