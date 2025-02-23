@@ -126,7 +126,7 @@ namespace InfoPanel.Utils
                 // Find matching plugin in state list by name
                 var statePlugin = pluginStateList.FirstOrDefault(p =>
                     p.PluginName == localPlugin.PluginName);
-
+                if(statePlugin == null)continue;
                 
                 // Compare hashes
                 var mismatchedHashes = new Dictionary<string, string>();
@@ -151,7 +151,24 @@ namespace InfoPanel.Utils
                 }
             }
             return new Tuple<bool, List<PluginHash>>(mismatchedPlugins.Count == 0,mismatchedPlugins);
-        }        
+        }
+        
+        public static void UpdateValidation()
+        {
+            var validation = ValidateHashes();
+            if(validation.Item1 == true || validation.Item2.Count ==0) return;
+            var pluginState = DecryptAndLoadStateList();
+            foreach (var mismatchHash in validation.Item2)
+            {
+                if (mismatchHash == null) continue;
+                var idx = pluginState.FindIndex(x => x.PluginName == mismatchHash.PluginName);
+                if(idx != -1)
+                {
+                    pluginState[idx].Activated = false;
+                }
+            }
+            EncryptAndSaveStateList(pluginState);
+        }
 
         static byte[] EncryptData(byte[] data)
         {

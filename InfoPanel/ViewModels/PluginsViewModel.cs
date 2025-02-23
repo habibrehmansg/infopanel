@@ -23,6 +23,10 @@ namespace InfoPanel.ViewModels
         public ObservableCollection<PluginDisplayModel> AvailableDisplayPlugins { get; } = new();
         public ObservableCollection<PluginDisplayModel> EnabledDisplayPlugins { get; } = new();
 
+        public ObservableCollection<PluginDisplayModel> ModifiedHashDisplayPlugins { get; } = new();
+        [ObservableProperty]
+        private Visibility _showModifiedHashWarning = Visibility.Collapsed;
+
         public PluginsViewModel() {
             PluginsFolder = PluginStateHelper.PluginsFolder;
             RefreshPlugins();
@@ -33,8 +37,10 @@ namespace InfoPanel.ViewModels
         {
             AvailableDisplayPlugins.Clear();
             EnabledDisplayPlugins.Clear();
+            ModifiedHashDisplayPlugins.Clear();
             GetAvailablePluginList();
             GetEnabledPluginList();
+            GetModifiedHashPluginList();
         }
 
         private void GetAvailablePluginList()
@@ -80,6 +86,36 @@ namespace InfoPanel.ViewModels
                 }
                 EnabledDisplayPlugins.Add(new PluginDisplayModel { Name = Path.GetFileNameWithoutExtension(group.Key), Activated = true, Plugins = pluginList });
             }
+        }
+
+        private void GetModifiedHashPluginList()
+        {
+            var validationState = PluginStateHelper.ValidateHashes();
+            if(validationState.Item1 == true)
+            {
+                ShowModifiedHashWarning = Visibility.Collapsed;
+                return;
+            }
+            var modifiedList = validationState.Item2;
+            foreach (var plugin in modifiedList)
+            {
+                ModifiedHashDisplayPlugins.Add(new PluginDisplayModel
+                {
+                    Name = plugin.PluginName,
+                    Activated = false,
+                    Plugins = new List<PluginViewModel>
+                    {
+                        new PluginViewModel
+                        {
+                            Name = plugin.PluginName,
+                            FileName = string.Empty,
+                            Description = string.Empty,
+                            ConfigFilePath = null
+                        }
+                    }
+                });
+            }
+            ShowModifiedHashWarning = Visibility.Visible;
         }
 
         [RelayCommand]

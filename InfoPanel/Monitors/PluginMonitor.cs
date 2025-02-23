@@ -74,11 +74,8 @@ namespace InfoPanel.Monitors
             PluginLoader pluginLoader = new();
 
             PluginStateHelper.InitialSetup();
-            var pluginStateList = PluginStateHelper.DecryptAndLoadStateList();
-            var localPluginDllList = PluginStateHelper.GetLocalPluginDllHashes();
-            var validation = PluginStateHelper.ValidateHashes();
-
-
+            PluginStateHelper.UpdateValidation();
+            var pluginStateList = PluginStateHelper.DecryptAndLoadStateList();            
             var pluginDirectory = PluginStateHelper.PluginsFolder;
 
             foreach (var directory in Directory.GetDirectories(pluginDirectory))
@@ -87,16 +84,13 @@ namespace InfoPanel.Monitors
                 if(ph?.Activated == false) continue;
                 foreach (var pluginFile in Directory.GetFiles(directory, "InfoPanel.*.dll"))
                 {
-                    if(validation.Item1 == false && validation.Item2.Any(x => x.PluginName == Path.GetFileNameWithoutExtension(pluginFile)))
-                    {
-                        break;
-                    }
-                    
                     var plugins = pluginLoader.InitializePlugin(pluginFile);
                     await AddPlugins(plugins, pluginFile);                    
                 }
             }
         }
+
+        
 
         private async Task AddPlugins(IEnumerable<IPlugin> plugins, string pluginFile)
         {
