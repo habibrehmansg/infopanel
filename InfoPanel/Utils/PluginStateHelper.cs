@@ -70,21 +70,6 @@ namespace InfoPanel.Utils
         }
 
         /// <summary>
-        /// Update the plugin state file from the <see cref="PluginHash"/> parameter
-        /// </summary>
-        /// <param name="pluginHash"></param>
-        public static void SetPluginState(PluginHash pluginHash)
-        {
-            var pluginStateList = DecryptAndLoadStateList();
-            var idx = pluginStateList.FindIndex(x => x.PluginName == pluginHash.PluginName);
-            if (idx != -1)
-            {
-                pluginStateList[idx] = pluginHash;
-            }
-            EncryptAndSaveStateList(pluginStateList);
-        }
-
-        /// <summary>
         /// Update the plugin state list, replacing with the PluginHash list
         /// </summary>
         /// <param name="plugins"></param>
@@ -134,78 +119,39 @@ namespace InfoPanel.Utils
                 throw new ArgumentNullException("Lists cannot be null");
             }
 
-            // Create a dictionary from the newList for faster lookup
-            var localPluginDict = localPluginList.ToDictionary(x => x.PluginName, x => x.Hashes);
-
             List<PluginHash> mismatchedPlugins = new List<PluginHash>();
-            foreach (var masterItem in pluginStateList)
+            // Compare each plugin in the local list against the state list
+            foreach (var localPlugin in localPluginList)
             {
-                if (!localPluginDict.TryGetValue(masterItem.PluginName, out var newHashes))
+                // Find matching plugin in state list by name
+                var statePlugin = pluginStateList.FirstOrDefault(p =>
+                    p.PluginName == localPlugin.PluginName);
+
+                
+                // Compare hashes
+                var mismatchedHashes = new Dictionary<string, string>();
+                foreach (var localHash in localPlugin.Hashes)
                 {
-                    continue; // Skip if no matching plugin name found
+                    if (!statePlugin.Hashes.TryGetValue(localHash.Key, out string stateHash) ||
+                        stateHash != localHash.Value)
+                    {
+                        mismatchedHashes[localHash.Key] = localHash.Value;
+                    }
                 }
 
-                if (!AreDictionariesEqual(masterItem.Hashes, newHashes))
+                // If there are any mismatches, add to result
+                if (mismatchedHashes.Count > 0)
                 {
-                    mismatchedPlugins.Add(masterItem);
+                    mismatchedPlugins.Add(new PluginHash
+                    {
+                        PluginName = localPlugin.PluginName,
+                        Activated = localPlugin.Activated,
+                        Hashes = mismatchedHashes
+                    });
                 }
             }
-            var result = new Tuple<bool, List<PluginHash>>(mismatchedPlugins.Count == 0, mismatchedPlugins);
-            return result;
-        }
-
-        /// <summary>
-        /// Validate a <see cref="PluginHash"/> against the plugin state file.
-        /// </summary>
-        /// <param name="pluginHash">PluginHash you want to validate against</param>
-        /// <returns>Returns a <see cref="bool"/> of if all of the plugins can be validated, and a <see cref="PluginHash"/> if the plugin is mismatched</returns>
-        /// <exception cref="ArgumentNullException"></exception>
-        public static Tuple<bool, PluginHash> ValidateHashes(PluginHash pluginHash)
-        {
-            List<PluginHash> pluginStateList = DecryptAndLoadStateList();
-
-            if (pluginStateList == null || pluginHash == null)
-            {
-                throw new ArgumentNullException("Lists cannot be null");
-            }
-
-            bool isValid = false;
-            PluginHash statePluginHash = new PluginHash();
-            foreach (var masterItem in pluginStateList)
-            {
-                if (masterItem.PluginName == pluginHash.PluginName)
-                {
-                    isValid = AreDictionariesEqual(masterItem.Hashes, pluginHash.Hashes); 
-                    if(!isValid) statePluginHash = masterItem;
-                }
-            }
-            var result = new Tuple<bool, PluginHash>(isValid, statePluginHash);
-            return result;
-        }
-
-        private static bool AreDictionariesEqual(Dictionary<string, string> sourceDict, Dictionary<string, string> testingDict)
-        {
-            // Handle null cases
-            if (sourceDict == null && testingDict == null)
-            {
-                return true;
-            }
-            if (sourceDict == null || testingDict == null)
-            {
-                return false;
-            }
-
-            // Check count
-            if (sourceDict.Count != testingDict.Count)
-            {
-                return false;
-            }
-
-            // Check key-value pairs
-            return sourceDict.All(kvp =>
-                testingDict.TryGetValue(kvp.Key, out var value) &&
-                value == kvp.Value);
-        }
+            return new Tuple<bool, List<PluginHash>>(mismatchedPlugins.Count == 0,mismatchedPlugins);
+        }        
 
         static byte[] EncryptData(byte[] data)
         {
