@@ -13,8 +13,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel.Plugins.Loader", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel.Extras", "InfoPanel.Extras\InfoPanel.Extras.csproj", "{53662165-B047-4425-92F9-991221173CF4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InfoPanel.TestPlug", "InfoPanel.TestPlug\InfoPanel.TestPlug.csproj", "{0FF84093-B958-474F-A67A-045C5774A5BC}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -63,14 +61,6 @@ Global
 		{53662165-B047-4425-92F9-991221173CF4}.Release|Any CPU.Build.0 = Release|x64
 		{53662165-B047-4425-92F9-991221173CF4}.Release|x64.ActiveCfg = Release|x64
 		{53662165-B047-4425-92F9-991221173CF4}.Release|x64.Build.0 = Release|x64
-		{0FF84093-B958-474F-A67A-045C5774A5BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{0FF84093-B958-474F-A67A-045C5774A5BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0FF84093-B958-474F-A67A-045C5774A5BC}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{0FF84093-B958-474F-A67A-045C5774A5BC}.Debug|x64.Build.0 = Debug|Any CPU
-		{0FF84093-B958-474F-A67A-045C5774A5BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0FF84093-B958-474F-A67A-045C5774A5BC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0FF84093-B958-474F-A67A-045C5774A5BC}.Release|x64.ActiveCfg = Release|Any CPU
-		{0FF84093-B958-474F-A67A-045C5774A5BC}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
