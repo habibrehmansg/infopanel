@@ -85,6 +85,15 @@ namespace InfoPanel.Utils
         }
 
         /// <summary>
+        /// Update the plugin state list, replacing with the PluginHash list
+        /// </summary>
+        /// <param name="plugins"></param>
+        public static void UpdatePluginStateList(List<PluginHash> plugins)
+        {
+            EncryptAndSaveStateList(plugins);
+        }
+
+        /// <summary>
         /// Encrypt and Save the plugin state file with an updated list
         /// </summary>
         /// <param name="pluginList">List of plugins to save to state file</param>

@@ -20,10 +20,6 @@ namespace InfoPanel.ViewModels
     public partial class PluginsViewModel: ObservableObject
     {
         public string PluginsFolder { get; }
-        public ObservableCollection<PluginViewModel> Plugins { get; set; } = [];
-        public ObservableCollection<PluginViewModel> AvailablePlugins { get; set; } = [];
-        public ObservableCollection<string> PluginList { get; set; } = [];
-
         public ObservableCollection<PluginDisplayModel> AvailableDisplayPlugins { get; } = new();
         public ObservableCollection<PluginDisplayModel> EnabledDisplayPlugins { get; } = new();
 
@@ -32,98 +28,15 @@ namespace InfoPanel.ViewModels
             RefreshPlugins();
         }
 
-
         [RelayCommand]
         public void RefreshPlugins()
-        {            
-            Plugins.Clear();
-            AvailablePlugins.Clear();
-            //GetPluginList();
+        {
+            AvailableDisplayPlugins.Clear();
+            EnabledDisplayPlugins.Clear();
             GetAvailablePluginList();
             GetEnabledPluginList();
-
-            
-
-            foreach (var wrapper in PluginMonitor.Instance._loadedPlugins.Values)
-            {
-                Plugins.Add(new PluginViewModel
-                {
-                    FileName = wrapper.FileName,
-                    Name = wrapper.Name,
-                    Description = wrapper.Description,
-                    ConfigFilePath = wrapper.ConfigFilePath
-                });
-            }
-
-            var pluginStateList = PluginStateHelper.GetLocalPluginDllHashes();
-            foreach (var directory in Directory.GetDirectories(PluginsFolder))
-            {
-                var ph = pluginStateList.FirstOrDefault(x => x.PluginName == Path.GetFileName(directory));
-                if (ph != null && ph.Activated == false)
-                {
-                    AvailablePlugins.Add(new PluginViewModel
-                    {
-                        Name = ph.PluginName,
-                        FileName = string.Empty,
-                        Description = string.Empty,
-                        ConfigFilePath = string.Empty
-                    });
-                }
-            }
         }
 
-        [RelayCommand]
-        private void GetPluginList()
-        {
-            
-            var localPluginList = PluginStateHelper.GetLocalPluginDllHashes();
-            
-            var plugs = PluginStateHelper.DecryptAndLoadStateList();
-            var pluginStateList = PluginStateHelper.DecryptAndLoadStateList().Where(x => x.Activated == false);
-
-            localPluginList = localPluginList.Where(x => !pluginStateList.Any(sl => sl.PluginName == x.PluginName)).ToList();
-            foreach (var plugin in localPluginList)
-            {
-                AvailableDisplayPlugins.Add(new PluginDisplayModel
-                {
-                    Name = plugin.PluginName,
-                    Plugins = new List<PluginViewModel>
-                    {
-                        new PluginViewModel
-                        {
-                            Name = plugin.PluginName,
-                            FileName = string.Empty,
-                            Description = string.Empty,
-                            ConfigFilePath = null
-                        }
-                    }
-                });
-            }
-
-
-            //foreach (var plugin in localPluginList)
-            //{
-            //    AvailableDisplayPlugins.Add(new PluginDisplayModel
-            //    {
-            //        Name = plugin.PluginName,
-            //        Plugins = new List<PluginViewModel>
-            //        {
-            //            new PluginViewModel{ Name = plugin.PluginName, FileName = string.Empty, Description = string.Empty, ConfigFilePath = null },
-            //            new PluginViewModel{ Name = "entry2", FileName = "entry2", Description = "Entry 2", ConfigFilePath = "config path" }
-            //        }
-            //    });
-
-            //}
-
-        }
-
-
-
-
-
-
-
-        [RelayCommand]
         private void GetAvailablePluginList()
         {
             var localPluginList = PluginStateHelper.GetLocalPluginDllHashes();
@@ -149,7 +62,6 @@ namespace InfoPanel.ViewModels
             }
         }
 
-        [RelayCommand]
         private void GetEnabledPluginList()
         {
             var groupedPlugins = PluginMonitor.Instance._loadedPlugins.Values.GroupBy(x => x.FileName);
@@ -168,31 +80,31 @@ namespace InfoPanel.ViewModels
                 }
                 EnabledDisplayPlugins.Add(new PluginDisplayModel { Name = Path.GetFileNameWithoutExtension(group.Key), Activated = true, Plugins = pluginList });
             }
-
         }
 
         [RelayCommand]
-        public void SavePluginStates()
+        public void UpdatePluginStateFile()
         {
-            var allPlugins = new List<PluginViewModel>();
-            allPlugins.AddRange(Plugins);
-            allPlugins.AddRange(AvailablePlugins);
+            var allPlugins = new List<PluginDisplayModel>();
+            allPlugins.AddRange(AvailableDisplayPlugins);
+            allPlugins.AddRange(EnabledDisplayPlugins);
             var localPluginList = PluginStateHelper.GetLocalPluginDllHashes();
 
+            var pluginHashList = new List<PluginHash>();
             foreach (var localPlugin in localPluginList)
             {
                 var pluginModel = allPlugins.FirstOrDefault(x => x.Name == localPlugin.PluginName);
-                if(pluginModel != null)
+                if (pluginModel != null)
                 {
-                    localPlugin.Activated = pluginModel.Activated;
-                    PluginStateHelper.SetPluginState(localPlugin);
+                    localPlugin.Activated = pluginModel.Activated;                    
+                    pluginHashList.Add(localPlugin);
                 }
             }
-            
+            PluginStateHelper.UpdatePluginStateList(pluginHashList);
         }
 
         [RelayCommand]
-        public void AddPluginFromZip()
+        public static void AddPluginFromZip()
         {
             Microsoft.Win32.OpenFileDialog openFileDialog = new()
             {
@@ -206,7 +118,7 @@ namespace InfoPanel.ViewModels
 
                 using (var fs = new FileStream(pluginFilePath, FileMode.Open))
                 {
-                    using (var za = new ZipArchive(fs,ZipArchiveMode.Read))
+                    using (var za = new ZipArchive(fs, ZipArchiveMode.Read))
                     {
                         var entry = za.Entries[0];
                         if (Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
@@ -216,8 +128,10 @@ namespace InfoPanel.ViewModels
                     }
                 }
             }
-
         }
+
+
+
     }
 
     public class PluginViewModel
@@ -226,7 +140,6 @@ namespace InfoPanel.ViewModels
         public required string Name { get; set; }
         public required string Description { get; set; }
         public required string? ConfigFilePath { get; set; }
-        public bool Activated { get; set; } = false;
     }
 
     public class PluginDisplayModel

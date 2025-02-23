@@ -71,7 +71,6 @@
                     FontSize="14"
                     FontWeight="Medium"
                     Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-
                 <ItemsControl ItemsSource="{Binding EnabledDisplayPlugins}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -146,26 +145,13 @@
                 </ItemsControl>
 
                 <StackPanel Orientation="Horizontal">
-                    <ui:Anchor Grid.Column="2" Margin="20,20,0,0" Width="275" VerticalAlignment="Center"  Appearance="Secondary" Content="Update Activated Plugins (needs restart)"
-                        Command="{Binding SavePluginStatesCommand}" />
-                    <ui:Anchor Grid.Column="3" Margin="20,20,0,0" Width="175" VerticalAlignment="Center"  Appearance="Secondary" Content="Import Plugin Archive"
-                        Command="{Binding AddPluginFromZipCommand}" />
-                    <ui:Anchor Grid.Column="3" Margin="20,20,0,0" Width="175" VerticalAlignment="Center"  Appearance="Secondary" Content="Refresh Plugins"
-                        Command="{Binding RefreshPluginsCommand}" />
-
-
-                    
+                    <ui:Anchor Grid.Column="2" Margin="0,20,0,0" Width="300" VerticalAlignment="Center"  Appearance="Secondary"  Content="Update Activated Plugins (needs restart)"
+                        Command="{Binding UpdatePluginStateFileCommand}" Icon="ArrowClockwise32"/>
+                    <ui:Anchor Grid.Column="3" Margin="20,20,0,0" Width="185" VerticalAlignment="Center"  Appearance="Secondary" Content="Import Plugin Archive"
+                        Command="{Binding AddPluginFromZipCommand}" Icon="Archive32"/>
+                    <ui:Anchor Grid.Column="3" Margin="20,20,0,0" Width="250" VerticalAlignment="Center"  Appearance="Secondary" Content="Refresh/Clear Unsaved Changes"
+                        Command="{Binding RefreshPluginsCommand}" Icon="ArrowSync24"/>
                 </StackPanel>
-
-                
-
-
-
-
-
-
-
-
             </StackPanel>
         </ScrollViewer>
     </Grid>
