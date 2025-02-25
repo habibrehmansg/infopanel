@@ -25,7 +25,17 @@ jobs:
     - name: Build InfoPanel
       run: |
         dotnet restore
-        dotnet publish -p:PublishProfile=FolderProfile       
+        dotnet publish -p:PublishProfile=FolderProfile 
+
+    - name: Debug folder
+      run: |
+        mkdir ${{ github.workspace }}\CommunityPlugins   
+        ls ${{ github.workspace }}\    
+
+      # - name: Build all CommunityPlugins projects
+        # run: |
+          # mkdir -p "${{ github.workspace }}/CommunityPlugins/output"
+          # find "${{ github.workspace }}/CommunityPlugins" -name "*.csproj" -exec dotnet build {} --output "${{ github.workspace }}/CommunityPlugins/output" \;       
 
     - name: Install and Compile Inno Setup Installer
       shell: powershell
