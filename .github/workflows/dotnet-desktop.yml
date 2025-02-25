@@ -27,10 +27,23 @@ jobs:
         dotnet restore
         dotnet publish -p:PublishProfile=FolderProfile   
 
-    - name: Debug folder
+    - name: Build Plugins folder
       run: |
-        mkdir ${{ github.workspace }}\output\CommunityPlugins    
-        find "${{ github.workspace }}/CommunityPlugins" -name "*.csproj" -exec dotnet build {} --output "${{ github.workspace }}\output\CommunityPlugins" \;     
+        # Define paths
+          $pluginsDir = "${{ github.workspace }}/CommunityPlugins"
+          $outputDir = "${{ github.workspace }}/output/CommunityPlugins"
+          
+          # Create output directory if it doesn’t exist
+          New-Item -Path $outputDir -ItemType Directory -Force
+          
+          # Find all .csproj files recursively and build them
+          Get-ChildItem -Path $pluginsDir -Recurse -Filter "*.csproj" | ForEach-Object {
+            Write-Host "Building: $($_.FullName)"
+            dotnet build $_.FullName --configuration Release --output $outputDir
+          }
+          
+          # Optional: List output files for verification
+          Get-ChildItem -Path $outputDir  
 
     - name: Install and Compile Inno Setup Installer
       shell: powershell
