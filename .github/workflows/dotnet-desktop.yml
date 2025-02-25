@@ -44,7 +44,7 @@ jobs:
           Get-ChildItem -Path "${{ github.workspace }}/CommunityPlugins" -Recurse -Filter "*.csproj" | ForEach-Object {
             $projectDir = $_.DirectoryName
             $projectName = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
-            $defaultOutput = Join-Path $projectDir "bin/Release" # Adjust if using Debug
+            $defaultOutput = Join-Path $projectDir "bin/Release/net8.0-windows" # Adjust if using Debug
             $targetOutput = Join-Path $baseOutputDir $projectName
             
             if (Test-Path $defaultOutput) {
