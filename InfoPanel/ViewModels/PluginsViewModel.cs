@@ -12,6 +12,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using Wpf.Ui.Controls.Interfaces;
 
@@ -40,7 +41,15 @@ namespace InfoPanel.ViewModels
             ModifiedHashDisplayPlugins.Clear();
             GetAvailablePluginList();
             GetEnabledPluginList();
-            GetModifiedHashPluginList();
+            GetModifiedHashPluginList();            
+        }
+
+        [RelayCommand]
+        public async Task UpdateAndReloadPlugins()
+        {
+            UpdatePluginStateFile();
+            RefreshPlugins();
+            await PluginMonitor.Instance.LoadPluginsAsync();
         }
 
         private void GetAvailablePluginList()
@@ -118,7 +127,6 @@ namespace InfoPanel.ViewModels
             ShowModifiedHashWarning = Visibility.Visible;
         }
 
-        [RelayCommand]
         public void UpdatePluginStateFile()
         {
             var allPlugins = new List<PluginDisplayModel>();

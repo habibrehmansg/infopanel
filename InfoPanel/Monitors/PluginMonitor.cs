@@ -69,7 +69,7 @@ namespace InfoPanel.Monitors
             }
         }
 
-        private async Task LoadPluginsAsync()
+        internal async Task LoadPluginsAsync()
         {
             PluginLoader pluginLoader = new();
 
