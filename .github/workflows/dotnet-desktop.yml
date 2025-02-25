@@ -22,10 +22,10 @@ jobs:
       with:
         dotnet-version: 8.0.x         
 
-    # - name: Build InfoPanel
-    #   run: |
-    #     dotnet restore
-    #     dotnet publish -p:PublishProfile=FolderProfile   
+    - name: Build InfoPanel
+      run: |
+        dotnet restore
+        dotnet publish -p:PublishProfile=FolderProfile   
 
     - name: Build Plugins folder
       run: |
