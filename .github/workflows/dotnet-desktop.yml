@@ -30,20 +30,18 @@ jobs:
     - name: Build Plugins folder
       run: |
         # Define paths
-          $pluginsDir = "${{ github.workspace }}/CommunityPlugins"
+          $solutionPath = "${{ github.workspace }}/CommunityPlugins/CommunityPlugins.sln"
           $outputDir = "${{ github.workspace }}/output/CommunityPlugins"
           
           # Create output directory if it doesn’t exist
           New-Item -Path $outputDir -ItemType Directory -Force
           
-          # Find all .csproj files recursively and build them
-          Get-ChildItem -Path $pluginsDir -Recurse -Filter "*.csproj" | ForEach-Object {
-            Write-Host "Building: $($_.FullName)"
-            dotnet build $_.FullName --configuration Release --output $outputDir
-          }
+          # Build the solution
+          Write-Host "Building solution: $solutionPath"
+          dotnet build $solutionPath --configuration Release --output $outputDir
           
           # Optional: List output files for verification
-          Get-ChildItem -Path $outputDir  
+          Get-ChildItem -Path $outputDir 
 
     - name: Install and Compile Inno Setup Installer
       shell: powershell
