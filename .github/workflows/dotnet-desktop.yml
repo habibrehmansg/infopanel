@@ -66,13 +66,7 @@ jobs:
       shell: powershell
       run: |
         cd ${{ github.workspace }}\InnoSetup
-        iscc "setup.iss"  
-    
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: InfoPanel
-        path:  "${{ github.workspace }}/build/"
+        iscc "setup.iss"      
 
     - name: Upload Artifact Setup
       uses: actions/upload-artifact@v4
