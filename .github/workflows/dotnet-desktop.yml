@@ -25,12 +25,7 @@ jobs:
     - name: Build InfoPanel
       run: |
         dotnet restore
-        dotnet publish -p:PublishProfile=FolderProfile 
-
-    - name: Debug folder
-      run: |
-        mkdir ${{ github.workspace }}\output\CommunityPlugins   
-        ls ${{ github.workspace }}\    
+        dotnet publish -p:PublishProfile=FolderProfile   
 
     - name: Debug folder
       run: |
