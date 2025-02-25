@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
+using InfoPanel.Utils;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -68,58 +69,69 @@ namespace InfoPanel.Monitors
             }
         }
 
-        private async Task LoadPluginsAsync()
+        internal async Task LoadPluginsAsync()
         {
             PluginLoader pluginLoader = new();
 
-            var pluginDirectory = Globals.PluginsFolder;
+            PluginStateHelper.InitialSetup();
+            PluginStateHelper.UpdateValidation();
+            var pluginStateList = PluginStateHelper.DecryptAndLoadStateList();            
+            var pluginDirectory = PluginStateHelper.PluginsFolder;
 
             foreach (var directory in Directory.GetDirectories(pluginDirectory))
             {
+                var ph = pluginStateList.FirstOrDefault(x => x.PluginName == Path.GetFileName(directory));
+                if(ph?.Activated == false) continue;
                 foreach (var pluginFile in Directory.GetFiles(directory, "InfoPanel.*.dll"))
                 {
                     var plugins = pluginLoader.InitializePlugin(pluginFile);
+                    await AddPlugins(plugins, pluginFile);                    
+                }
+            }
+        }
 
-                    foreach (var plugin in plugins)
+        
+
+        private async Task AddPlugins(IEnumerable<IPlugin> plugins, string pluginFile)
+        {
+            foreach (var plugin in plugins)
+            {
+                PluginWrapper wrapper = new(Path.GetFileName(pluginFile), plugin);
+                if (_loadedPlugins.TryAdd(wrapper.Name, wrapper))
+                {
+                    try
                     {
-                        PluginWrapper wrapper = new(Path.GetFileName(pluginFile), plugin);
-                        if (_loadedPlugins.TryAdd(wrapper.Name, wrapper))
-                        {
-                            try
-                            {
-                                await wrapper.Initialize();
-                                Console.WriteLine($"Plugin {wrapper.Name} loaded successfully");
+                        await wrapper.Initialize();
+                        Console.WriteLine($"Plugin {wrapper.Name} loaded successfully");
 
-                                int indexOrder = 0;
-                                foreach (var container in wrapper.PluginContainers)
-                                {
-                                    foreach (var entry in container.Entries)
-                                    {
-                                        var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
-                                        SENSORHASH[id] = new()
-                                        {
-                                            Id = id,
-                                            Name = entry.Name,
-                                            ContainerId = container.Id,
-                                            ContainerName = container.Name,
-                                            PluginId = wrapper.Id,
-                                            PluginName = wrapper.Name,
-                                            Data = entry,
-                                            IndexOrder = indexOrder++
-                                        };
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"Plugin {wrapper.Name} failed to load: {ex.Message}");
-                            }
-                        }
-                        else
+                        int indexOrder = 0;
+                        foreach (var container in wrapper.PluginContainers)
                         {
-                            Console.WriteLine($"Plugin {wrapper.Name} already loaded or duplicate plugin/name");
+                            foreach (var entry in container.Entries)
+                            {
+                                var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+                                SENSORHASH[id] = new()
+                                {
+                                    Id = id,
+                                    Name = entry.Name,
+                                    ContainerId = container.Id,
+                                    ContainerName = container.Name,
+                                    PluginId = wrapper.Id,
+                                    PluginName = wrapper.Name,
+                                    Data = entry,
+                                    IndexOrder = indexOrder++
+                                };
+                            }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Plugin {wrapper.Name} failed to load: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"Plugin {wrapper.Name} already loaded or duplicate plugin/name");
                 }
             }
         }
