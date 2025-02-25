@@ -18,7 +18,7 @@ namespace InfoPanel.Utils
     {
         private static readonly string _infoPanelAppData = Path.Combine(GetFolderPath(SpecialFolder.LocalApplicationData), "InfoPanel");
         private static readonly string _pluginStateEncrypted = Path.Combine(_infoPanelAppData, "pluginState.bin");
-        private static readonly string _infoPanelProgFiles = Path.Combine(GetFolderPath(SpecialFolder.ProgramFilesX86), "InfoPanel");
+        public static readonly string InfoPanelProgFiles = Path.Combine(GetFolderPath(SpecialFolder.ProgramFilesX86), "InfoPanel");
         public static readonly string PluginsFolder = Path.Combine(_infoPanelAppData, "plugins");
 
         /// <summary>
@@ -48,24 +48,13 @@ namespace InfoPanel.Utils
         /// </summary>
         public static void InitialSetup()
         {
-            var initFile = Path.Combine(_infoPanelProgFiles, "PluginInit.init");
-            if(!File.Exists(initFile) && File.Exists(_pluginStateEncrypted))
+            if(!File.Exists(_pluginStateEncrypted))
             {
-                throw new InvalidDataException("State file missing coressponding init file.");
-            }
-            else if (File.Exists(initFile) && !File.Exists(_pluginStateEncrypted))
-            {
-                throw new FileNotFoundException("Failed to find plugin state file");
-            }
-            else if (File.Exists(initFile) && File.Exists(_pluginStateEncrypted))
-            {
-                return;
-            }
-            else
-            {
+                var programFilesPluginFolder = Path.Combine(GetFolderPath(SpecialFolder.ProgramFilesX86), "InfoPanel", "plugins");
+                CopyFilesRecursively(programFilesPluginFolder, PluginsFolder);
+                
                 var plugins = GetLocalPluginDllHashes();
                 EncryptAndSaveStateList(plugins);
-                File.WriteAllText(Path.Combine(_infoPanelProgFiles, "PluginInit.init"), $"STATE_FILE_CREATED:{DateTime.UtcNow}");
             }
         }
 
@@ -192,6 +181,21 @@ namespace InfoPanel.Utils
                 entropy,
                 DataProtectionScope.CurrentUser
             );
+        }
+
+        private static void CopyFilesRecursively(string sourcePath, string targetPath)
+        {
+            //Now Create all of the directories
+            foreach (string dirPath in Directory.GetDirectories(sourcePath, "*", SearchOption.AllDirectories))
+            {
+                Directory.CreateDirectory(dirPath.Replace(sourcePath, targetPath));
+            }
+
+            //Copy all the files & Replaces any files with the same name
+            foreach (string newPath in Directory.GetFiles(sourcePath, "*.*", SearchOption.AllDirectories))
+            {
+                File.Copy(newPath, newPath.Replace(sourcePath, targetPath), true);
+            }
         }
     }
 }
