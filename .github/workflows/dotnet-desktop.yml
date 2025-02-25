@@ -29,7 +29,7 @@ jobs:
 
     - name: Debug folder
       run: |
-        mkdir ${{ github.workspace }}\CommunityPlugins   
+        mkdir ${{ github.workspace }}\output\CommunityPlugins   
         ls ${{ github.workspace }}\    
 
       # - name: Build all CommunityPlugins projects
