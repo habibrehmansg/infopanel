@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
+using InfoPanel.Plugins;
 using InfoPanel.Utils;
 using System;
 using System.Collections.Generic;
@@ -21,12 +22,13 @@ namespace InfoPanel.ViewModels
     public partial class PluginsViewModel: ObservableObject
     {
         public string PluginsFolder { get; }
-        public ObservableCollection<PluginDisplayModel> AvailableDisplayPlugins { get; } = new();
         public ObservableCollection<PluginDisplayModel> EnabledDisplayPlugins { get; } = new();
 
-        public ObservableCollection<PluginDisplayModel> ModifiedHashDisplayPlugins { get; } = new();
         [ObservableProperty]
         private Visibility _showModifiedHashWarning = Visibility.Collapsed;
+
+        [ObservableProperty]
+        private Visibility _showRestartBanner = Visibility.Collapsed;
 
         public PluginsViewModel() {
             PluginsFolder = PluginStateHelper.PluginsFolder;
@@ -36,56 +38,44 @@ namespace InfoPanel.ViewModels
         [RelayCommand]
         public void RefreshPlugins()
         {
-            AvailableDisplayPlugins.Clear();
             EnabledDisplayPlugins.Clear();
-            ModifiedHashDisplayPlugins.Clear();
-            GetAvailablePluginList();
-            GetEnabledPluginList();
-            GetModifiedHashPluginList();            
+            GetEnabledPluginList();        
         }
 
         [RelayCommand]
-        public async Task UpdateAndReloadPlugins()
+        public void UpdateAndReloadPlugins()
         {
             UpdatePluginStateFile();
-            RefreshPlugins();
-            await PluginMonitor.Instance.LoadPluginsAsync();
+            ShowRestartBanner = Visibility.Visible;
         }
 
-        private void GetAvailablePluginList()
-        {
-            var localPluginList = PluginStateHelper.GetLocalPluginDllHashes();
-            var pluginStateList = PluginStateHelper.DecryptAndLoadStateList().Where(x => x.Activated == true);
-            localPluginList = localPluginList.Where(x => !pluginStateList.Any(sl => sl.PluginName == x.PluginName)).ToList();
-            foreach (var plugin in localPluginList)
-            {
-                AvailableDisplayPlugins.Add(new PluginDisplayModel
-                {
-                    Name = plugin.PluginName,
-                    Activated = false,
-                    Plugins = new List<PluginViewModel>
-                    {
-                        new PluginViewModel
-                        {
-                            Name = plugin.PluginName,
-                            FileName = string.Empty,
-                            Description = string.Empty,
-                            ConfigFilePath = null
-                        }
-                    }
-                });
-            }
-        }
 
         private void GetEnabledPluginList()
         {
-            var groupedPlugins = PluginMonitor.Instance._loadedPlugins.Values.GroupBy(x => x.FileName);
-            foreach (var group in groupedPlugins)
-            {
-                var pluginList = new List<PluginViewModel>();
-                foreach (var plugin in group)
+            var validationState = PluginStateHelper.ValidateHashes();
+            var modifiedList = validationState.Item2;
+
+            foreach (var folder in Directory.GetDirectories(PluginStateHelper.PluginsFolder)) {
+                var folderName = Path.GetFileName(folder);
+
+                var hash = PluginStateHelper.HashPlugin(folderName);
+
+
+                var files = Directory.GetFiles(folder);
+
+                if (!files.Contains(Path.Combine(folder, folderName + ".dll")))
                 {
-                    pluginList.Add(new PluginViewModel
+                    continue;
+                }
+
+                var model = new PluginDisplayModel { Name = Path.GetFileName(folder) };
+
+                var modifiedHash = modifiedList.Find(x => x.PluginName == folderName);
+                model.Modified = modifiedHash != null;
+
+                foreach(var plugin in PluginMonitor.Instance._loadedPlugins.Values.Where(x => x.FileName == folderName + ".dll"))
+                {
+                    model.Plugins.Add(new PluginViewModel
                     {
                         FileName = plugin.FileName,
                         Name = plugin.Name,
@@ -93,45 +83,18 @@ namespace InfoPanel.ViewModels
                         ConfigFilePath = plugin.ConfigFilePath
                     });
                 }
-                EnabledDisplayPlugins.Add(new PluginDisplayModel { Name = Path.GetFileNameWithoutExtension(group.Key), Activated = true, Plugins = pluginList });
-            }
-        }
 
-        private void GetModifiedHashPluginList()
-        {
-            var validationState = PluginStateHelper.ValidateHashes();
-            if(validationState.Item1 == true)
-            {
-                ShowModifiedHashWarning = Visibility.Collapsed;
-                return;
+                model.Activated = model.Plugins.Count > 0;
+
+                EnabledDisplayPlugins.Add(model);
             }
-            var modifiedList = validationState.Item2;
-            foreach (var plugin in modifiedList)
-            {
-                ModifiedHashDisplayPlugins.Add(new PluginDisplayModel
-                {
-                    Name = plugin.PluginName,
-                    Activated = false,
-                    Plugins = new List<PluginViewModel>
-                    {
-                        new PluginViewModel
-                        {
-                            Name = plugin.PluginName,
-                            FileName = string.Empty,
-                            Description = string.Empty,
-                            ConfigFilePath = null
-                        }
-                    }
-                });
-            }
-            ShowModifiedHashWarning = Visibility.Visible;
         }
 
         public void UpdatePluginStateFile()
         {
             var allPlugins = new List<PluginDisplayModel>();
-            allPlugins.AddRange(AvailableDisplayPlugins);
             allPlugins.AddRange(EnabledDisplayPlugins);
+
             var localPluginList = PluginStateHelper.GetLocalPluginDllHashes();
 
             var pluginHashList = new List<PluginHash>();
@@ -153,7 +116,7 @@ namespace InfoPanel.ViewModels
             Microsoft.Win32.OpenFileDialog openFileDialog = new()
             {
                 Multiselect = false,
-                Filter = "InfoPanel Plugin Files |*.zip",
+                Filter = "InfoPanel Plugin Archive |*.zip",
                 InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
             };
             if (openFileDialog.ShowDialog() == true)
@@ -167,7 +130,7 @@ namespace InfoPanel.ViewModels
                         var entry = za.Entries[0];
                         if (Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
                         {
-                            za.ExtractToDirectory(PluginStateHelper.PluginsFolder);
+                            za.ExtractToDirectory(PluginStateHelper.PluginsFolder, true);
                         }
                     }
                 }
@@ -188,8 +151,9 @@ namespace InfoPanel.ViewModels
 
     public class PluginDisplayModel
     {
-        public string Name { get; set; }
+        public required string Name { get; set; }
         public bool Activated { get; set; } = false;
-        public List<PluginViewModel> Plugins { get; set; } = new();
+        public bool Modified { get; set; } = false;
+        public List<PluginViewModel> Plugins { get; set; } = [];
     }
 }

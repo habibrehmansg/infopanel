@@ -31,16 +31,36 @@ namespace InfoPanel.Utils
             var pluginsFolder = Path.Combine(PluginsFolder);
             foreach (var folder in Directory.GetDirectories(pluginsFolder))
             {
-                var hashDict = new Dictionary<string, string>();
-                foreach (var dll in Directory.GetFiles(folder, "*.dll"))
-                {
-                    var hash = BitConverter.ToString(XxHash64.Hash(File.ReadAllBytes(dll))).Replace("-", string.Empty); ;
-                    hashDict.Add(Path.GetFileName(dll), hash);
-                }
-                var ph = new PluginHash() { PluginName = Path.GetFileName(folder), Hashes = hashDict };
+                var hash = HashPlugin(Path.GetFileName(folder));
+                var ph = new PluginHash() { PluginName = Path.GetFileName(folder), Hash = hash };
                 pluginList.Add(ph);
             }
             return pluginList;
+        }
+
+        public static string? HashPlugin(string pluginName)
+        {
+            var folder = Path.Combine(PluginsFolder, pluginName);
+
+            if (Directory.Exists(folder))
+            {
+                using var hashAlgorithm = SHA256.Create();
+                using var memoryStream = new MemoryStream();
+
+                foreach (var dll in Directory.GetFiles(folder, "*.dll"))
+                {
+                    using var stream = File.OpenRead(dll);
+                    var fileHash = hashAlgorithm.ComputeHash(stream);
+                    memoryStream.Write(fileHash, 0, fileHash.Length);
+                }
+
+                memoryStream.Position = 0;
+                var finalHash = hashAlgorithm.ComputeHash(memoryStream);
+
+                return BitConverter.ToString(finalHash).Replace("-", "").ToLowerInvariant();
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -85,12 +105,24 @@ namespace InfoPanel.Utils
         /// <returns></returns>
         public static List<PluginHash> DecryptAndLoadStateList()
         {
-            byte[] encryptedStateBytes = File.ReadAllBytes(_pluginStateEncrypted);
-            byte[] decryptedBytes = DecryptData(encryptedStateBytes);
-            string decryptedJson = Encoding.UTF8.GetString(decryptedBytes);
-            var pluginStateList = JsonSerializer.Deserialize<List<PluginHash>>(decryptedJson);
-            if (pluginStateList == null) pluginStateList = new List<PluginHash>();
-            return pluginStateList;
+            try
+            {
+                byte[] encryptedStateBytes = File.ReadAllBytes(_pluginStateEncrypted);
+                byte[] decryptedBytes = DecryptData(encryptedStateBytes);
+                string decryptedJson = Encoding.UTF8.GetString(decryptedBytes);
+                var pluginStateList = JsonSerializer.Deserialize<List<PluginHash>>(decryptedJson);
+                if (pluginStateList != null)
+                {
+                    return pluginStateList;
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+
+
+            return [];
         }
 
         /// <summary>
@@ -119,25 +151,16 @@ namespace InfoPanel.Utils
                 
                 // Compare hashes
                 var mismatchedHashes = new Dictionary<string, string>();
-                foreach (var localHash in localPlugin.Hashes)
-                {
-                    if (!statePlugin.Hashes.TryGetValue(localHash.Key, out string stateHash) ||
-                        stateHash != localHash.Value)
-                    {
-                        mismatchedHashes[localHash.Key] = localHash.Value;
-                    }
-                }
 
-                // If there are any mismatches, add to result
-                if (mismatchedHashes.Count > 0)
+                if(statePlugin.Hash != localPlugin.Hash)
                 {
                     mismatchedPlugins.Add(new PluginHash
                     {
                         PluginName = localPlugin.PluginName,
-                        Activated = localPlugin.Activated,
-                        Hashes = mismatchedHashes
+                        Activated = localPlugin.Activated
                     });
                 }
+             
             }
             return new Tuple<bool, List<PluginHash>>(mismatchedPlugins.Count == 0,mismatchedPlugins);
         }

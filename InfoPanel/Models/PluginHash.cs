@@ -4,9 +4,9 @@ namespace InfoPanel.Models
 {
     public class PluginHash
     {
-        public string PluginName { get; set; } = string.Empty;
+        public required string PluginName { get; set; }
         public bool Activated { get; set; } = false;
-        public Dictionary<string, string> Hashes { get; set; } = [];
+        public string? Hash { get; set; }
 
     }
 }
