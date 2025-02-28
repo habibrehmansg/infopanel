@@ -28,6 +28,9 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private Visibility _showModifiedHashWarning = Visibility.Collapsed;
 
+        [ObservableProperty]
+        private Visibility _showRestartBanner = Visibility.Collapsed;
+
         public PluginsViewModel() {
             PluginsFolder = PluginStateHelper.PluginsFolder;
             RefreshPlugins();
@@ -45,11 +48,11 @@ namespace InfoPanel.ViewModels
         }
 
         [RelayCommand]
-        public async Task UpdateAndReloadPlugins()
+        public void UpdateAndReloadPlugins()
         {
             UpdatePluginStateFile();
             RefreshPlugins();
-            await PluginMonitor.Instance.LoadPluginsAsync();
+            ShowRestartBanner = Visibility.Visible;
         }
 
         private void GetAvailablePluginList()
