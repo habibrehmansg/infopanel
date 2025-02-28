@@ -59,7 +59,8 @@
                     VerticalAlignment="Top"
                     Appearance="Primary"
                     Click="ButtonSelect_Click"
-                    Content="Select Image" />
+                    Content="Select Image"
+                    Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
             </Grid>
 
             <Grid Grid.Row="1">
@@ -69,22 +70,22 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-
-
-                    <CheckBox
-                        x:Name="CheckBoxCache"
-                        Grid.Row="0"
-                        Margin="0,10,0,0"
-                        Content="Cache the image"
-                        IsChecked="{Binding Cache}"
-                        Unchecked="CheckBoxCache_Unchecked" />
-                    <TextBlock
-                        Margin="0,0,0,0"
-                        FontSize="12"
-                        Foreground="LightGray"
-                        TextWrapping="Wrap">
-                        Lower CPU usage but higher RAM.
-                    </TextBlock>
+                    <StackPanel Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                        <CheckBox
+                            x:Name="CheckBoxCache"
+                            Grid.Row="0"
+                            Margin="0,10,0,0"
+                            Content="Cache the image"
+                            IsChecked="{Binding Cache}"
+                            Unchecked="CheckBoxCache_Unchecked" />
+                        <TextBlock
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="LightGray"
+                            TextWrapping="Wrap">
+                            Lower CPU usage but higher RAM.
+                        </TextBlock>
+                    </StackPanel>
 
                     <StackPanel>
                         <CheckBox
@@ -178,6 +179,29 @@
         <Grid Grid.Column="1" Margin="10,0,0,0">
             <ContentControl Content="{Binding}">
                 <ContentControl.Resources>
+                    <DataTemplate DataType="{x:Type models:HttpImageDisplayItem}">
+                        <StackPanel>
+
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBox
+                                        Margin="0,0,0,0"
+                                        IsReadOnly="True"
+                                        Text="{Binding SensorName}" />
+                                    <TextBlock
+                                        Margin="5,0,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                        Text="Sensor" />
+                                </StackPanel>
+                            </Grid>
+
+                        </StackPanel>
+                    </DataTemplate>
                     <DataTemplate DataType="{x:Type models:SensorImageDisplayItem}">
                         <StackPanel>
 

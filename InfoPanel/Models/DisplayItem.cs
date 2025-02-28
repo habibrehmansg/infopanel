@@ -53,6 +53,8 @@ public abstract class DisplayItem : ObservableObject, ICloneable
                     return "Clock";
                 case CalendarDisplayItem:
                     return "Calendar";
+                case HttpImageDisplayItem:
+                    return "Http Image";
                 case SensorImageDisplayItem:
                     return "Sensor Image";
                 case ImageDisplayItem:

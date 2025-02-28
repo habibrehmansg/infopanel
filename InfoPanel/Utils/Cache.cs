@@ -1,4 +1,5 @@
-﻿using InfoPanel.Models;
+﻿using InfoPanel.Extensions;
+using InfoPanel.Models;
 using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Diagnostics;
@@ -48,7 +49,7 @@ namespace InfoPanel
             {
                 try
                 {
-                    if (!path.Equals("NO_IMAGE") && File.Exists(path))
+                    if (!path.Equals("NO_IMAGE") && (path.IsUrl() || File.Exists(path)))
                     {
                         result = new LockedImage(path);
                     }

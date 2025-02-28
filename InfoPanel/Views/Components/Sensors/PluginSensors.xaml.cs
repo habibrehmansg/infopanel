@@ -194,6 +194,13 @@ namespace InfoPanel.Views.Components
                     sensorImageDisplayItem.SensorType = Enums.SensorType.Plugin;
                     sensorImageDisplayItem.PluginSensorId = sensorItem.SensorId;
                 }
+                else if (SharedModel.Instance.SelectedItem is HttpImageDisplayItem httpImageDisplayItem)
+                {
+                    httpImageDisplayItem.Name = sensorItem.Name;
+                    httpImageDisplayItem.SensorName = sensorItem.Name;
+                    httpImageDisplayItem.SensorType = Enums.SensorType.Plugin;
+                    httpImageDisplayItem.PluginSensorId = sensorItem.SensorId;
+                }
             }
         }
 
@@ -250,6 +257,18 @@ namespace InfoPanel.Views.Components
             if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
                 var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile.Guid);
+                item.PluginSensorId = sensorItem.SensorId;
+                item.SensorType = Enums.SensorType.Plugin;
+                SharedModel.Instance.AddDisplayItem(item);
+                SharedModel.Instance.SelectedItem = item;
+            }
+        }
+
+        private void ButtonAddHttpImage_Click(object sender, RoutedEventArgs e)
+        {
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
+            {
+                var item = new HttpImageDisplayItem(sensorItem.Name, selectedProfile.Guid);
                 item.PluginSensorId = sensorItem.SensorId;
                 item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);

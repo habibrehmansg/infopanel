@@ -4,6 +4,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using unvell.D2DLib;
 
@@ -22,7 +23,7 @@ namespace InfoPanel.Models
         public long TotalFrameTime = 0;
 
         private SKCodec? _codec;
-        private FileStream? _fileStream;
+        private Stream? _stream;
         private SKBitmap? _compositeBitmap;
         private int _lastRenderedFrame = -1;
         private long[]? _cumulativeFrameTimes;
@@ -38,19 +39,24 @@ namespace InfoPanel.Models
             LoadImage();
         }
 
-        private void LoadImage()
+        private async void LoadImage()
         {
-            if (ImagePath != null && File.Exists(ImagePath))
+            if (ImagePath != null)
             {
+                if (ImagePath.IsUrl())
+                {
+                    using HttpClient client = new();
+                    _stream = await client.GetStreamAsync(ImagePath);
+                } else if(File.Exists(ImagePath))
+                {
+                    _stream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read);
+                }
                 lock (Lock)
                 {
                     try
                     {
                         _codec?.Dispose();
-                        _fileStream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read);
-
-                        _codec = SKCodec.Create(_fileStream);
-
+                        _codec = SKCodec.Create(_stream);
                         Width = _codec.Info.Width;
                         Height = _codec.Info.Height;
 
@@ -125,7 +131,7 @@ namespace InfoPanel.Models
 
         private Bitmap? GetBitmapFromSK(int frame)
         {
-            if (_fileStream != null && _codec != null)
+            if (_stream != null && _codec != null)
             {
                 _compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
 
@@ -384,7 +390,7 @@ namespace InfoPanel.Models
                     DisposeAssets();
                     DisposeD2DAssets();
                     _codec?.Dispose();
-                    _fileStream?.Dispose();
+                    _stream?.Dispose();
                     _compositeBitmap?.Dispose();
                     IsDisposed = true;
                 }
