@@ -95,17 +95,33 @@ namespace InfoPanel.Drawing
                             break;
                         }
                     case ImageDisplayItem imageDisplayItem:
-                        if (imageDisplayItem is SensorImageDisplayItem sensorImageDisplayItem)
                         {
-                            if (!sensorImageDisplayItem.ShouldShow())
+                            if (imageDisplayItem is SensorImageDisplayItem sensorImageDisplayItem)
                             {
-                                break;
+                                if (!sensorImageDisplayItem.ShouldShow())
+                                {
+                                    break;
+                                }
                             }
-                        }
 
-                        if (imageDisplayItem.CalculatedPath != null)
-                        {
-                            var cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);
+                            LockedImage? cachedImage = null;
+
+                            if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
+                            {
+                                var sensorReading = httpImageDisplayItem.GetValue();
+
+                                if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
+                                {
+                                    cachedImage = Cache.GetLocalImage(sensorReading.Value.ValueText);
+                                }
+                            }
+                            else
+                            {
+                                if (imageDisplayItem.CalculatedPath != null)
+                                {
+                                    cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);
+                                }
+                            }
 
                             if (cachedImage != null)
                             {
@@ -124,8 +140,8 @@ namespace InfoPanel.Drawing
                                     selectedRectangles.Add(new SelectedRectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4, imageDisplayItem.Rotation));
                                 }
                             }
+                            break;
                         }
-                        break;
                     case GaugeDisplayItem gaugeDisplayItem:
                         {
                             //var imageDisplayItem = gaugeDisplayItem.EvaluateImage(1.0 / frameRateLimit);

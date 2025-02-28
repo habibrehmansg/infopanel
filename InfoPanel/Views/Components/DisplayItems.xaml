@@ -169,6 +169,9 @@
                                                 <DataTrigger Binding="{Binding Kind}" Value="Sensor Image">
                                                     <Setter Property="Symbol" Value="CircleImage20" />
                                                 </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Http Image">
+                                                    <Setter Property="Symbol" Value="WebAsset20" />
+                                                </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </ui:SymbolIcon.Style>
