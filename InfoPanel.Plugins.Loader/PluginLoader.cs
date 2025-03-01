@@ -1,10 +1,35 @@
-﻿using System.Reflection;
+﻿using System.IO;
+using System.Reflection;
+using IniParser;
+using IniParser.Model;
 
 namespace InfoPanel.Plugins.Loader
 {
     public class PluginLoader
     {
-        public IEnumerable<IPlugin> InitializePlugin(string pluginPath)
+        public static PluginInfo? GetPluginInfo(string pluginDirectory)
+        {
+            var pluginInfo = Path.Combine(pluginDirectory, "PluginInfo.ini");
+            if(File.Exists(pluginInfo))
+            {
+                var parser = new FileIniDataParser();
+                var config = parser.ReadFile(pluginInfo);
+
+                return new PluginInfo
+                {
+                    Name = config["PluginInfo"]["Name"],
+                    Description = config["PluginInfo"]["Description"],
+                    Author = config["PluginInfo"]["Author"],
+                    Version = config["PluginInfo"]["Version"],
+                    Website = config["PluginInfo"]["Website"]
+                };
+
+            }
+
+            return null;
+        }
+
+        public static IEnumerable<IPlugin> InitializePlugin(string pluginPath)
         {
             Assembly pluginAssembly = LoadPlugin(pluginPath);
             return CreateCommands(pluginAssembly);

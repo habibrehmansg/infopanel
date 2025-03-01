@@ -2,14 +2,20 @@
 using InfoPanel.Plugins.Loader;
 using System.Text;
 
-PluginLoader pluginLoader = new();
-
 //\InfoPanel\InfoPanel.Plugins.Simulator\bin\Debug\net8.0-windows
 
 var currentDirectory = Directory.GetCurrentDirectory();
-var pluginPath = Path.Combine(currentDirectory, "..\\..\\..\\..\\InfoPanel.Extras\\bin\\Debug\\net8.0-windows", "InfoPanel.Extras.dll");
 
-var plugins = pluginLoader.InitializePlugin(pluginPath);
+var pluginFolder = Path.Combine(currentDirectory, "..\\..\\..\\..\\..\\InfoPanel.Extras\\bin\\x64\\Debug\\net8.0-windows\\win-x64");
+
+var pluginInfo = PluginLoader.GetPluginInfo(pluginFolder);
+
+Console.WriteLine($"Plugin Info: {pluginInfo?.Name} {pluginInfo?.Description} {pluginInfo?.Author} {pluginInfo?.Version} {pluginInfo?.Website}");
+Console.WriteLine();
+
+var pluginPath = Path.Combine(currentDirectory, pluginFolder, "InfoPanel.Extras.dll");
+
+var plugins = PluginLoader.InitializePlugin(pluginPath);
 
 Dictionary<string, PluginWrapper> loadedPlugins = [];
 
@@ -36,7 +42,9 @@ foreach (var plugin in plugins)
     //break;
 }
 
-Thread.Sleep(1000);
+
+
+Thread.Sleep(1000000);
 Console.Clear();
 
 StringBuilder buffer = new();

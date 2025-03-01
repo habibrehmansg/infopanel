@@ -2,6 +2,8 @@
 using IniParser;
 using IniParser.Model;
 using OpenWeatherMap.Standard;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Reflection;
 
 namespace InfoPanel.Extras
@@ -83,6 +85,24 @@ namespace InfoPanel.Extras
                 container.Entries.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);
                 container.Entries.AddRange([_temp, _maxTemp, _minTemp, _pressure, _seaLevel, _groundLevel, _feelsLike, _humidity, _windSpeed, _windDeg, _windGust, _clouds, _rain, _snow]);
                 containers.Add(container);
+            }
+        }
+
+        [PluginAction("Get API Key")]
+        public void LaunchApiUrl()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "https://openweathermap.org/api",
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                // Handle exceptions here
+                Console.WriteLine($"An error occurred: {ex.Message}");
             }
         }
 

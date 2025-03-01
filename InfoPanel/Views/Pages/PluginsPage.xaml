@@ -80,7 +80,7 @@
 
                 <Label
                     Margin="0,40,0,0"
-                    Content="Plugin List"
+                    Content="Native Plugins"
                     FontSize="14"
                     FontWeight="Medium"
                     Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -97,23 +97,73 @@
                                                 <ColumnDefinition Width="auto" />
                                             </Grid.ColumnDefinitions>
 
-                                            <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
+                                            <StackPanel Margin="0,0,20,0">
 
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                Margin="0,0,10,0"
-                                                VerticalAlignment="Center"
-                                                Foreground="Orange"
-                                                Text="Warning, plugin has been modified and has been unloaded for safety."
-                                                Visibility="{Binding Modified, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="auto" />
+                                                        <ColumnDefinition Width="auto" />
+                                                        <ColumnDefinition Width="auto" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
+
+                                                    <TextBlock
+                                                        Grid.Column="2"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                        Text="{Binding Author, StringFormat=' by {0}'}"
+                                                        Visibility="{Binding Author, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                                                    <TextBlock
+                                                        Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                        Text="{Binding Version, StringFormat=' v{0}'}"
+                                                        Visibility="{Binding Version, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                                                </Grid>
+
+
+
+                                                <TextBlock
+                                                    Margin="0,5,0,0"
+                                                    VerticalAlignment="Center"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                    Text="{Binding Description}" />
+
+                                                <ui:Hyperlink
+                                                    Margin="0,5,0,0"
+                                                    Content="{Binding Website}"
+                                                    FontSize="12"
+                                                    Icon="Link20"
+                                                    NavigateUri="{Binding Website}"
+                                                    Visibility="{Binding Website, Converter={StaticResource NullToVisibilityConverter}}" />
+                                            </StackPanel>
+
+
                                             <ui:ToggleSwitch
                                                 Grid.Column="2"
                                                 Margin="0,0,0,0"
+                                                VerticalAlignment="Center"
                                                 IsChecked="{Binding Activated}" />
                                         </Grid>
 
+
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Margin="0,0,10,0"
+                                            VerticalAlignment="Center"
+                                            Foreground="Orange"
+                                            Text="Plugin modification detected and has been unloaded for your safety. If you performed this, you can safely enable it back."
+                                            Visibility="{Binding Modified, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+
                                         <ItemsControl
-                                            Margin="0,10,0,0"
+                                            Margin="0,0,0,0"
                                             d:ItemsSource="{Binding Plugins}"
                                             ItemsSource="{Binding Plugins}">
                                             <ItemsControl.ItemTemplate>
@@ -150,8 +200,36 @@
                                                                             Content="Open Config File"
                                                                             NavigateUri="{Binding ConfigFilePath}"
                                                                             Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                                                                        <Button
+                                                                            Width="150"
+                                                                            Margin="0,10,0,0"
+                                                                            Command="{Binding ReloadPluginCommand}"
+                                                                            CommandParameter="{Binding Id}"
+                                                                            Content="Reload"
+                                                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
                                                                     </StackPanel>
                                                                 </Grid>
+
+                                                                <ItemsControl
+                                                                    Margin="0,10,0,0"
+                                                                    ItemsSource="{Binding Actions}"
+                                                                    Visibility="{Binding Actions, Converter={StaticResource NullToVisibilityConverter}}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <StackPanel Orientation="Horizontal" />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Button
+                                                                                Margin="0,0,10,0"
+                                                                                Command="{Binding Command}"
+                                                                                Content="{Binding DisplayName}" />
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+
                                                             </StackPanel>
                                                         </ui:CardControl.Header>
                                                     </ui:CardControl>
@@ -165,6 +243,174 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+
+                <Label
+                    Margin="0,40,0,0"
+                    Content="3rd Party Plugins"
+                    FontSize="14"
+                    FontWeight="Medium"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <ItemsControl ItemsSource="{Binding ExternalPlugins}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ui:CardControl Margin="0,10,0,0">
+                                <ui:CardControl.Header>
+                                    <StackPanel>
+                                        <Grid Margin="0,0,20,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="auto" />
+                                                <ColumnDefinition Width="auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Margin="0,0,20,0">
+
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="auto" />
+                                                        <ColumnDefinition Width="auto" />
+                                                        <ColumnDefinition Width="auto" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
+
+                                                    <TextBlock
+                                                        Grid.Column="2"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                        Text="{Binding Author, StringFormat=' by {0}'}"
+                                                        Visibility="{Binding Author, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                                                    <TextBlock
+                                                        Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                        Text="{Binding Version, StringFormat=' v{0}'}"
+                                                        Visibility="{Binding Version, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                                                </Grid>
+
+
+
+                                                <TextBlock
+                                                    Margin="0,5,0,0"
+                                                    VerticalAlignment="Center"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                    Text="{Binding Description}" />
+
+                                                <ui:Hyperlink
+                                                    Margin="0,5,0,0"
+                                                    Content="{Binding Website}"
+                                                    FontSize="12"
+                                                    Icon="Link20"
+                                                    NavigateUri="{Binding Website}"
+                                                    Visibility="{Binding Website, Converter={StaticResource NullToVisibilityConverter}}" />
+                                            </StackPanel>
+
+
+                                            <ui:ToggleSwitch
+                                                Grid.Column="2"
+                                                Margin="0,0,0,0"
+                                                VerticalAlignment="Center"
+                                                IsChecked="{Binding Activated}" />
+                                        </Grid>
+
+
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Margin="0,0,10,0"
+                                            VerticalAlignment="Center"
+                                            Foreground="Orange"
+                                            Text="Plugin modification detected and has been unloaded for your safety. If you performed this, you can safely enable it back."
+                                            Visibility="{Binding Modified, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+
+                                        <ItemsControl
+                                            Margin="0,0,0,0"
+                                            d:ItemsSource="{Binding Plugins}"
+                                            ItemsSource="{Binding Plugins}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <ui:CardControl Margin="0,10,0,0">
+                                                        <ui:CardControl.Header>
+                                                            <StackPanel>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock
+                                                                        FontSize="13"
+                                                                        FontWeight="Medium"
+                                                                        Text="{Binding Name}" />
+                                                                </Grid>
+
+                                                                <Grid Margin="0,5,0,0">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="auto" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                        Text="{Binding Description}" />
+
+                                                                    <StackPanel Grid.Column="2">
+                                                                        <ui:Anchor
+                                                                            Width="150"
+                                                                            VerticalAlignment="Center"
+                                                                            Appearance="Secondary"
+                                                                            Content="Open Config File"
+                                                                            NavigateUri="{Binding ConfigFilePath}"
+                                                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                                                                        <Button
+                                                                            Width="150"
+                                                                            Margin="0,10,0,0"
+                                                                            Command="{Binding ReloadPluginCommand}"
+                                                                            CommandParameter="{Binding Id}"
+                                                                            Content="Reload"
+                                                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+                                                                    </StackPanel>
+                                                                </Grid>
+
+                                                                <ItemsControl
+                                                                    Margin="0,10,0,0"
+                                                                    ItemsSource="{Binding Actions}"
+                                                                    Visibility="{Binding Actions, Converter={StaticResource NullToVisibilityConverter}}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <StackPanel Orientation="Horizontal" />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Button
+                                                                                Margin="0,0,10,0"
+                                                                                Command="{Binding Command}"
+                                                                                Content="{Binding DisplayName}" />
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+
+                                                            </StackPanel>
+                                                        </ui:CardControl.Header>
+                                                    </ui:CardControl>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ui:CardControl.Header>
+
+                            </ui:CardControl>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
 
                 <StackPanel Orientation="Horizontal">
                     <ui:Anchor

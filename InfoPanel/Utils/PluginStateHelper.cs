@@ -66,17 +66,17 @@ namespace InfoPanel.Utils
         /// <summary>
         /// Initial setup. Get the local plugins, and sync them into the plugin state file
         /// </summary>
-        public static void InitialSetup()
-        {
-            if(!File.Exists(_pluginStateEncrypted))
-            {
-                var programFilesPluginFolder = Path.Combine(GetFolderPath(SpecialFolder.ProgramFilesX86), "InfoPanel", "plugins");
-                CopyFilesRecursively(programFilesPluginFolder, PluginsFolder);
+        //public static void InitialSetup()
+        //{
+        //    if(!File.Exists(_pluginStateEncrypted))
+        //    {
+        //        var programFilesPluginFolder = Path.Combine(GetFolderPath(SpecialFolder.ProgramFilesX86), "InfoPanel", "plugins");
+        //        CopyFilesRecursively(programFilesPluginFolder, PluginsFolder);
                 
-                var plugins = GetLocalPluginDllHashes();
-                EncryptAndSaveStateList(plugins);
-            }
-        }
+        //        var plugins = GetLocalPluginDllHashes();
+        //        EncryptAndSaveStateList(plugins);
+        //    }
+        //}
 
         /// <summary>
         /// Update the plugin state list, replacing with the PluginHash list
