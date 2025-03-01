@@ -16,10 +16,7 @@ namespace InfoPanel.Utils
 {
     public static class PluginStateHelper
     {
-        private static readonly string _infoPanelAppData = Path.Combine(GetFolderPath(SpecialFolder.LocalApplicationData), "InfoPanel");
-        private static readonly string _pluginStateEncrypted = Path.Combine(_infoPanelAppData, "pluginState.bin");
-        public static readonly string InfoPanelProgFiles = Path.Combine(GetFolderPath(SpecialFolder.ProgramFilesX86), "InfoPanel");
-        public static readonly string PluginsFolder = Path.Combine(_infoPanelAppData, "plugins");
+        private static readonly string _pluginStateEncrypted = Path.Combine("PluginState.dat");
 
         /// <summary>
         /// Get a list of <see cref="PluginHash"/> from the plugins in the plugin folder
@@ -28,11 +25,19 @@ namespace InfoPanel.Utils
         public static List<PluginHash> GetLocalPluginDllHashes()
         {
             var pluginList = new List<PluginHash>();
-            var pluginsFolder = Path.Combine(PluginsFolder);
-            foreach (var folder in Directory.GetDirectories(pluginsFolder))
+
+            foreach (var folder in Directory.GetDirectories(FileUtil.GetBundledPluginFolder()))
+            {
+                //hash not required for bundled
+                var ph = new PluginHash() { PluginFolder = Path.GetFileName(folder), Bundled = true, };
+                pluginList.Add(ph);
+            }
+
+
+            foreach (var folder in Directory.GetDirectories(FileUtil.GetExternalPluginFolder()))
             {
                 var hash = HashPlugin(Path.GetFileName(folder));
-                var ph = new PluginHash() { PluginName = Path.GetFileName(folder), Hash = hash };
+                var ph = new PluginHash() { PluginFolder = Path.GetFileName(folder), Hash = hash };
                 pluginList.Add(ph);
             }
             return pluginList;
@@ -40,7 +45,7 @@ namespace InfoPanel.Utils
 
         public static string? HashPlugin(string pluginName)
         {
-            var folder = Path.Combine(PluginsFolder, pluginName);
+            var folder = Path.Combine(FileUtil.GetExternalPluginFolder(), pluginName);
 
             if (Directory.Exists(folder))
             {
@@ -63,20 +68,6 @@ namespace InfoPanel.Utils
             return null;
         }
 
-        /// <summary>
-        /// Initial setup. Get the local plugins, and sync them into the plugin state file
-        /// </summary>
-        //public static void InitialSetup()
-        //{
-        //    if(!File.Exists(_pluginStateEncrypted))
-        //    {
-        //        var programFilesPluginFolder = Path.Combine(GetFolderPath(SpecialFolder.ProgramFilesX86), "InfoPanel", "plugins");
-        //        CopyFilesRecursively(programFilesPluginFolder, PluginsFolder);
-                
-        //        var plugins = GetLocalPluginDllHashes();
-        //        EncryptAndSaveStateList(plugins);
-        //    }
-        //}
 
         /// <summary>
         /// Update the plugin state list, replacing with the PluginHash list
@@ -140,41 +131,41 @@ namespace InfoPanel.Utils
                 throw new ArgumentNullException("Lists cannot be null");
             }
 
-            List<PluginHash> mismatchedPlugins = new List<PluginHash>();
+            List<PluginHash> mismatchedPlugins = [];
             // Compare each plugin in the local list against the state list
             foreach (var localPlugin in localPluginList)
             {
                 // Find matching plugin in state list by name
                 var statePlugin = pluginStateList.FirstOrDefault(p =>
-                    p.PluginName == localPlugin.PluginName);
-                if(statePlugin == null)continue;
-                
+                p.Bundled == localPlugin.Bundled && p.PluginFolder == localPlugin.PluginFolder);
+                if (statePlugin == null) continue;
+
                 // Compare hashes
                 var mismatchedHashes = new Dictionary<string, string>();
 
-                if(statePlugin.Hash != localPlugin.Hash)
+                if (statePlugin.Hash != localPlugin.Hash)
                 {
                     mismatchedPlugins.Add(new PluginHash
                     {
-                        PluginName = localPlugin.PluginName,
+                        PluginFolder = localPlugin.PluginFolder,
                         Activated = localPlugin.Activated
                     });
                 }
-             
+
             }
-            return new Tuple<bool, List<PluginHash>>(mismatchedPlugins.Count == 0,mismatchedPlugins);
+            return new Tuple<bool, List<PluginHash>>(mismatchedPlugins.Count == 0, mismatchedPlugins);
         }
-        
+
         public static void UpdateValidation()
         {
             var validation = ValidateHashes();
-            if(validation.Item1 == true || validation.Item2.Count ==0) return;
+            if (validation.Item1 == true || validation.Item2.Count == 0) return;
             var pluginState = DecryptAndLoadStateList();
             foreach (var mismatchHash in validation.Item2)
             {
                 if (mismatchHash == null) continue;
-                var idx = pluginState.FindIndex(x => x.PluginName == mismatchHash.PluginName);
-                if(idx != -1)
+                var idx = pluginState.FindIndex(x => x.PluginFolder == mismatchHash.PluginFolder);
+                if (idx != -1)
                 {
                     pluginState[idx].Activated = false;
                 }
@@ -204,21 +195,6 @@ namespace InfoPanel.Utils
                 entropy,
                 DataProtectionScope.CurrentUser
             );
-        }
-
-        private static void CopyFilesRecursively(string sourcePath, string targetPath)
-        {
-            //Now Create all of the directories
-            foreach (string dirPath in Directory.GetDirectories(sourcePath, "*", SearchOption.AllDirectories))
-            {
-                Directory.CreateDirectory(dirPath.Replace(sourcePath, targetPath));
-            }
-
-            //Copy all the files & Replaces any files with the same name
-            foreach (string newPath in Directory.GetFiles(sourcePath, "*.*", SearchOption.AllDirectories))
-            {
-                File.Copy(newPath, newPath.Replace(sourcePath, targetPath), true);
-            }
         }
     }
 }

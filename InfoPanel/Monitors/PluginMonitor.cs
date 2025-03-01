@@ -71,33 +71,40 @@ namespace InfoPanel.Monitors
 
         internal async Task LoadPluginsAsync()
         {
+            PluginStateHelper.UpdateValidation();
+            var pluginStateList = PluginStateHelper.DecryptAndLoadStateList();
+
             //load trusted plugins first
             //trusted plugins are assumed to be in the same folder as the executing assembly (default program files for installer version)
             foreach (var directory in Directory.GetDirectories("plugins"))
             {
-                //only load 1 plugin per folder, with the correct naming convention
-                var pluginFile = Path.Combine(directory, Path.GetFileName(directory) + ".dll");
-                if (File.Exists(pluginFile))
+                var ph = pluginStateList.FirstOrDefault(x => x.PluginFolder == Path.GetFileName(directory) && x.Bundled);
+                if (ph?.Activated == true)
                 {
-                    var plugins = PluginLoader.InitializePlugin(pluginFile);
-                    await AddPlugins(plugins, pluginFile);
+                    //only load 1 plugin per folder, with the correct naming convention
+                    var pluginFile = Path.Combine(directory, Path.GetFileName(directory) + ".dll");
+                    await LoadPluginAsync(pluginFile);
                 }
             }
 
-
-            PluginStateHelper.UpdateValidation();
-            var pluginStateList = PluginStateHelper.DecryptAndLoadStateList();            
-            var pluginDirectory = PluginStateHelper.PluginsFolder;
-
-            foreach (var directory in Directory.GetDirectories(pluginDirectory))
+            foreach (var directory in Directory.GetDirectories(FileUtil.GetExternalPluginFolder()))
             {
-                var ph = pluginStateList.FirstOrDefault(x => x.PluginName == Path.GetFileName(directory));
-                if(ph?.Activated == false) continue;
-                foreach (var pluginFile in Directory.GetFiles(directory, "InfoPanel.*.dll"))
+                var ph = pluginStateList.FirstOrDefault(x => x.PluginFolder == Path.GetFileName(directory) && !x.Bundled);
+                if (ph?.Activated == true)
                 {
-                    var plugins = PluginLoader.InitializePlugin(pluginFile);
-                    await AddPlugins(plugins, pluginFile);                    
+                    //only load 1 plugin per folder, with the correct naming convention
+                    var pluginFile = Path.Combine(directory, Path.GetFileName(directory) + ".dll");
+                    await LoadPluginAsync(pluginFile);
                 }
+            }
+        }
+
+        internal async Task LoadPluginAsync(string pluginFile)
+        {
+            if (File.Exists(pluginFile))
+            {
+                var plugins = PluginLoader.InitializePlugin(pluginFile);
+                await AddPlugins(plugins, pluginFile);
             }
         }
 
@@ -145,8 +152,6 @@ namespace InfoPanel.Monitors
                 {
                     Console.WriteLine($"Plugin {wrapper.Name} failed to load: {ex.Message}");
                 }
-
-
             }
         }
 

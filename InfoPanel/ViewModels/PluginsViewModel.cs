@@ -23,8 +23,7 @@ namespace InfoPanel.ViewModels
 {
     public partial class PluginsViewModel : ObservableObject
     {
-        public string PluginsFolder { get; }
-        public ObservableCollection<PluginDisplayModel> EnabledDisplayPlugins { get; } = [];
+        public ObservableCollection<PluginDisplayModel> BundledPlugins { get; } = [];
 
         public ObservableCollection<PluginDisplayModel> ExternalPlugins { get; } = [];
 
@@ -36,14 +35,13 @@ namespace InfoPanel.ViewModels
 
         public PluginsViewModel()
         {
-            PluginsFolder = PluginStateHelper.PluginsFolder;
             RefreshPlugins();
         }
 
         [RelayCommand]
         public void RefreshPlugins()
         {
-            EnabledDisplayPlugins.Clear();
+            BundledPlugins.Clear();
             ExternalPlugins.Clear();
             GetEnabledPluginList();
             GetExternalPluginList();
@@ -58,17 +56,9 @@ namespace InfoPanel.ViewModels
 
         private void GetEnabledPluginList()
         {
-            var validationState = PluginStateHelper.ValidateHashes();
-            var modifiedList = validationState.Item2;
-
-            //foreach (var folder in Directory.GetDirectories(PluginStateHelper.PluginsFolder))
             foreach (var folder in Directory.GetDirectories("plugins"))
             {
                 var folderName = Path.GetFileName(folder);
-
-                var hash = PluginStateHelper.HashPlugin(folderName);
-
-
                 var files = Directory.GetFiles(folder);
 
                 if (!files.Contains(Path.Combine(folder, folderName + ".dll")))
@@ -81,14 +71,13 @@ namespace InfoPanel.ViewModels
                 var model = new PluginDisplayModel
                 {
                     Name = pluginInfo?.Name ?? Path.GetFileName(folder),
+                    Folder = Path.GetFileName(folder),
+                    Bundled = true,
                     Author = pluginInfo?.Author,
                     Description = pluginInfo?.Description,
                     Version = pluginInfo?.Version,
                     Website = pluginInfo?.Website
                 };
-
-                var modifiedHash = modifiedList.Find(x => x.PluginName == folderName);
-                model.Modified = modifiedHash != null;
 
                 foreach (var plugin in PluginMonitor.Instance._loadedPlugins.Values.Where(x => x.FileName == folderName + ".dll"))
                 {
@@ -101,7 +90,6 @@ namespace InfoPanel.ViewModels
                     };
 
                     var methods = plugin.Plugin.GetType().GetMethods().Where(m => m.GetCustomAttributes(typeof(PluginActionAttribute), false).Length > 0);
-
 
                     foreach (var method in methods)
                     {
@@ -117,7 +105,7 @@ namespace InfoPanel.ViewModels
 
                 model.Activated = model.Plugins.Count > 0;
 
-                EnabledDisplayPlugins.Add(model);
+                BundledPlugins.Add(model);
             }
         }
 
@@ -126,7 +114,7 @@ namespace InfoPanel.ViewModels
             var validationState = PluginStateHelper.ValidateHashes();
             var modifiedList = validationState.Item2;
 
-            foreach (var folder in Directory.GetDirectories(PluginStateHelper.PluginsFolder))
+            foreach (var folder in Directory.GetDirectories(FileUtil.GetExternalPluginFolder()))
             {
                 var folderName = Path.GetFileName(folder);
 
@@ -144,13 +132,15 @@ namespace InfoPanel.ViewModels
                 var model = new PluginDisplayModel
                 {
                     Name = pluginInfo?.Name ?? Path.GetFileName(folder),
+                    Folder = Path.GetFileName(folder),
+                    Bundled = false,
                     Author = pluginInfo?.Author,
                     Description = pluginInfo?.Description,
                     Version = pluginInfo?.Version,
                     Website = pluginInfo?.Website
                 };
 
-                var modifiedHash = modifiedList.Find(x => x.PluginName == folderName);
+                var modifiedHash = modifiedList.Find(x => x.PluginFolder == folderName);
                 model.Modified = modifiedHash != null;
 
                 foreach (var plugin in PluginMonitor.Instance._loadedPlugins.Values.Where(x => x.FileName == folderName + ".dll"))
@@ -187,6 +177,7 @@ namespace InfoPanel.ViewModels
         public void UpdatePluginStateFile()
         {
             var allPlugins = new List<PluginDisplayModel>();
+            allPlugins.AddRange(BundledPlugins);
             allPlugins.AddRange(ExternalPlugins);
 
             var localPluginList = PluginStateHelper.GetLocalPluginDllHashes();
@@ -194,7 +185,7 @@ namespace InfoPanel.ViewModels
             var pluginHashList = new List<PluginHash>();
             foreach (var localPlugin in localPluginList)
             {
-                var pluginModel = allPlugins.FirstOrDefault(x => x.Name == localPlugin.PluginName);
+                var pluginModel = allPlugins.FirstOrDefault(x => x.Folder == localPlugin.PluginFolder && x.Bundled == localPlugin.Bundled);
                 if (pluginModel != null)
                 {
                     localPlugin.Activated = pluginModel.Activated;
@@ -217,21 +208,18 @@ namespace InfoPanel.ViewModels
             {
                 var pluginFilePath = openFileDialog.FileName;
 
-                using (var fs = new FileStream(pluginFilePath, FileMode.Open))
+                using var fs = new FileStream(pluginFilePath, FileMode.Open);
+                using var za = new ZipArchive(fs, ZipArchiveMode.Read);
+                var entry = za.Entries[0];
+                if (Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
                 {
-                    using (var za = new ZipArchive(fs, ZipArchiveMode.Read))
+                    if (!Directory.Exists(Path.Combine(FileUtil.GetExternalPluginFolder(), entry.FullName)))
                     {
-                        var entry = za.Entries[0];
-                        if (Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
-                        {
-                            za.ExtractToDirectory(PluginStateHelper.PluginsFolder, true);
-                        }
+                        za.ExtractToDirectory(FileUtil.GetExternalPluginFolder(), true);
                     }
                 }
             }
         }
-
-
 
     }
 
@@ -259,6 +247,8 @@ namespace InfoPanel.ViewModels
     public class PluginDisplayModel
     {
         public required string Name { get; set; }
+        public required string Folder { get; set; }
+        public bool Bundled { get; set; } = false;
         public string? Description { get; set; }
         public string? Author { get; set; }
         public string? Version { get; set; }
