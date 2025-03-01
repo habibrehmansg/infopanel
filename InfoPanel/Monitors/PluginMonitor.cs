@@ -27,6 +27,11 @@ namespace InfoPanel.Monitors
         {
             await Task.Delay(300, token);
 
+            if (!File.Exists(PluginStateHelper._pluginStateEncrypted))
+            {
+                PluginStateHelper.GeneratePluginListInitial();
+            }
+
             try
             {
                 var stopwatch = Stopwatch.StartNew();

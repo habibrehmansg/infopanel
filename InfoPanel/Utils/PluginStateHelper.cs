@@ -5,7 +5,9 @@ using System.IO;
 using System.IO.Hashing;
 using System.Linq;
 using System.Net;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -16,7 +18,7 @@ namespace InfoPanel.Utils
 {
     public static class PluginStateHelper
     {
-        private static readonly string _pluginStateEncrypted = Path.Combine("PluginState.dat");
+        public static readonly string _pluginStateEncrypted = Path.Combine(FileUtil.GetExternalPluginFolder(),"PluginState.dat");
 
         /// <summary>
         /// Get a list of <see cref="PluginHash"/> from the plugins in the plugin folder
@@ -68,6 +70,12 @@ namespace InfoPanel.Utils
             return null;
         }
 
+        public static void GeneratePluginListInitial()
+        {
+            var pluginHashes = GetLocalPluginDllHashes();
+            EncryptAndSaveStateList(pluginHashes);
+            SetRestrictPermissions();
+        }
 
         /// <summary>
         /// Update the plugin state list, replacing with the PluginHash list
@@ -88,6 +96,37 @@ namespace InfoPanel.Utils
             byte[] plainBytes = Encoding.UTF8.GetBytes(jsonString);
             byte[] encryptedBytes = EncryptData(plainBytes);
             File.WriteAllBytes(_pluginStateEncrypted, encryptedBytes);
+        }
+
+        private static void SetRestrictPermissions()
+        {
+            // Step 2: Create a new FileSecurity object for setting permissions
+            FileSecurity fileSecurity = new FileSecurity();
+
+            // Step 3: Disable inheritance and remove inherited rules
+            fileSecurity.SetAccessRuleProtection(true, false); // true = disable inheritance, false = don't copy inherited rules
+
+            // Step 4: Create a rule to allow Administrators full control
+            FileSystemAccessRule adminRule = new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+                FileSystemRights.FullControl, // Full control for Administrators
+                AccessControlType.Allow);
+
+            // Step 5: Add the rule for Administrators
+            fileSecurity.AddAccessRule(adminRule);
+
+            // Step 6: Create a rule to allow Users read-only access
+            FileSystemAccessRule usersRule = new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                FileSystemRights.Read, // Read-only access for Users
+                AccessControlType.Allow);
+
+            // Step 7: Add the rule for Users
+            fileSecurity.AddAccessRule(usersRule);
+
+            // Step 8: Apply the new security settings to the file using FileInfo
+            FileInfo fileInfo = new FileInfo(_pluginStateEncrypted);
+            fileInfo.SetAccessControl(fileSecurity);
         }
 
         /// <summary>
