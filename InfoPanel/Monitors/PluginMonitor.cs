@@ -71,9 +71,20 @@ namespace InfoPanel.Monitors
 
         internal async Task LoadPluginsAsync()
         {
-            PluginLoader pluginLoader = new();
+            //load trusted plugins first
+            //trusted plugins are assumed to be in the same folder as the executing assembly (default program files for installer version)
+            foreach (var directory in Directory.GetDirectories("plugins"))
+            {
+                //only load 1 plugin per folder, with the correct naming convention
+                var pluginFile = Path.Combine(directory, Path.GetFileName(directory) + ".dll");
+                if (File.Exists(pluginFile))
+                {
+                    var plugins = PluginLoader.InitializePlugin(pluginFile);
+                    await AddPlugins(plugins, pluginFile);
+                }
+            }
 
-            PluginStateHelper.InitialSetup();
+
             PluginStateHelper.UpdateValidation();
             var pluginStateList = PluginStateHelper.DecryptAndLoadStateList();            
             var pluginDirectory = PluginStateHelper.PluginsFolder;
@@ -84,20 +95,67 @@ namespace InfoPanel.Monitors
                 if(ph?.Activated == false) continue;
                 foreach (var pluginFile in Directory.GetFiles(directory, "InfoPanel.*.dll"))
                 {
-                    var plugins = pluginLoader.InitializePlugin(pluginFile);
+                    var plugins = PluginLoader.InitializePlugin(pluginFile);
                     await AddPlugins(plugins, pluginFile);                    
                 }
             }
         }
 
-        
+        public async Task ReloadPlugin(string pluginId)
+        {
+            if (_loadedPlugins.TryGetValue(pluginId, out var wrapper))
+            {
+                foreach(var container in wrapper.PluginContainers)
+                {
+                    foreach (var entry in container.Entries)
+                    {
+                        var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+                        SENSORHASH.TryRemove(id, out _);
+                    }
+                }
+
+                await wrapper.StopAsync();
+
+                try
+                {
+                    await wrapper.Initialize();
+                    Console.WriteLine($"Plugin {wrapper.Name} loaded successfully");
+
+                    int indexOrder = 0;
+                    foreach (var container in wrapper.PluginContainers)
+                    {
+                        foreach (var entry in container.Entries)
+                        {
+                            var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+                            SENSORHASH[id] = new()
+                            {
+                                Id = id,
+                                Name = entry.Name,
+                                ContainerId = container.Id,
+                                ContainerName = container.Name,
+                                PluginId = wrapper.Id,
+                                PluginName = wrapper.Name,
+                                Data = entry,
+                                IndexOrder = indexOrder++
+                            };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Plugin {wrapper.Name} failed to load: {ex.Message}");
+                }
+
+
+            }
+        }
 
         private async Task AddPlugins(IEnumerable<IPlugin> plugins, string pluginFile)
         {
             foreach (var plugin in plugins)
             {
                 PluginWrapper wrapper = new(Path.GetFileName(pluginFile), plugin);
-                if (_loadedPlugins.TryAdd(wrapper.Name, wrapper))
+                if (_loadedPlugins.TryAdd(wrapper.Id, wrapper))
                 {
                     try
                     {

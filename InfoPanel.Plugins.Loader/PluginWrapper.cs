@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Reflection;
 
 namespace InfoPanel.Plugins.Loader
 {
@@ -6,7 +7,7 @@ namespace InfoPanel.Plugins.Loader
     {
         public string FileName => fileName;
         public IPlugin Plugin { get; } = plugin;
-        public List<IPluginContainer> PluginContainers { get; } = [];
+       public List<IPluginContainer> PluginContainers { get; } = [];
 
         public string Id => Plugin.Id;
         public string Name => Plugin.Name;
@@ -134,6 +135,8 @@ namespace InfoPanel.Plugins.Loader
             {
                 Plugin.Close();
             }catch { }
+
+            PluginContainers.Clear();
         }
     }
 }

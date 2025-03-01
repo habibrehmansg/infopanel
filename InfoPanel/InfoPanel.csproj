@@ -189,6 +189,7 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="HidSharp" Version="2.1.0" />
+		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />

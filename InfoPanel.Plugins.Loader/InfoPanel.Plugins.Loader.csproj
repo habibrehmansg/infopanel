@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
   </ItemGroup>
 

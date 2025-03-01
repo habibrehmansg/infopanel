@@ -21,4 +21,10 @@
 		  <ExcludeAssets>runtime</ExcludeAssets>
 	  </ProjectReference>
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="PluginInfo.ini">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
