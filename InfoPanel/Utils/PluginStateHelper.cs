@@ -116,13 +116,22 @@ namespace InfoPanel.Utils
             fileSecurity.AddAccessRule(adminRule);
 
             // Step 6: Create a rule to allow Users read-only access
-            FileSystemAccessRule usersRule = new FileSystemAccessRule(
+            FileSystemAccessRule usersReadRule = new FileSystemAccessRule(
                 new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
                 FileSystemRights.Read, // Read-only access for Users
                 AccessControlType.Allow);
 
-            // Step 7: Add the rule for Users
-            fileSecurity.AddAccessRule(usersRule);
+            // Step 7: Add the read-only rule for Users
+            fileSecurity.AddAccessRule(usersReadRule);
+
+            // Step 8: Create a rule to explicitly deny Users the delete right
+            FileSystemAccessRule usersDenyDeleteRule = new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                FileSystemRights.Delete, // Deny the Delete right
+                AccessControlType.Deny);
+
+            // Step 9: Add the deny delete rule for Users
+            fileSecurity.AddAccessRule(usersDenyDeleteRule);
 
             // Step 8: Apply the new security settings to the file using FileInfo
             FileInfo fileInfo = new FileInfo(_pluginStateEncrypted);
