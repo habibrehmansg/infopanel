@@ -192,7 +192,7 @@ namespace InfoPanel.ViewModels
                     pluginHashList.Add(localPlugin);
                 }
             }
-            PluginStateHelper.UpdatePluginStateList(pluginHashList);
+            PluginStateHelper.EncryptAndSaveStateList(pluginHashList);
         }
 
         [RelayCommand]

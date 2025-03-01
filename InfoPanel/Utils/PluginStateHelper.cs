@@ -1,17 +1,14 @@
 ﻿using InfoPanel.Models;
+using NeoSmart.SecureStore;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Hashing;
 using System.Linq;
 using System.Net;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
-using static System.Environment;
 
 
 namespace InfoPanel.Utils
@@ -19,6 +16,8 @@ namespace InfoPanel.Utils
     public static class PluginStateHelper
     {
         public static readonly string _pluginStateEncrypted = Path.Combine(FileUtil.GetExternalPluginFolder(),"PluginState.dat");
+        private const string PLUGIN_KEY = "PluginKey.bin";
+        private const string PLUGIN_LIST = "PLUGIN_LIST";
 
         /// <summary>
         /// Get a list of <see cref="PluginHash"/> from the plugins in the plugin folder
@@ -73,33 +72,17 @@ namespace InfoPanel.Utils
         public static void GeneratePluginListInitial()
         {
             var pluginHashes = GetLocalPluginDllHashes();
-            EncryptAndSaveStateList(pluginHashes);
-            SetRestrictPermissions();
-        }
+            using (var sman = SecretsManager.CreateStore())
+            {
+                // Create a new key securely with a CSPRNG:
+                sman.GenerateKey();
 
-        /// <summary>
-        /// Update the plugin state list, replacing with the PluginHash list
-        /// </summary>
-        /// <param name="plugins"></param>
-        public static void UpdatePluginStateList(List<PluginHash> plugins)
-        {
-            EncryptAndSaveStateList(plugins);
-        }
+                // Optionally export the keyfile (even if you created the store with a password)
+                sman.ExportKey(PLUGIN_KEY);
 
-        /// <summary>
-        /// Encrypt and Save the plugin state file with an updated list
-        /// </summary>
-        /// <param name="pluginList">List of plugins to save to state file</param>
-        private static void EncryptAndSaveStateList(List<PluginHash> pluginList)
-        {
-            string jsonString = JsonSerializer.Serialize(pluginList);
-            byte[] plainBytes = Encoding.UTF8.GetBytes(jsonString);
-            byte[] encryptedBytes = EncryptData(plainBytes);
-            File.WriteAllBytes(_pluginStateEncrypted, encryptedBytes);
-        }
-
-        private static void SetRestrictPermissions()
-        {
+                // Then save the store if you've made any changes to it
+                sman.SaveStore(_pluginStateEncrypted);
+            }           
             // Step 2: Create a new FileSecurity object for setting permissions
             FileSecurity fileSecurity = new FileSecurity();
 
@@ -115,54 +98,47 @@ namespace InfoPanel.Utils
             // Step 5: Add the rule for Administrators
             fileSecurity.AddAccessRule(adminRule);
 
-            // Step 6: Create a rule to allow Users read-only access
-            FileSystemAccessRule usersReadRule = new FileSystemAccessRule(
-                new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
-                FileSystemRights.Read, // Read-only access for Users
-                AccessControlType.Allow);
-
-            // Step 7: Add the read-only rule for Users
-            fileSecurity.AddAccessRule(usersReadRule);
-
-            // Step 8: Create a rule to explicitly deny Users the delete right
-            FileSystemAccessRule usersDenyDeleteRule = new FileSystemAccessRule(
-                new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
-                FileSystemRights.Delete, // Deny the Delete right
-                AccessControlType.Deny);
-
-            // Step 9: Add the deny delete rule for Users
-            fileSecurity.AddAccessRule(usersDenyDeleteRule);
-
             // Step 8: Apply the new security settings to the file using FileInfo
-            FileInfo fileInfo = new FileInfo(_pluginStateEncrypted);
+            FileInfo fileInfo = new FileInfo(PLUGIN_KEY);
             fileInfo.SetAccessControl(fileSecurity);
         }
 
-        /// <summary>
-        /// Get the PluginHashes from the encrypted state file
-        /// </summary>
-        /// <returns></returns>
+        public static void EncryptAndSaveStateList(List<PluginHash> pluginList)
+        {
+            if (!File.Exists(PLUGIN_KEY)) throw new FileNotFoundException();
+            using (var sman = SecretsManager.CreateStore())
+            {
+                sman.LoadKeyFromFile(PLUGIN_KEY);
+                var json = JsonConvert.SerializeObject(pluginList);
+                sman.Set(PLUGIN_LIST, json);
+                sman.SaveStore(_pluginStateEncrypted);
+            }
+        }
+
         public static List<PluginHash> DecryptAndLoadStateList()
         {
-            try
+            if (!File.Exists(PLUGIN_KEY)) throw new FileNotFoundException();
+            string json = string.Empty;
+            bool ok = false;
+            using (var sman = SecretsManager.LoadStore(_pluginStateEncrypted))
             {
-                byte[] encryptedStateBytes = File.ReadAllBytes(_pluginStateEncrypted);
-                byte[] decryptedBytes = DecryptData(encryptedStateBytes);
-                string decryptedJson = Encoding.UTF8.GetString(decryptedBytes);
-                var pluginStateList = JsonSerializer.Deserialize<List<PluginHash>>(decryptedJson);
-                if (pluginStateList != null)
+                sman.LoadKeyFromFile(PLUGIN_KEY);
+                ok = sman.TryGetValue(PLUGIN_LIST, out json);
+            }
+            if (ok && json != null)
+            {
+                var pluginList = JsonConvert.DeserializeObject<List<PluginHash>>(json);
+                if(pluginList != null)
                 {
-                    return pluginStateList;
+                    return pluginList;
                 }
+                return [];
             }
-            catch (Exception e)
+            else
             {
-                Console.WriteLine(e);
+                return [];
             }
-
-
-            return [];
-        }
+        }        
 
         /// <summary>
         /// Validate the local plugins against the plugin state file.
@@ -220,29 +196,6 @@ namespace InfoPanel.Utils
             }
             EncryptAndSaveStateList(pluginState);
         }
-
-        static byte[] EncryptData(byte[] data)
-        {
-            // Optional entropy adds additional randomness
-            byte[] entropy = Encoding.UTF8.GetBytes("MySecretEntropy");
-
-            // Encrypt using CurrentUser scope
-            return ProtectedData.Protect(
-                data,                    // Data to encrypt
-                entropy,                 // Optional entropy
-                DataProtectionScope.CurrentUser // Scope of protection
-            );
-        }
-        static byte[] DecryptData(byte[] encryptedData)
-        {
-            byte[] entropy = Encoding.UTF8.GetBytes("MySecretEntropy");
-
-            // Decrypt using CurrentUser scope
-            return ProtectedData.Unprotect(
-                encryptedData,
-                entropy,
-                DataProtectionScope.CurrentUser
-            );
-        }
+        
     }
 }
