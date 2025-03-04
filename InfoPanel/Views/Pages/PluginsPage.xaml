@@ -114,20 +114,6 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
-
-                <StackPanel Orientation="Horizontal">
-                    <ui:Anchor
-                        Grid.Column="2"
-                        Width="220"
-                        Margin="0,20,0,0"
-                        VerticalAlignment="Center"
-                        Appearance="Secondary"
-                        Command="{Binding UpdateAndReloadPluginsCommand}"
-                        Content="Save State (restart required)"
-                        Icon="ArrowClockwise32" />
-
-                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>
