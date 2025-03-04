@@ -8,11 +8,6 @@ var currentDirectory = Directory.GetCurrentDirectory();
 
 var pluginFolder = Path.Combine(currentDirectory, "..\\..\\..\\..\\..\\InfoPanel.Extras\\bin\\x64\\Debug\\net8.0-windows\\win-x64");
 
-var pluginInfo = PluginLoader.GetPluginInfo(pluginFolder);
-
-Console.WriteLine($"Plugin Info: {pluginInfo?.Name} {pluginInfo?.Description} {pluginInfo?.Author} {pluginInfo?.Version} {pluginInfo?.Website}");
-Console.WriteLine();
-
 var pluginPath = Path.Combine(currentDirectory, pluginFolder, "InfoPanel.Extras.dll");
 
 var plugins = PluginLoader.InitializePlugin(pluginPath);
@@ -21,7 +16,9 @@ Dictionary<string, PluginWrapper> loadedPlugins = [];
 
 foreach (var plugin in plugins)
 {
-    PluginWrapper pluginWrapper = new(Path.GetFileName(pluginPath), plugin);
+    var pluginInfo = PluginLoader.GetPluginInfo(pluginFolder);
+    var pluginDescriptor = new PluginDescriptor(pluginPath, pluginInfo);
+    PluginWrapper pluginWrapper = new(pluginDescriptor, plugin);
     if (loadedPlugins.TryAdd(pluginWrapper.Name, pluginWrapper))
     {
         try

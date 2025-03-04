@@ -11,6 +11,21 @@ namespace InfoPanel.Utils
 {
     class FileUtil
     {
+        public static string GetBundledPluginFolder()
+        {
+            return Path.Combine("plugins");
+        }
+
+        public static string GetExternalPluginFolder()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "InfoPanel", "plugins");
+        }
+
+        public static string GetPluginStateFile()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "plugins.bin");
+        }
+
         public static string GetRelativeAssetPath(Profile profile, string fileName)
         {
             return GetRelativeAssetPath(profile.Guid, fileName);

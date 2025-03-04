@@ -38,16 +38,10 @@
                                     Margin="0,5,0,0"
                                     VerticalAlignment="Center"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="Plugins are loaded at startup. Drop a plugin folder in and restart InfoPanel to activate." />
-                                <TextBlock
-                                    Margin="0,5,0,0"
-                                    VerticalAlignment="Center"
-                                    FontSize="12"
                                     Foreground="Orange">
                                     <Bold>Warning!</Bold>
                                     Plugins run under the same privileges as InfoPanel (Administrator). Do not load untrusted plugins. Always verify the source of the plugin.<LineBreak />
-                                    If unsure, do NOT use the plugin.</TextBlock>
+                                    If unsure, do NOT install the plugin.</TextBlock>
                                 <TextBlock
                                     Margin="0,5,0,0"
                                     VerticalAlignment="Center"
@@ -61,7 +55,7 @@
                                 VerticalAlignment="Center"
                                 Appearance="Secondary"
                                 Content="Open Plugins Folder"
-                                NavigateUri="{Binding PluginsFolder}" />
+                                NavigateUri="{Binding PluginFolder}" />
 
 
                         </Grid>
@@ -72,375 +66,54 @@
                     Margin="0,10,0,0"
                     Background="#FF9800"
                     Icon="Warning20"
-                    Visibility="{Binding ShowRestartBanner}">
+                    Visibility="{Binding ShowRestartBanner, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <ui:CardControl.Header>
-                        A Restart is required
+                        InfoPanel needs to be restarted to apply your changes.
                     </ui:CardControl.Header>
                 </ui:CardControl>
 
                 <Label
                     Margin="0,40,0,0"
-                    Content="Native Plugins"
+                    Content="Bundled Plugins"
                     FontSize="14"
                     FontWeight="Medium"
                     Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <ItemsControl ItemsSource="{Binding EnabledDisplayPlugins}">
+                <ItemsControl ItemsSource="{Binding BundledPlugins}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <ui:CardControl Margin="0,10,0,0">
-                                <ui:CardControl.Header>
-                                    <StackPanel>
-                                        <Grid Margin="0,0,20,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="auto" />
-                                                <ColumnDefinition Width="auto" />
-                                            </Grid.ColumnDefinitions>
-
-                                            <StackPanel Margin="0,0,20,0">
-
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="auto" />
-                                                        <ColumnDefinition Width="auto" />
-                                                        <ColumnDefinition Width="auto" />
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
-
-                                                    <TextBlock
-                                                        Grid.Column="2"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                        Text="{Binding Author, StringFormat=' by {0}'}"
-                                                        Visibility="{Binding Author, Converter={StaticResource NullToVisibilityConverter}}" />
-
-                                                    <TextBlock
-                                                        Grid.Column="1"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                        Text="{Binding Version, StringFormat=' v{0}'}"
-                                                        Visibility="{Binding Version, Converter={StaticResource NullToVisibilityConverter}}" />
-
-                                                </Grid>
-
-
-
-                                                <TextBlock
-                                                    Margin="0,5,0,0"
-                                                    VerticalAlignment="Center"
-                                                    FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                    Text="{Binding Description}" />
-
-                                                <ui:Hyperlink
-                                                    Margin="0,5,0,0"
-                                                    Content="{Binding Website}"
-                                                    FontSize="12"
-                                                    Icon="Link20"
-                                                    NavigateUri="{Binding Website}"
-                                                    Visibility="{Binding Website, Converter={StaticResource NullToVisibilityConverter}}" />
-                                            </StackPanel>
-
-
-                                            <ui:ToggleSwitch
-                                                Grid.Column="2"
-                                                Margin="0,0,0,0"
-                                                VerticalAlignment="Center"
-                                                IsChecked="{Binding Activated}" />
-                                        </Grid>
-
-
-                                        <TextBlock
-                                            Grid.Column="1"
-                                            Margin="0,0,10,0"
-                                            VerticalAlignment="Center"
-                                            Foreground="Orange"
-                                            Text="Plugin modification detected and has been unloaded for your safety. If you performed this, you can safely enable it back."
-                                            Visibility="{Binding Modified, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-
-                                        <ItemsControl
-                                            Margin="0,0,0,0"
-                                            d:ItemsSource="{Binding Plugins}"
-                                            ItemsSource="{Binding Plugins}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <ui:CardControl Margin="0,10,0,0">
-                                                        <ui:CardControl.Header>
-                                                            <StackPanel>
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock
-                                                                        FontSize="13"
-                                                                        FontWeight="Medium"
-                                                                        Text="{Binding Name}" />
-                                                                </Grid>
-
-                                                                <Grid Margin="0,5,0,0">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock
-                                                                        VerticalAlignment="Center"
-                                                                        FontSize="12"
-                                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                        Text="{Binding Description}" />
-
-                                                                    <StackPanel Grid.Column="2">
-                                                                        <ui:Anchor
-                                                                            Width="150"
-                                                                            VerticalAlignment="Center"
-                                                                            Appearance="Secondary"
-                                                                            Content="Open Config File"
-                                                                            NavigateUri="{Binding ConfigFilePath}"
-                                                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-
-                                                                        <Button
-                                                                            Width="150"
-                                                                            Margin="0,10,0,0"
-                                                                            Command="{Binding ReloadPluginCommand}"
-                                                                            CommandParameter="{Binding Id}"
-                                                                            Content="Reload"
-                                                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-                                                                    </StackPanel>
-                                                                </Grid>
-
-                                                                <ItemsControl
-                                                                    Margin="0,10,0,0"
-                                                                    ItemsSource="{Binding Actions}"
-                                                                    Visibility="{Binding Actions, Converter={StaticResource NullToVisibilityConverter}}">
-                                                                    <ItemsControl.ItemsPanel>
-                                                                        <ItemsPanelTemplate>
-                                                                            <StackPanel Orientation="Horizontal" />
-                                                                        </ItemsPanelTemplate>
-                                                                    </ItemsControl.ItemsPanel>
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate>
-                                                                            <Button
-                                                                                Margin="0,0,10,0"
-                                                                                Command="{Binding Command}"
-                                                                                Content="{Binding DisplayName}" />
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-
-                                                            </StackPanel>
-                                                        </ui:CardControl.Header>
-                                                    </ui:CardControl>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </ui:CardControl.Header>
-
-                            </ui:CardControl>
+                            <components:PluginProperties PluginDisplayModel="{Binding}" />
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="auto" />
+                    </Grid.ColumnDefinitions>
+                    <Label
+                        Margin="0,40,0,0"
+                        Content="User Plugins"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <ui:Anchor
+                        Grid.Column="1"
+                        Width="150"
+                        Margin="0,0,0,0"
+                        VerticalAlignment="Bottom"
+                        Appearance="Secondary"
+                        Command="{Binding AddPluginFromZipCommand}"
+                        Content="Import Plugin" />
+                </Grid>
 
-                <Label
-                    Margin="0,40,0,0"
-                    Content="3rd Party Plugins"
-                    FontSize="14"
-                    FontWeight="Medium"
-                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                 <ItemsControl ItemsSource="{Binding ExternalPlugins}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <ui:CardControl Margin="0,10,0,0">
-                                <ui:CardControl.Header>
-                                    <StackPanel>
-                                        <Grid Margin="0,0,20,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="auto" />
-                                                <ColumnDefinition Width="auto" />
-                                            </Grid.ColumnDefinitions>
-
-                                            <StackPanel Margin="0,0,20,0">
-
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="auto" />
-                                                        <ColumnDefinition Width="auto" />
-                                                        <ColumnDefinition Width="auto" />
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
-
-                                                    <TextBlock
-                                                        Grid.Column="2"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                        Text="{Binding Author, StringFormat=' by {0}'}"
-                                                        Visibility="{Binding Author, Converter={StaticResource NullToVisibilityConverter}}" />
-
-                                                    <TextBlock
-                                                        Grid.Column="1"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                        Text="{Binding Version, StringFormat=' v{0}'}"
-                                                        Visibility="{Binding Version, Converter={StaticResource NullToVisibilityConverter}}" />
-
-                                                </Grid>
-
-
-
-                                                <TextBlock
-                                                    Margin="0,5,0,0"
-                                                    VerticalAlignment="Center"
-                                                    FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                    Text="{Binding Description}" />
-
-                                                <ui:Hyperlink
-                                                    Margin="0,5,0,0"
-                                                    Content="{Binding Website}"
-                                                    FontSize="12"
-                                                    Icon="Link20"
-                                                    NavigateUri="{Binding Website}"
-                                                    Visibility="{Binding Website, Converter={StaticResource NullToVisibilityConverter}}" />
-                                            </StackPanel>
-
-
-                                            <ui:ToggleSwitch
-                                                Grid.Column="2"
-                                                Margin="0,0,0,0"
-                                                VerticalAlignment="Center"
-                                                IsChecked="{Binding Activated}" />
-                                        </Grid>
-
-
-                                        <TextBlock
-                                            Grid.Column="1"
-                                            Margin="0,0,10,0"
-                                            VerticalAlignment="Center"
-                                            Foreground="Orange"
-                                            Text="Plugin modification detected and has been unloaded for your safety. If you performed this, you can safely enable it back."
-                                            Visibility="{Binding Modified, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-
-                                        <ItemsControl
-                                            Margin="0,0,0,0"
-                                            d:ItemsSource="{Binding Plugins}"
-                                            ItemsSource="{Binding Plugins}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <ui:CardControl Margin="0,10,0,0">
-                                                        <ui:CardControl.Header>
-                                                            <StackPanel>
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock
-                                                                        FontSize="13"
-                                                                        FontWeight="Medium"
-                                                                        Text="{Binding Name}" />
-                                                                </Grid>
-
-                                                                <Grid Margin="0,5,0,0">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock
-                                                                        VerticalAlignment="Center"
-                                                                        FontSize="12"
-                                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                        Text="{Binding Description}" />
-
-                                                                    <StackPanel Grid.Column="2">
-                                                                        <ui:Anchor
-                                                                            Width="150"
-                                                                            VerticalAlignment="Center"
-                                                                            Appearance="Secondary"
-                                                                            Content="Open Config File"
-                                                                            NavigateUri="{Binding ConfigFilePath}"
-                                                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-
-                                                                        <Button
-                                                                            Width="150"
-                                                                            Margin="0,10,0,0"
-                                                                            Command="{Binding ReloadPluginCommand}"
-                                                                            CommandParameter="{Binding Id}"
-                                                                            Content="Reload"
-                                                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-                                                                    </StackPanel>
-                                                                </Grid>
-
-                                                                <ItemsControl
-                                                                    Margin="0,10,0,0"
-                                                                    ItemsSource="{Binding Actions}"
-                                                                    Visibility="{Binding Actions, Converter={StaticResource NullToVisibilityConverter}}">
-                                                                    <ItemsControl.ItemsPanel>
-                                                                        <ItemsPanelTemplate>
-                                                                            <StackPanel Orientation="Horizontal" />
-                                                                        </ItemsPanelTemplate>
-                                                                    </ItemsControl.ItemsPanel>
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate>
-                                                                            <Button
-                                                                                Margin="0,0,10,0"
-                                                                                Command="{Binding Command}"
-                                                                                Content="{Binding DisplayName}" />
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-
-                                                            </StackPanel>
-                                                        </ui:CardControl.Header>
-                                                    </ui:CardControl>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </ui:CardControl.Header>
-
-                            </ui:CardControl>
+                            <components:PluginProperties PluginDisplayModel="{Binding}" />
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
-
-                <StackPanel Orientation="Horizontal">
-                    <ui:Anchor
-                        Grid.Column="2"
-                        Width="220"
-                        Margin="0,20,0,0"
-                        VerticalAlignment="Center"
-                        Appearance="Secondary"
-                        Command="{Binding UpdateAndReloadPluginsCommand}"
-                        Content="Save State (restart required)"
-                        Icon="ArrowClockwise32" />
-                    <ui:Anchor
-                        Grid.Column="3"
-                        Width="185"
-                        Margin="20,20,0,0"
-                        VerticalAlignment="Center"
-                        Appearance="Secondary"
-                        Command="{Binding AddPluginFromZipCommand}"
-                        Content="Import Plugin Archive"
-                        Icon="Archive32" />
-                    <ui:Anchor
-                        Grid.Column="3"
-                        Width="150"
-                        Margin="20,20,0,0"
-                        VerticalAlignment="Center"
-                        Appearance="Secondary"
-                        Command="{Binding RefreshPluginsCommand}"
-                        Content="Refresh Plugins"
-                        Icon="ArrowSync24" />
-                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

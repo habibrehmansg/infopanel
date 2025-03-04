@@ -7,9 +7,9 @@ namespace InfoPanel.Plugins.Loader
 {
     public class PluginLoader
     {
-        public static PluginInfo? GetPluginInfo(string pluginDirectory)
+        public static PluginInfo? GetPluginInfo(string folder)
         {
-            var pluginInfo = Path.Combine(pluginDirectory, "PluginInfo.ini");
+            var pluginInfo = Path.Combine(folder, "PluginInfo.ini");
             if(File.Exists(pluginInfo))
             {
                 var parser = new FileIniDataParser();

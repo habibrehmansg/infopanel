@@ -1,10 +1,12 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
+using LibreHardwareMonitor.Hardware.Motherboard;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -16,237 +18,154 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media.Media3D;
+using System.Windows.Navigation;
+using System.Windows.Threading;
 using Wpf.Ui.Controls.Interfaces;
 
 namespace InfoPanel.ViewModels
 {
     public partial class PluginsViewModel : ObservableObject
     {
-        public string PluginsFolder { get; }
-        public ObservableCollection<PluginDisplayModel> EnabledDisplayPlugins { get; } = [];
-
-        public ObservableCollection<PluginDisplayModel> ExternalPlugins { get; } = [];
+        private readonly DispatcherTimer _timer;
 
         [ObservableProperty]
-        private Visibility _showModifiedHashWarning = Visibility.Collapsed;
+        private string _pluginFolder = FileUtil.GetExternalPluginFolder();
 
         [ObservableProperty]
-        private Visibility _showRestartBanner = Visibility.Collapsed;
+        private bool _showRestartBanner = false;
+
+        public ObservableCollection<PluginViewModel> BundledPlugins { get; } = [];
+
+        public ObservableCollection<PluginViewModel> ExternalPlugins { get; } = [];
 
         public PluginsViewModel()
         {
-            PluginsFolder = PluginStateHelper.PluginsFolder;
-            RefreshPlugins();
-        }
-
-        [RelayCommand]
-        public void RefreshPlugins()
-        {
-            EnabledDisplayPlugins.Clear();
-            ExternalPlugins.Clear();
-            GetEnabledPluginList();
-            GetExternalPluginList();
-        }
-
-        [RelayCommand]
-        public void UpdateAndReloadPlugins()
-        {
-            UpdatePluginStateFile();
-            ShowRestartBanner = Visibility.Visible;
-        }
-
-        private void GetEnabledPluginList()
-        {
-            var validationState = PluginStateHelper.ValidateHashes();
-            var modifiedList = validationState.Item2;
-
-            //foreach (var folder in Directory.GetDirectories(PluginStateHelper.PluginsFolder))
-            foreach (var folder in Directory.GetDirectories("plugins"))
+            _timer = new DispatcherTimer
             {
-                var folderName = Path.GetFileName(folder);
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _timer.Tick += OnTimerTick;
+            _timer.Start();
 
-                var hash = PluginStateHelper.HashPlugin(folderName);
+            BuildPluginModels();
+        }
 
+        private void OnTimerTick(object? sender, EventArgs e)
+        {
+            BuildPluginModels();
+        }
 
-                var files = Directory.GetFiles(folder);
-
-                if (!files.Contains(Path.Combine(folder, folderName + ".dll")))
+        private void BuildPluginModels()
+        {
+            foreach (var pluginDescriptor in PluginMonitor.Instance.Plugins)
+            {
+                if (pluginDescriptor.FolderPath?.IsSubdirectoryOf(FileUtil.GetBundledPluginFolder()) ?? false)
                 {
-                    continue;
-                }
+                    var model = BundledPlugins.SingleOrDefault(x => x.FilePath == pluginDescriptor.FilePath);
 
-                var pluginInfo = PluginLoader.GetPluginInfo(folder);
-
-                var model = new PluginDisplayModel
-                {
-                    Name = pluginInfo?.Name ?? Path.GetFileName(folder),
-                    Author = pluginInfo?.Author,
-                    Description = pluginInfo?.Description,
-                    Version = pluginInfo?.Version,
-                    Website = pluginInfo?.Website
-                };
-
-                var modifiedHash = modifiedList.Find(x => x.PluginName == folderName);
-                model.Modified = modifiedHash != null;
-
-                foreach (var plugin in PluginMonitor.Instance._loadedPlugins.Values.Where(x => x.FileName == folderName + ".dll"))
-                {
-                    var pluginViewModel = new PluginViewModel
+                    if (model != null)
                     {
-                        Id = plugin.Id,
-                        Name = plugin.Name,
-                        Description = plugin.Description,
-                        ConfigFilePath = plugin.ConfigFilePath
-                    };
-
-                    var methods = plugin.Plugin.GetType().GetMethods().Where(m => m.GetCustomAttributes(typeof(PluginActionAttribute), false).Length > 0);
-
-
-                    foreach (var method in methods)
-                    {
-                        var attribute = (PluginActionAttribute)method.GetCustomAttributes(typeof(PluginActionAttribute), false).First();
-                        string displayName = attribute.DisplayName;
-
-                        var command = new RelayCommand(() => method.Invoke(plugin.Plugin, null));
-                        pluginViewModel.Actions.Add(new PluginActionCommand { DisplayName = displayName, Command = command });
+                        model.Refresh();
                     }
-
-                    model.Plugins.Add(pluginViewModel);
-                }
-
-                model.Activated = model.Plugins.Count > 0;
-
-                EnabledDisplayPlugins.Add(model);
-            }
-        }
-
-        private void GetExternalPluginList()
-        {
-            var validationState = PluginStateHelper.ValidateHashes();
-            var modifiedList = validationState.Item2;
-
-            foreach (var folder in Directory.GetDirectories(PluginStateHelper.PluginsFolder))
-            {
-                var folderName = Path.GetFileName(folder);
-
-                var hash = PluginStateHelper.HashPlugin(folderName);
-
-                var files = Directory.GetFiles(folder);
-
-                if (!files.Contains(Path.Combine(folder, folderName + ".dll")))
-                {
-                    continue;
-                }
-
-                var pluginInfo = PluginLoader.GetPluginInfo(folder);
-
-                var model = new PluginDisplayModel
-                {
-                    Name = pluginInfo?.Name ?? Path.GetFileName(folder),
-                    Author = pluginInfo?.Author,
-                    Description = pluginInfo?.Description,
-                    Version = pluginInfo?.Version,
-                    Website = pluginInfo?.Website
-                };
-
-                var modifiedHash = modifiedList.Find(x => x.PluginName == folderName);
-                model.Modified = modifiedHash != null;
-
-                foreach (var plugin in PluginMonitor.Instance._loadedPlugins.Values.Where(x => x.FileName == folderName + ".dll"))
-                {
-                    var pluginViewModel = new PluginViewModel
+                    else
                     {
-                        Id = plugin.Id,
-                        Name = plugin.Name,
-                        Description = plugin.Description,
-                        ConfigFilePath = plugin.ConfigFilePath
-                    };
-
-                    var methods = plugin.Plugin.GetType().GetMethods().Where(m => m.GetCustomAttributes(typeof(PluginActionAttribute), false).Length > 0);
-
-
-                    foreach (var method in methods)
-                    {
-                        var attribute = (PluginActionAttribute)method.GetCustomAttributes(typeof(PluginActionAttribute), false).First();
-                        string displayName = attribute.DisplayName;
-
-                        var command = new RelayCommand(() => method.Invoke(plugin.Plugin, null));
-                        pluginViewModel.Actions.Add(new PluginActionCommand { DisplayName = displayName, Command = command });
+                        model = new PluginViewModel(pluginDescriptor);
+                        BundledPlugins.Add(model);
                     }
-
-                    model.Plugins.Add(pluginViewModel);
                 }
-
-                model.Activated = model.Plugins.Count > 0;
-
-                ExternalPlugins.Add(model);
-            }
-        }
-
-        public void UpdatePluginStateFile()
-        {
-            var allPlugins = new List<PluginDisplayModel>();
-            allPlugins.AddRange(ExternalPlugins);
-
-            var localPluginList = PluginStateHelper.GetLocalPluginDllHashes();
-
-            var pluginHashList = new List<PluginHash>();
-            foreach (var localPlugin in localPluginList)
-            {
-                var pluginModel = allPlugins.FirstOrDefault(x => x.Name == localPlugin.PluginName);
-                if (pluginModel != null)
+                else
                 {
-                    localPlugin.Activated = pluginModel.Activated;
-                    pluginHashList.Add(localPlugin);
+                    var model = ExternalPlugins.SingleOrDefault(x => x.FilePath == pluginDescriptor.FilePath);
+
+                    if (model != null)
+                    {
+                        model.Refresh();
+                    }
+                    else
+                    {
+                        model = new PluginViewModel(pluginDescriptor);
+                        ExternalPlugins.Add(model);
+                    }
                 }
             }
-            PluginStateHelper.UpdatePluginStateList(pluginHashList);
         }
 
+       
         [RelayCommand]
-        public static void AddPluginFromZip()
+        public void AddPluginFromZip()
         {
             Microsoft.Win32.OpenFileDialog openFileDialog = new()
             {
                 Multiselect = false,
-                Filter = "InfoPanel Plugin Archive |*.zip",
+                Filter = "InfoPanel Plugin Archive |InfoPanel.*.zip",
                 InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
             };
             if (openFileDialog.ShowDialog() == true)
             {
                 var pluginFilePath = openFileDialog.FileName;
 
-                using (var fs = new FileStream(pluginFilePath, FileMode.Open))
+                using var fs = new FileStream(pluginFilePath, FileMode.Open);
+                using var za = new ZipArchive(fs, ZipArchiveMode.Read);
+                var entry = za.Entries[0];
+                if (Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
                 {
-                    using (var za = new ZipArchive(fs, ZipArchiveMode.Read))
-                    {
-                        var entry = za.Entries[0];
-                        if (Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
-                        {
-                            za.ExtractToDirectory(PluginStateHelper.PluginsFolder, true);
-                        }
-                    }
+                    File.Copy(openFileDialog.FileName, Path.Combine(FileUtil.GetExternalPluginFolder(), openFileDialog.SafeFileName));
+                    ShowRestartBanner = true;
                 }
             }
         }
 
-
-
     }
 
-    public partial class PluginViewModel
+    public partial class PluginModuleViewModel : ObservableObject
     {
-        public required string Id { get; set; }
-        public required string Name { get; set; }
-        public required string Description { get; set; }
-        public required string? ConfigFilePath { get; set; }
+        private PluginWrapper _wrapper;
+        public string Id { get; set; }
+
+        [ObservableProperty]
+        private string _name;
+        [ObservableProperty]
+        private string _description;
+        [ObservableProperty]
+        private string? _configFilePath;
+      
         public ObservableCollection<PluginActionCommand> Actions { get; } = [];
 
         [RelayCommand]
-        public async Task ReloadPlugin(string pluginId)
+        public async Task Reload()
         {
-            await PluginMonitor.Instance.ReloadPlugin(pluginId);
+            await PluginMonitor.Instance.ReloadPluginModule(_wrapper);
+        }
+
+        public PluginModuleViewModel(PluginWrapper wrapper)
+        {
+            _wrapper = wrapper;
+            Id = wrapper.Id;
+            Name = wrapper.Name;
+            Description = wrapper.Description;
+            ConfigFilePath = wrapper.ConfigFilePath;
+
+            var methods = wrapper.Plugin.GetType().GetMethods().Where(m => m.GetCustomAttributes(typeof(PluginActionAttribute), false).Length > 0);
+
+            foreach (var method in methods)
+            {
+                var attribute = (PluginActionAttribute)method.GetCustomAttributes(typeof(PluginActionAttribute), false).First();
+                string displayName = attribute.DisplayName;
+
+                var command = new RelayCommand(() => method.Invoke(wrapper.Plugin, null));
+                Actions.Add(new PluginActionCommand { DisplayName = displayName, Command = command });
+            }
+        }
+
+        public void Refresh()
+        {
+            Id = _wrapper.Id;
+            Name = _wrapper.Name;
+            Description = _wrapper.Description;
+            ConfigFilePath = _wrapper.ConfigFilePath;
         }
     }
 
@@ -256,15 +175,94 @@ namespace InfoPanel.ViewModels
         public required ICommand Command { get; set; }
     }
 
-    public class PluginDisplayModel
+    public partial class PluginViewModel : ObservableObject
     {
-        public required string Name { get; set; }
-        public string? Description { get; set; }
-        public string? Author { get; set; }
-        public string? Version { get; set; }
-        public string? Website { get; set; }
-        public bool Activated { get; set; } = false;
-        public bool Modified { get; set; } = false;
-        public List<PluginViewModel> Plugins { get; set; } = [];
+        private PluginDescriptor _pluginDescriptor;
+        public string FilePath { get; set; }
+        [ObservableProperty]
+        private string _name;
+        [ObservableProperty]
+        private string? _description;
+        [ObservableProperty]
+        private string? _author;
+        [ObservableProperty]
+        private string? _version;
+        [ObservableProperty]
+        private string? _website;
+
+
+        private bool _activated;
+        public bool Activated
+        {
+            get => _activated;
+            set
+            {
+                if (SetProperty(ref _activated, value))
+                {
+                    _ = OnActivatedChanged();
+                }
+            }
+        }
+
+        public ObservableCollection<PluginModuleViewModel> Plugins { get; set; } = [];
+
+        [ObservableProperty]
+        private bool _controlEnabled = true;
+
+
+        private async Task OnActivatedChanged()
+        {
+            ControlEnabled = false;
+            if (!_activated)
+            {
+                await PluginMonitor.Instance.StopPluginModulesAsync(_pluginDescriptor);
+            }
+            else
+            {
+                await PluginMonitor.Instance.StartPluginModulesAsync(_pluginDescriptor);
+            }
+
+            PluginMonitor.Instance.SavePluginState();
+            ControlEnabled = true;
+        }
+
+        public PluginViewModel(PluginDescriptor pluginDescriptor)
+        {
+            _pluginDescriptor = pluginDescriptor;
+
+            FilePath = pluginDescriptor.FilePath;
+            Name = pluginDescriptor.PluginInfo?.Name ?? pluginDescriptor.FolderName ?? pluginDescriptor.FileName;
+            Author = pluginDescriptor.PluginInfo?.Author;
+            Description = pluginDescriptor.PluginInfo?.Description;
+            Version = pluginDescriptor.PluginInfo?.Version;
+            Website = pluginDescriptor.PluginInfo?.Website;
+            _activated = pluginDescriptor.PluginWrappers.Any(x => x.Value.IsRunning);
+
+            foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
+            {
+                Plugins.Add(new PluginModuleViewModel(wrapper));
+            }
+        }
+
+        public void Refresh()
+        {
+            if (!ControlEnabled) { return; }
+
+            _activated = _pluginDescriptor.PluginWrappers.Any(x => x.Value.IsRunning);
+            OnPropertyChanged(nameof(Activated));
+
+            foreach (var wrapper in _pluginDescriptor.PluginWrappers.Values)
+            {
+                var plugin = Plugins.SingleOrDefault(x => x.Id == wrapper.Id);
+                if (plugin != null)
+                {
+                    plugin.Refresh();
+                }
+                else
+                {
+                    Plugins.Add(new PluginModuleViewModel(wrapper));
+                }
+            }
+        }
     }
 }
