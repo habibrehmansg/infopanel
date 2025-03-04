@@ -23,11 +23,11 @@ namespace InfoPanel.Views.Components
     public partial class PluginProperties : UserControl
     {
         public static readonly DependencyProperty ItemProperty =
-     DependencyProperty.Register("PluginDisplayModel", typeof(PluginDisplayModel), typeof(PluginProperties));
+     DependencyProperty.Register("PluginDisplayModel", typeof(PluginViewModel), typeof(PluginProperties));
 
-        public PluginDisplayModel PluginDisplayModel
+        public PluginViewModel PluginDisplayModel
         {
-            get { return (PluginDisplayModel)GetValue(ItemProperty); }
+            get { return (PluginViewModel)GetValue(ItemProperty); }
             set { SetValue(ItemProperty, value); }
         }
 

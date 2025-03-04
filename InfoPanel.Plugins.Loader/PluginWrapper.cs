@@ -3,11 +3,11 @@ using System.Reflection;
 
 namespace InfoPanel.Plugins.Loader
 {
-    public class PluginWrapper(string fileName, IPlugin plugin)
+    public class PluginWrapper(PluginDescriptor pluginDescriptor, IPlugin plugin)
     {
-        public string FileName => fileName;
+        public PluginDescriptor PluginDescriptor { get; } = pluginDescriptor;
         public IPlugin Plugin { get; } = plugin;
-       public List<IPluginContainer> PluginContainers { get; } = [];
+        public List<IPluginContainer> PluginContainers { get; } = [];
 
         public string Id => Plugin.Id;
         public string Name => Plugin.Name;
