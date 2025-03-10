@@ -1,25 +1,30 @@
 ﻿using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
+using System.Collections;
+using System.Diagnostics;
 using System.Text;
 
-//\InfoPanel\InfoPanel.Plugins.Simulator\bin\Debug\net8.0-windows
 
 var currentDirectory = Directory.GetCurrentDirectory();
-
 var pluginFolder = Path.Combine(currentDirectory, "..\\..\\..\\..\\..\\InfoPanel.Extras\\bin\\x64\\Debug\\net8.0-windows\\win-x64");
-
 var pluginPath = Path.Combine(currentDirectory, pluginFolder, "InfoPanel.Extras.dll");
-
 var plugins = PluginLoader.InitializePlugin(pluginPath);
 
-Dictionary<string, PluginWrapper> loadedPlugins = [];
+var targetPlugin = "system-info-plugin";
+
+var pluginInfo = PluginLoader.GetPluginInfo(pluginFolder);
+var pluginDescriptor = new PluginDescriptor(pluginPath, pluginInfo);
 
 foreach (var plugin in plugins)
 {
-    var pluginInfo = PluginLoader.GetPluginInfo(pluginFolder);
-    var pluginDescriptor = new PluginDescriptor(pluginPath, pluginInfo);
+    if(plugin.Id != targetPlugin)
+    {
+        continue;
+    }
+
     PluginWrapper pluginWrapper = new(pluginDescriptor, plugin);
-    if (loadedPlugins.TryAdd(pluginWrapper.Name, pluginWrapper))
+
+    if (pluginDescriptor.PluginWrappers.TryAdd(pluginWrapper.Id, pluginWrapper))
     {
         try
         {
@@ -35,13 +40,9 @@ foreach (var plugin in plugins)
     {
         Console.WriteLine($"Plugin {pluginWrapper.Name} already loaded or duplicate plugin/name");
     }
-
-    //break;
 }
 
-
-
-Thread.Sleep(1000000);
+Thread.Sleep(1000);
 Console.Clear();
 
 StringBuilder buffer = new();
@@ -51,7 +52,7 @@ while (true)
 {
     buffer.Clear();
 
-    foreach (var wrapper in loadedPlugins.Values)
+    foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
     {
         wrapper.Update();
 
@@ -64,28 +65,32 @@ while (true)
             {
                 var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
 
-                if(entry is IPluginText text)
+                if (entry is IPluginText text)
                 {
                     buffer.AppendLine($"---{text.Name}: {text.Value}");
-                }else if(entry is IPluginSensor sensor)
+                }
+                else if (entry is IPluginSensor sensor)
                 {
-                    buffer.AppendLine($"---{sensor.Name}: {sensor.Value}{sensor.Unit}");
+                    buffer.AppendLine($"---{sensor.Name}: {sensor.Value.ToString()}");
+                }
+                else if (entry is IPluginTable table)
+                {
+                    buffer.AppendLine($"---{table.Name}: {table.ToString()}");
                 }
             }
+
+            buffer.AppendLine();
         }
 
-        buffer.AppendLine();
-    }
+        // Only update the console if the output has changed with double buffering to reduce flicker
+        var output = buffer.ToString();
+        if (output != lastOutput)
+        {
+            lastOutput = output;
+            Console.Clear();
+            Console.WriteLine(output);
+        }
 
-    // Only update the console if the output has changed with double buffering to reduce flicker
-    var output = buffer.ToString();
-    if (output != lastOutput)
-    {
-        lastOutput = output;
-        Console.Clear();
-        Console.WriteLine(output);
+        Thread.Sleep(30);
     }
-
-    Thread.Sleep(30);
 }
-

@@ -41,35 +41,18 @@ namespace InfoPanel.Extras
         {
         }
 
-        private string? _configFilePath = null;
-        public override string? ConfigFilePath => _configFilePath;
+        public override string? ConfigFilePath => Config.FilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromMinutes(1);
 
         public override void Initialize()
         {
-            Assembly assembly = Assembly.GetExecutingAssembly();
-            _configFilePath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
+            Config.Instance.Load();
+            Config.Instance.TryGetValue(Config.SECTION_WEATHER, "APIKey", out string apiKey);
+            Config.Instance.TryGetValue(Config.SECTION_WEATHER, "City", out _city);
 
-            var parser = new FileIniDataParser();
-            IniData config;
-            if (!File.Exists(_configFilePath))
+            if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(_city))
             {
-                config = new IniData();
-                config["Weather Plugin"]["APIKey"] = "<your-open-weather-api-key>";
-                config["Weather Plugin"]["City"] = "Singapore";
-                parser.WriteFile(_configFilePath, config);
-            }
-            else
-            {
-                config = parser.ReadFile(_configFilePath);
-
-                var apiKey = config["Weather Plugin"]["APIKey"];
-                _city = config["Weather Plugin"]["City"];
-
-                if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(_city))
-                {
-                    _current = new(apiKey, OpenWeatherMap.Standard.Enums.WeatherUnits.Metric);
-                }
+                _current = new(apiKey, OpenWeatherMap.Standard.Enums.WeatherUnits.Metric);
             }
         }
 
