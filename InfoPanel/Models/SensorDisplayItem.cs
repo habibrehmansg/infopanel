@@ -1,12 +1,10 @@
-﻿using InfoPanel.Enums;
-using LibreHardwareMonitor.Hardware;
-using System;
+﻿using System;
 using System.Drawing;
 
 namespace InfoPanel.Models
 {
     [Serializable]
-    public class SensorDisplayItem : TextDisplayItem, ISensorItem
+    public class SensorDisplayItem : TextDisplayItem, ISensorItem, IPluginSensorItem
     {
         private string _sensorName = string.Empty;
         public string SensorName
@@ -18,13 +16,13 @@ namespace InfoPanel.Models
             }
         }
 
-        private Enums.SensorType _sensorIdType = Enums.SensorType.HwInfo;
+        private Enums.SensorType _sensorType = Enums.SensorType.HwInfo;
         public Enums.SensorType SensorType
         {
-            get { return _sensorIdType; }
+            get { return _sensorType; }
             set
             {
-                SetProperty(ref _sensorIdType, value);
+                SetProperty(ref _sensorType, value);
             }
         }
 

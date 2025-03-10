@@ -139,10 +139,12 @@ namespace InfoPanel.ViewModels.Components
     {
         public string SensorId { get; set; } = sensorId;
 
+        public SensorReading? SensorReading => SensorReader.ReadPluginSensor(SensorId);
+
         public override void Update()
         {
+            var sensorReading = SensorReading;
             //Update sensor value
-           var sensorReading = SensorReader.ReadPluginSensor(SensorId);
             if (sensorReading.HasValue)
             {
                 Value = sensorReading.Value.ValueText ?? sensorReading.Value.ValueNow.ToFormattedString();

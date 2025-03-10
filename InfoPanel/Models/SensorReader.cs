@@ -1,7 +1,10 @@
-﻿using InfoPanel.Monitors;
+﻿using InfoPanel.Extensions;
+using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using LibreHardwareMonitor.Hardware;
 using System;
+using System.Text;
+using System.Windows.Documents;
 
 namespace InfoPanel.Models
 {
@@ -37,6 +40,9 @@ namespace InfoPanel.Models
                 else if (reading.Data is IPluginText text)
                 {
                     return new SensorReading(text.Value);
+                }else if(reading.Data is IPluginTable table)
+                {
+                    return new SensorReading(table.Value, table.DefaultFormat, table.ToString());
                 }
             }
             return null;

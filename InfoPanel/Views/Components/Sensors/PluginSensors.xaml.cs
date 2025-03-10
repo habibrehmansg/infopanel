@@ -201,6 +201,17 @@ namespace InfoPanel.Views.Components
                     httpImageDisplayItem.SensorType = Enums.SensorType.Plugin;
                     httpImageDisplayItem.PluginSensorId = sensorItem.SensorId;
                 }
+                else if (SharedModel.Instance.SelectedItem is TableSensorDisplayItem tableSensorDisplayItem)
+                {
+                    tableSensorDisplayItem.Name = sensorItem.Name;
+                    tableSensorDisplayItem.SensorName = sensorItem.Name;
+                    tableSensorDisplayItem.SensorType = Enums.SensorType.Plugin;
+                    tableSensorDisplayItem.PluginSensorId = sensorItem.SensorId;
+                    if (SensorReader.ReadPluginSensor(sensorItem.SensorId) is SensorReading sensorReading && sensorReading.ValueTableFormat is string format)
+                    {
+                        tableSensorDisplayItem.TableFormat = format;
+                    }
+                }
             }
         }
 
@@ -271,6 +282,19 @@ namespace InfoPanel.Views.Components
                 var item = new HttpImageDisplayItem(sensorItem.Name, selectedProfile.Guid);
                 item.PluginSensorId = sensorItem.SensorId;
                 item.SensorType = Enums.SensorType.Plugin;
+                SharedModel.Instance.AddDisplayItem(item);
+                SharedModel.Instance.SelectedItem = item;
+            }
+        }
+
+        private void ButtonAddTableSensor_Click(object sender, RoutedEventArgs e)
+        {
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
+            {
+                var item = new TableSensorDisplayItem(sensorItem.Name, sensorItem.SensorId);
+                if(SensorReader.ReadPluginSensor(sensorItem.SensorId) is SensorReading sensorReading && sensorReading.ValueTableFormat is string format){
+                    item.TableFormat = format;
+                }
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }

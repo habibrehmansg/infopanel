@@ -12,8 +12,8 @@
     d:DesignWidth="800"
     mc:Ignorable="d">
     <Grid>
-        <ui:CardControl Margin="0,10,0,0" IsEnabled="{Binding ControlEnabled}">
-            <ui:CardControl.Header>
+        <ui:CardExpander Margin="0,10,0,0" IsEnabled="{Binding ControlEnabled}">
+            <ui:CardExpander.Header>
                 <StackPanel>
                     <Grid Margin="0,0,20,0">
                         <Grid.ColumnDefinitions>
@@ -77,88 +77,90 @@
                             IsChecked="{Binding Activated}" />
                     </Grid>
 
-                    <ItemsControl
-                        Margin="0,0,0,0"
-                        d:ItemsSource="{Binding Plugins}"
-                        ItemsSource="{Binding Plugins}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <ui:CardControl Margin="0,10,0,0">
-                                    <ui:CardControl.Header>
+
+                </StackPanel>
+            </ui:CardExpander.Header>
+
+            <ItemsControl
+                Margin="0,0,0,0"
+                d:ItemsSource="{Binding Plugins}"
+                ItemsSource="{Binding Plugins}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <ui:CardControl Margin="0,10,0,0">
+                            <ui:CardControl.Header>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
                                         <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                FontSize="13"
+                                                FontWeight="Medium"
+                                                Text="{Binding Name}" />
+                                        </Grid>
+
+                                        <Grid Margin="0,5,0,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="auto" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock
-                                                        FontSize="13"
-                                                        FontWeight="Medium"
-                                                        Text="{Binding Name}" />
-                                                </Grid>
-
-                                                <Grid Margin="0,5,0,0">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                        Text="{Binding Description}" />
-                                                </Grid>
-
-                                                <ItemsControl
-                                                    Margin="0,10,0,0"
-                                                    ItemsSource="{Binding Actions}"
-                                                    Visibility="{Binding Actions, Converter={StaticResource NullToVisibilityConverter}}">
-                                                    <ItemsControl.ItemsPanel>
-                                                        <ItemsPanelTemplate>
-                                                            <StackPanel Orientation="Horizontal" />
-                                                        </ItemsPanelTemplate>
-                                                    </ItemsControl.ItemsPanel>
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <Button
-                                                                Margin="0,0,10,0"
-                                                                Command="{Binding Command}"
-                                                                Content="{Binding DisplayName}" />
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                                <ui:Anchor
-                                                    Width="150"
-                                                    VerticalAlignment="Center"
-                                                    Appearance="Secondary"
-                                                    Content="Open Config File"
-                                                    NavigateUri="{Binding ConfigFilePath}"
-                                                    Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-
-                                                <Button
-                                                    Width="150"
-                                                    Margin="0,10,0,0"
-                                                    Command="{Binding ReloadCommand}"
-                                                    Content="Reload"
-                                                    Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-                                            </StackPanel>
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding Description}" />
                                         </Grid>
 
-                                    </ui:CardControl.Header>
-                                </ui:CardControl>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </ui:CardControl.Header>
+                                        <ItemsControl
+                                            Margin="0,10,0,0"
+                                            ItemsSource="{Binding Actions}"
+                                            Visibility="{Binding Actions, Converter={StaticResource NullToVisibilityConverter}}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button
+                                                        Margin="0,0,10,0"
+                                                        Command="{Binding Command}"
+                                                        Content="{Binding DisplayName}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
 
-        </ui:CardControl>
+                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                        <ui:Anchor
+                                            Width="150"
+                                            VerticalAlignment="Center"
+                                            Appearance="Secondary"
+                                            Content="Open Config File"
+                                            NavigateUri="{Binding ConfigFilePath}"
+                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                                        <Button
+                                            Width="150"
+                                            Margin="0,10,0,0"
+                                            Command="{Binding ReloadCommand}"
+                                            Content="Reload"
+                                            Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+                                    </StackPanel>
+                                </Grid>
+
+                            </ui:CardControl.Header>
+                        </ui:CardControl>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+        </ui:CardExpander>
     </Grid>
 </UserControl>

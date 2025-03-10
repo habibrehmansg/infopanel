@@ -453,7 +453,7 @@ namespace InfoPanel
             }
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
 
-            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
+            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
 
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
             using var wr = XmlWriter.Create(fileName, settings);
@@ -1333,7 +1333,7 @@ namespace InfoPanel
             if (File.Exists(fileName))
             {
                 XmlSerializer xs = new(typeof(List<DisplayItem>),
-                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
+                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
 
                 using var rd = XmlReader.Create(fileName);
                 try

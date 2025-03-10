@@ -373,16 +373,16 @@ namespace InfoPanel.Views.Common
                     foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                     {
                         var evaluatedSize = displayItem.EvaluateSize();
-                        Rect bounds;
+                        Rect bounds = displayItem.EvaluateBounds();
 
-                        if (displayItem is TextDisplayItem textDisplayItem && textDisplayItem.RightAlign)
-                        {
-                            bounds = new Rect(textDisplayItem.X - evaluatedSize.Width, textDisplayItem.Y, evaluatedSize.Width, evaluatedSize.Height);
-                        }
-                        else
-                        {
-                            bounds = new Rect(displayItem.X, displayItem.Y, evaluatedSize.Width, evaluatedSize.Height);
-                        }
+                        //if (displayItem is TextDisplayItem textDisplayItem && displayItem is not TableSensorDisplayItem && textDisplayItem.RightAlign)
+                        //{
+                        //    bounds = new Rect(textDisplayItem.X - evaluatedSize.Width, textDisplayItem.Y, evaluatedSize.Width, evaluatedSize.Height);
+                        //}
+                        //else
+                        //{
+                        //    bounds = new Rect(displayItem.X, displayItem.Y, evaluatedSize.Width, evaluatedSize.Height);
+                        //}
 
                         if (bounds.Contains(e.GetPosition(this)))
                         {

@@ -247,7 +247,7 @@ namespace InfoPanel.Models
                     {
                         if (d2dbitmap == null)
                         {
-                            if (Frames == 1)
+                            if (Frames == 1 && !ImagePath.IsUrl())
                             {
                                 d2dbitmap = device.CreateBitmapFromFile(ImagePath);
                             }

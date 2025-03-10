@@ -49,6 +49,8 @@ public abstract class DisplayItem : ObservableObject, ICloneable
             {
                 case SensorDisplayItem:
                     return "Sensor";
+                case TableSensorDisplayItem:
+                    return "Table";
                 case ClockDisplayItem:
                     return "Clock";
                 case CalendarDisplayItem:

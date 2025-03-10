@@ -1,29 +1,19 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Extensions;
-using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
-using LibreHardwareMonitor.Hardware.Motherboard;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media.Media3D;
-using System.Windows.Navigation;
 using System.Windows.Threading;
-using Wpf.Ui.Controls.Interfaces;
 
 namespace InfoPanel.ViewModels
 {

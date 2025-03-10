@@ -11,5 +11,10 @@
         public PluginText(string name, string value): this(IdUtil.Encode(name), name, value)
         {
         }
+
+        public override string ToString()
+        {
+            return Value;
+        }
     }
 }
