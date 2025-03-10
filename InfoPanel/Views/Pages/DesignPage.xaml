@@ -310,6 +310,17 @@
                                 <components:SensorProperties Grid.Column="1" SensorDisplayItem="{Binding}" />
                             </Grid>
                         </DataTemplate>
+                        <DataTemplate DataType="{x:Type models:TableSensorDisplayItem}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <components:TextProperties TextDisplayItem="{Binding}" />
+                                <components:TableSensorProperties Grid.Column="1" TableSensorDisplayItem="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
                         <DataTemplate DataType="{x:Type models:ClockDisplayItem}">
                             <Grid>
                                 <Grid.ColumnDefinitions>

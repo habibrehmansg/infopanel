@@ -1,12 +1,18 @@
-﻿using InfoPanel.Models;
+﻿using InfoPanel.Extensions;
+using InfoPanel.Models;
+using InfoPanel.Plugins;
 using InfoPanel.Utils;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Data;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Numerics;
+using System.Windows;
+using System.Windows.Media.Media3D;
 
 namespace InfoPanel.Drawing
 {
@@ -21,14 +27,14 @@ namespace InfoPanel.Drawing
 
     internal class PanelDraw
     {
-        private static readonly Stopwatch stopwatch = new Stopwatch();
+        private static readonly Stopwatch stopwatch = new();
 
         static PanelDraw()
         {
             stopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false)
+        public static async void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false)
         {
             //Compat graphics has background handled by WPF
             if (g is AcceleratedGraphics || videoBackgroundFallback)
@@ -72,11 +78,77 @@ namespace InfoPanel.Drawing
                 {
                     case TextDisplayItem textDisplayItem:
                         {
-                            (var text, var color) = textDisplayItem.EvaluateTextAndColor();
+
                             var fontSize = (int)Math.Ceiling(textDisplayItem.FontSize * scale);
+                            (var text, var color) = textDisplayItem.EvaluateTextAndColor();
+
+                            if (textDisplayItem is TableSensorDisplayItem tableSensorDisplayItem
+                                && tableSensorDisplayItem.GetValue() is SensorReading sensorReading
+                                && sensorReading.ValueTable is DataTable table)
+                            {
+                                var format = tableSensorDisplayItem.TableFormat;
+
+                                var maxRows = tableSensorDisplayItem.MaxRows;
+
+                                var formatParts = format.Split('|');
+
+                                if (formatParts.Length > 0)
+                                {
+                                    (float fWidth, float fHeight) = g.MeasureString("A", textDisplayItem.Font, fontSize, textDisplayItem.Bold,
+                                                  textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
+
+                                    var tWidth = 0;
+                                    for (int i = 0; i < formatParts.Length; i++)
+                                    {
+                                        var split = formatParts[i].Split(':');
+                                        if (split.Length == 2)
+                                        {
+                                            if (int.TryParse(split[0], out var column) && column < table.Columns.Count && int.TryParse(split[1], out var length))
+                                            {
+                                                if (tableSensorDisplayItem.ShowHeader)
+                                                {
+                                                    g.DrawString(table.Columns[column].ColumnName, textDisplayItem.Font, fontSize, color,
+                                                        x + tWidth, y,
+                                              i != 0 && textDisplayItem.RightAlign, textDisplayItem.Bold,
+                                              textDisplayItem.Italic, textDisplayItem.Underline,
+                                              textDisplayItem.Strikeout, length, 0);
+                                                }
+
+                                                var rows = Math.Min(table.Rows.Count, maxRows);
+
+                                                for (int j = 0; j < rows; j++)
+                                                {
+                                                    var col = table.Rows[j][column];
+
+                                                    if (table.Rows[j][column] is IPluginData pluginData)
+                                                    {
+
+                                                        g.DrawString(pluginData.ToString(), textDisplayItem.Font, fontSize, color,
+                                                            x + tWidth, (int)(y + (fHeight * (j + (tableSensorDisplayItem.ShowHeader ? 1 : 0)))),
+                                           i != 0 && textDisplayItem.RightAlign, textDisplayItem.Bold,
+                                           textDisplayItem.Italic, textDisplayItem.Underline,
+                                           textDisplayItem.Strikeout, length, 0);
+                                                    }
+                                                }
+
+                                                tWidth += length + 10;
+                                            }
+                                        }
+                                    }
+
+                                    if (displayItem.Selected)
+                                    {
+                                        var size = tableSensorDisplayItem.EvaluateSize();
+                                        selectedRectangles.Add(new SelectedRectangle(x, y, (int)size.Width, (int)size.Height));
+                                    }
+                                }
+
+                                break;
+                            }
 
                             g.DrawString(text, textDisplayItem.Font, fontSize, color, x, y, textDisplayItem.RightAlign,
                                 textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
+
 
                             if (displayItem.Selected)
                             {
@@ -84,11 +156,11 @@ namespace InfoPanel.Drawing
 
                                 if (textDisplayItem.RightAlign)
                                 {
-                                    selectedRectangles.Add(new SelectedRectangle((int)(x - textWidth), y - 2, (int)textWidth, (int)(textHeight - 4)));
+                                    selectedRectangles.Add(new SelectedRectangle((int)(x - textWidth), y, (int)textWidth, (int)textHeight));
                                 }
                                 else
                                 {
-                                    selectedRectangles.Add(new SelectedRectangle(x, y, (int)textWidth, (int)(textHeight)));
+                                    selectedRectangles.Add(new SelectedRectangle(x, y, (int)textWidth, (int)textHeight));
                                 }
                             }
 

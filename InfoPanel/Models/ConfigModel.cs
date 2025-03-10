@@ -449,7 +449,7 @@ namespace InfoPanel
                 {
                     //read the file
                     XmlSerializer xs = new(typeof(List<DisplayItem>),
-                       [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(ImageDisplayItem)]);
+                       [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(ImageDisplayItem)]);
 
                     List<DisplayItem>? displayItems = null;
                     using (var rd = XmlReader.Create(file))
