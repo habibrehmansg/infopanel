@@ -186,20 +186,20 @@
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
-		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="HidSharp" Version="2.1.0" />
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
-		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
 		<PackageReference Include="SecureStore" Version="1.2.2" />
-		<PackageReference Include="Sentry" Version="4.13.0" />
+		<PackageReference Include="Sentry" Version="5.3.0" />
 		<PackageReference Include="SkiaSharp" Version="3.116.1" />
-		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
-		<PackageReference Include="System.IO.Ports" Version="9.0.0" />
-		<PackageReference Include="System.Management" Version="9.0.0" />
-		<PackageReference Include="TaskScheduler" Version="2.11.1" />
+		<PackageReference Include="System.Drawing.Common" Version="9.0.2" />
+		<PackageReference Include="System.IO.Ports" Version="9.0.2" />
+		<PackageReference Include="System.Management" Version="9.0.2" />
+		<PackageReference Include="TaskScheduler" Version="2.12.1" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
 	</ItemGroup>
@@ -227,6 +227,9 @@
 		  <SubType>Code</SubType>
 		</Compile>
 		<Compile Update="Views\Components\Sensors\LibreSensors.xaml.cs">
+		  <SubType>Code</SubType>
+		</Compile>
+		<Compile Update="Views\Components\Text\TableSensorProperties.xaml.cs">
 		  <SubType>Code</SubType>
 		</Compile>
 		<Compile Update="Views\Pages\PluginsPage.xaml.cs">
