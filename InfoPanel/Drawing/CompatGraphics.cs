@@ -40,7 +40,7 @@ namespace InfoPanel.Drawing
         }
 
         public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false,
-            bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+            bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0)
         {
             var fontStyle =
                                        (bold ? FontStyle.Bold : FontStyle.Regular) |
@@ -61,7 +61,17 @@ namespace InfoPanel.Drawing
                 format.Alignment = StringAlignment.Near;
             }
 
-            this.Graphics.DrawString(text, font, brush, new PointF(x, y), format);
+            format.FormatFlags = StringFormatFlags.NoWrap;
+            format.Trimming = StringTrimming.EllipsisCharacter;
+
+            if (width == 0 && height == 0)
+            {
+                this.Graphics.DrawString(text, font, brush, new PointF(x, y), format);
+            }
+            else
+            {
+                this.Graphics.DrawString(text, font, brush, new RectangleF(x, y, width, height), format);
+            }
         }
 
         public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true)

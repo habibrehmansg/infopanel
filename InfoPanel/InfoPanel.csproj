@@ -2,19 +2,61 @@
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
-		<TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<Nullable>enable</Nullable>
 		<UseWPF>true</UseWPF>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<ApplicationIcon>Resources\Images\favicon.ico</ApplicationIcon>
-		<Platforms>x64;AnyCPU</Platforms>
+		<Platforms>x64</Platforms>
 		<FileVersion>$(AssemblyVersion)</FileVersion>
 		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
 		<Version>1.2.8.0</Version>
 		<UseWindowsForms>False</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-		<PlatformTarget>AnyCPU</PlatformTarget>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
+		<ExtrasOutputDir>..\InfoPanel.Extras\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)</ExtrasOutputDir>
+	</PropertyGroup>
+
+	<!-- Build InfoPanel.Extras -->
+	<Target Name="BuildExtras" BeforeTargets="Build">
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" Properties="SelfContained=false" />
+	</Target>
+
+	<!-- Copy InfoPanel.Extras to plugin dir -->
+	<Target Name="BuildCopyExtrasDll" AfterTargets="Build">
+		<Message Text="Executing BuildCopyExtrasDll target" Importance="High" />
+		<MakeDir Directories="$(OutputPath)plugins" />
+		<ItemGroup>
+			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(OutputPath)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
+	</Target>
+
+	<Target Name="CleanPluginsDirectory" BeforeTargets="Clean">
+		<RemoveDir Directories="$(OutputPath)\plugins" />
+	</Target>
+
+	<!-- Copy InfoPanel.Extras to publish dir -->
+	<Target Name="PublishCopyExtrasDll" AfterTargets="Publish">
+		<Message Text="Executing PublishCopyExtrasDll target" Importance="High" />
+		<MakeDir Directories="$(PublishDir)\plugins\InfoPanel.Extras" />
+		<ItemGroup>
+			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(PublishDir)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
+	</Target>
+
+	<Target Name="Sign" AfterTargets="Publish">
+		 <!--<Exec WorkingDirectory="$(PublishDir)" Command="&quot;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe&quot; sign /a /t http://timestamp.sectigo.com /fd SHA256 /d &quot;InfoPanel&quot; /v InfoPanel.exe" />--> 
+	</Target>
+
+	<PropertyGroup Condition="'$(Configuration)'=='Debug'">
+		<DebugType>full</DebugType>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)'=='Release'">
+		<DebugType>none</DebugType>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -25,27 +67,15 @@
 			<HintPath>Lib\d2dwinform.dll</HintPath>
 		</Reference>
 		<Reference Include="LibreHardwareMonitorLib">
-		  <HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
+			<HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
 		</Reference>
 		<Reference Include="TuringSmartScreenLib">
-		  <HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
+			<HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
 		</Reference>
 		<Reference Include="TuringSmartScreenLib.Helpers.GDI">
-		  <HintPath>Lib\TuringSmartScreenLib.Helpers.GDI.dll</HintPath>
+			<HintPath>Lib\TuringSmartScreenLib.Helpers.GDI.dll</HintPath>
 		</Reference>
 	</ItemGroup>
-
-	<Target Name="Sign" AfterTargets="Publish">
-		 <!--<Exec WorkingDirectory="$(PublishDir)" Command="&quot;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe&quot; sign /a /t http://timestamp.sectigo.com /fd SHA256 /d &quot;InfoPanel&quot; /v InfoPanel.exe" />--> 
-	</Target>
-
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x86'">
-		<DebugType>full</DebugType>
-	</PropertyGroup>
-
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x86'">
-		<DebugType>full</DebugType>
-	</PropertyGroup>
 
 	<ItemGroup>
 	  <Compile Remove="Images\**" />
@@ -98,6 +128,7 @@
 		<None Remove="Resources\Images\Libre\voltage.png" />
 		<None Remove="Resources\Images\libre_icon.ico" />
 		<None Remove="Resources\Images\libre_icon.png" />
+		<None Remove="Resources\Images\logo.ico" />
 		<None Remove="Resources\Images\logo.png" />
 		<None Remove="Resources\Images\no_image.png" />
 	</ItemGroup>
@@ -144,6 +175,7 @@
 		<Resource Include="Resources\Images\Libre\voltage.png" />
 		<Resource Include="Resources\Images\libre_icon.ico" />
 		<Resource Include="Resources\Images\libre_icon.png" />
+		<Resource Include="Resources\Images\logo.ico" />
 		<Resource Include="Resources\Images\logo.png" />
 		<Resource Include="Resources\Images\no_image.png" />
 		<Content Include="index.html">
@@ -154,21 +186,26 @@
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
-		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="HidSharp" Version="2.1.0" />
+		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
-		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
-		<PackageReference Include="Prise" Version="6.0.0" />
-		<PackageReference Include="Sentry" Version="4.13.0" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
+		<PackageReference Include="SecureStore" Version="1.2.2" />
+		<PackageReference Include="Sentry" Version="5.3.0" />
 		<PackageReference Include="SkiaSharp" Version="3.116.1" />
-		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
-		<PackageReference Include="System.IO.Ports" Version="9.0.0" />
-		<PackageReference Include="System.Management" Version="9.0.0" />
-		<PackageReference Include="TaskScheduler" Version="2.11.1" />
+		<PackageReference Include="System.Drawing.Common" Version="9.0.2" />
+		<PackageReference Include="System.IO.Ports" Version="9.0.2" />
+		<PackageReference Include="System.Management" Version="9.0.2" />
+		<PackageReference Include="TaskScheduler" Version="2.12.1" />
 		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
 	</ItemGroup>
 	
 	<ItemGroup>
@@ -186,7 +223,16 @@
 		<Compile Update="Views\Components\Chart\DonutProperties.xaml.cs">
 		  <SubType>Code</SubType>
 		</Compile>
+		<Compile Update="Views\Components\Sensors\PluginSensors.xaml.cs">
+		  <SubType>Code</SubType>
+		</Compile>
 		<Compile Update="Views\Components\Sensors\LibreSensors.xaml.cs">
+		  <SubType>Code</SubType>
+		</Compile>
+		<Compile Update="Views\Components\Text\TableSensorProperties.xaml.cs">
+		  <SubType>Code</SubType>
+		</Compile>
+		<Compile Update="Views\Pages\PluginsPage.xaml.cs">
 		  <SubType>Code</SubType>
 		</Compile>
 		<Compile Update="Views\Pages\UpdatesPage.xaml.cs">
@@ -257,5 +303,13 @@
 			<SubType>Designer</SubType>
 		</Page>
 	</ItemGroup>
+
+	<!--<ItemGroup>
+		<Content Include="$(SolutionDir)InfoPanel.VolumePlugin\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\InfoPanel.VolumePlugin.dll">
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>plugins\InfoPanel.VolumePlugin.dll</TargetPath>
+		</Content>
+	</ItemGroup>-->
 
 </Project>

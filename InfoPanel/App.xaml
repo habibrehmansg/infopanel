@@ -44,6 +44,7 @@
             <local:Int32ValueConverter x:Key="Int32ValueConverter" />
             <local:ProfileIndexConverter x:Key="ProfileIndexConverter" />
             <local:IsSensorConverter x:Key="IsSensorConverter" />
+            <local:IsPluginTableConverter x:Key="IsPluginTableConverter" />
             <local:CustomStepIndexConverter x:Key="CustomStepIndexConverter" />
             <local:CacheImageConverter x:Key="CacheImageConverter" />
             <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
@@ -10,7 +11,22 @@ namespace InfoPanel
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            return value == null ? Visibility.Collapsed : Visibility.Visible;
+            if (value == null)
+            {
+                return Visibility.Collapsed;
+            }
+
+            if (value is IEnumerable enumerable)
+            {
+                // Check if the collection is empty
+                var enumerator = enumerable.GetEnumerator();
+                if (!enumerator.MoveNext())
+                {
+                    return Visibility.Collapsed;
+                }
+            }
+
+            return Visibility.Visible;
         }
 
 

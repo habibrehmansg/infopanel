@@ -1,10 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Extensions;
 using InfoPanel.Models;
 using LibreHardwareMonitor.Hardware;
 using System;
 using System.Collections.ObjectModel;
-using System.Drawing;
-using System.Xml.Linq;
 
 namespace InfoPanel.ViewModels.Components
 {
@@ -79,8 +78,8 @@ namespace InfoPanel.ViewModels.Components
     }
 
     public abstract class SensorTreeItem(object id, string name) : TreeItem(id, name) {
-        private double _value;
-        public double Value
+        private string _value = string.Empty;
+        public string Value
         {
             get { return _value; }
             set { SetProperty(ref _value, value); }
@@ -108,7 +107,7 @@ namespace InfoPanel.ViewModels.Components
             var sensorReading = SensorReader.ReadHwInfoSensor(ParentId, ParentInstance, SensorId);
             if(sensorReading.HasValue)
             {
-                Value = sensorReading.Value.ValueNow;
+                Value = sensorReading.Value.ValueNow.ToFormattedString();
                 Unit = sensorReading.Value.Unit;
             }
         }
@@ -124,7 +123,31 @@ namespace InfoPanel.ViewModels.Components
             var sensorReading = SensorReader.ReadLibreSensor(SensorId);
             if (sensorReading.HasValue)
             {
-                Value = sensorReading.Value.ValueNow;
+                Value = sensorReading.Value.ValueNow.ToFormattedString();
+                Unit = sensorReading.Value.Unit;
+            }
+        }
+    }
+
+    public class PluginTreeItem(object id, string name) :TreeItem(id, name)
+    {
+        
+    }
+   
+
+    public partial class PluginSensorItem(object id, string name, string sensorId) : SensorTreeItem(id, name)
+    {
+        public string SensorId { get; set; } = sensorId;
+
+        public SensorReading? SensorReading => SensorReader.ReadPluginSensor(SensorId);
+
+        public override void Update()
+        {
+            var sensorReading = SensorReading;
+            //Update sensor value
+            if (sensorReading.HasValue)
+            {
+                Value = sensorReading.Value.ValueText ?? sensorReading.Value.ValueNow.ToFormattedString();
                 Unit = sensorReading.Value.Unit;
             }
         }

@@ -25,19 +25,48 @@ jobs:
     - name: Build InfoPanel
       run: |
         dotnet restore
-        dotnet publish InfoPanel\InfoPanel.csproj -c Release -o "${{ github.workspace }}\InfoPanel\bin\publish\win-x64" -r win-x64 --self-contained -p:PublishReadyToRun=true       
+        dotnet publish -p:PublishProfile=FolderProfile   
+
+    - name: Build Plugins folder
+      run: |
+        # Define paths
+          $solutionPath = "${{ github.workspace }}/CommunityPlugins/CommunityPlugins.sln"
+          $baseOutputDir = "${{ github.workspace }}/output/CommunityPlugins"
+          
+          # Build the solution to default output directories
+          Write-Host "Building solution: $solutionPath"
+          dotnet build $solutionPath --configuration Release
+          
+          # Create base output directory
+          New-Item -Path $baseOutputDir -ItemType Directory -Force
+          
+          # Find all .csproj files and move their outputs to individual folders
+          Get-ChildItem -Path "${{ github.workspace }}/CommunityPlugins" -Recurse -Filter "*.csproj" | ForEach-Object {
+            $projectDir = $_.DirectoryName
+            $projectName = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+            $defaultOutput = Join-Path $projectDir "bin/Release/net8.0-windows" # Adjust if using Debug
+            $targetOutput = Join-Path $baseOutputDir $projectName
+            
+            if (Test-Path $defaultOutput) {
+              Write-Host "Copying output from $defaultOutput to $targetOutput"
+              New-Item -Path $targetOutput -ItemType Directory -Force
+              Copy-Item -Path "$defaultOutput/*" -Destination $targetOutput -Recurse -Force
+            } else {
+              Write-Host "No output found for $projectName at $defaultOutput"
+            }
+          }
+          
+          # Optional: List the organized outputs
+          Get-ChildItem -Path $baseOutputDir -Directory | ForEach-Object {
+            Write-Host "Contents of $($_.Name):"
+            Get-ChildItem -Path $_.FullName
+          } 
 
     - name: Install and Compile Inno Setup Installer
       shell: powershell
       run: |
         cd ${{ github.workspace }}\InnoSetup
-        iscc "setup.iss"  
-    
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: InfoPanel
-        path:  "${{ github.workspace }}/build/"
+        iscc "setup.iss"      
 
     - name: Upload Artifact Setup
       uses: actions/upload-artifact@v4

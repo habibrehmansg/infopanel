@@ -1,15 +1,10 @@
-﻿using LibreHardwareMonitor.Hardware;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace InfoPanel.Models
 {
     [Serializable]
-    public class SensorDisplayItem : TextDisplayItem, ISensorItem
+    public class SensorDisplayItem : TextDisplayItem, ISensorItem, IPluginSensorItem
     {
         private string _sensorName = string.Empty;
         public string SensorName
@@ -21,13 +16,13 @@ namespace InfoPanel.Models
             }
         }
 
-        private SensorType _sensorIdType = SensorType.HwInfo;
-        public SensorType SensorType
+        private Enums.SensorType _sensorType = Enums.SensorType.HwInfo;
+        public Enums.SensorType SensorType
         {
-            get { return _sensorIdType; }
+            get { return _sensorType; }
             set
             {
-                SetProperty(ref _sensorIdType, value);
+                SetProperty(ref _sensorType, value);
             }
         }
 
@@ -68,6 +63,16 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _libreSensorId, value);
+            }
+        }
+
+        private string _pluginSensorId = string.Empty;
+        public string PluginSensorId
+        {
+            get { return _pluginSensorId; }
+            set
+            {
+                SetProperty(ref _pluginSensorId, value);
             }
         }
 
@@ -248,17 +253,22 @@ namespace InfoPanel.Models
             SensorName = string.Empty;
         }
 
+        public SensorDisplayItem(string name) : base(name)
+        {
+            SensorName = name;
+        }
+
         public SensorDisplayItem(string name, string libreSensorId) : base(name)
         {
             SensorName = name;
-            SensorType = SensorType.Libre;
+            SensorType = Enums.SensorType.Libre;
             LibreSensorId = libreSensorId;
         }
 
         public SensorDisplayItem(string name, uint id, uint instance, uint entryId) : base(name)
         {
             SensorName = name;
-            SensorType = SensorType.HwInfo;
+            SensorType = Enums.SensorType.HwInfo;
             Id = id;
             Instance = instance;
             EntryId = entryId;
@@ -268,8 +278,9 @@ namespace InfoPanel.Models
         {
             return SensorType switch
             {
-                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
-                SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
+                Enums.SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
+                Enums.SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
+                Enums.SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
                 _ => null,
             };
         }
@@ -353,70 +364,79 @@ namespace InfoPanel.Models
 
         private string EvaluateText(SensorReading sensorReading)
         {
-            var value = string.Empty;
-
-            double sensorReadingValue;
-
-            switch (ValueType)
+            string? value;
+            // new string sensor handling
+            if (!string.IsNullOrEmpty(sensorReading.ValueText))
             {
-                case SensorValueType.MIN:
-                    sensorReadingValue = sensorReading.ValueMin;
-                    break;
-                case SensorValueType.MAX:
-                    sensorReadingValue = sensorReading.ValueMax;
-                    break;
-                case SensorValueType.AVERAGE:
-                    sensorReadingValue = sensorReading.ValueAvg;
-                    break;
-                default:
-                    sensorReadingValue = sensorReading.ValueNow;
-                    break;
-            }
-
-            sensorReadingValue = sensorReadingValue * MultiplicationModifier + AdditionModifier;
-
-            if (AbsoluteAddition)
-            {
-                sensorReadingValue = Math.Abs(sensorReadingValue);
-            }
-
-            if (OverridePrecision)
-            {
-                switch (Precision)
-                {
-                    case 1:
-                        value = string.Format("{0:0.0}", sensorReadingValue);
-                        break;
-                    case 2:
-                        value = string.Format("{0:0.00}", sensorReadingValue);
-                        break;
-                    case 3:
-                        value = string.Format("{0:0.000}", sensorReadingValue);
-                        break;
-                    default:
-                        value = string.Format("{0:0}", Math.Floor(sensorReadingValue));
-                        break;
-                }
+                value = sensorReading.ValueText;
             }
             else
             {
-                switch (sensorReading.Unit.ToLower())
+
+                double sensorReadingValue;
+
+                switch (ValueType)
                 {
-                    case "gb":
-                        value = string.Format("{0:0.0}", sensorReadingValue);
+                    case SensorValueType.MIN:
+                        sensorReadingValue = sensorReading.ValueMin;
                         break;
-                    case "kb/s":
-                    case "mb/s":
-                    case "mbar/min":
-                    case "mbar":
-                        value = string.Format("{0:0.00}", sensorReadingValue);
+                    case SensorValueType.MAX:
+                        sensorReadingValue = sensorReading.ValueMax;
                         break;
-                    case "v":
-                        value = string.Format("{0:0.000}", sensorReadingValue);
+                    case SensorValueType.AVERAGE:
+                        sensorReadingValue = sensorReading.ValueAvg;
                         break;
                     default:
-                        value = string.Format("{0:0}", sensorReadingValue);
+                        sensorReadingValue = sensorReading.ValueNow;
                         break;
+                }
+
+                sensorReadingValue = sensorReadingValue * MultiplicationModifier + AdditionModifier;
+
+                if (AbsoluteAddition)
+                {
+                    sensorReadingValue = Math.Abs(sensorReadingValue);
+                }
+
+
+                if (OverridePrecision)
+                {
+                    switch (Precision)
+                    {
+                        case 1:
+                            value = string.Format("{0:0.0}", sensorReadingValue);
+                            break;
+                        case 2:
+                            value = string.Format("{0:0.00}", sensorReadingValue);
+                            break;
+                        case 3:
+                            value = string.Format("{0:0.000}", sensorReadingValue);
+                            break;
+                        default:
+                            value = string.Format("{0:0}", Math.Floor(sensorReadingValue));
+                            break;
+                    }
+                }
+                else
+                {
+                    switch (sensorReading.Unit.ToLower())
+                    {
+                        case "gb":
+                            value = string.Format("{0:0.0}", sensorReadingValue);
+                            break;
+                        case "kb/s":
+                        case "mb/s":
+                        case "mbar/min":
+                        case "mbar":
+                            value = string.Format("{0:0.00}", sensorReadingValue);
+                            break;
+                        case "v":
+                            value = string.Format("{0:0.000}", sensorReadingValue);
+                            break;
+                        default:
+                            value = string.Format("{0:0}", sensorReadingValue);
+                            break;
+                    }
                 }
             }
 

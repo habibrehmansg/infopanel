@@ -453,7 +453,7 @@ namespace InfoPanel
             }
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
 
-            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem)]);
+            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
 
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
             using var wr = XmlWriter.Create(fileName, settings);
@@ -1198,7 +1198,7 @@ namespace InfoPanel
                         {
                             foreach (DisplayItem displayItem in displayItems)
                             {
-                                if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == SensorType.HwInfo)
+                                if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
                                     {
@@ -1212,7 +1212,7 @@ namespace InfoPanel
                                         }
                                     }
                                 }
-                                else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == SensorType.HwInfo)
+                                else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
                                     {
@@ -1226,7 +1226,7 @@ namespace InfoPanel
                                         }
                                     }
                                 }
-                                else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == SensorType.HwInfo)
+                                else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
                                 {
                                     if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
                                     {
@@ -1333,7 +1333,7 @@ namespace InfoPanel
             if (File.Exists(fileName))
             {
                 XmlSerializer xs = new(typeof(List<DisplayItem>),
-                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(GaugeDisplayItem)]);
+                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
 
                 using var rd = XmlReader.Create(fileName);
                 try

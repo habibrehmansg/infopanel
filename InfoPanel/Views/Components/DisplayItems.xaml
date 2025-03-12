@@ -148,6 +148,9 @@
                                                 <DataTrigger Binding="{Binding Kind}" Value="Sensor">
                                                     <Setter Property="Symbol" Value="Temperature20" />
                                                 </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Table">
+                                                    <Setter Property="Symbol" Value="Table20" />
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding Kind}" Value="Clock">
                                                     <Setter Property="Symbol" Value="Clock20" />
                                                 </DataTrigger>
@@ -168,6 +171,9 @@
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Kind}" Value="Sensor Image">
                                                     <Setter Property="Symbol" Value="CircleImage20" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Http Image">
+                                                    <Setter Property="Symbol" Value="WebAsset20" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>

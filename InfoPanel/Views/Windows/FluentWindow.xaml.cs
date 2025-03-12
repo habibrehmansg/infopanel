@@ -112,9 +112,17 @@ namespace InfoPanel.Views.Windows
                         RestoreWindow();
                         Navigate(typeof(Pages.DesignPage));
                         break;
+                    case "plugins":
+                        RestoreWindow();
+                        Navigate(typeof(Pages.PluginsPage));
+                        break;
                     case "settings":
                         RestoreWindow();
                         Navigate(typeof(Pages.SettingsPage));
+                        break;
+                    case "updates":
+                        RestoreWindow();
+                        Navigate(typeof(Pages.UpdatesPage));
                         break;
                     case "about":
                         RestoreWindow();

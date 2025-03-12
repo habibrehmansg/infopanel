@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Monitors;
+using InfoPanel.Plugins.Loader;
 using InfoPanel.Services;
 using InfoPanel.Utils;
 using InfoPanel.ViewModels;
@@ -8,7 +9,6 @@ using InfoPanel.Views.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Win32;
-using Prise.DependencyInjection;
 using Sentry;
 using System;
 using System.Collections.Generic;
@@ -36,9 +36,6 @@ namespace InfoPanel
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
        .ConfigureServices((context, services) =>
        {
-           //add plugins
-           services.AddPrise();
-           
            // App Host
            services.AddHostedService<ApplicationHostService>();
 
@@ -74,6 +71,8 @@ namespace InfoPanel
            services.AddScoped<ProfilesViewModel>();
            services.AddScoped<Views.Pages.DesignPage>();
            services.AddScoped<DesignViewModel>();
+           services.AddScoped<Views.Pages.PluginsPage>();
+           services.AddScoped<PluginsViewModel>();
            services.AddScoped<Views.Pages.AboutPage>();
            services.AddScoped<AboutViewModel>();
            services.AddScoped<Views.Pages.SettingsPage>();
@@ -116,7 +115,7 @@ namespace InfoPanel
             SentrySdk.CaptureException(e.Exception);
 
             // If you want to avoid the application from crashing:
-            e.Handled = true;
+            //e.Handled = true;
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -193,18 +192,19 @@ namespace InfoPanel
             HWHash.SetDelay(300);
             HWHash.Launch();
 
-            await LibreMonitor.Instance.StartAsync();
+            if (ConfigModel.Instance.Settings.LibreHardwareMonitor)
+            {
+                LibreMonitor.Instance.SetRing0(ConfigModel.Instance.Settings.LibreHardMonitorRing0);
+                await LibreMonitor.Instance.StartAsync();
+            }
+
+            await PluginMonitor.Instance.StartAsync();
 
             SystemEvents.SessionEnding += OnSessionEnding;
             SystemEvents.PowerModeChanged += OnPowerChange;
             Exit += App_Exit;
 
             await StartPanels();
-
-
-
-            //var video  = new VideoBackgroundItem("C:\\Users\\Habib\\Desktop\\88inchENG\\video\\rani.mp4");
-            //await video.Test();
         }
 
         private void OnSessionEnding(object sender, SessionEndingEventArgs e)
@@ -274,6 +274,7 @@ namespace InfoPanel
         {
             await StopPanels();
             await LibreMonitor.Instance.StopAsync();
+            await PluginMonitor.Instance.StopAsync();
             //shutdown
             Application.Current.Shutdown();
         }
@@ -333,13 +334,6 @@ namespace InfoPanel
                 displayWindow.Closed -= DisplayWindow_Closed;
                 DisplayWindows.Remove(displayWindow.Profile.Guid);
             }
-        }
-
-        public void testPlugin()
-        {
-           // var pluginPath = Path.Combine(AppContext.BaseDirectory, "plugins"); //set the path where people should put plugins. I chose a folder called plugins in the same directory as the exe
-
-            //var scanResult = await this._pluginLoader.FindPlugin<IPanelData>(pluginPath);
         }
     }
 }

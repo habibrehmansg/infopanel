@@ -30,7 +30,7 @@
                 Margin="0,50,10,0"
                 CornerRadius="8,8,8,8">
                 <TabControl TabStripPlacement="Top">
-                    <TabItem>
+                    <TabItem Width="150">
                         <TabItem.Header>
                             <StackPanel
                                 HorizontalAlignment="Center"
@@ -85,7 +85,7 @@
                             </Border>
                         </Grid>
                     </TabItem>
-                    <TabItem>
+                    <TabItem Width="150">
                         <TabItem.Header>
                             <StackPanel
                                 HorizontalAlignment="Center"
@@ -147,6 +147,31 @@
                                 CornerRadius="0,4,4,4"
                                 Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitor, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <components:LibreSensors Margin="0,0,0,10" />
+                            </Border>
+                        </Grid>
+                    </TabItem>
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Orientation="Horizontal">
+                                <Image
+                                    Width="30"
+                                    Height="30"
+                                    Source="/InfoPanel;component/Resources/Images/logo.ico" />
+                                <TextBlock
+                                    Grid.Column="0"
+                                    Margin="10,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center">
+                                    <Bold FontSize="16" FontWeight="SemiBold">Plugins</Bold>
+                                </TextBlock>
+                            </StackPanel>
+                        </TabItem.Header>
+                        <Grid>
+                            <Border Background="#1D1D1D" CornerRadius="0,4,4,4">
+                                <components:PluginSensors Margin="0,0,0,10" />
                             </Border>
                         </Grid>
                     </TabItem>
@@ -283,6 +308,17 @@
 
                                 <components:TextProperties TextDisplayItem="{Binding}" />
                                 <components:SensorProperties Grid.Column="1" SensorDisplayItem="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type models:TableSensorDisplayItem}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <components:TextProperties TextDisplayItem="{Binding}" />
+                                <components:TableSensorProperties Grid.Column="1" TableSensorDisplayItem="{Binding}" />
                             </Grid>
                         </DataTemplate>
                         <DataTemplate DataType="{x:Type models:ClockDisplayItem}">

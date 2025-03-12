@@ -1,0 +1,120 @@
+﻿<Page
+    x:Class="InfoPanel.Views.Pages.PluginsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="clr-namespace:InfoPanel.Views.Components"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:InfoPanel"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:viewmodels="clr-namespace:InfoPanel.ViewModels"
+    Title="PluginsPage"
+    d:DataContext="{d:DesignInstance Type=viewmodels:PluginsViewModel}"
+    d:DesignHeight="650"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
+    </Page.Resources>
+
+    <Grid Margin="0,60,0,20">
+        <ScrollViewer Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="1360" Margin="20,30,20,0">
+                <ui:CardControl Icon="PlugConnected20">
+                    <ui:CardControl.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="auto" />
+                                <ColumnDefinition Width="auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock
+                                    FontSize="13"
+                                    FontWeight="Medium"
+                                    Text="Plugin Framework" />
+
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="Orange">
+                                    <Bold>Warning!</Bold>
+                                    Plugins run under the same privileges as InfoPanel (Administrator). Do not load untrusted plugins. Always verify the source of the plugin.<LineBreak />
+                                    If unsure, do NOT install the plugin.</TextBlock>
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="If you would like to develop a plugin, visit our Github and reference Infopanel.Extras project for guidelines." />
+                            </StackPanel>
+                            <ui:Anchor
+                                Grid.Column="2"
+                                Width="150"
+                                VerticalAlignment="Center"
+                                Appearance="Secondary"
+                                Content="Open Plugins Folder"
+                                NavigateUri="{Binding PluginFolder}" />
+
+
+                        </Grid>
+                    </ui:CardControl.Header>
+                </ui:CardControl>
+
+                <ui:CardControl
+                    Margin="0,10,0,0"
+                    Background="#FF9800"
+                    Icon="Warning20"
+                    Visibility="{Binding ShowRestartBanner, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ui:CardControl.Header>
+                        InfoPanel needs to be restarted to apply your changes.
+                    </ui:CardControl.Header>
+                </ui:CardControl>
+
+                <Label
+                    Margin="0,40,0,0"
+                    Content="Bundled Plugins"
+                    FontSize="14"
+                    FontWeight="Medium"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <ItemsControl ItemsSource="{Binding BundledPlugins}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <components:PluginProperties PluginDisplayModel="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="auto" />
+                    </Grid.ColumnDefinitions>
+                    <Label
+                        Margin="0,40,0,0"
+                        Content="User Plugins"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <ui:Anchor
+                        Grid.Column="1"
+                        Width="150"
+                        Margin="0,0,0,0"
+                        VerticalAlignment="Bottom"
+                        Appearance="Secondary"
+                        Command="{Binding AddPluginFromZipCommand}"
+                        Content="Import Plugin" />
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding ExternalPlugins}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <components:PluginProperties PluginDisplayModel="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

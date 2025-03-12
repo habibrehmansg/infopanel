@@ -173,7 +173,7 @@ namespace InfoPanel.Views.Components
                 {
                     displayItem.Name = sensorItem.Name;
                     displayItem.SensorName = sensorItem.Name;
-                    displayItem.SensorType = Models.SensorType.Libre;
+                    displayItem.SensorType = Enums.SensorType.Libre;
                     displayItem.LibreSensorId = sensorItem.SensorId;
                     displayItem.Unit = sensorItem.Unit;
                 }
@@ -181,21 +181,21 @@ namespace InfoPanel.Views.Components
                 {
                     chartDisplayItem.Name = sensorItem.Name;
                     chartDisplayItem.SensorName = sensorItem.Name;
-                    chartDisplayItem.SensorType = Models.SensorType.Libre;
+                    chartDisplayItem.SensorType = Enums.SensorType.Libre;
                     chartDisplayItem.LibreSensorId = sensorItem.SensorId;
                 }
                 else if (SharedModel.Instance.SelectedItem is GaugeDisplayItem gaugeDisplayItem)
                 {
                     gaugeDisplayItem.Name = sensorItem.Name;
                     gaugeDisplayItem.SensorName = sensorItem.Name;
-                    gaugeDisplayItem.SensorType = Models.SensorType.Libre;
+                    gaugeDisplayItem.SensorType = Enums.SensorType.Libre;
                     gaugeDisplayItem.LibreSensorId = sensorItem.SensorId;
                 }
                 else if (SharedModel.Instance.SelectedItem is SensorImageDisplayItem sensorImageDisplayItem)
                 {
                     sensorImageDisplayItem.Name = sensorItem.Name;
                     sensorImageDisplayItem.SensorName = sensorItem.Name;
-                    sensorImageDisplayItem.SensorType = Models.SensorType.Libre;
+                    sensorImageDisplayItem.SensorType = Enums.SensorType.Libre;
                     sensorImageDisplayItem.LibreSensorId = sensorItem.SensorId;
                 }
             }

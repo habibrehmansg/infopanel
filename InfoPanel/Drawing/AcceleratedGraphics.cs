@@ -48,17 +48,47 @@ namespace InfoPanel.Drawing
             return (textSize.width + 10, textSize.height);
         }
 
-        public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, 
+            bool rightAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, 
+            int width = 0, int height = 0)
         {
             using var textFormat = CreateTextFormat(fontName, fontSize * FontScale, rightAlign, bold, italic, underline, strikeout);
             using var textColor = this.D2DDevice.CreateSolidColorBrush(D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
 
-            var rect = new D2DRect(x + TextXOffset, y + TextYOffset, float.MaxValue, 0);
+            var rect = new D2DRect(x + TextXOffset, y + TextYOffset, width == 0 ? float.MaxValue: width, height);
 
-            if (rightAlign)
+            if (rightAlign && width == 0 && height == 0)
             {
                 rect.X = 0;
                 rect.Width = x - TextXOffset;
+            }else if(width > 0)
+            {
+                //add truncate support manually
+                var textSize = new D2DSize(float.MaxValue, 0);
+                this.D2DGraphics.MeasureText(text, textFormat, ref textSize);
+
+                if(textSize.width > width)
+                {
+                    string ellipsis = "...";
+                    string truncatedText = text;
+
+                    while(truncatedText.Length > 0)
+                    {
+                        var tempText = truncatedText + ellipsis;
+
+                        textSize = new D2DSize(float.MaxValue, 0);
+                        this.D2DGraphics.MeasureText(tempText, textFormat, ref textSize);
+
+                        if (textSize.width <= width)
+                        {
+                            text = tempText;
+                            break;
+                        }
+
+                        // Remove the last character
+                        truncatedText = truncatedText[..^1];
+                    }
+                }
             }
 
             this.D2DGraphics.DrawText(text, textColor,

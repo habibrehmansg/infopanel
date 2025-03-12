@@ -47,6 +47,9 @@ namespace InfoPanel.ViewModels
                 case "navigate_to_about":
                     _navigationService.Navigate(typeof(Views.Pages.AboutPage));
                     return;
+                case "navigate_to_plugins":
+                    _navigationService.Navigate(typeof(Views.Pages.PluginsPage));
+                    return;
                 case "navigate_to_settings":
                     _navigationService.Navigate(typeof(Views.Pages.SettingsPage));
                     return;
