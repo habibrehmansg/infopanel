@@ -15,7 +15,8 @@ namespace InfoPanel.Extensions
 
         public static int GetIntValue(this Dictionary<string, string> dict, string key, int fallback)
         {
-            return dict.TryGetValue(key, out var value) && int.TryParse(value, out var result) ? result : fallback;
+            return dict.TryGetValue(key, out var value) 
+                && double.TryParse(value, out var doubleResult) ? (int)Math.Round(doubleResult) : fallback;
         }
     }
 }

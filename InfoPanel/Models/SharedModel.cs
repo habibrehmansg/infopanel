@@ -661,8 +661,8 @@ namespace InfoPanel
                     var LBL = item.GetStringValue("LBL", key);
                     var TXTBIR = item.GetStringValue("TXTBIR", string.Empty);
                     var FNTNAM = item.GetStringValue("FNTNAM", "Arial");
-                    var WID = item.GetIntValue("WID", -1);
-                    var HEI = item.GetIntValue("HEI", -1);
+                    var WID = item.GetIntValue("WID", 0);
+                    var HEI = item.GetIntValue("HEI", 0);
                     var TYP = item.GetStringValue("TYP", string.Empty);
                     var MINVAL = item.GetIntValue("MINVAL", 0);
                     var MAXVAL = item.GetIntValue("MAXVAL", 100);
@@ -706,42 +706,9 @@ namespace InfoPanel
                         }
                     }
 
-
-                    var adjustment = (WID != -1) ? WID : 0;
-
-                    //simple items have no width
-                    if (!simple && !gauge && !graph && SHWUNT == 1 && UNTWID != -1)
-                    {
-                        //adjustment -= UNTWID;
-
-                        using Bitmap bitmap = new(1, 1);
-                        using Graphics g = Graphics.FromImage(bitmap);
-                        using Font font = new(FNTNAM, TXTSIZ);
-                        var size = g.MeasureString(UNT, font, 0, StringFormat.GenericTypographic);
-
-
-
-                        if (size.Width < UNTWID)
-                        {
-                            adjustment -= (int)(UNTWID - size.Width);
-                        }
-                        else
-                        {
-                            //adjustment += (int)(size.Width - UNTWID);
-                            //if (UNT != string.Empty)
-                            //{
-                            //    adjustment += UNTWID;
-                            //}
-                            //else
-                            //{
-                            //    adjustment -= UNTWID;
-                            //}
-                        }
-                    }
-
                     if (graph)
                     {
-                        if (WID != -1 && HEI != -1)
+                        if (WID != 0 && HEI != 0)
                         {
                             GraphDisplayItem.GraphType? graphType = null;
                             switch (TYP)
@@ -804,7 +771,8 @@ namespace InfoPanel
                                     BackgroundColor = DecimalBgrToHex(BGCOL),
                                     FrameColor = DecimalBgrToHex(FRMCOL),
                                     X = ITMX,
-                                    Y = ITMY
+                                    Y = ITMY,
+                                    Hidden = hidden,
                                 };
 
                                 displayItems.Add(graphDisplayItem);
@@ -814,6 +782,9 @@ namespace InfoPanel
                     else if (gauge)
                     {
                         var STAFLS = item.GetStringValue("STAFLS", string.Empty);
+
+                        var RESIZW = item.GetIntValue("RESIZW", 0);
+                        var RESIZH = item.GetIntValue("RESIZH", 0);
 
                         if (TYP == "Custom" && STAFLS != string.Empty)
                         {
@@ -826,6 +797,8 @@ namespace InfoPanel
                                 MaxValue = MAXVAL,
                                 X = ITMX,
                                 Y = ITMY,
+                                Width = RESIZW,
+                                Height = RESIZH,
                                 Hidden = hidden
                             };
 
@@ -854,6 +827,9 @@ namespace InfoPanel
                     {
                         var IMGFIL = item.GetStringValue("IMGFIL", string.Empty);
                         var IMGDAT = item.GetStringValue("IMGDAT", string.Empty);
+                        var BGIMG = item.GetIntValue("BGIMG", 0);
+                        var RESIZW = item.GetIntValue("RESIZW", 0);
+                        var RESIZH = item.GetIntValue("RESIZH", 0);
 
                         if (IMGFIL != string.Empty && IMGDAT != string.Empty)
                         {
@@ -865,6 +841,8 @@ namespace InfoPanel
                                 {
                                     X = ITMX,
                                     Y = ITMY,
+                                    Width = BGIMG == 1 ? SPWIDTH : RESIZW,
+                                    Height = BGIMG == 1 ? SPHEIGHT : RESIZH,
                                     Hidden = hidden
                                 };
                                 displayItems.Add(imageDisplayItem);
@@ -885,8 +863,9 @@ namespace InfoPanel
                                     FontSize = TXTSIZ,
                                     Color = DecimalBgrToHex(VALCOL),
                                     RightAlign = rightAlign,
-                                    X = ITMX + adjustment,
+                                    X = ITMX,
                                     Y = ITMY,
+                                    Width = WID,
                                     Hidden = hidden
                                 };
                                 displayItems.Add(textDisplayItem);
@@ -901,8 +880,9 @@ namespace InfoPanel
                                         Bold = bold,
                                         Italic = italic,
                                         RightAlign = rightAlign,
-                                        X = ITMX + (rightAlign ? adjustment : 0),
+                                        X = ITMX,
                                         Y = ITMY,
+                                        Width = WID,
                                         Hidden = hidden
                                     };
                                     displayItems.Add(calendarDisplayItem);
@@ -920,8 +900,9 @@ namespace InfoPanel
                                         Bold = bold,
                                         Italic = italic,
                                         RightAlign = rightAlign,
-                                        X = ITMX + (rightAlign ? adjustment : 0),
+                                        X = ITMX,
                                         Y = ITMY,
+                                        Width = WID,
                                         Hidden = hidden
                                     };
                                     displayItems.Add(clockDisplayItem);
@@ -955,7 +936,9 @@ namespace InfoPanel
                                             Bold = bold,
                                             Italic = italic,
                                             X = ITMX,
-                                            Y = ITMY
+                                            Y = ITMY,
+                                            Width = WID,
+                                            Hidden = hidden,
                                         };
                                         displayItems.Add(label);
                                     }
@@ -991,8 +974,9 @@ namespace InfoPanel
                                             Bold = bold,
                                             Italic = italic,
                                             RightAlign = rightAlign,
-                                            X = ITMX + adjustment,
+                                            X = ITMX,
                                             Y = ITMY,
+                                            Width = WID,
                                             Hidden = hidden
                                         };
                                         displayItems.Add(sensorDisplayItem);
@@ -1073,6 +1057,7 @@ namespace InfoPanel
                                             FlipX = flipX,
                                             X = ITMX,
                                             Y = ITMY + offset,
+                                            Hidden = hidden,
                                         };
                                         displayItems.Add(barDisplayItem);
                                     }
