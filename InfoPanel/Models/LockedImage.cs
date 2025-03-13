@@ -39,60 +39,88 @@ namespace InfoPanel.Models
             LoadImage();
         }
 
-        private async void LoadImage()
+        private void LoadImage()
         {
             if (ImagePath != null)
             {
                 if (ImagePath.IsUrl())
                 {
                     using HttpClient client = new();
-                    _stream = await client.GetStreamAsync(ImagePath);
-                } else if(File.Exists(ImagePath))
-                {
-                    _stream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read);
+                    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3");
+
+                    try
+                    {
+                        var data = client.GetByteArrayAsync(ImagePath).GetAwaiter().GetResult();
+                        _stream = new MemoryStream(data);
+                    }
+                    catch (Exception e)
+                    {
+                        Trace.WriteLine(e.Message);
+                    }
                 }
+                else if (File.Exists(ImagePath))
+                {
+                    try
+                    {
+                        _stream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read);
+                    }
+                    catch (Exception e)
+                    {
+                        Trace.WriteLine(e.Message);
+                    }
+                }
+
+                if (_stream == null)
+                {
+                    return;
+                }
+
                 lock (Lock)
                 {
                     try
                     {
                         _codec?.Dispose();
                         _codec = SKCodec.Create(_stream);
-                        Width = _codec.Info.Width;
-                        Height = _codec.Info.Height;
 
-                        Frames = _codec.FrameCount;
-
-                        //ensure at least 1 frame
-                        if (Frames == 0)
+                        if (_codec != null)
                         {
-                            Frames = 1;
-                        }
+                            Width = _codec.Info.Width;
+                            Height = _codec.Info.Height;
 
-                        DisposeAssets();
-                        BitmapCache = new Bitmap[Frames];
+                            Frames = _codec.FrameCount;
 
-                        DisposeD2DAssets();
-                        D2DBitmapCache = new D2DBitmap[Frames];
-
-                        _cumulativeFrameTimes = new long[Frames];
-
-                        if (Frames > 1)
-                        {
-                            for (int i = 0; i < Frames; i++)
+                            //ensure at least 1 frame
+                            if (Frames == 0)
                             {
-                                var frameDelay = _codec.FrameInfo[i].Duration;
-
-                                if(frameDelay == 0)
-                                {
-                                    frameDelay = 100;
-                                }
-
-                                TotalFrameTime += frameDelay;
-                                _cumulativeFrameTimes[i] = TotalFrameTime;
+                                Frames = 1;
                             }
 
-                            //start the stopwatch
-                            Stopwatch.Start();
+                            DisposeAssets();
+                            BitmapCache = new Bitmap[Frames];
+
+                            DisposeD2DAssets();
+                            D2DBitmapCache = new D2DBitmap[Frames];
+
+                            _cumulativeFrameTimes = new long[Frames];
+
+                            if (Frames > 1)
+                            {
+                                for (int i = 0; i < Frames; i++)
+                                {
+                                    var frameDelay = _codec.FrameInfo[i].Duration;
+
+                                    if (frameDelay == 0)
+                                    {
+                                        frameDelay = 100;
+                                    }
+
+                                    TotalFrameTime += frameDelay;
+                                    _cumulativeFrameTimes[i] = TotalFrameTime;
+                                }
+
+                                //start the stopwatch
+                                Stopwatch.Start();
+                            }
                         }
                     }
                     catch { }
@@ -135,6 +163,8 @@ namespace InfoPanel.Models
             {
                 _compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
 
+                SKBitmap? keepCopy = null;
+
                 if (frame != _lastRenderedFrame)
                 {
                     if (_lastRenderedFrame >= frame)
@@ -146,28 +176,53 @@ namespace InfoPanel.Models
                     for (int i = _lastRenderedFrame + 1; i <= frame; i++)
                     {
 
+                        SKCodecFrameInfo? frameInfo = null;
                         if (_codec.FrameCount > 0)
                         {
-                            var frameInfo = _codec.FrameInfo[i];
-                            if (frameInfo.DisposalMethod == SKCodecAnimationDisposalMethod.RestoreBackgroundColor)
+                             frameInfo = _codec.FrameInfo[i];
+                            if (frameInfo?.DisposalMethod == SKCodecAnimationDisposalMethod.RestoreBackgroundColor)
                             {
                                 ResetCompositeBitmap(_compositeBitmap);
+                            }else if(frameInfo?.DisposalMethod == SKCodecAnimationDisposalMethod.RestorePrevious)
+                            {
+                                keepCopy?.Dispose();
+                                keepCopy = _compositeBitmap.Copy();
                             }
                         }
 
-                        var options = new SKCodecOptions(i, i - 1);
+                        //var options = new SKCodecOptions(i, i > 0 ? i - 1 : 0);
+                        var requiredFrame = frameInfo?.RequiredFrame ?? (i > 0 ? i - 1 : 0);
+
+                        var options = new SKCodecOptions(i, requiredFrame);
                         try
                         {
-                            _codec.GetPixels(_codec.Info, _compositeBitmap.GetPixels(), options);
+                            var r = _codec.GetPixels(_codec.Info, _compositeBitmap.GetPixels(), options);
+
+                            if (r != SKCodecResult.Success)
+                            {
+                                Trace.WriteLine(r + $" i={i}");
+                                return null;
+                            }
                         }
-                        catch { }
+                        catch (Exception e)
+                        {
+                            Trace.WriteLine(e.Message);
+                        }
                     }
 
                     _lastRenderedFrame = frame;
                 }
 
                 // Convert SKBitmap to System.Drawing.Bitmap
-                return SKBitmapToBitmap(_compositeBitmap);
+                var result = SKBitmapToBitmap(_compositeBitmap);
+
+                if (keepCopy != null)
+                {
+                    _compositeBitmap?.Dispose();
+                    _compositeBitmap = keepCopy;
+                }
+
+                return result;
             }
 
             return null;
@@ -265,7 +320,8 @@ namespace InfoPanel.Models
                             if (d2dbitmap != null && cache)
                             {
                                 D2DBitmapCache[frame] = d2dbitmap;
-                            } else
+                            }
+                            else
                             {
                                 dispose = true;
                             }
@@ -307,7 +363,8 @@ namespace InfoPanel.Models
                             if (cache)
                             {
                                 BitmapCache[frame] = bitmap;
-                            } else
+                            }
+                            else
                             {
                                 dispose = true;
                             }
