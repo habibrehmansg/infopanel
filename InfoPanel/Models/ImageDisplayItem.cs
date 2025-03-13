@@ -1,4 +1,6 @@
-﻿using System;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Extensions;
+using System;
 using System.Drawing;
 using System.IO;
 using System.Windows;
@@ -6,7 +8,7 @@ using System.Windows;
 namespace InfoPanel.Models
 {
     [Serializable]
-    public class ImageDisplayItem : DisplayItem
+    public partial class ImageDisplayItem : DisplayItem
     {
         private string? _filePath;
         public string? FilePath
@@ -71,6 +73,12 @@ namespace InfoPanel.Models
                 SetProperty(ref _scale, value);
             }
         }
+
+        [ObservableProperty]
+        private int _width = 0;
+
+        [ObservableProperty]
+        private int _height = 0;
 
         private int _rotation = 0;
         public int Rotation
@@ -151,16 +159,33 @@ namespace InfoPanel.Models
 
         public override SizeF EvaluateSize()
         {
-            var result = new SizeF(0, 0);
+            var result = new SizeF(Width, Height);
 
             if (CalculatedPath != null)
             {
                 var cachedImage = InfoPanel.Cache.GetLocalImage(CalculatedPath);
                 if (cachedImage != null)
                 {
-                    result.Width = cachedImage.Width * Scale / 100.0f;
-                    result.Height = cachedImage.Height * Scale / 100.0f;
+                    if (result.Width == 0)
+                    {
+                        result.Width = cachedImage.Width;
+                    }
+
+                    if(result.Height == 0)
+                    {
+                        result.Height = cachedImage.Height;
+                    }
                 }
+            }
+
+            if(result.Width != 0)
+            {
+                result.Width *= Scale / 100.0f;
+            }
+
+            if(result.Height != 0)
+            {
+                result.Height *= Scale / 100.0f;
             }
 
             return result;

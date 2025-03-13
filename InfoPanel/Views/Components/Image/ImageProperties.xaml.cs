@@ -51,6 +51,15 @@ namespace InfoPanel.Views.Components
                             imageDisplayItem.RelativePath = true;
                             imageDisplayItem.Name = openFileDialog.SafeFileName;
                             imageDisplayItem.FilePath = openFileDialog.SafeFileName;
+
+                            var lockedImage = Cache.GetLocalImage(imageDisplayItem);
+
+                            if(lockedImage != null)
+                            {
+                                imageDisplayItem.Width = lockedImage.Width;
+                                imageDisplayItem.Height = lockedImage.Height;
+                            }
+
                         }
                         catch
                         {

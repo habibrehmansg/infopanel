@@ -15,21 +15,13 @@
 
     <Grid Margin="10,10,10,10">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="1*" />
             <ColumnDefinition Width="1.5*" />
             <ColumnDefinition Width="1*" />
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" Margin="0,0,10,0">
-            <TextBlock
-                Grid.Column="0"
-                Margin="0,0,0,0"
-                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                TextWrapping="Wrap">
-                Select up to 101 images for display at certain sensor values.
-            </TextBlock>
-
-            <StackPanel Margin="0,10,0,0">
+            <StackPanel Margin="0,0,0,0">
                 <ui:NumberBox
                     Margin="0,0,0,0"
                     FontSize="14"
@@ -55,6 +47,36 @@
                     FontSize="12"
                     Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                     Text="Max value (sensor upper bound)" />
+            </StackPanel>
+
+            <StackPanel Margin="0,10,0,0">
+                <ui:NumberBox
+                    Margin="0,0,0,0"
+                    FontSize="14"
+                    MaxDecimalPlaces="0"
+                    SmallChange="1"
+                    Text="{Binding Width}"
+                    Value="{Binding Width}" />
+                <TextBlock
+                    Margin="5,0,0,0"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Text="Width" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Margin="0,10,0,0">
+                <ui:NumberBox
+                    Margin="0,0,0,0"
+                    FontSize="14"
+                    MaxDecimalPlaces="0"
+                    SmallChange="1"
+                    Text="{Binding Height}"
+                    Value="{Binding Height}" />
+                <TextBlock
+                    Margin="5,0,0,0"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Text="Height" />
             </StackPanel>
 
             <StackPanel Grid.Row="5" Margin="0,10,0,0">
@@ -86,7 +108,6 @@
                 </Grid>
             </StackPanel>
 
-
         </StackPanel>
 
 
@@ -99,10 +120,18 @@
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="auto" />
+                    <RowDefinition Height="auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0" Margin="5,0,0,0">
+                <TextBlock
+                    Margin="0,0,0,0"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap">
+                    Select up to 101 images for display.
+                </TextBlock>
+
+                <Grid Grid.Row="1" Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="50" />
                         <ColumnDefinition Width="60" />
@@ -137,7 +166,7 @@
 
                 <ListView
                     Name="ListViewItems"
-                    Grid.Row="1"
+                    Grid.Row="2"
                     Margin="0,10,0,0"
                     ItemsSource="{Binding Images}"
                     ScrollViewer.HorizontalScrollBarVisibility="Hidden"

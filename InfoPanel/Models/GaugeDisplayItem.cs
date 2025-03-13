@@ -1,4 +1,5 @@
-﻿using InfoPanel.Enums;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Enums;
 using System;
 using System.Collections.ObjectModel;
 using System.Drawing;
@@ -8,7 +9,7 @@ using System.Windows;
 namespace InfoPanel.Models
 {
     [Serializable]
-    public class GaugeDisplayItem : DisplayItem, ISensorItem
+    public partial class GaugeDisplayItem : DisplayItem, ISensorItem
     {
 
         private string _sensorName = String.Empty;
@@ -120,6 +121,13 @@ namespace InfoPanel.Models
                 SetProperty(ref _scale, value);
             }
         }
+
+        [ObservableProperty]
+        private int _width = 0;
+
+        [ObservableProperty]
+        private int _height = 0;
+
 
         private ObservableCollection<ImageDisplayItem> _images = [];
 
@@ -294,6 +302,11 @@ namespace InfoPanel.Models
 
         public override SizeF EvaluateSize()
         {
+            if(Width != 0 && Height != 0)
+            {
+                return new SizeF(Width, Height);
+            }
+
             var result = new SizeF(0, 0);
 
             if(CurrentImage != null)

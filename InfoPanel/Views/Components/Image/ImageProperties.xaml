@@ -12,6 +12,7 @@
     xmlns:models="clr-namespace:InfoPanel.Models"
     xmlns:sys="clr-namespace:System;assembly=mscorlib"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    d:DataContext="{d:DesignInstance Type=models:SensorImageDisplayItem}"
     d:DesignWidth="800"
     mc:Ignorable="d">
 
@@ -34,6 +35,9 @@
 
         <Grid Grid.Column="0" Margin="0,0,0,0">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -63,117 +67,152 @@
                     Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
             </Grid>
 
-            <Grid Grid.Row="1">
+            <Grid Grid.Row="1" Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Margin="0,0,0,0">
+                    <ui:NumberBox
+                        Margin="0,0,0,0"
+                        FontSize="14"
+                        MaxDecimalPlaces="0"
+                        SmallChange="1"
+                        Text="{Binding Width}"
+                        Value="{Binding Width}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Width" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                    <ui:NumberBox
+                        Margin="0,0,0,0"
+                        FontSize="14"
+                        MaxDecimalPlaces="0"
+                        SmallChange="1"
+                        Text="{Binding Height}"
+                        Value="{Binding Height}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Height" />
+                </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                    <Slider
+                        Name="SliderFScale"
+                        Grid.Column="1"
+                        Margin="0,0,0,0"
+                        Maximum="200"
+                        Minimum="1"
+                        Value="{Binding Scale}" />
+
+                    <Grid Margin="5,0,5,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="Resize scale" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="{Binding Scale, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                    <Slider
+                        Margin="0,0,0,0"
+                        Maximum="180"
+                        Minimum="-180"
+                        Value="{Binding Rotation}" />
+
+                    <Grid Margin="5,0,5,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="Rotation" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="{Binding Rotation, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
+
+
+            </Grid>
+
+
+            <Grid Grid.Row="3" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition />
                     <ColumnDefinition />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0">
-                    <StackPanel Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
-                        <CheckBox
-                            x:Name="CheckBoxCache"
-                            Grid.Row="0"
-                            Margin="0,10,0,0"
-                            Content="Cache the image"
-                            IsChecked="{Binding Cache}"
-                            Unchecked="CheckBoxCache_Unchecked" />
-                        <TextBlock
-                            Margin="0,0,0,0"
-                            FontSize="12"
-                            Foreground="LightGray"
-                            TextWrapping="Wrap">
-                            Lower CPU usage but higher RAM.
-                        </TextBlock>
-                    </StackPanel>
-
-                    <StackPanel>
-                        <CheckBox
-                            x:Name="CheckBoxLayer"
-                            Grid.Row="0"
-                            Margin="0,10,0,0"
-                            Content="Add Fill Layer"
-                            IsChecked="{Binding Layer}" />
-                        <metro:ColorPicker
-                            Grid.Row="1"
-                            Height="40"
-                            Margin="0,0,0,0"
-                            metro:TextBoxHelper.UseFloatingWatermark="True"
-                            metro:TextBoxHelper.Watermark="Fill color"
-                            Background="Transparent"
-                            SelectedColor="{Binding LayerColor, Mode=TwoWay}" />
-                    </StackPanel>
-                    <StackPanel Margin="0,10,0,0">
-                        <Slider
-                            Name="SliderFScale"
-                            Grid.Column="1"
-                            Margin="0,0,0,0"
-                            Maximum="200"
-                            Minimum="1"
-                            Value="{Binding Scale}" />
-
-                        <Grid Margin="5,0,5,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                Grid.Column="0"
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                Text="Resize scale" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                Text="{Binding Scale, Mode=OneWay}" />
-                        </Grid>
-                    </StackPanel>
-                    <StackPanel Margin="0,5,0,0">
-                        <Slider
-                            Grid.Column="1"
-                            Margin="0,0,0,0"
-                            Maximum="180"
-                            Minimum="-180"
-                            Value="{Binding Rotation}" />
-
-                        <Grid Margin="5,0,5,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                Grid.Column="0"
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                Text="Rotation" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                Text="{Binding Rotation, Mode=OneWay}" />
-                        </Grid>
-                    </StackPanel>
+                <StackPanel>
+                    <CheckBox
+                        x:Name="CheckBoxLayer"
+                        Margin="0,0,0,0"
+                        Content="Add Fill Layer"
+                        IsChecked="{Binding Layer}" />
+                    <metro:ColorPicker
+                        Height="40"
+                        Margin="0,0,0,0"
+                        metro:TextBoxHelper.UseFloatingWatermark="True"
+                        metro:TextBoxHelper.Watermark="Fill color"
+                        Background="Transparent"
+                        SelectedColor="{Binding LayerColor, Mode=TwoWay}" />
                 </StackPanel>
 
                 <controls:MyImage
                     Grid.Column="1"
                     Width="200"
-                    Height="200"
+                    Height="75"
                     Margin="10,0,0,0"
-                    ImagePath="{Binding CalculatedPath, Mode=OneWay}"
-                    Stretch="Fill" />
-
-                <!--<Image
-                    Grid.Column="1"
-                    Margin="10,0,0,0"
+                    HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    anim:ImageBehavior.AnimatedSource="{Binding CalculatedPath, Mode=OneWay}" />-->
+                    ImagePath="{Binding CalculatedPath, Mode=OneWay}" />
             </Grid>
+
+            <StackPanel
+                Grid.Row="4"
+                Margin="0,0,0,0"
+                Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                <CheckBox
+                    x:Name="CheckBoxCache"
+                    Margin="0,10,0,0"
+                    Content="Cache the image - Lower CPU usage but higher RAM."
+                    IsChecked="{Binding Cache}"
+                    Unchecked="CheckBoxCache_Unchecked" />
+            </StackPanel>
+
         </Grid>
 
         <Grid Grid.Column="1" Margin="10,0,0,0">
@@ -181,7 +220,6 @@
                 <ContentControl.Resources>
                     <DataTemplate DataType="{x:Type models:HttpImageDisplayItem}">
                         <StackPanel>
-
                             <Grid Grid.Row="1">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -199,7 +237,6 @@
                                         Text="Sensor" />
                                 </StackPanel>
                             </Grid>
-
                         </StackPanel>
                     </DataTemplate>
                     <DataTemplate DataType="{x:Type models:SensorImageDisplayItem}">

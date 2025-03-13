@@ -222,7 +222,11 @@ namespace InfoPanel.Views.Components
         {
             if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile.Guid, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
+                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile.Guid, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId)
+                {
+                    Width = 100,
+                    Height = 100,
+                };
                 SharedModel.Instance.AddDisplayItem(item);
                 SharedModel.Instance.SelectedItem = item;
             }
