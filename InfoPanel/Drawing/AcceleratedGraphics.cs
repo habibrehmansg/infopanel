@@ -33,26 +33,38 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.Clear(D2DColor.FromGDIColor(color));
         }
 
-        private D2DTextFormat CreateTextFormat(string fontName, float fontSize, bool rightAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        private D2DTextFormat CreateTextFormat(string fontName, float fontSize, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
         {
+            DWriteTextAlignment alignment = DWriteTextAlignment.Leading;
+
+            if (rightAlign)
+            {
+                alignment = DWriteTextAlignment.Trailing;
+            }
+
+            if (centerAlign)
+            {
+                alignment = DWriteTextAlignment.Center;
+            }
+
             return this.D2DDevice.CreateTextFormat(fontName, fontSize,
                 bold ? D2DFontWeight.Bold : D2DFontWeight.Normal, italic ? D2DFontStyle.Italic : D2DFontStyle.Normal, D2DFontStretch.Normal,
-                rightAlign ? DWriteTextAlignment.Trailing : DWriteTextAlignment.Leading);
+                alignment);
         }
 
         public override (float width, float height) MeasureString(string text, string fontName, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
         {
-            using var textFormat = CreateTextFormat(fontName, fontSize * FontScale, false, bold, italic, underline, strikeout);
+            using var textFormat = CreateTextFormat(fontName, fontSize, false, false, bold, italic, underline, strikeout);
             var textSize = new D2DSize(float.MaxValue, 0);
             this.D2DGraphics.MeasureText(text, textFormat, ref textSize);
-            return (textSize.width + 10, textSize.height);
+            return (textSize.width, textSize.height);
         }
 
         public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, 
-            bool rightAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, 
+            bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, 
             int width = 0, int height = 0)
         {
-            using var textFormat = CreateTextFormat(fontName, fontSize * FontScale, rightAlign, bold, italic, underline, strikeout);
+            using var textFormat = CreateTextFormat(fontName, fontSize * FontScale, rightAlign, width > 0 && centerAlign, bold, italic, underline, strikeout);
             using var textColor = this.D2DDevice.CreateSolidColorBrush(D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
 
             var rect = new D2DRect(x + TextXOffset, y + TextYOffset, width == 0 ? float.MaxValue: width, height);
@@ -70,7 +82,7 @@ namespace InfoPanel.Drawing
                 if(textSize.width > width)
                 {
                     string ellipsis = "...";
-                    string truncatedText = text;
+                    string truncatedText = text.TrimEnd();
 
                     while(truncatedText.Length > 0)
                     {

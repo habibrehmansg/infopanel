@@ -34,12 +34,12 @@ namespace InfoPanel.Drawing
                                      (strikeout ? FontStyle.Strikeout : FontStyle.Regular);
 
             using var font = new Font(fontName, fontSize, fontStyle);
-           
+
             var size = this.Graphics.MeasureString(text, font, 0, StringFormat.GenericTypographic);
             return (size.Width, size.Height);
         }
 
-        public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false,
+        public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false,
             bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0)
         {
             var fontStyle =
@@ -52,13 +52,17 @@ namespace InfoPanel.Drawing
             using var brush = new SolidBrush(ColorTranslator.FromHtml(color));
 
             using StringFormat format = (StringFormat)StringFormat.GenericTypographic.Clone();
+
+            format.Alignment = StringAlignment.Near;
+
             if (rightAlign)
             {
                 format.Alignment = StringAlignment.Far;
             }
-            else
+
+            if (centerAlign && width > 0)
             {
-                format.Alignment = StringAlignment.Near;
+                format.Alignment = StringAlignment.Center;
             }
 
             format.FormatFlags = StringFormatFlags.NoWrap;
@@ -105,7 +109,8 @@ namespace InfoPanel.Drawing
 
                 // Restore the graphics context to the state before rotation
                 Graphics.Restore(state);
-            } else
+            }
+            else
             {
                 this.Graphics.DrawImage(bitmap, x, y, width, height);
             }
@@ -151,9 +156,10 @@ namespace InfoPanel.Drawing
                 {
                     using var brush = new LinearGradientBrush(new Rectangle(x, y, width + 1, height), ColorTranslator.FromHtml(color), ColorTranslator.FromHtml(gradientColor), LinearGradientMode.Horizontal);
                     this.Graphics.FillRectangle(brush, x, y, width, height);
-                } else
+                }
+                else
                 {
-                    using var brush = new LinearGradientBrush(new Rectangle(x, y, width, height + 1),  ColorTranslator.FromHtml(gradientColor), ColorTranslator.FromHtml(color), LinearGradientMode.Vertical);
+                    using var brush = new LinearGradientBrush(new Rectangle(x, y, width, height + 1), ColorTranslator.FromHtml(gradientColor), ColorTranslator.FromHtml(color), LinearGradientMode.Vertical);
                     this.Graphics.FillRectangle(brush, x, y, width, height);
                 }
             }

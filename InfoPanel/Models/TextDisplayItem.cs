@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using System;
 using System.Drawing;
 using System.Linq;
 using System.Windows;
@@ -6,7 +7,7 @@ using System.Windows;
 namespace InfoPanel.Models
 {
     [Serializable]
-    public class TextDisplayItem : DisplayItem
+    public partial class TextDisplayItem : DisplayItem
     {
         private string _font = System.Windows.Media.Fonts.SystemFontFamilies.First().ToString();
         public string Font
@@ -105,7 +106,12 @@ namespace InfoPanel.Models
                 { }
             }
         }
-        public bool RightAlign { get; set; } = false;
+
+        [ObservableProperty]
+        private bool _rightAlign = false;
+
+        [ObservableProperty]
+        private bool _centerAlign = false;
 
         private bool _uppercase = false;
 
@@ -117,6 +123,12 @@ namespace InfoPanel.Models
                 SetProperty(ref _uppercase, value);
             }
         }
+
+        [ObservableProperty]
+        private int _width = 0;
+
+        [ObservableProperty]
+        private int _height = 0;
 
         public TextDisplayItem()
         {
@@ -146,13 +158,20 @@ namespace InfoPanel.Models
             using Graphics g = Graphics.FromImage(bitmap);
             using Font font = new(Font, FontSize);
             var text = EvaluateText();
-            return g.MeasureString(text, font, 0, StringFormat.GenericTypographic);
+            var sizeF = g.MeasureString(text, font, 0, StringFormat.GenericTypographic);
+
+            if(Width != 0)
+            {
+                sizeF.Width = Width;
+            }
+
+            return sizeF;
         }
 
         public override Rect EvaluateBounds()
         {
             var size = EvaluateSize();
-            if (RightAlign)
+            if (RightAlign && Width == 0)
             {
                 return new Rect(X - size.Width, Y, size.Width, size.Height);
             }

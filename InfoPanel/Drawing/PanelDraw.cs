@@ -1,18 +1,14 @@
-﻿using InfoPanel.Extensions;
-using InfoPanel.Models;
+﻿using InfoPanel.Models;
 using InfoPanel.Plugins;
 using InfoPanel.Utils;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Numerics;
-using System.Windows;
-using System.Windows.Media.Media3D;
 
 namespace InfoPanel.Drawing
 {
@@ -109,7 +105,7 @@ namespace InfoPanel.Drawing
                                                 {
                                                     g.DrawString(table.Columns[column].ColumnName, textDisplayItem.Font, fontSize, color,
                                                         x + tWidth, y,
-                                              i != 0 && textDisplayItem.RightAlign, textDisplayItem.Bold,
+                                              i != 0 && textDisplayItem.RightAlign, textDisplayItem.CenterAlign, textDisplayItem.Bold,
                                               textDisplayItem.Italic, textDisplayItem.Underline,
                                               textDisplayItem.Strikeout, length, 0);
                                                 }
@@ -125,7 +121,7 @@ namespace InfoPanel.Drawing
 
                                                         g.DrawString(pluginData.ToString(), textDisplayItem.Font, fontSize, color,
                                                             x + tWidth, (int)(y + (fHeight * (j + (tableSensorDisplayItem.ShowHeader ? 1 : 0)))),
-                                           i != 0 && textDisplayItem.RightAlign, textDisplayItem.Bold,
+                                           i != 0 && textDisplayItem.RightAlign, textDisplayItem.CenterAlign, textDisplayItem.Bold,
                                            textDisplayItem.Italic, textDisplayItem.Underline,
                                            textDisplayItem.Strikeout, length, 0);
                                                     }
@@ -146,22 +142,17 @@ namespace InfoPanel.Drawing
                                 break;
                             }
 
-                            g.DrawString(text, textDisplayItem.Font, fontSize, color, x, y, textDisplayItem.RightAlign,
-                                textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
+                            g.DrawString(text, textDisplayItem.Font, fontSize, color, x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
+                                textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout,
+                                textDisplayItem.Width);
 
 
                             if (displayItem.Selected)
                             {
-                                var (textWidth, textHeight) = g.MeasureString(text, textDisplayItem.Font, textDisplayItem.FontSize);
+                                var size = textDisplayItem.EvaluateSize();
+                                int rectX = textDisplayItem.Width == 0 && textDisplayItem.RightAlign ? (int)(x - size.Width) : x;
 
-                                if (textDisplayItem.RightAlign)
-                                {
-                                    selectedRectangles.Add(new SelectedRectangle((int)(x - textWidth), y, (int)textWidth, (int)textHeight));
-                                }
-                                else
-                                {
-                                    selectedRectangles.Add(new SelectedRectangle(x, y, (int)textWidth, (int)textHeight));
-                                }
+                                selectedRectangles.Add(new SelectedRectangle(rectX, y, (int)size.Width, (int)size.Height));
                             }
 
                             break;
@@ -195,28 +186,31 @@ namespace InfoPanel.Drawing
                                 }
                             }
 
+                            var size = imageDisplayItem.EvaluateSize();
+                            var scaledWidth = (int)size.Width;
+                            var scaledHeight = (int)size.Height;
+
+                            scaledWidth = (int)Math.Ceiling(scaledWidth * scale);
+                            scaledHeight = (int)Math.Ceiling(scaledHeight * scale);
+
                             if (cachedImage != null)
                             {
-                                var scaledWidth = (int)Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
-                                var scaledHeight = (int)Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
-
                                 g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, (int)(x + scaledWidth / 2.0f), (int)(y + scaledHeight / 2.0f), imageDisplayItem.Cache && cache);
 
                                 if (imageDisplayItem.Layer)
                                 {
                                     g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight);
                                 }
+                            }
 
-                                if (displayItem.Selected)
-                                {
-                                    selectedRectangles.Add(new SelectedRectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4, imageDisplayItem.Rotation));
-                                }
+                            if (displayItem.Selected)
+                            {
+                                selectedRectangles.Add(new SelectedRectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4, imageDisplayItem.Rotation));
                             }
                             break;
                         }
                     case GaugeDisplayItem gaugeDisplayItem:
                         {
-                            //var imageDisplayItem = gaugeDisplayItem.EvaluateImage(1.0 / frameRateLimit);
                             var imageDisplayItem = gaugeDisplayItem.EvaluateImage();
 
                             if (imageDisplayItem?.CalculatedPath != null)
@@ -225,8 +219,21 @@ namespace InfoPanel.Drawing
 
                                 if (cachedImage != null)
                                 {
-                                    var scaledWidth = (int)Math.Ceiling(cachedImage.Width * imageDisplayItem.Scale / 100.0f * scale);
-                                    var scaledHeight = (int)Math.Ceiling(cachedImage.Height * imageDisplayItem.Scale / 100.0f * scale);
+                                    var scaledWidth = gaugeDisplayItem.Width;
+                                    var scaledHeight = gaugeDisplayItem.Height;
+
+                                    if (scaledWidth == 0)
+                                    {
+                                        scaledWidth = cachedImage.Width;
+                                    }
+
+                                    if (scaledHeight == 0)
+                                    {
+                                        scaledHeight = cachedImage.Height;
+                                    }
+
+                                    scaledWidth = (int)Math.Ceiling(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
+                                    scaledHeight = (int)Math.Ceiling(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
 
                                     g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache);
 
