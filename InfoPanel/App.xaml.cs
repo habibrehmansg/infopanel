@@ -16,6 +16,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -199,17 +201,20 @@ namespace InfoPanel
             }
 
             await PluginMonitor.Instance.StartAsync();
-
-            SystemEvents.SessionEnding += OnSessionEnding;
             SystemEvents.PowerModeChanged += OnPowerChange;
             Exit += App_Exit;
 
             await StartPanels();
         }
 
-        private void OnSessionEnding(object sender, SessionEndingEventArgs e)
+        void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)
         {
-            Shutdown();
+            Task.Run(async () => {
+                await BeadaPanelTask.Instance.StopAsync();
+                await TuringPanelATask.Instance.StopAsync();
+                await TuringPanelCTask.Instance.StopAsync();
+                await TuringPanelETask.Instance.StopAsync();
+            }).ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
         private async void OnPowerChange(object sender, PowerModeChangedEventArgs e)
@@ -276,7 +281,11 @@ namespace InfoPanel
             await LibreMonitor.Instance.StopAsync();
             await PluginMonitor.Instance.StopAsync();
             //shutdown
-            Application.Current.Shutdown();
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                Application.Current.Shutdown();
+            });
         }
 
         public void ShowDesign(Profile profile)

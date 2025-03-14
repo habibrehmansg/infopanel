@@ -34,6 +34,7 @@ namespace InfoPanel
 
         public async Task StopAsync()
         {
+            Trace.WriteLine($"{this.GetType().Name} Task stopping");
             await _startStopSemaphore.WaitAsync();
             try
             {
@@ -62,6 +63,8 @@ namespace InfoPanel
             {
                 _startStopSemaphore.Release();
             }
+
+            Trace.WriteLine($"{this.GetType().Name} Task stopped");
         }
 
         protected abstract Task DoWorkAsync(CancellationToken token);
