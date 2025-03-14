@@ -42,11 +42,22 @@ namespace InfoPanel
                         var profiles = ConfigModel.Instance.GetProfilesCopy().Where(profile =>
                         (profile.Active && !profile.Direct2DMode)).ToList();
 
-                         Parallel.ForEach(profiles, profile =>
-                         {
-                             using var bitmap = Render(profile);
-                                 SharedModel.Instance.SetPanelBitmap(profile, bitmap);
-                             });
+                        try
+                        {
+                            var options = new ParallelOptions
+                            {
+                                CancellationToken = token
+                            };
+                            Parallel.ForEach(profiles, options, profile =>
+                            {
+                                using var bitmap = Render(profile);
+                                SharedModel.Instance.SetPanelBitmap(profile, bitmap);
+                            });
+                        }
+                        catch (Exception e)
+                        {
+                            Trace.WriteLine($"Exception during parallel execution: {e.Message}");
+                        }
 
                         var frameTime = stopwatch.ElapsedMilliseconds;
                         //Trace.WriteLine($"Frametime: {frameTime}");

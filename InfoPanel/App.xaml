@@ -5,7 +5,8 @@
     xmlns:enums="clr-namespace:InfoPanel.Enums"
     xmlns:local="clr-namespace:InfoPanel"
     xmlns:sys="clr-namespace:System;assembly=mscorlib"
-    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    SessionEnding="App_SessionEnding">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
