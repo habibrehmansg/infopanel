@@ -26,7 +26,7 @@ namespace InfoPanel.Views.Pages
         public UpdatesPage(UpdatesViewModel viewModel)
         {
             ViewModel = viewModel;
-            DataContext = this;
+            DataContext = viewModel;
 
             InitializeComponent();
             CheckUpdates();
@@ -40,10 +40,13 @@ namespace InfoPanel.Views.Pages
         private async void CheckUpdates()
         {
             ViewModel.UpdateCheckInProgress = true;
+
             var latestVersion = await "https://update.infopanel.net"
                 .AppendPathSegment("latest")
                 .GetAsync()
                 .ReceiveJson<VersionModel>();
+
+            await Task.Delay(500);
 
             if (IsNewerVersionAvailable(ViewModel.Version, latestVersion.Version))
             {

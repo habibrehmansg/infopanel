@@ -9,7 +9,7 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:viewmodels="clr-namespace:InfoPanel.ViewModels"
     Title="AboutPage"
-    d:DataContext="{d:DesignInstance Type=viewmodels:AboutViewModel}"
+    d:DataContext="{d:DesignInstance Type=viewmodels:UpdatesViewModel}"
     d:DesignHeight="450"
     d:DesignWidth="800"
     mc:Ignorable="d">
@@ -30,7 +30,7 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="{Binding ViewModel.Version, StringFormat='You are using InfoPanel v{0}'}" />
+                                        Text="{Binding Version, StringFormat='You are using InfoPanel v{0}'}" />
 
                                     <TextBlock Margin="0,5,0,0" FontSize="12">
                                         <TextBlock.Style>
@@ -38,9 +38,9 @@
                                                 <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
                                                 <Setter Property="Text" Value="There are no updates available. You are using the latest version." />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ViewModel.UpdateAvailable}" Value="True">
+                                                    <DataTrigger Binding="{Binding UpdateAvailable}" Value="True">
                                                         <Setter Property="Foreground" Value="{DynamicResource SystemAccentColorPrimaryBrush}" />
-                                                        <Setter Property="Text" Value="{Binding ViewModel.VersionModel.Version, StringFormat='Version {0} is available. Click update to download and install.'}" />
+                                                        <Setter Property="Text" Value="{Binding VersionModel.Version, StringFormat='Version {0} is available. Click update to download and install.'}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -55,8 +55,8 @@
                                     Appearance="Primary"
                                     Click="ButtonUpdate_Click"
                                     Content="Update"
-                                    IsEnabled="{Binding ViewModel.DownloadInProgress, Converter={StaticResource InverseBooleanConverter}}"
-                                    Visibility="{Binding ViewModel.UpdateAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    IsEnabled="{Binding DownloadInProgress, Converter={StaticResource InverseBooleanConverter}}"
+                                    Visibility="{Binding UpdateAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <ProgressBar
                                     Name="ProgressBarDownload"
                                     Grid.Column="1"
@@ -66,15 +66,15 @@
                                     VerticalAlignment="Bottom"
                                     Maximum="100"
                                     Minimum="0"
-                                    Visibility="{Binding ViewModel.DownloadInProgress, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                    Value="{Binding ViewModel.DownloadProgress}" />
+                                    Visibility="{Binding DownloadInProgress, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    Value="{Binding DownloadProgress}" />
                                 <ui:Button
                                     Grid.Column="2"
                                     Width="150"
                                     Margin="10,0,0,0"
                                     Click="ButtonCheckUpdates_Click"
                                     Content="Check for updates"
-                                    IsEnabled="{Binding ViewModel.UpdateCheckInProgress, Converter={StaticResource InverseBooleanConverter}}" />
+                                    IsEnabled="{Binding UpdateCheckInProgress, Converter={StaticResource InverseBooleanConverter}}" />
                             </Grid>
                         </ui:CardControl.Header>
                     </ui:CardControl>
@@ -85,129 +85,66 @@
                         FontSize="14"
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                    <ui:CardExpander
-                        Margin="0,10,0,0"
-                        HorizontalContentAlignment="Left"
-                        IsExpanded="True">
-                        <ui:CardExpander.Header>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock
-                                        FontSize="13"
-                                        FontWeight="Medium"
-                                        Text="v1.2.8" />
-                                    <TextBlock
-                                        Margin="0,5,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Performance and Feature Updates" />
-                                </StackPanel>
-                            </Grid>
-                        </ui:CardExpander.Header>
+
+                    <ItemsControl ItemsSource="{Binding UpdateVersions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <ui:CardExpander
+                                    Margin="0,10,0,0"
+                                    HorizontalContentAlignment="Left"
+                                    IsExpanded="{Binding Expanded}">
+                                    <ui:CardExpander.Header>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock
+                                                    FontSize="13"
+                                                    FontWeight="Medium"
+                                                    Text="{Binding Version}" />
+                                                <TextBlock
+                                                    Margin="0,5,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                    Text="{Binding Title}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </ui:CardExpander.Header>
 
 
-                        <StackPanel VerticalAlignment="Center">
-                            <!--  Start 1.2.8 Description  -->
-                            <TextBlock
-                                FontSize="13"
-                                FontWeight="Medium"
-                                Text="Direct2D GPU Acceleration" />
-                            <TextBlock
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                TextWrapping="Wrap">
-                                - New GPU accelerated rendering profile option for desktop panels providing superior FPS at extremely low CPU cost even at higher resolutions.<LineBreak />
-                                - Backward compatibile with non-accelerated profiles with provided offset settings.<LineBreak />
-                                - Additionally, graphs and charts are animated via interpolation in this mode.</TextBlock>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Margin="0,0,0,10">
+                                                        <TextBlock
+                                                            FontSize="13"
+                                                            FontWeight="Medium"
+                                                            Text="{Binding Title}" />
 
-                            <TextBlock
-                                Margin="0,20,0,0"
-                                FontSize="13"
-                                FontWeight="Medium"
-                                Text="Libre Sensors" />
-                            <TextBlock
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                TextWrapping="Wrap">
-                                - A new built-in method to query PC sensors. Powered by LibreHardwareMonitor.<LineBreak />
-                                - Fully compatible with HWiNFO sensors and can be used interchangeably.</TextBlock>
-
-                            <TextBlock
-                                Margin="0,20,0,0"
-                                FontSize="13"
-                                FontWeight="Medium"
-                                Text="Enhanced USB LCD Support" />
-                            <TextBlock
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                TextWrapping="Wrap">
-                                - Added support for Turing (Turzx) 8.8" LCD.<LineBreak />
-                                - LCD stability and performance improvements.</TextBlock>
-
-                            <TextBlock
-                                Margin="0,20,0,0"
-                                FontSize="13"
-                                FontWeight="Medium"
-                                Text="Donut Chart" />
-                            <TextBlock
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                TextWrapping="Wrap">
-                                - A new customisable circular chart design option that was previously only available as a user provided custom gauge.
-                            </TextBlock>
-
-                            <TextBlock
-                                Margin="0,20,0,0"
-                                FontSize="13"
-                                FontWeight="Medium"
-                                Text="Sensor Image" />
-                            <TextBlock
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                TextWrapping="Wrap">
-                                - Support for image to show/hide based on sensor value range.
-                            </TextBlock>
-
-                            <TextBlock
-                                Margin="0,20,0,0"
-                                FontSize="13"
-                                FontWeight="Medium"
-                                Text="UI Improvements" />
-                            <TextBlock
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                TextWrapping="Wrap">
-                                - Optimised and enabled resizing with responsive layout for InfoPanel for better low-resolution support.<LineBreak />
-                                - Add chart horizontal flip option.
-                                - Added GIF image preview support.<LineBreak />
-                                - Squashed some UI bugs.</TextBlock>
-
-                            <TextBlock
-                                Margin="0,20,0,0"
-                                FontSize="13"
-                                FontWeight="Medium"
-                                Text="Performance Enhancements" />
-                            <TextBlock
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                TextWrapping="Wrap">
-                                - Updated autostart setting to use Windows Task Scheduler instead of registry run key.<LineBreak />
-                                - Reduced CPU and memory usage for non-accelerated profiles via smart caching.<LineBreak />
-                                - Squashed some memory bugs.</TextBlock>
-                            <!--  End 1.2.8 Description  -->
-                        </StackPanel>
-                    </ui:CardExpander>
+                                                        <ItemsControl ItemsSource="{Binding Description}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock
+                                                                        Margin="0,0,0,0"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                        Text="{Binding StringFormat='- {0}'}"
+                                                                        TextWrapping="Wrap" />
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ui:CardExpander>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
