@@ -50,8 +50,11 @@ namespace InfoPanel
                             };
                             Parallel.ForEach(profiles, options, profile =>
                             {
-                                using var bitmap = Render(profile);
-                                SharedModel.Instance.SetPanelBitmap(profile, bitmap);
+                                try
+                                {
+                                    using var bitmap = Render(profile);
+                                    SharedModel.Instance.SetPanelBitmap(profile, bitmap);
+                                }catch(Exception e) { Trace.WriteLine($"Exception during parallel execution: {e.Message}"); }
                             });
                         }
                         catch (Exception e)

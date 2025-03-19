@@ -16,9 +16,12 @@ namespace InfoPanel
 
         public bool IsRunning => _task is not null && !_task.IsCompleted && _cts is not null && !_cts.IsCancellationRequested;
 
+        protected bool _shutdown = false;
+
         public async Task StartAsync()
         {
             await _startStopSemaphore.WaitAsync();
+            _shutdown = false;
             try
             {
                 if (IsRunning) return;
@@ -32,10 +35,12 @@ namespace InfoPanel
             }
         }
 
-        public async Task StopAsync()
+        public async Task StopAsync(bool shutdown = false)
         {
             Trace.WriteLine($"{this.GetType().Name} Task stopping");
+
             await _startStopSemaphore.WaitAsync();
+            _shutdown = shutdown;
             try
             {
                 if (_cts is null || _task is null) return;
