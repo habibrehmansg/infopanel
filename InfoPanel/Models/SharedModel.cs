@@ -496,7 +496,15 @@ namespace InfoPanel
                         BackgroundColor = SelectedProfile.BackgroundColor,
                         Font = SelectedProfile.Font,
                         FontSize = SelectedProfile.FontSize,
-                        Color = SelectedProfile.Color
+                        Color = SelectedProfile.Color,
+                        OverrideDpi = SelectedProfile.OverrideDpi,
+                        VideoBackgroundFilePath = SelectedProfile.VideoBackgroundFilePath,
+                        VideoBackgroundRotation = SelectedProfile.VideoBackgroundRotation,
+                        Direct2DMode = SelectedProfile.Direct2DMode,
+                        Direct2DModeFps = SelectedProfile.Direct2DModeFps,
+                        Direct2DFontScale = SelectedProfile.Direct2DFontScale,
+                        Direct2DTextXOffset = SelectedProfile.Direct2DTextXOffset,
+                        Direct2DTextYOffset = SelectedProfile.Direct2DTextYOffset,
                     };
 
                     var entry = archive.CreateEntry("Profile.xml");
