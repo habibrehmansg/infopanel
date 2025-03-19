@@ -86,11 +86,11 @@ namespace InfoPanel
             }
         }
 
-        public static Bitmap Render(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, PixelFormat pixelFormat = PixelFormat.Format32bppArgb)
+        public static Bitmap Render(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, PixelFormat pixelFormat = PixelFormat.Format32bppArgb, bool overrideDpi = false)
         {
             var bitmap = new Bitmap(profile.Width, profile.Height, pixelFormat);
 
-            if (profile.OverrideDpi)
+            if (profile.OverrideDpi || overrideDpi)
             {
                 bitmap.SetResolution(96, 96);
             }

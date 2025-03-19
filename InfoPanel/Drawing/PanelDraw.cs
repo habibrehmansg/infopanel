@@ -30,7 +30,7 @@ namespace InfoPanel.Drawing
             stopwatch.Start();
         }
 
-        public static async void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false)
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false)
         {
             //Compat graphics has background handled by WPF
             if (g is AcceleratedGraphics || videoBackgroundFallback)
@@ -268,7 +268,7 @@ namespace InfoPanel.Drawing
 
                             if (d2dGraphics != null)
                             {
-                                d2dGraphics.SetDPI(96, 96);
+                                //d2dGraphics.SetDPI(96, 96);
                                 d2dGraphics.Antialias = true;
 
                                 if (chartDisplayItem.FlipX)

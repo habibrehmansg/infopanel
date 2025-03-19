@@ -74,7 +74,7 @@ namespace InfoPanel
                 {
                     var profile = ConfigModel.Instance.Profiles[id];
 
-                    using var bitmap = PanelDrawTask.Render(profile, false);
+                    using var bitmap = PanelDrawTask.Render(profile, false, overrideDpi: true);
                     byte[] buffer = BitmapToPng(bitmap);
 
                     context.Response.ContentType = "image/png";
