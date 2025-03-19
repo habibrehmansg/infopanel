@@ -66,6 +66,7 @@ namespace InfoPanel
                 Trace.WriteLine("TuringPanelC: Screen found");
                 SharedModel.Instance.TuringPanelCRunning = true;
 
+                screen.Clear();
                 screen.Orientation = TuringSmartScreenLib.ScreenOrientation.Landscape;
                 var brightness = ConfigModel.Instance.Settings.TuringPanelCBrightness;
                 screen.SetBrightness((byte)brightness);

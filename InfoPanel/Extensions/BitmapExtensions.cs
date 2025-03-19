@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace InfoPanel.Extensions
 {
-    public static class BitmapExtensions
+    public static partial class BitmapExtensions
     {
         public static Bitmap EnsureBitmapSize(Bitmap sourceBitmap, int desiredWidth, int desiredHeight)
         {
@@ -125,24 +125,77 @@ namespace InfoPanel.Extensions
             return CombineRectangles(changedSectors, maxSectorWidth, maxSectorHeight);
         }
 
+        //public static unsafe bool AreSectorsEqual(BitmapData data1, BitmapData data2, int startX, int startY, int sectorWidth, int sectorHeight, int bitmapWidth)
+        //{
+        //    int bytesPerPixel = Image.GetPixelFormatSize(data1.PixelFormat) / 8;
+        //    byte* ptr1 = (byte*)data1.Scan0;
+        //    byte* ptr2 = (byte*)data2.Scan0;
+
+        //    for (int y = startY; y < startY + sectorHeight; y++)
+        //    {
+        //        byte* row1 = ptr1 + y * data1.Stride;
+        //        byte* row2 = ptr2 + y * data2.Stride;
+        //        for (int x = startX * bytesPerPixel; x < (startX + sectorWidth) * bytesPerPixel; x++)
+        //        {
+        //            if (row1[x] != row2[x])
+        //            {
+        //                return false;
+        //            }
+        //        }
+        //    }
+        //    return true;
+        //}
+
         public static unsafe bool AreSectorsEqual(BitmapData data1, BitmapData data2, int startX, int startY, int sectorWidth, int sectorHeight, int bitmapWidth)
         {
             int bytesPerPixel = Image.GetPixelFormatSize(data1.PixelFormat) / 8;
+            int startXBytes = startX * bytesPerPixel;
+            int sectorWidthBytes = sectorWidth * bytesPerPixel;
+
             byte* ptr1 = (byte*)data1.Scan0;
             byte* ptr2 = (byte*)data2.Scan0;
 
             for (int y = startY; y < startY + sectorHeight; y++)
             {
-                byte* row1 = ptr1 + y * data1.Stride;
-                byte* row2 = ptr2 + y * data2.Stride;
-                for (int x = startX * bytesPerPixel; x < (startX + sectorWidth) * bytesPerPixel; x++)
+                byte* row1 = ptr1 + y * data1.Stride + startXBytes;
+                byte* row2 = ptr2 + y * data2.Stride + startXBytes;
+
+                if (!MemoryCompare(row1, row2, sectorWidthBytes))
                 {
-                    if (row1[x] != row2[x])
-                    {
-                        return false;
-                    }
+                    return false;
                 }
             }
+            return true;
+        }
+
+        private static unsafe bool MemoryCompare(byte* ptr1, byte* ptr2, int length)
+        {
+            const int blockSize = sizeof(long);
+            int blockCount = length / blockSize;
+            int remainingBytes = length % blockSize;
+
+            long* longPtr1 = (long*)ptr1;
+            long* longPtr2 = (long*)ptr2;
+
+            for (int i = 0; i < blockCount; i++)
+            {
+                if (longPtr1[i] != longPtr2[i])
+                {
+                    return false;
+                }
+            }
+
+            byte* bytePtr1 = (byte*)(longPtr1 + blockCount);
+            byte* bytePtr2 = (byte*)(longPtr2 + blockCount);
+
+            for (int i = 0; i < remainingBytes; i++)
+            {
+                if (bytePtr1[i] != bytePtr2[i])
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 

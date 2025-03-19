@@ -67,8 +67,11 @@ namespace InfoPanel
                 Trace.WriteLine("TuringPanelE: Screen found");
                 SharedModel.Instance.TuringPanelERunning = true;
 
+                screen.Clear();
+                screen.Orientation = ScreenOrientation.Portrait;
                 var brightness = ConfigModel.Instance.Settings.TuringPanelEBrightness;
                 screen.SetBrightness((byte)brightness);
+
 
                 Bitmap? sentBitmap = null;
 
