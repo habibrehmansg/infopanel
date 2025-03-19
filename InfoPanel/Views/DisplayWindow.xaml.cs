@@ -4,6 +4,7 @@ using InfoPanel.Utils;
 using Microsoft.Win32;
 using System;
 using System.Diagnostics;
+using System.DirectoryServices.ActiveDirectory;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -16,6 +17,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 using unvell.D2DLib;
 using static System.Net.Mime.MediaTypeNames;
@@ -35,6 +37,9 @@ namespace InfoPanel.Views.Common
 
         private MediaTimeline? mediaTimeline;
         private MediaClock? mediaClock;
+
+        private bool _dragMove = false;
+        private DpiScale? _dpiScale;
 
         public DisplayWindow(Profile profile) : base(profile.Direct2DMode)
         {
@@ -77,6 +82,8 @@ namespace InfoPanel.Views.Common
             SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
         }
 
+        private bool _dpiSet = false;
+
         protected override void OnRender(D2DGraphics d2dGraphics)
         {
             base.OnRender(d2dGraphics);
@@ -84,7 +91,6 @@ namespace InfoPanel.Views.Common
             using var g = new AcceleratedGraphics(d2dGraphics, this.Handle, Profile.Direct2DFontScale, Profile.Direct2DTextXOffset, Profile.Direct2DTextYOffset);
             PanelDraw.Run(Profile, g);
         }
-
 
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
         {
@@ -160,7 +166,10 @@ namespace InfoPanel.Views.Common
             else if (e.PropertyName == nameof(Profile.TargetWindow) || e.PropertyName == nameof(Profile.WindowX)
                 || e.PropertyName == nameof(Profile.WindowY) || e.PropertyName == nameof(Profile.StrictWindowMatching))
             {
-                SetWindowPositionRelativeToScreen();
+                if (!_dragMove)
+                {
+                    SetWindowPositionRelativeToScreen();
+                }
             }
             else if (e.PropertyName == nameof(Profile.Topmost))
             {
@@ -274,24 +283,31 @@ namespace InfoPanel.Views.Common
 
         public System.Windows.Point GetWindowPositionRelativeToScreen(Screen screen)
         {
-            // Get the position of the window relative to the screen in device-independent units
-            var windowPositionRelativeToScreen = GetWindowPositionRelativeToScreen();
+            // Get the position of the window in device-independent units
+            var windowPosition = new System.Windows.Point(this.Left, this.Top);
 
-            // Get the position of the screen in device-independent units
+            // Get the transformation from device-independent units to device pixels
             var source = PresentationSource.FromVisual(this);
-            var transform = source.CompositionTarget.TransformFromDevice;
+            if (source == null)
+            {
+                throw new InvalidOperationException("The window is not connected to a presentation source.");
+            }
+
+            var transformToDevice = source.CompositionTarget.TransformToDevice;
+            var transformFromDevice = source.CompositionTarget.TransformFromDevice;
+
+            // Convert the screen's working area to device-independent units
             var screenPosition = new System.Windows.Point(screen.WorkingArea.Left, screen.WorkingArea.Top);
-            var screenPositionRelativeToDeviceIndependentUnits = transform.Transform(screenPosition);
+            var screenPositionInDiu = transformFromDevice.Transform(screenPosition);
 
-            var dpi = VisualTreeHelper.GetDpi(this);
+            // Calculate the window's position relative to the screen
+            var windowPositionRelativeToScreen = new System.Windows.Point(
+                (windowPosition.X - screenPositionInDiu.X),
+                (windowPosition.Y - screenPositionInDiu.Y));
 
-            // Subtract the position of the screen from the position of the window in device-independent units
-            var windowPositionRelativeToDeviceIndependentUnits = new System.Windows.Point(
-                (windowPositionRelativeToScreen.X - screenPositionRelativeToDeviceIndependentUnits.X) * dpi.DpiScaleX,
-                (windowPositionRelativeToScreen.Y - screenPositionRelativeToDeviceIndependentUnits.Y) * dpi.DpiScaleY);
-
-            return windowPositionRelativeToDeviceIndependentUnits;
+            return windowPositionRelativeToScreen;
         }
+
 
         public System.Windows.Point GetWindowPositionRelativeToScreen()
         {
@@ -358,9 +374,12 @@ namespace InfoPanel.Views.Common
             // Calculate the window position in device-independent units relative to the screen
             var relativePosition = new System.Windows.Point(relativeScreenPosition.X + Profile.WindowX, relativeScreenPosition.Y + Profile.WindowY);
 
-            // Set the window position to the calculated position
-            this.Left = relativePosition.X;
-            this.Top = relativePosition.Y;
+            if (this.Left != relativePosition.X || this.Top != relativePosition.Y)
+            {
+                // Set the window position to the calculated position
+                this.Left = relativePosition.X;
+                this.Top = relativePosition.Y;
+            }
         }
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
@@ -422,9 +441,11 @@ namespace InfoPanel.Views.Common
                         var screen = GetCurrentScreen();
                         var positionRelativeToScreen = GetWindowPositionRelativeToScreen(screen);
 
+                        _dragMove = true;
                         Profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
                         Profile.WindowX = (int)positionRelativeToScreen.X;
                         Profile.WindowY = (int)positionRelativeToScreen.Y;
+                        _dragMove = false;
                     }
                 }
                 else
