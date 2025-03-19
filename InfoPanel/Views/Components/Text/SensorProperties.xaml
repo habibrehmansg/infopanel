@@ -7,7 +7,9 @@
     xmlns:local="clr-namespace:InfoPanel.Views.Components"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
+    xmlns:models="clr-namespace:InfoPanel.Models"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    d:DataContext="{d:DesignInstance Type=models:SensorDisplayItem}"
     d:DesignWidth="200"
     mc:Ignorable="d">
 
@@ -95,17 +97,39 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Margin="0,0,0,0">
-                    <ui:TextBox x:Name="TextBoxMultiplier" Text="{Binding MultiplicationModifier}" />
-                    <!--<ui:NumberBox Name="NumberBoxMultiplication" Margin="0,0,0,0"
-                                     FontSize="14" DecimalPlaces="3"
-                                     ToolTip="Useful for unit conversion. E.g. 0.008 for KB/s to Mbps"
-                                     Text="{Binding MultiplicationModifier}"/>-->
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
+                        <ui:NumberBox
+                            Name="NumberBoxMultiplication"
+                            Margin="0,0,0,0"
+                            FontSize="14"
+                            Minimum="1"
+                            Text="{Binding MultiplicationModifier}"
+                            ToolTip="Useful for unit conversion. E.g Kbps to Mbps"
+                            Value="{Binding MultiplicationModifier}" />
+                        <ui:ToggleSwitch
+                            Grid.Column="1"
+                            Width="50"
+                            Margin="10,0,0,0"
+                            IsChecked="{Binding DivisionToggle}" />
+                    </Grid>
+
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                        Text="Multiplier" />
+                        Text="Multiplier (toggle for divisor)"
+                        Visibility="{Binding DivisionToggle, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Divisor (toggle for multiplier)"
+                        Visibility="{Binding DivisionToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">

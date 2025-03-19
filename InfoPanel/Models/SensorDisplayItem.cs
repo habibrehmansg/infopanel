@@ -1,10 +1,11 @@
-﻿using System;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using System;
 using System.Drawing;
 
 namespace InfoPanel.Models
 {
     [Serializable]
-    public class SensorDisplayItem : TextDisplayItem, ISensorItem, IPluginSensorItem
+    public partial class SensorDisplayItem : TextDisplayItem, ISensorItem, IPluginSensorItem
     {
         private string _sensorName = string.Empty;
         public string SensorName
@@ -248,6 +249,9 @@ namespace InfoPanel.Models
             }
         }
 
+        [ObservableProperty]
+        private bool _divisionToggle = false;
+
         public SensorDisplayItem()
         {
             SensorName = string.Empty;
@@ -331,7 +335,19 @@ namespace InfoPanel.Models
                         break;
                 }
 
-                sensorReadingValue = sensorReadingValue * MultiplicationModifier + AdditionModifier;
+                if (DivisionToggle)
+                {
+                    if(MultiplicationModifier != 0)
+                    {
+                        sensorReadingValue = sensorReadingValue / MultiplicationModifier + AdditionModifier;
+                    } else {
+                        sensorReadingValue = sensorReadingValue + AdditionModifier;
+                    }
+                } else
+                {
+                    sensorReadingValue = sensorReadingValue * MultiplicationModifier + AdditionModifier;
+                }
+
 
                 if (AbsoluteAddition)
                 {
@@ -391,7 +407,21 @@ namespace InfoPanel.Models
                         break;
                 }
 
-                sensorReadingValue = sensorReadingValue * MultiplicationModifier + AdditionModifier;
+                if (DivisionToggle)
+                {
+                    if (MultiplicationModifier != 0)
+                    {
+                        sensorReadingValue = sensorReadingValue / MultiplicationModifier + AdditionModifier;
+                    }
+                    else
+                    {
+                        sensorReadingValue = sensorReadingValue + AdditionModifier;
+                    }
+                }
+                else
+                {
+                    sensorReadingValue = sensorReadingValue * MultiplicationModifier + AdditionModifier;
+                }
 
                 if (AbsoluteAddition)
                 {

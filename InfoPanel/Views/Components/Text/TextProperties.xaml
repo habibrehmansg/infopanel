@@ -121,7 +121,7 @@
                         <TextBlock
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                            Text="Fixed Width" />
+                            Text="Fixed Width (required for center alignment)" />
                     </StackPanel>
 
                     <ToggleButton
