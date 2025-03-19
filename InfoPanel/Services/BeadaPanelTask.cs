@@ -170,13 +170,22 @@ namespace InfoPanel
                 {
                     try
                     {
-                        //var resetTag = new PanelLinkStreamTag(3);
-                        //iface.OutPipe.Write(resetTag.ToBuffer());
-                        //Trace.WriteLine("Sent ResetTag to clear screen");
+                        if (_shutdown)
+                        {
+                            //var resetTag = new PanelLinkStreamTag(3);
+                            //iface.OutPipe.Write(resetTag.ToBuffer());
+                            //Trace.WriteLine("Sent ResetTag to clear screen");
+                            iface.OutPipe.Write(clearTag.ToBuffer());
 
-                        using var bitmap = PanelDrawTask.RenderSplash(_panelWidth, _panelHeight,
-                        rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.BeadaPanelRotation));
-                        iface.Pipes[0x1].Write(BitmapToRgb16(bitmap));
+                            brightnessTag.SetBrightness(0);
+                            iface.Pipes[0x2].Write(brightnessTag.ToBuffer());
+                        }
+                        else
+                        {
+                            using var bitmap = PanelDrawTask.RenderSplash(_panelWidth, _panelHeight,
+                            rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.BeadaPanelRotation));
+                            iface.Pipes[0x1].Write(BitmapToRgb16(bitmap));
+                        }
                     }
                     catch (Exception ex)
                     {

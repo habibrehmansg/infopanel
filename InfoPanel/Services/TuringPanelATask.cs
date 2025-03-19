@@ -146,11 +146,18 @@ namespace InfoPanel
                 {
                     sentBitmap?.Dispose();
                     Trace.WriteLine("Resetting screen");
-                    //screen.Clear();
 
-                    using var bitmap = PanelDrawTask.RenderSplash(screen.Width, screen.Height,
+                    if (_shutdown)
+                    {
+                        screen.Clear();
+                        screen.SetBrightness(0);
+                    }
+                    else
+                    {
+                        using var bitmap = PanelDrawTask.RenderSplash(screen.Width, screen.Height,
                        rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.TuringPanelARotation));
-                    screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                        screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                    }
                     //screen.Reset();
                 }
             }

@@ -210,10 +210,10 @@ namespace InfoPanel
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)
         {
             Task.Run(async () => {
-                await BeadaPanelTask.Instance.StopAsync();
-                await TuringPanelATask.Instance.StopAsync();
-                await TuringPanelCTask.Instance.StopAsync();
-                await TuringPanelETask.Instance.StopAsync();
+                await BeadaPanelTask.Instance.StopAsync(true);
+                await TuringPanelATask.Instance.StopAsync(true);
+                await TuringPanelCTask.Instance.StopAsync(true);
+                await TuringPanelETask.Instance.StopAsync(true);
             }).ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
