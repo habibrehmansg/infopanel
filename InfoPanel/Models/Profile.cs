@@ -117,7 +117,7 @@ namespace InfoPanel.Models
             }
         }
 
-        private bool _overrideDpi = false;
+        private bool _overrideDpi = true;
         public bool OverrideDpi
         {
             get => _overrideDpi;

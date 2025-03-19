@@ -66,7 +66,7 @@ namespace InfoPanel
 
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
-                using var bitmap = PanelDrawTask.Render(profile, false, videoBackgroundFallback: true, pixelFormat: PixelFormat.Format16bppRgb565);
+                using var bitmap = PanelDrawTask.Render(profile, false, videoBackgroundFallback: true, pixelFormat: PixelFormat.Format16bppRgb565, overrideDpi: true);
                 var rotation = ConfigModel.Instance.Settings.BeadaPanelRotation;
                 if (rotation != ViewModels.LCD_ROTATION.RotateNone)
                 {

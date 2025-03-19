@@ -103,6 +103,8 @@ namespace InfoPanel.Views.Pages
                     var height = (int)(profile.Height * scale);
 
                     using var bitmap = new Bitmap(width, height);
+                    bitmap.SetResolution(96, 96);
+
                     using var g = CompatGraphics.FromBitmap(bitmap);
                     PanelDraw.Run(profile, g, false, scale, false, true);
 

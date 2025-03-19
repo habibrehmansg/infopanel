@@ -65,7 +65,7 @@ namespace InfoPanel.Views.Common
                 this.Device = D2DDevice.FromHwnd(Handle);
                 this.Device.Resize();
                 this.Graphics = new D2DGraphics(this.Device);
-                this.Graphics.SetDPI(96, 96);
+                //this.Graphics.SetDPI(96, 96);
             }
 
             this._width = (float)this.Width;
