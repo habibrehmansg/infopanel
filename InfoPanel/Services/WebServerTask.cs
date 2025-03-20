@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -30,63 +31,76 @@ namespace InfoPanel
             return memoryStream.ToArray();
         }
 
-        protected override Task DoWorkAsync(CancellationToken token)
+        protected async override Task DoWorkAsync(CancellationToken token)
         {
-            var builder = WebApplication.CreateBuilder();
-            var _webApplication = builder.Build();
+            await Task.Delay(300, token);
 
-            _webApplication.Use(async (context, next) =>
+            try
             {
-                context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
-                context.Response.Headers.Pragma = "no-cache";
-                context.Response.Headers.Expires = "-1";
-                context.Response.Headers.Vary = "*";
+                var builder = WebApplication.CreateBuilder();
+                var _webApplication = builder.Build();
 
-                await next.Invoke();
-            });
-
-            _webApplication.Urls.Add($"http://{ConfigModel.Instance.Settings.WebServerListenIp}:{ConfigModel.Instance.Settings.WebServerListenPort}");
-
-            _webApplication.MapGet("/", async context =>
-            {
-                StringBuilder sb = new();
-
-                for (int i = 0; i < ConfigModel.Instance.Profiles.Count; i++)
+                _webApplication.Use(async (context, next) =>
                 {
-                    sb.AppendLine($"<p><a href='http://{ConfigModel.Instance.Settings.WebServerListenIp}:{ConfigModel.Instance.Settings.WebServerListenPort}/{i}'>{ConfigModel.Instance.Profiles[i].Name}</a></p>");
-                }
+                    context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+                    context.Response.Headers.Pragma = "no-cache";
+                    context.Response.Headers.Expires = "-1";
+                    context.Response.Headers.Vary = "*";
 
-                await context.Response.WriteAsync(sb.ToString());
-            });
+                    await next.Invoke();
+                });
 
-            _webApplication.MapGet("/{id}", async context =>
-            {
-                var filePath = "index.html";
-                var content = await File.ReadAllTextAsync(filePath, Encoding.UTF8);
-                content = content.Replace("{{REFRESH_RATE}}", $"{ConfigModel.Instance.Settings.WebServerRefreshRate}");
-                context.Response.ContentType = "text/html";
-                await context.Response.WriteAsync(content);
-            });
+                _webApplication.Urls.Add($"http://{ConfigModel.Instance.Settings.WebServerListenIp}:{ConfigModel.Instance.Settings.WebServerListenPort}");
 
-            _webApplication.MapGet("/{id}/image", async context =>
-            {
-                if (int.TryParse(context.Request.RouteValues["id"]?.ToString(), out int id) && id < ConfigModel.Instance.Profiles.Count)
+                _webApplication.MapGet("/", async context =>
                 {
-                    var profile = ConfigModel.Instance.Profiles[id];
+                    StringBuilder sb = new();
 
-                    using var bitmap = PanelDrawTask.Render(profile, false, overrideDpi: true);
-                    byte[] buffer = BitmapToPng(bitmap);
+                    for (int i = 0; i < ConfigModel.Instance.Profiles.Count; i++)
+                    {
+                        sb.AppendLine($"<p><a href='http://{ConfigModel.Instance.Settings.WebServerListenIp}:{ConfigModel.Instance.Settings.WebServerListenPort}/{i}'>{ConfigModel.Instance.Profiles[i].Name}</a></p>");
+                    }
 
-                    context.Response.ContentType = "image/png";
-                    await context.Response.Body.WriteAsync(buffer);
-                }
-                else
+                    await context.Response.WriteAsync(sb.ToString());
+                });
+
+                _webApplication.MapGet("/{id}", async context =>
                 {
-                    context.Response.StatusCode = 404;
-                }
-            });
+                    var filePath = "index.html";
+                    var content = await File.ReadAllTextAsync(filePath, Encoding.UTF8);
+                    content = content.Replace("{{REFRESH_RATE}}", $"{ConfigModel.Instance.Settings.WebServerRefreshRate}");
+                    context.Response.ContentType = "text/html";
+                    await context.Response.WriteAsync(content);
+                });
 
-            return _webApplication.RunAsync(token);
+                _webApplication.MapGet("/{id}/image", async context =>
+                {
+                    if (int.TryParse(context.Request.RouteValues["id"]?.ToString(), out int id) && id < ConfigModel.Instance.Profiles.Count)
+                    {
+                        var profile = ConfigModel.Instance.Profiles[id];
+
+                        using var bitmap = PanelDrawTask.Render(profile, false, overrideDpi: true);
+                        byte[] buffer = BitmapToPng(bitmap);
+
+                        context.Response.ContentType = "image/png";
+                        await context.Response.Body.WriteAsync(buffer);
+                    }
+                    else
+                    {
+                        context.Response.StatusCode = 404;
+                    }
+                });
+
+                await _webApplication.RunAsync(token);
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLine("WebServerTask: Init error");
+            }
+            finally
+            {
+
+            }
         }
     }
 }

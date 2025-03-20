@@ -102,8 +102,11 @@ namespace InfoPanel.ViewModels
                 var entry = za.Entries[0];
                 if (Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
                 {
-                    File.Copy(openFileDialog.FileName, Path.Combine(FileUtil.GetExternalPluginFolder(), openFileDialog.SafeFileName));
-                    ShowRestartBanner = true;
+                    try
+                    {
+                        File.Copy(openFileDialog.FileName, Path.Combine(FileUtil.GetExternalPluginFolder(), openFileDialog.SafeFileName), true);
+                        ShowRestartBanner = true;
+                    }catch { }
                 }
             }
         }

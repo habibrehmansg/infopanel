@@ -91,72 +91,83 @@ namespace InfoPanel.Utils
                 //load from file as there may be unsaved changes
                 if (ConfigModel.LoadProfilesFromFile() is List<Profile> profiles)
                 {
-                    var assetFolders = Directory.GetDirectories(GetAssetDirectory()).ToList();
-
-                    foreach (var profile in profiles)
+                    try
                     {
-                        var assetFolder = GetAssetPath(profile);
-                        assetFolders.Remove(assetFolder);
+                        var assetDirectory = GetAssetDirectory();
 
-                        if (Directory.Exists(assetFolder))
+                        if (!Directory.Exists(assetDirectory))
                         {
-                            var assetFiles = Directory.GetFiles(assetFolder).ToList();
+                            return;
+                        }
 
-                            if (profile.VideoBackgroundFilePath is string videoBackgroundFilePath)
+                        var assetFolders = Directory.GetDirectories(assetDirectory).ToList();
+
+                        foreach (var profile in profiles)
+                        {
+                            var assetFolder = GetAssetPath(profile);
+                            assetFolders.Remove(assetFolder);
+
+                            if (Directory.Exists(assetFolder))
                             {
-                                var videoBackgroundFileAbsolutePath = FileUtil.GetRelativeAssetPath(profile, videoBackgroundFilePath);
-                                var webPBackgroundFileAbsolutePath = $"{videoBackgroundFileAbsolutePath}.webp";
+                                var assetFiles = Directory.GetFiles(assetFolder).ToList();
 
-                                assetFiles.Remove(videoBackgroundFileAbsolutePath);
-                                assetFiles.Remove(webPBackgroundFileAbsolutePath);
-                            }
-
-                            //load from file as there may be unsaved changes
-                            if (SharedModel.LoadDisplayItemsFromFile(profile) is List<DisplayItem> displayItems)
-                            {
-                                foreach (var item in displayItems)
+                                if (profile.VideoBackgroundFilePath is string videoBackgroundFilePath)
                                 {
-                                    if (item is ImageDisplayItem imageDisplayItem)
+                                    var videoBackgroundFileAbsolutePath = FileUtil.GetRelativeAssetPath(profile, videoBackgroundFilePath);
+                                    var webPBackgroundFileAbsolutePath = $"{videoBackgroundFileAbsolutePath}.webp";
+
+                                    assetFiles.Remove(videoBackgroundFileAbsolutePath);
+                                    assetFiles.Remove(webPBackgroundFileAbsolutePath);
+                                }
+
+                                //load from file as there may be unsaved changes
+                                if (SharedModel.LoadDisplayItemsFromFile(profile) is List<DisplayItem> displayItems)
+                                {
+                                    foreach (var item in displayItems)
                                     {
-                                        if (imageDisplayItem.CalculatedPath != null)
+                                        if (item is ImageDisplayItem imageDisplayItem)
                                         {
-                                            assetFiles.Remove(imageDisplayItem.CalculatedPath);
-                                        }
-                                    }
-                                    else if (item is GaugeDisplayItem gaugeDisplayItem)
-                                    {
-                                        foreach (var image in gaugeDisplayItem.Images)
-                                        {
-                                            if (image.CalculatedPath != null)
+                                            if (imageDisplayItem.CalculatedPath != null)
                                             {
-                                                assetFiles.Remove(image.CalculatedPath);
+                                                assetFiles.Remove(imageDisplayItem.CalculatedPath);
+                                            }
+                                        }
+                                        else if (item is GaugeDisplayItem gaugeDisplayItem)
+                                        {
+                                            foreach (var image in gaugeDisplayItem.Images)
+                                            {
+                                                if (image.CalculatedPath != null)
+                                                {
+                                                    assetFiles.Remove(image.CalculatedPath);
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            //clean up removed files
-                            foreach (var assetFile in assetFiles)
-                            {
-                                try
+                                //clean up removed files
+                                foreach (var assetFile in assetFiles)
                                 {
-                                    File.Delete(assetFile);
+                                    try
+                                    {
+                                        File.Delete(assetFile);
+                                    }
+                                    catch { }
                                 }
-                                catch { }
                             }
                         }
-                    }
 
-                    //clean up removed profiles
-                    foreach (var assetFolder in assetFolders)
-                    {
-                        try
+                        //clean up removed profiles
+                        foreach (var assetFolder in assetFolders)
                         {
-                            Directory.Delete(assetFolder, true);
+                            try
+                            {
+                                Directory.Delete(assetFolder, true);
+                            }
+                            catch { }
                         }
-                        catch { }
                     }
+                    catch { }
                 }
             });
         }
