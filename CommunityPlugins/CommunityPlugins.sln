@@ -7,7 +7,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel.Plugins", "..\Inf
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel.TestPlugin", "InfoPanel.TestPlugin\InfoPanel.TestPlugin.csproj", "{B7E7CAD7-0871-4F5F-A575-0218A3621090}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InfoPanel.TestPlugin2", "InfoPanel.TestPlugin2\InfoPanel.TestPlugin2.csproj", "{A8FFA74B-3BE9-42FE-8B2A-387C073DF6CC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel.TestPlugin2", "InfoPanel.TestPlugin2\InfoPanel.TestPlugin2.csproj", "{A8FFA74B-3BE9-42FE-8B2A-387C073DF6CC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InfoPanel.SerialReader", "InfoPanel.SerialReader\InfoPanel.SerialReader.csproj", "{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -41,6 +43,14 @@ Global
 		{A8FFA74B-3BE9-42FE-8B2A-387C073DF6CC}.Release|Any CPU.Build.0 = Release|Any CPU
 		{A8FFA74B-3BE9-42FE-8B2A-387C073DF6CC}.Release|x64.ActiveCfg = Release|Any CPU
 		{A8FFA74B-3BE9-42FE-8B2A-387C073DF6CC}.Release|x64.Build.0 = Release|Any CPU
+		{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}.Debug|x64.Build.0 = Debug|Any CPU
+		{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}.Release|x64.ActiveCfg = Release|Any CPU
+		{5CD177E2-3AFD-411C-ADA3-6FEDAE4C4916}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
