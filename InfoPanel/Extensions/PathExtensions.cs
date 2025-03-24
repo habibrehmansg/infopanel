@@ -18,5 +18,13 @@ namespace InfoPanel.Extensions
             // Check if the child path starts with the parent path
             return childFullPath.StartsWith(parentFullPath, StringComparison.OrdinalIgnoreCase);
         }
+        public static string SanitizeFileName(this string fileName)
+        {
+            // Get invalid characters for file names
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+
+            // Replace invalid characters with an underscore
+            return string.Concat(fileName.Select(ch => invalidChars.Contains(ch) ? '_' : ch));
+        }
     }
 }

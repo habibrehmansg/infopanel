@@ -32,7 +32,6 @@ namespace InfoPanel
     /// </summary>
     public partial class App : System.Windows.Application
     {
-
         private static readonly IHost _host = Host
        .CreateDefaultBuilder()
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
@@ -81,7 +80,6 @@ namespace InfoPanel
            services.AddScoped<SettingsViewModel>();
            services.AddScoped<Views.Pages.UpdatesPage>();
            services.AddScoped<UpdatesViewModel>();
-
 
            // Configuration
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
@@ -188,7 +186,6 @@ namespace InfoPanel
                 textDisplayItem.Italic = true;
                 SharedModel.Instance.AddDisplayItem(textDisplayItem);
                 SharedModel.Instance.SaveDisplayItems();
-
             }
 
             HWHash.SetDelay(300);
@@ -217,21 +214,28 @@ namespace InfoPanel
             }).ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
-        private async void OnPowerChange(object sender, PowerModeChangedEventArgs e)
+        private void OnPowerChange(object sender, PowerModeChangedEventArgs e)
         {
-
             switch (e.Mode)
             {
                 case PowerModes.Resume:
-                    await StartPanels();
+                    Task.Run(async () => {
+                        await Task.Delay(1000);
+                        await StartPanels();
+                    }).ConfigureAwait(false).GetAwaiter().GetResult();
                     break;
                 case PowerModes.Suspend:
-                    await StopPanels();
+                    Task.Run(async () => {
+                        await BeadaPanelTask.Instance.StopAsync(true);
+                        await TuringPanelATask.Instance.StopAsync(true);
+                        await TuringPanelCTask.Instance.StopAsync(true);
+                        await TuringPanelETask.Instance.StopAsync(true);
+                    }).ConfigureAwait(false).GetAwaiter().GetResult();
                     break;
             }
         }
 
-        private async Task StartPanels()
+        private static async Task StartPanels()
         {
             await PanelDrawTask.Instance.StartAsync();
 
@@ -328,7 +332,6 @@ namespace InfoPanel
 
             window?.Show();
         }
-
 
         public void CloseDisplayWindow(Profile profile)
         {

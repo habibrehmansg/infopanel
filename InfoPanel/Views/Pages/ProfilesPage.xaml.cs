@@ -189,7 +189,7 @@ namespace InfoPanel.Views.Pages
         {
             if (ViewModel.Profile is Profile profile)
             {
-                FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
+                FolderBrowserDialog folderBrowserDialog = new();
                 if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
                 {
                     string selectedFolderPath = folderBrowserDialog.SelectedPath;
@@ -213,7 +213,7 @@ namespace InfoPanel.Views.Pages
 
             if (result == IDialogControl.ButtonPressed.Left)
             {
-                if (ConfigModel.Instance.RemoveProfile(ViewModel.Profile))
+                if (ViewModel.Profile is Profile profile && ConfigModel.Instance.RemoveProfile(profile))
                 {
                     var newSelectedProfile = ConfigModel.Instance.Profiles.FirstOrDefault(profile => { return profile.Active; }, ConfigModel.Instance.Profiles[0]);
                     SharedModel.Instance.SelectedProfile = newSelectedProfile;
@@ -225,22 +225,28 @@ namespace InfoPanel.Views.Pages
         private void ButtonResetPosition_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             var screen = Screen.PrimaryScreen;
-            ViewModel.Profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
-            ViewModel.Profile.WindowX = 0;
-            ViewModel.Profile.WindowY = 0;
+            if (ViewModel.Profile is Profile profile)
+            {
+                profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
+                profile.WindowX = 0;
+                profile.WindowY = 0;
+            }
         }
 
         private void ButtonMaximise_Click(object sender, System.Windows.RoutedEventArgs e)
         {
-            if (System.Windows.Application.Current is App app)
+            if (System.Windows.Application.Current is App app && ViewModel.Profile is Profile profile)
             {
-                app.MaximiseDisplayWindow(ViewModel.Profile);
+                app.MaximiseDisplayWindow(profile);
             }
         }
 
         private void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
-            ConfigModel.Instance.ReloadProfile(ViewModel.Profile);
+            if (ViewModel.Profile is Profile profile)
+            {
+                ConfigModel.Instance.ReloadProfile(ViewModel.Profile);
+            }
         }
 
         private void ButtonClose_Click(object sender, RoutedEventArgs e)

@@ -481,7 +481,8 @@ namespace InfoPanel
 
             if (SelectedProfile != null)
             {
-                var exportFilePath = Path.Combine(outputFolder, SelectedProfile.Name.Replace(" ", "_") + "-" + DateTimeOffset.Now.ToUnixTimeSeconds() + ".infopanel");
+                var exportFilePath = Path.Combine(outputFolder, SelectedProfile.Name.SanitizeFileName().Replace(" ", "_") + "-" + DateTimeOffset.Now.ToUnixTimeSeconds() + ".infopanel");
+
 
                 if (File.Exists(exportFilePath))
                 {
