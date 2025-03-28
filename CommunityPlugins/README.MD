@@ -1,1 +1,0 @@
-Any new plugins should be added here, in a folder called `InfoPanel.YOUR_PLUGIN_NAME`
