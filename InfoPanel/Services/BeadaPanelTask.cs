@@ -108,20 +108,13 @@ namespace InfoPanel
 
                 Trace.WriteLine(panelInfo.ToString());
 
-                //5S has issues atm
-                bool writeThroughMode = panelInfo.ModelId != BeadaPanelModel.Model5S;
+                //only supported on i.mx6ul && i.mx6ull
+                bool writeThroughMode = panelInfo.Platform == 1 || panelInfo.Platform == 2;
 
-                if (writeThroughMode)
-                {
-                    _panelWidth = panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX;
-                    _panelHeight = panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY;
-                }else
-                {
-                    _panelWidth = panelInfo.ResolutionX;
-                    _panelHeight = panelInfo.ResolutionY;
-                }
+                _panelWidth = panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX;
+                _panelHeight = panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY;
 
-                    SharedModel.Instance.BeadaPanelRunning = true;
+                SharedModel.Instance.BeadaPanelRunning = true;
 
                 var startTag = new PanelLinkMessage
                 {
@@ -147,6 +140,9 @@ namespace InfoPanel
 
                 //always reset first
                 iface.Pipes[0x2].Write(resetTag.ToBuffer());
+
+                //wait for reset
+                await Task.Delay(1000, token);
 
                 //set brightness
                 var brightness = ConfigModel.Instance.Settings.BeadaPanelBrightness;
@@ -243,5 +239,5 @@ namespace InfoPanel
         }
     }
 
- 
+
 }
