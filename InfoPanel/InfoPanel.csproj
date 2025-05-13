@@ -12,7 +12,7 @@
 		<FileVersion>$(AssemblyVersion)</FileVersion>
 		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
 		<Version>1.2.9.0</Version>
-		<UseWindowsForms>False</UseWindowsForms>
+		<UseWindowsForms>True</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
 		<ExtrasOutputDir>..\InfoPanel.Extras\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)</ExtrasOutputDir>
@@ -186,10 +186,12 @@
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
+		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="HidSharp" Version="2.1.0" />
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
+		<PackageReference Include="LibUsbDotNet" Version="2.2.75" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
@@ -200,7 +202,6 @@
 		<PackageReference Include="System.IO.Ports" Version="9.0.2" />
 		<PackageReference Include="System.Management" Version="9.0.2" />
 		<PackageReference Include="TaskScheduler" Version="2.12.1" />
-		<PackageReference Include="WinUSBNet" Version="2.1.0" />
 		<PackageReference Include="WPF-UI" Version="2.1.0" />
 	</ItemGroup>
 
