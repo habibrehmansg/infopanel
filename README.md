@@ -109,10 +109,10 @@ InfoPanel is not affiliated with HWiNFO. HWiNFO is a registered trademark of its
 References
 -->
 
-[gears]: https://abhitronix.github.io/vidgear/latest/gears
 [reddit]: https://www.reddit.com/r/InfoPanel/
 [website]: https://www.infopanel.net
 [forum]: https://www.hwinfo.com/forum/threads/infopanel-desktop-visualisation-software.8673/
-[discord]: https://discord.gg/cQnjdMC7Qc
+[discord]: https://discord.gg/aNGeJxjE7Q
 [msstore]: https://apps.microsoft.com/store/detail/XPFP7C8H5446ZD
 [release]: https://github.com/habibrehmansg/infopanel/releases
+[license]: https://github.com/habibrehmansg/infopanel/blob/main/LICENSE
