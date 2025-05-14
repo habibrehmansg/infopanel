@@ -244,6 +244,11 @@ namespace InfoPanel
                 await BeadaPanelTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.TuringPanel)
+            {
+                await TuringPanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.TuringPanelA)
             {
                 await TuringPanelATask.Instance.StartAsync();
@@ -263,12 +268,14 @@ namespace InfoPanel
             {
                 await WebServerTask.Instance.StartAsync();
             }
+
         }
 
         private static async Task StopPanels()
         {
             await PanelDrawTask.Instance.StopAsync();
             await BeadaPanelTask.Instance.StopAsync();
+            await TuringPanelTask.Instance.StopAsync();
             await TuringPanelATask.Instance.StopAsync();
             await TuringPanelCTask.Instance.StopAsync();
             await TuringPanelETask.Instance.StopAsync();

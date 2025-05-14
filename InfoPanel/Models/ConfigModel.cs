@@ -170,6 +170,17 @@ namespace InfoPanel
                     await BeadaPanelTask.Instance.StopAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.TuringPanel))
+            {
+                if (Settings.TuringPanel)
+                {
+                    await TuringPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await TuringPanelTask.Instance.StopAsync();
+                }
+            }
             else if (e.PropertyName == nameof(Settings.TuringPanelA))
             {
                 if (Settings.TuringPanelA)
@@ -280,6 +291,11 @@ namespace InfoPanel
                             Settings.BeadaPanelProfile = settings.BeadaPanelProfile;
                             Settings.BeadaPanelRotation = settings.BeadaPanelRotation;
                             Settings.BeadaPanelBrightness = settings.BeadaPanelBrightness;
+
+                            Settings.TuringPanel = settings.TuringPanel;
+                            Settings.TuringPanelProfile = settings.TuringPanelProfile;
+                            Settings.TuringPanelRotation = settings.TuringPanelRotation;
+                            Settings.TuringPanelBrightness = settings.TuringPanelBrightness;
 
                             Settings.TuringPanelA = settings.TuringPanelA;
                             Settings.TuringPanelAProfile = settings.TuringPanelAProfile;
