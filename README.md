@@ -46,8 +46,10 @@
 - All hardware sensors exposed by HWiNFO
 - CPU, GPU, RAM, storage, and network monitoring via LibreHardwareMonitor
 - BeadaPanel USB LCD panels (all models supported)
-- TuringPanel displays (Models A, C, and E)
+- TuringPanel/TURZX displays (Models A, C, and E)
 - Any standard monitor or display
+
+For detailed information about supported panels and recommendations, see our [Display Panels Guide](PANELS.md).
 
 ## Usage
 
