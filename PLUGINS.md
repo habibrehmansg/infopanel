@@ -386,4 +386,4 @@ For examples of well-structured plugins, check out the built-in plugins in the I
 
 Feel free to join the [InfoPanel Discord][discord] community if you have questions or need help with plugin development.
 
-[discord]: https://discord.gg/cQnjdMC7Qc
+[discord]: https://discord.gg/aNGeJxjE7Q
