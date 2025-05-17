@@ -1,0 +1,115 @@
+﻿<UserControl
+    x:Class="InfoPanel.Views.Components.DisplayItemView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:InfoPanel.Views.Components"
+    xmlns:ui="clr-namespace:Wpf.Ui.Controls;assembly=Wpf.Ui"
+    x:Name="Root"
+    Width="Auto"
+    Height="Auto">
+    <Grid HorizontalAlignment="Stretch" VerticalAlignment="Center">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="25" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="30" />
+            <ColumnDefinition Width="80" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!--  Symbol Icon  -->
+        <ui:SymbolIcon
+            Grid.Column="0"
+            Width="20"
+            Height="20"
+            Margin="0,4,5,0"
+            VerticalAlignment="Center">
+            <ui:SymbolIcon.Style>
+                <Style BasedOn="{StaticResource {x:Type ui:SymbolIcon}}" TargetType="{x:Type ui:SymbolIcon}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Kind}" Value="Text">
+                            <Setter Property="Symbol" Value="Text16" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Image">
+                            <Setter Property="Symbol" Value="Image20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Sensor">
+                            <Setter Property="Symbol" Value="Temperature20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Table">
+                            <Setter Property="Symbol" Value="Table20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Clock">
+                            <Setter Property="Symbol" Value="Clock20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Calendar">
+                            <Setter Property="Symbol" Value="Calendar3Day20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Graph">
+                            <Setter Property="Symbol" Value="DataBarVertical20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Bar">
+                            <Setter Property="Symbol" Value="DataBarHorizontal20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Donut">
+                            <Setter Property="Symbol" Value="DataPie20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Gauge">
+                            <Setter Property="Symbol" Value="Gauge20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Sensor Image">
+                            <Setter Property="Symbol" Value="CircleImage20" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Http Image">
+                            <Setter Property="Symbol" Value="WebAsset20" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ui:SymbolIcon.Style>
+        </ui:SymbolIcon>
+
+        <!--  Name  -->
+        <TextBlock
+            Grid.Column="1"
+            VerticalAlignment="Center"
+            Text="{Binding Name}"
+            TextTrimming="CharacterEllipsis" />
+
+        <!--  Sensor Type Icon  -->
+        <Image
+            Grid.Column="2"
+            Width="20"
+            Height="20"
+            Margin="0,4,10,0"
+            VerticalAlignment="Center">
+            <Image.Style>
+                <Style TargetType="Image">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="HwInfo">
+                            <Setter Property="Source" Value="/InfoPanel;component/Resources/Images/hwinfo_icon.ico" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="Libre">
+                            <Setter Property="Source" Value="/InfoPanel;component/Resources/Images/libre_icon.ico" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Image.Style>
+        </Image>
+
+        <!--  Coordinates  -->
+        <TextBlock Grid.Column="3" VerticalAlignment="Center">
+            <TextBlock.Text>
+                <MultiBinding StringFormat="{}{0}, {1}">
+                    <Binding Path="X" />
+                    <Binding Path="Y" />
+                </MultiBinding>
+            </TextBlock.Text>
+        </TextBlock>
+
+        <!--  Visibility Checkbox  -->
+        <CheckBox
+            Grid.Column="4"
+            Margin="10,0,0,0"
+            VerticalAlignment="Center"
+            IsChecked="{Binding Hidden, Converter={StaticResource InverseBooleanConverter}}" />
+    </Grid>
+</UserControl>

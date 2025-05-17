@@ -296,6 +296,9 @@
                         </Style>
                     </ContentControl.Style>
                     <ContentControl.Resources>
+                        <DataTemplate DataType="{x:Type models:GroupDisplayItem}">
+                            <components:GroupProperties GroupDisplayItem="{Binding}" />
+                        </DataTemplate>
                         <DataTemplate DataType="{x:Type models:GaugeDisplayItem}">
                             <components:CustomProperties GaugeDisplayItem="{Binding}" />
                         </DataTemplate>
