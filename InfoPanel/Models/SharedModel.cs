@@ -300,7 +300,7 @@ namespace InfoPanel
 
         private ConcurrentDictionary<Guid, ObservableCollection<DisplayItem>> ProfileDisplayItems = new ConcurrentDictionary<Guid, ObservableCollection<DisplayItem>>();
 
-        public ObservableCollection<DisplayItem>? DisplayItems
+        public ObservableCollection<DisplayItem> DisplayItems
         {
             get
             {
@@ -308,27 +308,47 @@ namespace InfoPanel
                 {
                     return GetProfileDisplayItems(SelectedProfile);
                 }
-                else { return null; }
+                else { return []; }
             }
         }
         private readonly object _displayItemsLock = new object();
 
-        private DisplayItem? _selectedItem;
         public DisplayItem? SelectedItem
-        {
-            get { return _selectedItem; }
-            set
-            {
-                SetProperty(ref _selectedItem, value);
-                IsItemSelected = value != null;
-            }
-        }
-
-        public List<DisplayItem>? SelectedItems
         {
             get
             {
-                return DisplayItems?.Where(item => item.Selected).ToList();
+                var item = SelectedItems.FirstOrDefault();
+
+                if(item is GroupDisplayItem || SelectedItems.Count == 1)
+                {
+                    return item;
+                }
+
+                return null;
+            }
+            set
+            {
+                //SetProperty(ref _selectedItem, value);
+                //IsItemSelected = value != null;
+            }
+        }
+
+        public void NotifySelectedItemChange()
+        {
+            OnPropertyChanged(nameof(SelectedItem));
+            IsItemSelected = SelectedItem != null;
+        }
+
+        public List<DisplayItem> SelectedItems
+        {
+            get
+            {
+                return [.. DisplayItems
+            .SelectMany<DisplayItem, DisplayItem>(item =>
+                item is GroupDisplayItem group && group.DisplayItems is { } items
+                    ? [group, ..items]
+                    : [item])
+            .Where(item => item.Selected)];
             }
         }
 
@@ -336,7 +356,17 @@ namespace InfoPanel
         {
             get
             {
-                return DisplayItems?.Where(item => item.Selected && !item.Hidden).ToList();
+                if (DisplayItems == null)
+                    return null;
+
+                return [.. DisplayItems
+                    .SelectMany(item =>
+                    {
+                        if (item is GroupDisplayItem group && group.DisplayItems != null)
+                            return group.DisplayItems.Cast<DisplayItem>();
+                        return [item];
+                    })
+                    .Where(item => item.Selected && !item.Hidden)];
             }
         }
 
@@ -379,46 +409,193 @@ namespace InfoPanel
             }
         }
 
+        private ObservableCollection<DisplayItem>? FindParentCollection(DisplayItem item, out GroupDisplayItem? parentGroup)
+        {
+            parentGroup = null;
+
+            if (DisplayItems == null)
+                return null;
+
+            if (DisplayItems.Contains(item))
+                return DisplayItems;
+
+            foreach (var group in DisplayItems.OfType<GroupDisplayItem>())
+            {
+                if (group.DisplayItems != null && group.DisplayItems.Contains(item))
+                {
+                    parentGroup = group;
+                    return group.DisplayItems;
+                }
+            }
+
+            return null;
+        }
+
         public void PushDisplayItemBy(DisplayItem displayItem, int count)
         {
+            if (displayItem == null || count == 0)
+                return;
+
             lock (_displayItemsLock)
             {
                 if (DisplayItems == null)
-                {
                     return;
+
+                // Find the parent collection and group (if any)
+                var parentCollection = FindParentCollection(displayItem, out GroupDisplayItem? parentGroup);
+
+                if (parentCollection == null)
+                    return;
+
+                int index = parentCollection.IndexOf(displayItem);
+                int newIndex = index + count;
+
+                // Moving out of group (up or down)
+                if (parentGroup != null)
+                {
+                    if (newIndex < 0)
+                    {
+                        int groupIndex = DisplayItems.IndexOf(parentGroup);
+                        if (groupIndex >= 0)
+                        {
+                            parentCollection.RemoveAt(index);
+                            DisplayItems.Insert(groupIndex, displayItem);
+                        }
+                        return;
+                    }
+
+                    if (newIndex >= parentCollection.Count)
+                    {
+                        int groupIndex = DisplayItems.IndexOf(parentGroup);
+                        if (groupIndex >= 0)
+                        {
+                            parentCollection.RemoveAt(index);
+                            DisplayItems.Insert(groupIndex + 1, displayItem);
+                        }
+                        return;
+                    }
                 }
 
-                var index = DisplayItems.IndexOf(displayItem);
-
-                var newIndex = index + count;
-
-                if (newIndex >= 0 && newIndex < DisplayItems.Count)
+                // Moving into a group
+                if (parentGroup == null)
                 {
-                    DisplayItems.Move(index, newIndex);
+                    int targetIndex = index + count;
+                    if (targetIndex >= 0 && targetIndex < DisplayItems.Count)
+                    {
+                        var target = DisplayItems[targetIndex];
+                        if (target is GroupDisplayItem targetGroup && targetGroup.DisplayItems != null)
+                        {
+                            parentCollection.RemoveAt(index);
+                            targetGroup.DisplayItems.Insert(0, displayItem);
+                            return;
+                        }
+                    }
+                }
+
+                // Normal move within the same collection
+                if (newIndex >= 0 && newIndex < parentCollection.Count)
+                {
+                    parentCollection.Move(index, newIndex);
                 }
             }
         }
 
         public void PushDisplayItemTo(DisplayItem displayItem, DisplayItem target)
         {
+            if (displayItem == null || target == null || displayItem == target)
+                return;
+
             lock (_displayItemsLock)
             {
-                if (DisplayItems == null) { return; }
-                var index = DisplayItems.IndexOf(displayItem);
-                var targetIndex = DisplayItems.IndexOf(target);
-                DisplayItems.Move(index, targetIndex + 1);
+                if (DisplayItems == null)
+                    return;
+
+                var sourceCollection = FindParentCollection(displayItem, out _);
+                var targetCollection = FindParentCollection(target, out _);
+
+                if (sourceCollection == null || targetCollection == null)
+                    return;
+
+                int sourceIndex = sourceCollection.IndexOf(displayItem);
+                int targetIndex = targetCollection.IndexOf(target);
+
+                if (sourceCollection == targetCollection)
+                {
+                    // Same collection: simple move
+                    sourceCollection.Move(sourceIndex, targetIndex + 1);
+                }
+                else
+                {
+                    // Different collections: remove and insert
+                    sourceCollection.RemoveAt(sourceIndex);
+                    targetCollection.Insert(targetIndex + 1, displayItem);
+                }
             }
         }
 
-        public void PushDisplayItemTo(DisplayItem displayItem, int newIndex)
+        public void PushDisplayItemToTop(DisplayItem displayItem)
         {
+            if (displayItem == null)
+                return;
+
             lock (_displayItemsLock)
             {
-                if (DisplayItems == null) { return; }
-                var index = DisplayItems.IndexOf(displayItem);
-                DisplayItems.Move(index, newIndex);
+                if (DisplayItems == null)
+                    return;
+
+                var sourceCollection = FindParentCollection(displayItem, out _);
+                if (sourceCollection == null)
+                    return;
+
+                int currentIndex = sourceCollection.IndexOf(displayItem);
+
+                if (sourceCollection == DisplayItems)
+                {
+                    if (currentIndex > 0)
+                    {
+                        DisplayItems.Move(currentIndex, 0);
+                    }
+                }
+                else
+                {
+                    sourceCollection.RemoveAt(currentIndex);
+                    DisplayItems.Insert(0, displayItem);
+                }
             }
         }
+
+        public void PushDisplayItemToEnd(DisplayItem displayItem)
+        {
+            if (displayItem == null)
+                return;
+
+            lock (_displayItemsLock)
+            {
+                if (DisplayItems == null)
+                    return;
+
+                var sourceCollection = FindParentCollection(displayItem, out _);
+                if (sourceCollection == null)
+                    return;
+
+                int currentIndex = sourceCollection.IndexOf(displayItem);
+
+                if (sourceCollection == DisplayItems)
+                {
+                    if (currentIndex < DisplayItems.Count - 1)
+                    {
+                        DisplayItems.Move(currentIndex, DisplayItems.Count - 1);
+                    }
+                }
+                else
+                {
+                    sourceCollection.RemoveAt(currentIndex);
+                    DisplayItems.Add(displayItem);
+                }
+            }
+        }
+
+
 
         public BitmapSource BitmapSource { get; set; }
 
@@ -485,7 +662,7 @@ namespace InfoPanel
             }
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
 
-            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
+            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
 
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
             using var wr = XmlWriter.Create(fileName, settings);
@@ -576,7 +753,7 @@ namespace InfoPanel
             return null;
         }
 
-       
+
 
         public static async Task ImportSensorPanel(string importPath)
         {
@@ -638,7 +815,7 @@ namespace InfoPanel
                 }
             }
 
-            if(items.Count > 2)
+            if (items.Count > 2)
             {
                 await ProcessSensorPanelImport($"[Import] {Path.GetFileNameWithoutExtension(importPath)}", items);
             }
@@ -1359,7 +1536,7 @@ namespace InfoPanel
             if (File.Exists(fileName))
             {
                 XmlSerializer xs = new(typeof(List<DisplayItem>),
-                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
+                    [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
 
                 using var rd = XmlReader.Create(fileName);
                 try

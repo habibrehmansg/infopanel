@@ -471,7 +471,7 @@ namespace InfoPanel.Views.Common
                 }
 
                 DisplayItem? clickedItem = null;
-                Rect clickedItemBounds = new Rect(0, 0, 0, 0);
+                Rect clickedItemBounds = new(0, 0, 0, 0);
 
                 var displayItems = SharedModel.Instance.DisplayItems?.ToList();
 
@@ -481,6 +481,33 @@ namespace InfoPanel.Views.Common
                     {
                         if (item.Hidden)
                         {
+                            continue;
+                        }
+
+
+                        if(item is GroupDisplayItem groupDisplayItem)
+                        {
+                            foreach (var groupItem in groupDisplayItem.DisplayItems)
+                            {
+                                if (groupItem.Hidden)
+                                {
+                                    continue;
+                                }
+
+                                var groupItemBounds = groupItem.EvaluateBounds();
+
+                                if (groupItemBounds.Width >= Profile.Width && groupItemBounds.Height >= Profile.Height && groupItemBounds.X == 0 && groupItemBounds.Y == 0)
+                                {
+                                    continue;
+                                }
+
+                                if (groupItemBounds.Contains(e.GetPosition(this)))
+                                {
+                                    clickedItem = groupItem;
+                                    clickedItemBounds = groupItemBounds;
+                                }
+                            }
+
                             continue;
                         }
 

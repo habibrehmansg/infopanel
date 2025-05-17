@@ -241,9 +241,9 @@ namespace InfoPanel
                             {
                                 stopwatch2.Restart();
                                 dataWriter.Write(frame, 2000, out int _);
-                                Trace.WriteLine($"Post render: {stopwatch2.ElapsedMilliseconds}ms.");
+                                //Trace.WriteLine($"Post render: {stopwatch2.ElapsedMilliseconds}ms.");
                                 fpsCounter.Update();
-                                Trace.WriteLine($"FPS: {fpsCounter.FramesPerSecond}");
+                                //Trace.WriteLine($"FPS: {fpsCounter.FramesPerSecond}");
 
                                 SharedModel.Instance.BeadaPanelFrameRate = fpsCounter.FramesPerSecond;
                                 SharedModel.Instance.BeadaPanelFrameTime = stopwatch2.ElapsedMilliseconds;
@@ -252,7 +252,7 @@ namespace InfoPanel
                                 if (stopwatch2.ElapsedMilliseconds < targetFrameTime)
                                 {
                                     var sleep = (int)(targetFrameTime - stopwatch2.ElapsedMilliseconds);
-                                    Trace.WriteLine($"Sleep {sleep}ms");
+                                    //Trace.WriteLine($"Sleep {sleep}ms");
                                     await Task.Delay(sleep, token);
                                 }
                             }

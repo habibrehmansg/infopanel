@@ -1,7 +1,11 @@
 ﻿using InfoPanel.Models;
+using System;
+using System.Diagnostics;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Forms;
+using System.Windows.Input;
+using System.Windows.Media;
 
 namespace InfoPanel.Views.Components
 {
@@ -36,37 +40,105 @@ namespace InfoPanel.Views.Components
 
         private void ButtonPushUp_Click(object sender, RoutedEventArgs e)
         {
-            if (SelectedItem != null)
+            if (SelectedItem is DisplayItem item)
             {
-                SharedModel.Instance.PushDisplayItemBy(SelectedItem, -1);
-                ListViewItems.ScrollIntoView(SelectedItem);
+                _isHandlingSelection = true;
+
+                try
+                {
+                    if (item is GroupDisplayItem groupDisplayItem)
+                    {
+                        foreach (var displayItem in groupDisplayItem.DisplayItems)
+                        {
+                            displayItem.Selected = false;
+                        }
+                    }
+
+                    SharedModel.Instance.PushDisplayItemBy(item, -1);
+                    ListViewItems.ScrollIntoView(item);
+                }
+                finally
+                {
+                    _isHandlingSelection = false;
+                }
             }
         }
 
         private void ButtonPushDown_Click(object sender, RoutedEventArgs e)
         {
-            if (SelectedItem != null)
+            if(SelectedItem is DisplayItem item)
             {
-                SharedModel.Instance.PushDisplayItemBy(SelectedItem, 1);
-                ListViewItems.ScrollIntoView(SelectedItem);
+                _isHandlingSelection = true;
+
+                try
+                {
+                    if (item is GroupDisplayItem groupDisplayItem)
+                    {
+                        foreach (var displayItem in groupDisplayItem.DisplayItems)
+                        {
+                            displayItem.Selected = false;
+                        }
+                    }
+
+                    SharedModel.Instance.PushDisplayItemBy(item, 1);
+                    ListViewItems.ScrollIntoView(item);
+                }
+                finally
+                {
+                    _isHandlingSelection = false;
+                }
             }
         }
 
         private void ButtonPushBack_Click(object sender, RoutedEventArgs e)
         {
-            if (SelectedItem != null)
+            if (SelectedItem is DisplayItem item)
             {
-                SharedModel.Instance.PushDisplayItemTo(SelectedItem, 0);
-                ListViewItems.ScrollIntoView(SelectedItem);
+                _isHandlingSelection = true;
+
+                try
+                {
+                    if (item is GroupDisplayItem groupDisplayItem)
+                    {
+                        foreach (var displayItem in groupDisplayItem.DisplayItems)
+                        {
+                            displayItem.Selected = false;
+                        }
+                    }
+
+                    SharedModel.Instance.PushDisplayItemToTop(item);
+                    ListViewItems.ScrollIntoView(item);
+                }
+                finally
+                {
+                    _isHandlingSelection = false;
+                }
             }
         }
 
         private void ButtonPushFront_Click(object sender, RoutedEventArgs e)
         {
-            if (SelectedItem != null)
+            if (SelectedItem is DisplayItem item)
             {
-                SharedModel.Instance.PushDisplayItemTo(SelectedItem, SharedModel.Instance.GetProfileDisplayItemsCopy().Count - 1);
-                ListViewItems.ScrollIntoView(SelectedItem);
+                _isHandlingSelection = true;
+
+                try
+                {
+                    if (item is GroupDisplayItem groupDisplayItem)
+                    {
+                        foreach (var displayItem in groupDisplayItem.DisplayItems)
+                        {
+                            displayItem.Selected = false;
+                        }
+                    }
+
+                    SharedModel.Instance.PushDisplayItemToEnd(item);
+                    ListViewItems.ScrollIntoView(item);
+                }
+                finally
+                {
+                    _isHandlingSelection = false;
+                }
             }
         }
 
@@ -76,6 +148,18 @@ namespace InfoPanel.Views.Components
             {
                 SharedModel.Instance.RemoveDisplayItem(SelectedItem);
             }
+        }
+
+        private void ButtonGroup_Click(object sender, RoutedEventArgs e)
+        {
+            var groupDisplayItem = new GroupDisplayItem
+            {
+                Name = "-- New Group"
+            };
+
+            SharedModel.Instance.AddDisplayItem(groupDisplayItem);
+            SharedModel.Instance.SelectedItem = groupDisplayItem;
+            ListViewItems.ScrollIntoView(groupDisplayItem);
         }
 
         private void ButtonReload_Click(object sender, RoutedEventArgs e)
@@ -103,7 +187,7 @@ namespace InfoPanel.Views.Components
 
         private void ButtonNewImage_Click(object sender, RoutedEventArgs e)
         {
-            if(SharedModel.Instance.SelectedProfile != null)
+            if (SharedModel.Instance.SelectedProfile != null)
             {
                 var item = new ImageDisplayItem("Image", SharedModel.Instance.SelectedProfile.Guid);
                 SharedModel.Instance.AddDisplayItem(item);
@@ -118,7 +202,7 @@ namespace InfoPanel.Views.Components
                 Font = SharedModel.Instance.SelectedProfile!.Font,
                 FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
                 Color = SharedModel.Instance.SelectedProfile!.Color
-                
+
             };
             SharedModel.Instance.AddDisplayItem(item);
             SharedModel.Instance.SelectedItem = item;
@@ -148,17 +232,170 @@ namespace InfoPanel.Views.Components
             }
         }
 
+        private bool _isHandlingSelection;
+
         private void ListViewItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            SharedModel.Instance.SelectedItems?.ForEach(item =>
-            {
-                if(!ListViewItems.SelectedItems.Contains(item))
-                {
-                    item.Selected = false;
-                }
-            });
+            if (_isHandlingSelection || sender is not ListView listView)
+                return;
 
-            ListViewItems.ScrollIntoView(SharedModel.Instance.SelectedItem);
+            Trace.WriteLine($"ListViewItems_SelectionChanged - {listView.SelectedItems.Count} SelectedItems");
+
+            _isHandlingSelection = true;
+            try
+            {
+
+                if (listView.SelectedItems.Count == 0)
+                {
+                    return;
+                }
+
+                foreach (var selectedItem in listView.SelectedItems)
+                {
+                    if (selectedItem is GroupDisplayItem groupDisplayItem)
+                    {
+                        foreach (var item in groupDisplayItem.DisplayItems)
+                        {
+                            item.Selected = true;
+                        }
+                    }
+                }
+
+                var selectedItems = listView.SelectedItems.Cast<DisplayItem>().ToList();
+
+                if (selectedItems.Count != 0)
+                    listView.ScrollIntoView(selectedItems.Last());
+
+                if (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl) || Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+                {
+                    return;
+                }
+
+                foreach (var item in SharedModel.Instance.DisplayItems)
+                {
+                    if (item is GroupDisplayItem group && item != listView.SelectedItem)
+                    {
+                        foreach (var item1 in group.DisplayItems)
+                        {
+                            item1.Selected = false;
+                        }
+                    }
+
+                }
+
+            }
+            finally
+            {
+                SharedModel.Instance.NotifySelectedItemChange();
+                _isHandlingSelection = false;
+                Trace.WriteLine("ListViewItems_SelectionChanged - finally");
+            }
+        }
+
+        private void ListViewGroupItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isHandlingSelection || sender is not ListView innerListView)
+                return;
+
+            Trace.WriteLine($"ListViewGroupItems_SelectionChanged - {innerListView.SelectedItems.Count} SelectedItems");
+
+            _isHandlingSelection = true;
+
+            try
+            {
+                var selectedItems = innerListView.SelectedItems.Cast<DisplayItem>().ToList();
+
+                if (selectedItems.Count != 0)
+                    innerListView.ScrollIntoView(selectedItems.Last());
+
+                if (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl) || Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+                {
+                    return;
+                }
+
+                foreach (var item in SharedModel.Instance.DisplayItems)
+                {
+                    if (item != innerListView.SelectedItem)
+                    {
+                        item.Selected = false;
+                    }
+                }
+
+            }
+            finally
+            {
+                SharedModel.Instance.NotifySelectedItemChange();
+                _isHandlingSelection = false;
+                Trace.WriteLine("ListViewGroupItems_SelectionChanged - finally");
+            }
+        }
+
+        private void StackPanel_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+
+            if (e.ChangedButton != MouseButton.Left)
+                return;
+
+            if (sender is not StackPanel stackPanel)
+                return;
+
+            var dataItem = stackPanel.DataContext;
+            var listViewItem = FindAncestor<ListViewItem>(stackPanel);
+            if (listViewItem == null)
+                return;
+
+            var listView = ItemsControl.ItemsControlFromItemContainer(listViewItem) as ListView;
+            if (listView == null)
+                return;
+
+            // Handle modifier keys
+            bool ctrl = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+            bool shift = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+
+            if (shift)
+            {
+                // Select range from last selected to current
+                int currentIndex = listView.Items.IndexOf(dataItem);
+                int anchorIndex = listView.SelectedIndex;
+
+                if (anchorIndex >= 0 && currentIndex >= 0)
+                {
+                    int start = Math.Min(anchorIndex, currentIndex);
+                    int end = Math.Max(anchorIndex, currentIndex);
+
+                    listView.SelectedItems.Clear();
+                    for (int i = start; i <= end; i++)
+                    {
+                        if (listView.ItemContainerGenerator.ContainerFromIndex(i) is ListViewItem item)
+                            item.IsSelected = true;
+                    }
+                }
+            }
+            else if (ctrl)
+            {
+                // Toggle selection
+                listViewItem.IsSelected = !listViewItem.IsSelected;
+            }
+            else
+            {
+                // Normal click: clear others and select this
+                listView.SelectedItems.Clear();
+                listViewItem.IsSelected = true;
+            }
+
+            listViewItem.BringIntoView();
+        }
+
+        public static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            while (current != null)
+            {
+                if (current is T target)
+                    return target;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
         }
     }
 }

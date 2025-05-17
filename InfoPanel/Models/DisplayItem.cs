@@ -47,6 +47,8 @@ public abstract class DisplayItem : ObservableObject, ICloneable
         {
             switch (this)
             {
+                case GroupDisplayItem:
+                    return "Group";
                 case SensorDisplayItem:
                     return "Sensor";
                 case TableSensorDisplayItem:
