@@ -328,8 +328,16 @@ namespace InfoPanel
             }
             set
             {
-                //SetProperty(ref _selectedItem, value);
-                //IsItemSelected = value != null;
+                if (value is DisplayItem displayItem)
+                {
+                   foreach(var selectedItem in SelectedItems)
+                    {
+                        selectedItem.Selected = false;
+                    }
+
+                    displayItem.Selected = true;
+                    NotifySelectedItemChange();
+                }
             }
         }
 
@@ -477,16 +485,16 @@ namespace InfoPanel
                 }
 
                 // Moving into a group
-                if (parentGroup == null)
+                if (displayItem is not GroupDisplayItem && parentGroup == null)
                 {
                     int targetIndex = index + count;
                     if (targetIndex >= 0 && targetIndex < DisplayItems.Count)
                     {
                         var target = DisplayItems[targetIndex];
-                        if (target is GroupDisplayItem targetGroup && targetGroup.DisplayItems != null)
+                        if (target is GroupDisplayItem targetGroup && targetGroup.IsExpanded && targetGroup.DisplayItems != null)
                         {
                             parentCollection.RemoveAt(index);
-                            targetGroup.DisplayItems.Insert(0, displayItem);
+                            targetGroup.DisplayItems.Insert(count > 0 ? 0: targetGroup.DisplayItems.Count, displayItem);
                             return;
                         }
                     }

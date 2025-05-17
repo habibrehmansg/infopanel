@@ -154,10 +154,17 @@ namespace InfoPanel.Views.Components
         {
             var groupDisplayItem = new GroupDisplayItem
             {
-                Name = "-- New Group"
+                Name = "New Group"
             };
 
             SharedModel.Instance.AddDisplayItem(groupDisplayItem);
+
+            var selectedItem = SharedModel.Instance.SelectedItem;
+            if (selectedItem != null)
+            {
+                SharedModel.Instance.PushDisplayItemTo(groupDisplayItem, selectedItem);
+            }
+
             SharedModel.Instance.SelectedItem = groupDisplayItem;
             ListViewItems.ScrollIntoView(groupDisplayItem);
         }
@@ -313,7 +320,7 @@ namespace InfoPanel.Views.Components
                     return;
                 }
 
-                foreach (var item in SharedModel.Instance.DisplayItems)
+                foreach (var item in SharedModel.Instance.SelectedItems)
                 {
                     if (item != innerListView.SelectedItem)
                     {
@@ -330,18 +337,18 @@ namespace InfoPanel.Views.Components
             }
         }
 
-        private void StackPanel_MouseDown(object sender, MouseButtonEventArgs e)
+        private void Border_MouseDown(object sender, MouseButtonEventArgs e)
         {
             e.Handled = true;
 
             if (e.ChangedButton != MouseButton.Left)
                 return;
 
-            if (sender is not StackPanel stackPanel)
+            if (sender is not Border border)
                 return;
 
-            var dataItem = stackPanel.DataContext;
-            var listViewItem = FindAncestor<ListViewItem>(stackPanel);
+            var dataItem = border.DataContext;
+            var listViewItem = FindAncestor<ListViewItem>(border);
             if (listViewItem == null)
                 return;
 
