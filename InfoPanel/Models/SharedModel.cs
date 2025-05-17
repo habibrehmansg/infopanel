@@ -28,7 +28,7 @@ using System.Xml.Serialization;
 
 namespace InfoPanel
 {
-    public sealed class SharedModel : ObservableObject
+    public partial class SharedModel : ObservableObject
     {
         private static readonly Lazy<SharedModel> lazy = new(() => new SharedModel());
 
@@ -317,14 +317,37 @@ namespace InfoPanel
         {
             get
             {
-                var item = SelectedItems.FirstOrDefault();
+                var items = SelectedItems.ToList();
 
-                if(item is GroupDisplayItem || SelectedItems.Count == 1)
+                //do not allow multiple group items to be selected
+                if (items.FindAll(item => item is GroupDisplayItem).Count > 1)
                 {
-                    return item;
+                    return null;
                 }
 
-                return null;
+                var result = items.FirstOrDefault();
+
+                if (result is GroupDisplayItem groupDisplayItem)
+                {
+                    //check if all selected items are in the group
+                    foreach (var item in items)
+                    {
+                        if(item == result)
+                        {
+                            continue;
+                        }
+                        if (!groupDisplayItem.DisplayItems.Contains(item))
+                        {
+                            return null;
+                        }
+                    }
+
+                }else if (items.Count > 1)
+                {
+                    return null;
+                }
+
+                return result;
             }
             set
             {
@@ -345,6 +368,10 @@ namespace InfoPanel
         {
             OnPropertyChanged(nameof(SelectedItem));
             IsItemSelected = SelectedItem != null;
+
+            var items = SelectedItems.ToList();
+
+            IsItemMovable = items.FindAll(item => item is not GroupDisplayItem).Count > 0;
         }
 
         public List<DisplayItem> SelectedItems
@@ -377,6 +404,10 @@ namespace InfoPanel
                     .Where(item => item.Selected && !item.Hidden)];
             }
         }
+
+        [ObservableProperty]
+        private bool _isItemMovable = false;
+        
 
         private bool _isItemSelected;
         public bool IsItemSelected

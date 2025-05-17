@@ -30,34 +30,56 @@ namespace InfoPanel.Views.Components
 
         private void ButtonUp_Click(object sender, RoutedEventArgs e)
         {
-            if (SharedModel.Instance.SelectedItem is DisplayItem displayItem)
+            //if (SharedModel.Instance.SelectedItem is DisplayItem displayItem)
+            //{
+            //    displayItem.Y -= SharedModel.Instance.MoveValue;
+            //}
+
+            foreach (var item in SharedModel.Instance.SelectedItems)
             {
-                displayItem.Y -= SharedModel.Instance.MoveValue;
+                item.Y -= SharedModel.Instance.MoveValue;
             }
         }
 
         private void ButtonDown_Click(object sender, RoutedEventArgs e)
         {
-            if (SharedModel.Instance.SelectedItem is DisplayItem displayItem)
+            //if (SharedModel.Instance.SelectedItem is DisplayItem displayItem)
+            //{
+            //    displayItem.Y += SharedModel.Instance.MoveValue;
+            //}
+
+            foreach (var item in SharedModel.Instance.SelectedItems)
             {
-                displayItem.Y += SharedModel.Instance.MoveValue;
+                item.Y += SharedModel.Instance.MoveValue;
             }
         }
 
         private void ButtonLeft_Click(object sender, RoutedEventArgs e)
         {
-            if (SharedModel.Instance.SelectedItem is DisplayItem displayItem)
+            //if (SharedModel.Instance.SelectedItem is DisplayItem displayItem)
+            //{
+            //    displayItem.X -= SharedModel.Instance.MoveValue;
+            //}
+
+            foreach (var item in SharedModel.Instance.SelectedItems)
             {
-                displayItem.X -= SharedModel.Instance.MoveValue;
+                item.X -= SharedModel.Instance.MoveValue;
             }
         }
 
         private void ButtonRight_Click(object sender, RoutedEventArgs e)
         {
-            if (SharedModel.Instance.SelectedItem is DisplayItem displayItem)
+            //if (SharedModel.Instance.SelectedItem is DisplayItem displayItem)
+            //{
+            //    displayItem.X += SharedModel.Instance.MoveValue;
+            //}
+
+            foreach (var item in SharedModel.Instance.SelectedItems)
             {
-                displayItem.X += SharedModel.Instance.MoveValue;
+                item.X += SharedModel.Instance.MoveValue;
             }
+
+
         }
 
         private void ButtonMoveValue_Click(object sender, RoutedEventArgs e)

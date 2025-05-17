@@ -18,6 +18,21 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _isExpanded = true;
 
+        public new int X
+        {
+            get { return 0; }
+            set
+            {
+            }
+        }
+        public new int Y
+        {
+            get { return 0; }
+            set
+            {
+            }
+        }
+
 
         public override object Clone()
         {
