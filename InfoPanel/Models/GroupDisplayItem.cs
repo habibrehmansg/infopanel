@@ -21,7 +21,17 @@ namespace InfoPanel.Models
 
         public override object Clone()
         {
-            throw new NotImplementedException();
+            var clone = new GroupDisplayItem
+            {
+                Name = Name
+            };
+
+            foreach (var displayItem in DisplayItems)
+            {
+                clone.DisplayItems.Add((DisplayItem)displayItem.Clone());
+            }
+
+            return clone;
         }
 
         public override Rect EvaluateBounds()
