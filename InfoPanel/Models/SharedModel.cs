@@ -4,6 +4,7 @@ using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using InfoPanel.Views.Common;
+using InfoPanel.Views.Components;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -332,7 +333,7 @@ namespace InfoPanel
                     //check if all selected items are in the group
                     foreach (var item in items)
                     {
-                        if(item == result)
+                        if (item == result)
                         {
                             continue;
                         }
@@ -342,7 +343,8 @@ namespace InfoPanel
                         }
                     }
 
-                }else if (items.Count > 1)
+                }
+                else if (items.Count > 1)
                 {
                     return null;
                 }
@@ -351,16 +353,20 @@ namespace InfoPanel
             }
             set
             {
-                if (value is DisplayItem displayItem)
+                foreach (var selectedItem in SelectedItems)
                 {
-                   foreach(var selectedItem in SelectedItems)
+                    if (selectedItem != value)
                     {
                         selectedItem.Selected = false;
                     }
-
-                    displayItem.Selected = true;
-                    NotifySelectedItemChange();
                 }
+
+                if (value is DisplayItem displayItem)
+                {
+                    displayItem.Selected = true;
+                }
+
+                NotifySelectedItemChange();
             }
         }
 
@@ -371,7 +377,8 @@ namespace InfoPanel
 
             var items = SelectedItems.ToList();
 
-            IsItemMovable = items.FindAll(item => item is not GroupDisplayItem).Count > 0;
+            IsSelectedItemsMovable = items.FindAll(item => item is not GroupDisplayItem).Count > 0;
+            IsSelectedItemMovable = SelectedItem is not null && SelectedItem is not GroupDisplayItem;
         }
 
         public List<DisplayItem> SelectedItems
@@ -387,12 +394,12 @@ namespace InfoPanel
             }
         }
 
-        public List<DisplayItem>? SelectedVisibleItems
+        public List<DisplayItem> SelectedVisibleItems
         {
             get
             {
                 if (DisplayItems == null)
-                    return null;
+                    return [];
 
                 return [.. DisplayItems
                     .SelectMany(item =>
@@ -406,8 +413,11 @@ namespace InfoPanel
         }
 
         [ObservableProperty]
-        private bool _isItemMovable = false;
-        
+        private bool _isSelectedItemsMovable = false;
+
+        [ObservableProperty]
+        private bool _isSelectedItemMovable = false;
+
 
         private bool _isItemSelected;
         public bool IsItemSelected
@@ -432,11 +442,41 @@ namespace InfoPanel
         private SharedModel()
         { }
 
-        public void AddDisplayItem(DisplayItem displayItem)
+        public void AddDisplayItem(DisplayItem newDisplayItem)
         {
             lock (_displayItemsLock)
             {
-                DisplayItems?.Add(displayItem);
+                if (DisplayItems is not ObservableCollection<DisplayItem> displayItems)
+                    return;
+
+                bool addedInGroup = false;
+
+                if (newDisplayItem is not GroupDisplayItem && SelectedItem is DisplayItem selectedItem)
+                {
+                    // SelectedItem is a group — add directly to it
+                    if (selectedItem is GroupDisplayItem group && !group.IsLocked)
+                    {
+                        group.DisplayItems.Add(newDisplayItem);
+                        addedInGroup = true;
+                    }
+                    else
+                    {
+                        //SelectedItem is inside a group — find its parent
+                        _= FindParentCollection(selectedItem, out var parentGroup);
+                        if (parentGroup is not null && !parentGroup.IsLocked)
+                        {
+                            parentGroup.DisplayItems.Add(newDisplayItem);
+                            addedInGroup = true;
+                        }
+                    }
+                }
+
+                if (!addedInGroup)
+                {
+                    displayItems.Add(newDisplayItem);
+                }
+
+                SelectedItem = newDisplayItem;
             }
         }
 
@@ -444,8 +484,48 @@ namespace InfoPanel
         {
             lock (_displayItemsLock)
             {
-                DisplayItems?.Remove(displayItem);
+                if (DisplayItems is not ObservableCollection<DisplayItem> displayItems)
+                    return;
+
+                // Check if the item is inside a group
+                _= FindParentCollection(displayItem, out var parentGroup);
+                if (parentGroup is not null)
+                {
+                    int index = parentGroup.DisplayItems.IndexOf(displayItem);
+                    if (index >= 0)
+                    {
+                        parentGroup.DisplayItems.RemoveAt(index);
+
+                        if (parentGroup.DisplayItems.Count > 0)
+                        {
+                            parentGroup.DisplayItems[Math.Clamp(index, 0, parentGroup.DisplayItems.Count - 1)].Selected = true;
+                        } else
+                        {
+                            parentGroup.Selected = true;
+                        }
+                    }
+                }
+                else
+                {
+                    // Top-level item
+                    int index = displayItems.IndexOf(displayItem);
+                    if (index >= 0)
+                    {
+                        displayItems.RemoveAt(index);
+
+                        if (displayItems.Count > 0)
+                        {
+                            displayItems[Math.Clamp(index, 0, displayItems.Count - 1)].Selected = true;
+                        }
+                    }
+                }
             }
+        }
+
+        public GroupDisplayItem? GetParent(DisplayItem displayItem)
+        {
+            FindParentCollection(displayItem, out var result);
+            return result;
         }
 
         private ObservableCollection<DisplayItem>? FindParentCollection(DisplayItem item, out GroupDisplayItem? parentGroup)
@@ -490,7 +570,7 @@ namespace InfoPanel
                 int newIndex = index + count;
 
                 // Moving out of group (up or down)
-                if (parentGroup != null)
+                if (parentGroup != null && !parentGroup.IsLocked)
                 {
                     if (newIndex < 0)
                     {
@@ -522,10 +602,11 @@ namespace InfoPanel
                     if (targetIndex >= 0 && targetIndex < DisplayItems.Count)
                     {
                         var target = DisplayItems[targetIndex];
-                        if (target is GroupDisplayItem targetGroup && targetGroup.IsExpanded && targetGroup.DisplayItems != null)
+                        if (target is GroupDisplayItem targetGroup && !targetGroup.IsLocked && targetGroup.DisplayItems != null)
                         {
                             parentCollection.RemoveAt(index);
-                            targetGroup.DisplayItems.Insert(count > 0 ? 0: targetGroup.DisplayItems.Count, displayItem);
+                            targetGroup.DisplayItems.Insert(count > 0 ? 0 : targetGroup.DisplayItems.Count, displayItem);
+                            targetGroup.IsExpanded = true;
                             return;
                         }
                     }
@@ -535,6 +616,10 @@ namespace InfoPanel
                 if (newIndex >= 0 && newIndex < parentCollection.Count)
                 {
                     parentCollection.Move(index, newIndex);
+                    if(parentGroup is GroupDisplayItem)
+                    {
+                        parentGroup.IsExpanded = true;
+                    }
                 }
             }
         }
@@ -549,10 +634,10 @@ namespace InfoPanel
                 if (DisplayItems == null)
                     return;
 
-                var sourceCollection = FindParentCollection(displayItem, out _);
-                var targetCollection = FindParentCollection(target, out _);
+                var sourceCollection = FindParentCollection(displayItem, out var sourceGroupDisplayItem);
+                var targetCollection = FindParentCollection(target, out var targetGroupDisplayItem);
 
-                if (sourceCollection == null || targetCollection == null)
+                if (sourceCollection == null || targetCollection == null || sourceCollection != targetCollection)
                     return;
 
                 int sourceIndex = sourceCollection.IndexOf(displayItem);
@@ -562,12 +647,6 @@ namespace InfoPanel
                 {
                     // Same collection: simple move
                     sourceCollection.Move(sourceIndex, targetIndex + 1);
-                }
-                else
-                {
-                    // Different collections: remove and insert
-                    sourceCollection.RemoveAt(sourceIndex);
-                    targetCollection.Insert(targetIndex + 1, displayItem);
                 }
             }
         }
@@ -582,7 +661,7 @@ namespace InfoPanel
                 if (DisplayItems == null)
                     return;
 
-                var sourceCollection = FindParentCollection(displayItem, out _);
+                var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
                 if (sourceCollection == null)
                     return;
 
@@ -597,8 +676,17 @@ namespace InfoPanel
                 }
                 else
                 {
-                    sourceCollection.RemoveAt(currentIndex);
-                    DisplayItems.Insert(0, displayItem);
+                    if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
+                    {
+                        sourceCollection.RemoveAt(currentIndex);
+                        DisplayItems.Insert(0, displayItem);
+                    }else
+                    {
+                        if (currentIndex != 0)
+                        {
+                            sourceCollection.Move(currentIndex, 0);
+                        }
+                    }
                 }
             }
         }
@@ -613,7 +701,7 @@ namespace InfoPanel
                 if (DisplayItems == null)
                     return;
 
-                var sourceCollection = FindParentCollection(displayItem, out _);
+                var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
                 if (sourceCollection == null)
                     return;
 
@@ -628,13 +716,20 @@ namespace InfoPanel
                 }
                 else
                 {
-                    sourceCollection.RemoveAt(currentIndex);
-                    DisplayItems.Add(displayItem);
+                    if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
+                    {
+                        sourceCollection.RemoveAt(currentIndex);
+                        DisplayItems.Add(displayItem);
+                    } else
+                    {
+                        if (currentIndex != sourceCollection.Count - 1)
+                        {
+                            sourceCollection.Move(currentIndex, sourceCollection.Count - 1);
+                        }
+                    }
                 }
             }
         }
-
-
 
         public BitmapSource BitmapSource { get; set; }
 

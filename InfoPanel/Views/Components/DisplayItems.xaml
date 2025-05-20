@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:app="clr-namespace:InfoPanel"
     xmlns:components="clr-namespace:InfoPanel.Views.Components"
+    xmlns:converters="clr-namespace:InfoPanel.Views.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:InfoPanel.Views.Components"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -13,80 +14,105 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
+        <converters:LockSymbolConverter x:Key="LockSymbolConverter" />
+        <converters:LockColorConverter x:Key="LockColorConverter" />
+
         <DataTemplate x:Key="SimpleItemTemplate_MarginA">
-            <local:DisplayItemView Margin="0,0,30,0" />
+            <local:DisplayItemView Width="375" Margin="10,0,30,0" />
         </DataTemplate>
 
         <DataTemplate x:Key="SimpleItemTemplate_MarginB">
-            <local:DisplayItemView Margin="0,0,15,0" />
+            <local:DisplayItemView Width="365" Margin="0,0,10,0" />
         </DataTemplate>
 
         <DataTemplate x:Key="GroupItemTemplate">
             <Expander
-                Grid.Row="1"
                 Margin="0,0,0,0"
+                HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 Background="#601A1a1a"
                 IsExpanded="{Binding IsExpanded}">
 
                 <Expander.Header>
-                    <StackPanel Margin="-10,-10,5,-10" Orientation="Horizontal">
-
+                    <Grid Margin="0,-8,0,-10" HorizontalAlignment="Stretch">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="auto" />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
                         <!--  Group Header  -->
-                        <Border PreviewMouseLeftButtonDown="Border_MouseDown">
-                            <StackPanel Orientation="Horizontal">
+                        <Border
+                            Grid.Column="0"
+                            Background="#00FFFFFF"
+                            PreviewMouseLeftButtonDown="Border_MouseDown">
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
                                 <ui:SymbolIcon
                                     Width="20"
                                     Height="20"
-                                    Margin="10,0,0,0"
+                                    Margin="0,0,0,0"
                                     VerticalAlignment="Center"
                                     Symbol="Group24" />
                                 <TextBlock
-                                    Width="270"
-                                    Margin="5,0,0,5"
+                                    Grid.Column="1"
+                                    MaxWidth="180"
+                                    Margin="5,2,0,5"
+                                    HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
                                     FontSize="12"
                                     Text="{Binding Name}" />
-                            </StackPanel>
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Margin="5,2,0,5"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="Gray"
+                                    Text="{Binding DisplayItemsCount, StringFormat={} {0} Items}" />
+                            </Grid>
                         </Border>
 
-                        <ui:SymbolIcon
+                        <Button
+                            Grid.Column="1"
                             Width="20"
                             Height="20"
-                            Margin="10,5,-10,0"
+                            Margin="10,0,-10,0"
+                            Padding="0"
                             VerticalAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Command="{Binding ToggleLockCommand}"
                             Cursor="Hand"
-                            Foreground="Gray"
-                            Symbol="LockClosed24"
-                            Visibility="{Binding IsExpanded, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-
-                        <ui:SymbolIcon
-                            Width="20"
-                            Height="20"
-                            Margin="10,5,-10,0"
-                            VerticalAlignment="Center"
-                            Cursor="Hand"
-                            Foreground="DodgerBlue"
-                            Symbol="LockOpen24"
-                            Visibility="{Binding IsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            ToolTip="Lock items from moving in and out">
+                            <ui:SymbolIcon Foreground="{Binding IsLocked, Converter={StaticResource LockColorConverter}}" Symbol="{Binding IsLocked, Converter={StaticResource LockSymbolConverter}}" />
+                        </Button>
 
                         <!--  Visibility Checkbox  -->
                         <CheckBox
-                            Margin="20,0,0,0"
+                            Grid.Column="2"
+                            Margin="20,0,5,0"
                             VerticalAlignment="Center"
                             IsChecked="{Binding Hidden, Converter={StaticResource InverseBooleanConverter}}" />
-                    </StackPanel>
+                    </Grid>
                 </Expander.Header>
                 <!--  Child Items ListView  -->
                 <ListView
-                    Margin="-5,-10,0,-10"
+                    Margin="0,-10,0,-10"
                     HorizontalContentAlignment="Stretch"
                     Background="Transparent"
                     BorderThickness="0"
                     ItemTemplate="{StaticResource SimpleItemTemplate_MarginB}"
                     ItemsSource="{Binding DisplayItems}"
+                    PreviewMouseWheel="InnerListView_PreviewMouseWheel"
+                    ScrollViewer.CanContentScroll="False"
+                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
                     SelectionChanged="ListViewGroupItems_SelectionChanged"
-                    SelectionMode="Extended">
+                    SelectionMode="Extended"
+                    VirtualizingStackPanel.IsVirtualizing="False"
+                    VirtualizingStackPanel.IsVirtualizingWhenGrouping="False">
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
                             <Setter Property="Margin" Value="0,1,0,1" />
@@ -163,7 +189,7 @@
                     <!--  Name  -->
                     <TextBlock
                         Width="200"
-                        Margin="25,0,0,0"
+                        Margin="35,0,0,0"
                         VerticalAlignment="Center"
                         Text="Name"
                         TextTrimming="CharacterEllipsis" />
@@ -191,9 +217,12 @@
                     Background="Transparent"
                     ItemTemplateSelector="{StaticResource PanelItemsSelector}"
                     ItemsSource="{Binding Source={x:Static app:SharedModel.Instance}, Path=DisplayItems}"
+                    ScrollViewer.CanContentScroll="False"
                     ScrollViewer.VerticalScrollBarVisibility="Visible"
                     SelectionChanged="ListViewItems_SelectionChanged"
-                    SelectionMode="Extended">
+                    SelectionMode="Extended"
+                    VirtualizingStackPanel.IsVirtualizing="False"
+                    VirtualizingStackPanel.IsVirtualizingWhenGrouping="False">
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
                             <Setter Property="Margin" Value="0,1,0,1" />

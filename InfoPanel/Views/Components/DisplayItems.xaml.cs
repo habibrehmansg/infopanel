@@ -31,10 +31,51 @@ namespace InfoPanel.Views.Components
         {
             if (e.PropertyName == nameof(SharedModel.Instance.SelectedItem))
             {
+                Trace.WriteLine("SelectedItem changed");
                 if (SelectedItem != null)
                 {
-                    ListViewItems.ScrollIntoView(SelectedItem);
+                    var group = SharedModel.Instance.GetParent(SelectedItem);
+
+                    if (group is GroupDisplayItem)
+                    {
+                        if (!group.IsExpanded)
+                        {
+                            ListViewItems.ScrollIntoView(group);
+                            group.IsExpanded = true;
+                        }
+                    }
                 }
+            }
+        }
+
+        private void ScrollToView(DisplayItem displayItem)
+        {
+            var group = SharedModel.Instance.GetParent(displayItem);
+
+            if (group is GroupDisplayItem groupItem)
+            {
+                group.IsExpanded = true;
+
+                // Get the ListViewItem container for the group
+                var groupContainer = ListViewItems.ItemContainerGenerator.ContainerFromItem(groupItem) as ListViewItem;
+                if (groupContainer == null)
+                    return;
+
+                // Search visual tree for the Expander
+                var expander = FindVisualChild<Expander>(groupContainer);
+                if (expander == null)
+                    return;
+
+                // Search inside the Expander for the inner ListView
+                var innerListView = FindVisualChild<ListView>(expander);
+                if (innerListView != null)
+                {
+                    innerListView.ScrollIntoView(displayItem);
+                }
+            }
+            else
+            {
+                ListViewItems.ScrollIntoView(displayItem);
             }
         }
 
@@ -55,7 +96,9 @@ namespace InfoPanel.Views.Components
                     }
 
                     SharedModel.Instance.PushDisplayItemBy(item, -1);
-                    ListViewItems.ScrollIntoView(item);
+                    ScrollToView(item);
+
+                   
                 }
                 finally
                 {
@@ -81,7 +124,7 @@ namespace InfoPanel.Views.Components
                     }
 
                     SharedModel.Instance.PushDisplayItemBy(item, 1);
-                    ListViewItems.ScrollIntoView(item);
+                    ScrollToView(item);
                 }
                 finally
                 {
@@ -107,7 +150,7 @@ namespace InfoPanel.Views.Components
                     }
 
                     SharedModel.Instance.PushDisplayItemToTop(item);
-                    ListViewItems.ScrollIntoView(item);
+                    ScrollToView(item);
                 }
                 finally
                 {
@@ -133,7 +176,7 @@ namespace InfoPanel.Views.Components
                     }
 
                     SharedModel.Instance.PushDisplayItemToEnd(item);
-                    ListViewItems.ScrollIntoView(item);
+                    ScrollToView(item);
                 }
                 finally
                 {
@@ -157,15 +200,15 @@ namespace InfoPanel.Views.Components
                 Name = "New Group"
             };
 
+            var selectedItem = SharedModel.Instance.SelectedItem;
+
             SharedModel.Instance.AddDisplayItem(groupDisplayItem);
 
-            var selectedItem = SharedModel.Instance.SelectedItem;
-            if (selectedItem != null)
+            if(selectedItem is DisplayItem)
             {
                 SharedModel.Instance.PushDisplayItemTo(groupDisplayItem, selectedItem);
             }
 
-            SharedModel.Instance.SelectedItem = groupDisplayItem;
             ListViewItems.ScrollIntoView(groupDisplayItem);
         }
 
@@ -188,7 +231,6 @@ namespace InfoPanel.Views.Components
                 Color = SharedModel.Instance.SelectedProfile!.Color
             };
             SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
 
         }
 
@@ -198,7 +240,6 @@ namespace InfoPanel.Views.Components
             {
                 var item = new ImageDisplayItem("Image", SharedModel.Instance.SelectedProfile.Guid);
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -212,7 +253,6 @@ namespace InfoPanel.Views.Components
 
             };
             SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
         }
 
         private void ButtonNewCalendar_Click(object sender, RoutedEventArgs e)
@@ -224,18 +264,17 @@ namespace InfoPanel.Views.Components
                 Color = SharedModel.Instance.SelectedProfile!.Color
             };
             SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
 
         }
 
         private void ButtonDuplicate_Click(object sender, RoutedEventArgs e)
         {
-            if (SharedModel.Instance.SelectedItem != null)
+            if (SharedModel.Instance.SelectedItem is DisplayItem selectedItem)
             {
-                var item = (DisplayItem)SharedModel.Instance.SelectedItem.Clone();
+                var item = (DisplayItem)selectedItem.Clone();
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.PushDisplayItemTo(item, SharedModel.Instance.SelectedItem);
-                SharedModel.Instance.SelectedItem = item;
+                SharedModel.Instance.PushDisplayItemTo(item, selectedItem);
+                item.Selected = true;
             }
         }
 
@@ -280,16 +319,21 @@ namespace InfoPanel.Views.Components
 
                 foreach (var item in SharedModel.Instance.DisplayItems)
                 {
-                    if (item is GroupDisplayItem group && item != listView.SelectedItem)
+                    if(item != listView.SelectedItem)
                     {
-                        foreach (var item1 in group.DisplayItems)
+                        if (item is GroupDisplayItem group)
                         {
-                            item1.Selected = false;
+                            foreach (var item1 in group.DisplayItems)
+                            {
+                                item1.Selected = false;
+                            }
+                        }
+                        else
+                        {
+                            item.Selected = false;
                         }
                     }
-
                 }
-
             }
             finally
             {
@@ -322,7 +366,7 @@ namespace InfoPanel.Views.Components
 
                 foreach (var item in SharedModel.Instance.SelectedItems)
                 {
-                    if (item != innerListView.SelectedItem)
+                    if (!innerListView.SelectedItems.Contains(item))
                     {
                         item.Selected = false;
                     }
@@ -403,6 +447,43 @@ namespace InfoPanel.Views.Components
                 current = VisualTreeHelper.GetParent(current);
             }
             return null;
+        }
+
+        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T typedChild)
+                    return typedChild;
+
+                var result = FindVisualChild<T>(child);
+                if (result != null)
+                    return result;
+            }
+            return null;
+        }
+
+        private void InnerListView_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (!e.Handled)
+            {
+                e.Handled = true;
+
+                var eventArg = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+                {
+                    RoutedEvent = UIElement.MouseWheelEvent,
+                    Source = sender
+                };
+
+                var parent = ((Control)sender).Parent as UIElement;
+                while (parent != null && !(parent is ScrollViewer))
+                {
+                    parent = VisualTreeHelper.GetParent(parent) as UIElement;
+                }
+
+                parent?.RaiseEvent(eventArg);
+            }
         }
     }
 }

@@ -157,7 +157,6 @@ namespace InfoPanel.Views.Components
                 };
 
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -223,7 +222,6 @@ namespace InfoPanel.Views.Components
                 item.PluginSensorId = sensorItem.SensorId;
                 item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -235,7 +233,6 @@ namespace InfoPanel.Views.Components
                 item.PluginSensorId = sensorItem.SensorId;
                 item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -247,7 +244,6 @@ namespace InfoPanel.Views.Components
                 item.PluginSensorId = sensorItem.SensorId;
                 item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -259,7 +255,6 @@ namespace InfoPanel.Views.Components
                 item.PluginSensorId = sensorItem.SensorId;
                 item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -275,7 +270,6 @@ namespace InfoPanel.Views.Components
                     SensorType = Enums.SensorType.Plugin
                 };
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -291,7 +285,6 @@ namespace InfoPanel.Views.Components
                     SensorType = Enums.SensorType.Plugin
                 };
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -304,7 +297,6 @@ namespace InfoPanel.Views.Components
                     item.TableFormat = format;
                 }
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
     }

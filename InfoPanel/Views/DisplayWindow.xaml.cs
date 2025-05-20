@@ -3,6 +3,7 @@ using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.DirectoryServices.ActiveDirectory;
 using System.Drawing;
@@ -196,7 +197,8 @@ namespace InfoPanel.Views.Common
                 {
                     var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
                     await LoadVideoBackground(videoFilePath);
-                } else
+                }
+                else
                 {
                     StopVideoBackground();
                 }
@@ -386,22 +388,13 @@ namespace InfoPanel.Views.Common
         {
             if (e.ChangedButton == MouseButton.Left)
             {
-                if (!dragStart && SharedModel.Instance.SelectedVisibleItems != null)
+                if (!dragStart)
                 {
                     var inSelectionBounds = false;
                     foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                     {
                         var evaluatedSize = displayItem.EvaluateSize();
                         Rect bounds = displayItem.EvaluateBounds();
-
-                        //if (displayItem is TextDisplayItem textDisplayItem && displayItem is not TableSensorDisplayItem && textDisplayItem.RightAlign)
-                        //{
-                        //    bounds = new Rect(textDisplayItem.X - evaluatedSize.Width, textDisplayItem.Y, evaluatedSize.Width, evaluatedSize.Height);
-                        //}
-                        //else
-                        //{
-                        //    bounds = new Rect(displayItem.X, displayItem.Y, evaluatedSize.Width, evaluatedSize.Height);
-                        //}
 
                         if (bounds.Contains(e.GetPosition(this)))
                         {
@@ -412,11 +405,14 @@ namespace InfoPanel.Views.Common
 
                     if (!inSelectionBounds)
                     {
-                        SharedModel.Instance.SelectedItem = null;
+                        foreach (var selectedItem in SharedModel.Instance.SelectedVisibleItems)
+                        {
+                            selectedItem.Selected = false;
+                        }
                     }
                 }
 
-                if (SharedModel.Instance.SelectedVisibleItems == null || !SharedModel.Instance.SelectedVisibleItems.Any())
+                if (SharedModel.Instance.SelectedVisibleItems.Count == 0)
                 {
                     if (Profile.Drag)
                     {
@@ -473,86 +469,71 @@ namespace InfoPanel.Views.Common
                 DisplayItem? clickedItem = null;
                 Rect clickedItemBounds = new(0, 0, 0, 0);
 
-                var displayItems = SharedModel.Instance.DisplayItems?.ToList();
+                var displayItems = SharedModel.Instance.DisplayItems.ToList();
+                displayItems.Reverse();
 
-                if (displayItems != null)
+                foreach (var item in displayItems)
                 {
-                    foreach (var item in displayItems)
+                    if (item.Hidden)
                     {
-                        if (item.Hidden)
-                        {
-                            continue;
-                        }
-
-
-                        if(item is GroupDisplayItem groupDisplayItem)
-                        {
-                            foreach (var groupItem in groupDisplayItem.DisplayItems)
-                            {
-                                if (groupItem.Hidden)
-                                {
-                                    continue;
-                                }
-
-                                var groupItemBounds = groupItem.EvaluateBounds();
-
-                                if (groupItemBounds.Width >= Profile.Width && groupItemBounds.Height >= Profile.Height && groupItemBounds.X == 0 && groupItemBounds.Y == 0)
-                                {
-                                    continue;
-                                }
-
-                                if (groupItemBounds.Contains(e.GetPosition(this)))
-                                {
-                                    clickedItem = groupItem;
-                                    clickedItemBounds = groupItemBounds;
-                                }
-                            }
-
-                            continue;
-                        }
-
-                        var itemBounds = item.EvaluateBounds();
-
-                        if (itemBounds.Width >= Profile.Width && itemBounds.Height >= Profile.Height && itemBounds.X == 0 && itemBounds.Y == 0)
-                        {
-                            continue;
-                        }
-
-                        if (itemBounds.Contains(e.GetPosition(this)))
-                        {
-                            clickedItem = item;
-                            clickedItemBounds = itemBounds;
-                        }
+                        continue;
                     }
 
-                    if (clickedItem != null)
+                    if (item is GroupDisplayItem groupDisplayItem)
                     {
-                        if (SharedModel.Instance.SelectedItem == null || !Keyboard.IsKeyDown(Key.LeftCtrl))
+                        foreach (var groupItem in groupDisplayItem.DisplayItems)
                         {
-                            SharedModel.Instance.SelectedItem = clickedItem;
-
-                            if (!Keyboard.IsKeyDown(Key.LeftCtrl))
+                            if (groupItem.Hidden)
                             {
-                                SharedModel.Instance.SelectedItems?.ForEach(item =>
-                                {
-                                    if (item != clickedItem)
-                                    {
-                                        item.Selected = false;
-                                    }
-                                });
+                                continue;
+                            }
+
+                            var groupItemBounds = groupItem.EvaluateBounds();
+
+                            if (groupItemBounds.Width >= Profile.Width && groupItemBounds.Height >= Profile.Height && groupItemBounds.X == 0 && groupItemBounds.Y == 0)
+                            {
+                                continue;
+                            }
+
+                            if (groupItemBounds.Contains(e.GetPosition(this)))
+                            {
+                                clickedItem = groupItem;
+                                clickedItemBounds = groupItemBounds;
+                                break;
                             }
                         }
 
-                        clickedItem.Selected = true;
+                        continue;
                     }
-                    else
+
+                    var itemBounds = item.EvaluateBounds();
+
+                    if (itemBounds.Width >= Profile.Width && itemBounds.Height >= Profile.Height && itemBounds.X == 0 && itemBounds.Y == 0)
                     {
-                        SharedModel.Instance.SelectedItem = null;
-                        SharedModel.Instance.SelectedItems?.ForEach(item =>
-                        {
-                            item.Selected = false;
-                        });
+                        continue;
                     }
+
+                    if (itemBounds.Contains(e.GetPosition(this)))
+                    {
+                        clickedItem = item;
+                        clickedItemBounds = itemBounds;
+                        break;
+                    }
+                }
+
+                if (clickedItem != null)
+                {
+
+                    if (!Keyboard.IsKeyDown(Key.LeftCtrl) && !Keyboard.IsKeyDown(Key.LeftShift))
+                    {
+                        SharedModel.Instance.SelectedItem = clickedItem;
+                    }
+
+                    clickedItem.Selected = true;
+                }
+                else
+                {
+                    SharedModel.Instance.SelectedItem = null;
                 }
             }
         }
@@ -563,9 +544,8 @@ namespace InfoPanel.Views.Common
         {
             if (dragStart)
             {
-                var SelectedItem = SharedModel.Instance.SelectedItem;
 
-                if (SelectedItem == null)
+                if (SharedModel.Instance.SelectedVisibleItems.Count == 0)
                 {
                     dragStart = false;
                     return;
@@ -575,21 +555,18 @@ namespace InfoPanel.Views.Common
 
                 var currentPosition = e.GetPosition((UIElement)sender);
 
-                if (SharedModel.Instance.SelectedVisibleItems != null)
+                foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                 {
-                    foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
+                    if (displayItem.Selected)
                     {
-                        if (displayItem.Selected)
-                        {
-                            int x = (int)(currentPosition.X - displayItem.MouseOffset.X);
-                            int y = (int)(currentPosition.Y - displayItem.MouseOffset.Y);
+                        int x = (int)(currentPosition.X - displayItem.MouseOffset.X);
+                        int y = (int)(currentPosition.Y - displayItem.MouseOffset.Y);
 
-                            x = (int)(Math.Round((double)x / gridSize) * gridSize);
-                            y = (int)(Math.Round((double)y / gridSize) * gridSize);
+                        x = (int)(Math.Round((double)x / gridSize) * gridSize);
+                        y = (int)(Math.Round((double)y / gridSize) * gridSize);
 
-                            displayItem.X = x;
-                            displayItem.Y = y;
-                        }
+                        displayItem.X = x;
+                        displayItem.Y = y;
                     }
                 }
 
@@ -674,7 +651,7 @@ namespace InfoPanel.Views.Common
                     mediaClock?.Controller.Stop();
 
                     // Load media asynchronously
-                   mediaTimeline = new MediaTimeline(new Uri(filePath, UriKind.Absolute))
+                    mediaTimeline = new MediaTimeline(new Uri(filePath, UriKind.Absolute))
                     {
                         RepeatBehavior = RepeatBehavior.Forever
                     };

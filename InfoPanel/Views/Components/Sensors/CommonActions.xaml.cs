@@ -23,7 +23,6 @@ namespace InfoPanel.Views.Components
                 Color = SharedModel.Instance.SelectedProfile!.Color
             };
             SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
         }
 
         private void ButtonNewImage_Click(object sender, RoutedEventArgs e)
@@ -36,7 +35,6 @@ namespace InfoPanel.Views.Components
                     Height = 100
                 };
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -50,7 +48,6 @@ namespace InfoPanel.Views.Components
 
             };
             SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
         }
 
         private void ButtonNewCalendar_Click(object sender, RoutedEventArgs e)
@@ -62,7 +59,6 @@ namespace InfoPanel.Views.Components
                 Color = SharedModel.Instance.SelectedProfile!.Color
             };
             SharedModel.Instance.AddDisplayItem(item);
-            SharedModel.Instance.SelectedItem = item;
         }
     }
 }

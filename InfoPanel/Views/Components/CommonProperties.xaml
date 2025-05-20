@@ -12,7 +12,7 @@
     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
     mc:Ignorable="d">
 
-    <Grid Margin="0,0,0,0" IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemMovable}">
+    <Grid Margin="0,0,0,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto" />
             <RowDefinition Height="*" />
@@ -21,6 +21,7 @@
         <StackPanel
             Grid.Row="2"
             Margin="0,0,0,0"
+            IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSelectedItemMovable}"
             Orientation="Vertical">
             <ui:NumberBox
                 Margin="0,8,0,0"
@@ -49,7 +50,10 @@
                 Text="Position Y" />
         </StackPanel>
 
-        <Grid Grid.Row="0" Margin="0,10,0,0">
+        <Grid
+            Grid.Row="0"
+            Margin="0,10,0,0"
+            IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSelectedItemsMovable}">
             <Grid.RowDefinitions>
                 <RowDefinition />
                 <RowDefinition />
@@ -70,8 +74,7 @@
                 Margin="0,0,10,0"
                 Click="ButtonLeft_Click"
                 CommandParameter="{x:Static Dock.Left}"
-                Icon="ArrowLeft20"
-                IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemMovable}" />
+                Icon="ArrowLeft20" />
 
             <ui:Button
                 x:Name="ButtonUp"
@@ -82,8 +85,7 @@
                 Margin="0,0,0,10"
                 Click="ButtonUp_Click"
                 CommandParameter="{x:Static Dock.Top}"
-                Icon="ArrowUp20"
-                IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemMovable}" />
+                Icon="ArrowUp20" />
 
 
             <ui:Button
@@ -95,8 +97,7 @@
                 Margin="10,0,0,0"
                 Click="ButtonRight_Click"
                 CommandParameter="{x:Static Dock.Right}"
-                Icon="ArrowRight20"
-                IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemMovable}" />
+                Icon="ArrowRight20" />
 
 
             <ui:Button
@@ -108,8 +109,7 @@
                 Margin="0,10,0,0"
                 Click="ButtonDown_Click"
                 CommandParameter="{x:Static Dock.Bottom}"
-                Icon="ArrowDown20"
-                IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemMovable}" />
+                Icon="ArrowDown20" />
 
 
             <ui:Button

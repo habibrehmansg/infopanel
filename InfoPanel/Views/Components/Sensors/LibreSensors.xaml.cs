@@ -161,7 +161,6 @@ namespace InfoPanel.Views.Components
                 };
 
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -207,7 +206,6 @@ namespace InfoPanel.Views.Components
             {
                 var item = new GraphDisplayItem(sensorItem.Name, GraphDisplayItem.GraphType.LINE, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -217,7 +215,6 @@ namespace InfoPanel.Views.Components
             {
                 var item = new BarDisplayItem(sensorItem.Name, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -227,7 +224,6 @@ namespace InfoPanel.Views.Components
             {
                 var item = new DonutDisplayItem(sensorItem.Name, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -237,7 +233,6 @@ namespace InfoPanel.Views.Components
             {
                 var item = new GaugeDisplayItem(sensorItem.Name, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
 
@@ -251,7 +246,6 @@ namespace InfoPanel.Views.Components
                     Height = 100,
                 };
                 SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.SelectedItem = item;
             }
         }
     }
