@@ -4,12 +4,133 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:app="clr-namespace:InfoPanel"
     xmlns:components="clr-namespace:InfoPanel.Views.Components"
+    xmlns:converters="clr-namespace:InfoPanel.Views.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="clr-namespace:InfoPanel"
+    xmlns:local="clr-namespace:InfoPanel.Views.Components"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="clr-namespace:InfoPanel.Models"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
     mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <converters:LockSymbolConverter x:Key="LockSymbolConverter" />
+        <converters:LockColorConverter x:Key="LockColorConverter" />
+
+        <DataTemplate x:Key="SimpleItemTemplate_MarginA">
+            <local:DisplayItemView Width="375" Margin="10,0,30,0" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="SimpleItemTemplate_MarginB">
+            <local:DisplayItemView Width="365" Margin="0,0,10,0" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="GroupItemTemplate">
+            <Expander
+                Margin="0,0,0,0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Background="#601A1a1a"
+                IsExpanded="{Binding IsExpanded}">
+
+                <Expander.Header>
+                    <Grid Margin="0,-8,0,-10" HorizontalAlignment="Stretch">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="auto" />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
+                        <!--  Group Header  -->
+                        <Border
+                            Grid.Column="0"
+                            Background="#00FFFFFF"
+                            PreviewMouseLeftButtonDown="Border_MouseDown">
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:SymbolIcon
+                                    Width="20"
+                                    Height="20"
+                                    Margin="0,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Symbol="Group24" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    MaxWidth="180"
+                                    Margin="5,2,0,5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Text="{Binding Name}" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Margin="5,2,0,5"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="Gray"
+                                    Text="{Binding DisplayItemsCount, StringFormat={} {0} Items}" />
+                            </Grid>
+                        </Border>
+
+                        <Button
+                            Grid.Column="1"
+                            Width="20"
+                            Height="20"
+                            Margin="10,0,-10,0"
+                            Padding="0"
+                            VerticalAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Command="{Binding ToggleLockCommand}"
+                            Cursor="Hand"
+                            ToolTip="Lock items from moving in and out">
+                            <ui:SymbolIcon Foreground="{Binding IsLocked, Converter={StaticResource LockColorConverter}}" Symbol="{Binding IsLocked, Converter={StaticResource LockSymbolConverter}}" />
+                        </Button>
+
+                        <!--  Visibility Checkbox  -->
+                        <CheckBox
+                            Grid.Column="2"
+                            Margin="20,0,5,0"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding Hidden, Converter={StaticResource InverseBooleanConverter}}" />
+                    </Grid>
+                </Expander.Header>
+                <!--  Child Items ListView  -->
+                <ListView
+                    Margin="0,-10,0,-10"
+                    HorizontalContentAlignment="Stretch"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    ItemTemplate="{StaticResource SimpleItemTemplate_MarginB}"
+                    ItemsSource="{Binding DisplayItems}"
+                    PreviewMouseWheel="InnerListView_PreviewMouseWheel"
+                    ScrollViewer.CanContentScroll="False"
+                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                    SelectionChanged="ListViewGroupItems_SelectionChanged"
+                    SelectionMode="Extended"
+                    VirtualizingStackPanel.IsVirtualizing="False"
+                    VirtualizingStackPanel.IsVirtualizingWhenGrouping="False">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Margin" Value="0,1,0,1" />
+                            <Setter Property="FontSize" Value="12" />
+                            <Setter Property="IsSelected" Value="{Binding Selected}" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                </ListView>
+            </Expander>
+        </DataTemplate>
+
+        <local:PanelItemTemplateSelector
+            x:Key="PanelItemsSelector"
+            GroupTemplate="{StaticResource GroupItemTemplate}"
+            SimpleTemplate="{StaticResource SimpleItemTemplate_MarginA}" />
+
+
+    </UserControl.Resources>
 
     <Grid Margin="10,10,10,0">
         <Grid.RowDefinitions>
@@ -41,12 +162,12 @@
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Top"
                     DisplayMemberPath="Name"
-                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                    SelectedItem="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedProfile}" />
+                    ItemsSource="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Profiles}"
+                    SelectedItem="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile}" />
             </Grid>
         </StackPanel>
 
-        <Grid Grid.Row="1" Margin="0,10,0,0">
+        <Grid Grid.Row="1" Margin="0,0,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="auto" />
                 <ColumnDefinition Width="auto" />
@@ -59,187 +180,89 @@
                     <RowDefinition Height="auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0" Margin="5,0,10,5">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="40" />
-                        <ColumnDefinition Width="230" />
-                        <ColumnDefinition Width="50" />
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="40" />
-                    </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                        <TextBlock
-                            Grid.Column="0"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Text="Type" />
-                    </Label>
-                    <Label Grid.Column="1">
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Name" />
-                    </Label>
-                    <Label Grid.Column="2">
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Source" />
-                    </Label>
-                    <Label Grid.Column="3">
-                        <TextBlock>
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="X, Y" />
-                        </TextBlock>
-                    </Label>
-                    <Label Grid.Column="4">
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Enabled" />
-                    </Label>
-                </Grid>
+
+                <StackPanel
+                    Margin="5"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal">
+
+                    <!--  Name  -->
+                    <TextBlock
+                        Width="200"
+                        Margin="35,0,0,0"
+                        VerticalAlignment="Center"
+                        Text="Name"
+                        TextTrimming="CharacterEllipsis" />
+
+                    <!--  Coordinates  -->
+                    <TextBlock
+                        Width="80"
+                        Margin="25,0,5,0"
+                        VerticalAlignment="Center"
+                        Text="Location" />
+
+                    <!--  Visibility Checkbox  -->
+                    <TextBlock
+                        Width="80"
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        Text="Enabled" />
+                </StackPanel>
 
                 <ListView
-                    Name="ListViewItems"
+                    x:Name="ListViewItems"
                     Grid.Row="1"
                     Width="auto"
+                    HorizontalContentAlignment="Stretch"
+                    Background="Transparent"
+                    ItemTemplateSelector="{StaticResource PanelItemsSelector}"
                     ItemsSource="{Binding Source={x:Static app:SharedModel.Instance}, Path=DisplayItems}"
+                    ScrollViewer.CanContentScroll="False"
                     ScrollViewer.VerticalScrollBarVisibility="Visible"
-                    SelectedItem="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem}"
                     SelectionChanged="ListViewItems_SelectionChanged"
-                    SelectionMode="Extended">
+                    SelectionMode="Extended"
+                    VirtualizingStackPanel.IsVirtualizing="False"
+                    VirtualizingStackPanel.IsVirtualizingWhenGrouping="False">
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
-                            <Setter Property="Margin" Value="0,0,0,5" />
+                            <Setter Property="Margin" Value="0,1,0,1" />
                             <Setter Property="IsSelected" Value="{Binding Selected}" />
+                            <!--  Only apply the border style to GroupDisplayItem  -->
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Kind}" Value="Group">
+                                    <Setter Property="Margin" Value="0,0,0,0" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListViewItem">
+                                                <Border
+                                                    x:Name="Border"
+                                                    Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                                    <ContentPresenter
+                                                        Margin="2"
+                                                        HorizontalAlignment="Stretch"
+                                                        VerticalAlignment="Center" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Border" Property="BorderThickness" Value="1" />
+                                                        <Setter Property="BorderBrush" Value="LightSkyBlue" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Border" Property="BorderThickness" Value="1" />
+                                                        <Setter Property="BorderBrush" Value="DeepSkyBlue" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
                         </Style>
                     </ListView.ItemContainerStyle>
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Margin="0,0,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="40" />
-                                    <ColumnDefinition Width="230" />
-                                    <ColumnDefinition Width="50" />
-                                    <ColumnDefinition Width="80" />
-                                    <ColumnDefinition Width="40" />
-                                </Grid.ColumnDefinitions>
-                                <ui:SymbolIcon
-                                    Grid.Column="0"
-                                    Margin="5,0,0,0"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center">
-                                    <ui:SymbolIcon.Style>
-                                        <Style BasedOn="{StaticResource {x:Type ui:SymbolIcon}}" TargetType="{x:Type ui:SymbolIcon}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Text">
-                                                    <Setter Property="Symbol" Value="Text16" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Image">
-                                                    <Setter Property="Symbol" Value="Image20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Sensor">
-                                                    <Setter Property="Symbol" Value="Temperature20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Table">
-                                                    <Setter Property="Symbol" Value="Table20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Clock">
-                                                    <Setter Property="Symbol" Value="Clock20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Calendar">
-                                                    <Setter Property="Symbol" Value="Calendar3Day20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Graph">
-                                                    <Setter Property="Symbol" Value="DataBarVertical20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Bar">
-                                                    <Setter Property="Symbol" Value="DataBarHorizontal20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Donut">
-                                                    <Setter Property="Symbol" Value="DataPie20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Gauge">
-                                                    <Setter Property="Symbol" Value="Gauge20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Sensor Image">
-                                                    <Setter Property="Symbol" Value="CircleImage20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Kind}" Value="Http Image">
-                                                    <Setter Property="Symbol" Value="WebAsset20" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ui:SymbolIcon.Style>
-                                </ui:SymbolIcon>
-                                <Label
-                                    Grid.Column="1"
-                                    Margin="0,0,10,0"
-                                    VerticalAlignment="Center">
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Text="{Binding Name}"
-                                        TextTrimming="CharacterEllipsis" />
-                                </Label>
-                                <Image
-                                    Grid.Column="2"
-                                    Width="20"
-                                    Height="20"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center">
-                                    <Image.Style>
-                                        <Style TargetType="Image">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="HwInfo">
-                                                    <Setter Property="Source" Value="/InfoPanel;component/Resources/Images/hwinfo_icon.ico" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="Libre">
-                                                    <Setter Property="Source" Value="/InfoPanel;component/Resources/Images/libre_icon.ico" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Image.Style>
-                                </Image>
-                                <!--<ui:SymbolIcon Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="5,0,0,0">
-                                    <ui:SymbolIcon.Style>
-                                        <Style TargetType="{x:Type ui:SymbolIcon}" BasedOn="{StaticResource {x:Type ui:SymbolIcon}}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SensorType}" Value="HwInfo">
-                                                    <Setter Property="Symbol" Value="HardDrive20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding SensorType}" Value="Libre">
-                                                    <Setter Property="Symbol" Value="HardDrive20" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="Default">
-                                                    <Setter Property="Symbol" Value="Text16" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ui:SymbolIcon.Style>
-                                </ui:SymbolIcon>-->
-                                <Label Grid.Column="3" VerticalAlignment="Center">
-                                    <TextBlock>
-                                        <TextBlock.Text>
-                                            <MultiBinding StringFormat="{}{0}, {1}">
-                                                <Binding Path="X" />
-                                                <Binding Path="Y" />
-                                            </MultiBinding>
-                                        </TextBlock.Text>
-                                    </TextBlock>
-                                </Label>
-                                <Label Grid.Column="4" VerticalAlignment="Center">
-                                    <CheckBox HorizontalAlignment="Center" IsChecked="{Binding Hidden, Converter={StaticResource InverseBooleanConverter}}" />
-                                </Label>
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
                 </ListView>
             </Grid>
 
@@ -247,6 +270,15 @@
                 Grid.Column="1"
                 Margin="10,0,0,0"
                 VerticalAlignment="Bottom">
+
+                <ui:Button
+                    x:Name="ButtonGroup"
+                    Margin="0,10,0,0"
+                    Appearance="Success"
+                    Click="ButtonGroup_Click"
+                    Content=""
+                    Icon="Group20"
+                    ToolTip="New Group" />
                 <ui:Button
                     x:Name="ButtonPushBack"
                     Margin="0,10,0,0"
@@ -254,7 +286,7 @@
                     Content=""
                     Icon="ArrowUpload20"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
-                    ToolTip="Push selected item to the back (overlapped by items below)" />
+                    ToolTip="Push selected item to the top (overlapped by items below)" />
                 <ui:Button
                     x:Name="ButtonPushUp"
                     Margin="0,10,0,0"
@@ -262,7 +294,7 @@
                     Content=""
                     Icon="ArrowUp20"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
-                    ToolTip="Push selected item backwards 1 level (overlapped by items below)" />
+                    ToolTip="Push selected item up (overlapped by items below)" />
                 <ui:Button
                     x:Name="ButtonPushDown"
                     Margin="0,10,0,0"
@@ -270,7 +302,7 @@
                     Content=""
                     Icon="ArrowDown20"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
-                    ToolTip="Bring selected item forward 1 level (overlap items above)" />
+                    ToolTip="Bring selected item down (overlap items above)" />
                 <ui:Button
                     x:Name="ButtonPushFront"
                     Margin="0,10,0,0"
@@ -278,7 +310,7 @@
                     Content=""
                     Icon="ArrowDownload20"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
-                    ToolTip="Bring selected item to front (overlap items above)" />
+                    ToolTip="Bring selected item to bottom (overlap items above)" />
                 <ui:Button
                     x:Name="ButtonDuplicate"
                     Margin="0,10,0,0"

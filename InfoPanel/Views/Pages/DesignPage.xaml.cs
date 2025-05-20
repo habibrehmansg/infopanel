@@ -1,4 +1,6 @@
 ﻿
+using CommunityToolkit.Mvvm.Input;
+using InfoPanel.Models;
 using InfoPanel.ViewModels;
 using System.Windows;
 
@@ -25,6 +27,15 @@ namespace InfoPanel.Views.Pages
         private void DesignPage_Unloaded(object sender, RoutedEventArgs e)
         {
             SharedModel.Instance.SelectedItem = null;
+        }
+
+        [RelayCommand]
+        private static void Unselect()
+        {
+            if (SharedModel.Instance.SelectedItem is DisplayItem selectedItem)
+            {
+                selectedItem.Selected = false;
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using InfoPanel.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,7 +12,7 @@ using Wpf.Ui.Mvvm.Contracts;
 
 namespace InfoPanel.ViewModels
 {
-    public class DesignViewModel : ObservableObject, INavigationAware
+    public partial class DesignViewModel : ObservableObject, INavigationAware
     {
         private readonly INavigationService _navigationService;
         private ICommand? _navigateCommand;

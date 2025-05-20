@@ -11,6 +11,7 @@
     Title="Design"
     d:DesignHeight="450"
     d:DesignWidth="800"
+    DataContext="{Binding RelativeSource={RelativeSource self}}"
     mc:Ignorable="d">
 
     <Grid Margin="20,20,20,20" Grid.IsSharedSizeScope="True">
@@ -201,7 +202,7 @@
             IsExpanded="True">
 
             <Expander.Header>
-                <Grid>
+                <Grid Margin="0,0,20,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="auto" />
@@ -209,6 +210,20 @@
                     <Label>
                         <TextBlock FontWeight="Medium" Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource SelectedItemTextConverter}}" />
                     </Label>
+                    <Button
+                        Grid.Column="1"
+                        Width="20"
+                        Height="20"
+                        Margin="10,0,-10,0"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{Binding UnselectCommand}"
+                        Cursor="Hand"
+                        Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource NullToVisibilityConverter}}">
+                        <ui:SymbolIcon Symbol="Dismiss24" />
+                    </Button>
                 </Grid>
 
             </Expander.Header>
@@ -296,6 +311,9 @@
                         </Style>
                     </ContentControl.Style>
                     <ContentControl.Resources>
+                        <DataTemplate DataType="{x:Type models:GroupDisplayItem}">
+                            <components:GroupProperties GroupDisplayItem="{Binding}" />
+                        </DataTemplate>
                         <DataTemplate DataType="{x:Type models:GaugeDisplayItem}">
                             <components:CustomProperties GaugeDisplayItem="{Binding}" />
                         </DataTemplate>

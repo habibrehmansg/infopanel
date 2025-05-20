@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using System;
 using System.ComponentModel;
 using System.Drawing;
@@ -8,7 +9,7 @@ using System.Xml.Serialization;
 namespace InfoPanel.Models;
 
 [Serializable]
-public abstract class DisplayItem : ObservableObject, ICloneable
+public abstract partial class DisplayItem : ObservableObject, ICloneable
 {
     [XmlIgnore]
     public Guid Guid { get; set; } = Guid.NewGuid();
@@ -47,6 +48,8 @@ public abstract class DisplayItem : ObservableObject, ICloneable
         {
             switch (this)
             {
+                case GroupDisplayItem:
+                    return "Group";
                 case SensorDisplayItem:
                     return "Sensor";
                 case TableSensorDisplayItem:

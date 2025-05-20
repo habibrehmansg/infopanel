@@ -4,6 +4,7 @@ using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using InfoPanel.Views.Common;
+using InfoPanel.Views.Components;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -28,7 +29,7 @@ using System.Xml.Serialization;
 
 namespace InfoPanel
 {
-    public sealed class SharedModel : ObservableObject
+    public partial class SharedModel : ObservableObject
     {
         private static readonly Lazy<SharedModel> lazy = new(() => new SharedModel());
 
@@ -300,7 +301,7 @@ namespace InfoPanel
 
         private ConcurrentDictionary<Guid, ObservableCollection<DisplayItem>> ProfileDisplayItems = new ConcurrentDictionary<Guid, ObservableCollection<DisplayItem>>();
 
-        public ObservableCollection<DisplayItem>? DisplayItems
+        public ObservableCollection<DisplayItem> DisplayItems
         {
             get
             {
@@ -308,37 +309,115 @@ namespace InfoPanel
                 {
                     return GetProfileDisplayItems(SelectedProfile);
                 }
-                else { return null; }
+                else { return []; }
             }
         }
         private readonly object _displayItemsLock = new object();
 
-        private DisplayItem? _selectedItem;
         public DisplayItem? SelectedItem
         {
-            get { return _selectedItem; }
+            get
+            {
+                var items = SelectedItems.ToList();
+
+                //do not allow multiple group items to be selected
+                if (items.FindAll(item => item is GroupDisplayItem).Count > 1)
+                {
+                    return null;
+                }
+
+                var result = items.FirstOrDefault();
+
+                if (result is GroupDisplayItem groupDisplayItem)
+                {
+                    //check if all selected items are in the group
+                    foreach (var item in items)
+                    {
+                        if (item == result)
+                        {
+                            continue;
+                        }
+                        if (!groupDisplayItem.DisplayItems.Contains(item))
+                        {
+                            return null;
+                        }
+                    }
+
+                }
+                else if (items.Count > 1)
+                {
+                    return null;
+                }
+
+                return result;
+            }
             set
             {
-                SetProperty(ref _selectedItem, value);
-                IsItemSelected = value != null;
+                foreach (var selectedItem in SelectedItems)
+                {
+                    if (selectedItem != value)
+                    {
+                        selectedItem.Selected = false;
+                    }
+                }
+
+                if (value is DisplayItem displayItem)
+                {
+                    displayItem.Selected = true;
+                }
+
+                NotifySelectedItemChange();
             }
         }
 
-        public List<DisplayItem>? SelectedItems
+        public void NotifySelectedItemChange()
+        {
+            OnPropertyChanged(nameof(SelectedItem));
+            IsItemSelected = SelectedItem != null;
+
+            var items = SelectedItems.ToList();
+
+            IsSelectedItemsMovable = items.FindAll(item => item is not GroupDisplayItem).Count > 0;
+            IsSelectedItemMovable = SelectedItem is not null && SelectedItem is not GroupDisplayItem;
+        }
+
+        public List<DisplayItem> SelectedItems
         {
             get
             {
-                return DisplayItems?.Where(item => item.Selected).ToList();
+                return [.. DisplayItems
+            .SelectMany<DisplayItem, DisplayItem>(item =>
+                item is GroupDisplayItem group && group.DisplayItems is { } items
+                    ? [group, ..items]
+                    : [item])
+            .Where(item => item.Selected)];
             }
         }
 
-        public List<DisplayItem>? SelectedVisibleItems
+        public List<DisplayItem> SelectedVisibleItems
         {
             get
             {
-                return DisplayItems?.Where(item => item.Selected && !item.Hidden).ToList();
+                if (DisplayItems == null)
+                    return [];
+
+                return [.. DisplayItems
+                    .SelectMany(item =>
+                    {
+                        if (item is GroupDisplayItem group && group.DisplayItems != null)
+                            return group.DisplayItems.Cast<DisplayItem>();
+                        return [item];
+                    })
+                    .Where(item => item.Selected && !item.Hidden)];
             }
         }
+
+        [ObservableProperty]
+        private bool _isSelectedItemsMovable = false;
+
+        [ObservableProperty]
+        private bool _isSelectedItemMovable = false;
+
 
         private bool _isItemSelected;
         public bool IsItemSelected
@@ -363,11 +442,41 @@ namespace InfoPanel
         private SharedModel()
         { }
 
-        public void AddDisplayItem(DisplayItem displayItem)
+        public void AddDisplayItem(DisplayItem newDisplayItem)
         {
             lock (_displayItemsLock)
             {
-                DisplayItems?.Add(displayItem);
+                if (DisplayItems is not ObservableCollection<DisplayItem> displayItems)
+                    return;
+
+                bool addedInGroup = false;
+
+                if (newDisplayItem is not GroupDisplayItem && SelectedItem is DisplayItem selectedItem)
+                {
+                    // SelectedItem is a group — add directly to it
+                    if (selectedItem is GroupDisplayItem group && !group.IsLocked)
+                    {
+                        group.DisplayItems.Add(newDisplayItem);
+                        addedInGroup = true;
+                    }
+                    else
+                    {
+                        //SelectedItem is inside a group — find its parent
+                        _= FindParentCollection(selectedItem, out var parentGroup);
+                        if (parentGroup is not null && !parentGroup.IsLocked)
+                        {
+                            parentGroup.DisplayItems.Add(newDisplayItem);
+                            addedInGroup = true;
+                        }
+                    }
+                }
+
+                if (!addedInGroup)
+                {
+                    displayItems.Add(newDisplayItem);
+                }
+
+                SelectedItem = newDisplayItem;
             }
         }
 
@@ -375,48 +484,250 @@ namespace InfoPanel
         {
             lock (_displayItemsLock)
             {
-                DisplayItems?.Remove(displayItem);
+                if (DisplayItems is not ObservableCollection<DisplayItem> displayItems)
+                    return;
+
+                // Check if the item is inside a group
+                _= FindParentCollection(displayItem, out var parentGroup);
+                if (parentGroup is not null)
+                {
+                    int index = parentGroup.DisplayItems.IndexOf(displayItem);
+                    if (index >= 0)
+                    {
+                        parentGroup.DisplayItems.RemoveAt(index);
+
+                        if (parentGroup.DisplayItems.Count > 0)
+                        {
+                            parentGroup.DisplayItems[Math.Clamp(index, 0, parentGroup.DisplayItems.Count - 1)].Selected = true;
+                        } else
+                        {
+                            parentGroup.Selected = true;
+                        }
+                    }
+                }
+                else
+                {
+                    // Top-level item
+                    int index = displayItems.IndexOf(displayItem);
+                    if (index >= 0)
+                    {
+                        displayItems.RemoveAt(index);
+
+                        if (displayItems.Count > 0)
+                        {
+                            displayItems[Math.Clamp(index, 0, displayItems.Count - 1)].Selected = true;
+                        }
+                    }
+                }
             }
+        }
+
+        public GroupDisplayItem? GetParent(DisplayItem displayItem)
+        {
+            FindParentCollection(displayItem, out var result);
+            return result;
+        }
+
+        private ObservableCollection<DisplayItem>? FindParentCollection(DisplayItem item, out GroupDisplayItem? parentGroup)
+        {
+            parentGroup = null;
+
+            if (DisplayItems == null)
+                return null;
+
+            if (DisplayItems.Contains(item))
+                return DisplayItems;
+
+            foreach (var group in DisplayItems.OfType<GroupDisplayItem>())
+            {
+                if (group.DisplayItems != null && group.DisplayItems.Contains(item))
+                {
+                    parentGroup = group;
+                    return group.DisplayItems;
+                }
+            }
+
+            return null;
         }
 
         public void PushDisplayItemBy(DisplayItem displayItem, int count)
         {
+            if (displayItem == null || count == 0)
+                return;
+
             lock (_displayItemsLock)
             {
                 if (DisplayItems == null)
-                {
                     return;
+
+                // Find the parent collection and group (if any)
+                var parentCollection = FindParentCollection(displayItem, out GroupDisplayItem? parentGroup);
+
+                if (parentCollection == null)
+                    return;
+
+                int index = parentCollection.IndexOf(displayItem);
+                int newIndex = index + count;
+
+                // Moving out of group (up or down)
+                if (parentGroup != null && !parentGroup.IsLocked)
+                {
+                    if (newIndex < 0)
+                    {
+                        int groupIndex = DisplayItems.IndexOf(parentGroup);
+                        if (groupIndex >= 0)
+                        {
+                            parentCollection.RemoveAt(index);
+                            DisplayItems.Insert(groupIndex, displayItem);
+                        }
+                        return;
+                    }
+
+                    if (newIndex >= parentCollection.Count)
+                    {
+                        int groupIndex = DisplayItems.IndexOf(parentGroup);
+                        if (groupIndex >= 0)
+                        {
+                            parentCollection.RemoveAt(index);
+                            DisplayItems.Insert(groupIndex + 1, displayItem);
+                        }
+                        return;
+                    }
                 }
 
-                var index = DisplayItems.IndexOf(displayItem);
-
-                var newIndex = index + count;
-
-                if (newIndex >= 0 && newIndex < DisplayItems.Count)
+                // Moving into a group
+                if (displayItem is not GroupDisplayItem && parentGroup == null)
                 {
-                    DisplayItems.Move(index, newIndex);
+                    int targetIndex = index + count;
+                    if (targetIndex >= 0 && targetIndex < DisplayItems.Count)
+                    {
+                        var target = DisplayItems[targetIndex];
+                        if (target is GroupDisplayItem targetGroup && !targetGroup.IsLocked && targetGroup.DisplayItems != null)
+                        {
+                            parentCollection.RemoveAt(index);
+                            targetGroup.DisplayItems.Insert(count > 0 ? 0 : targetGroup.DisplayItems.Count, displayItem);
+                            targetGroup.IsExpanded = true;
+                            return;
+                        }
+                    }
+                }
+
+                // Normal move within the same collection
+                if (newIndex >= 0 && newIndex < parentCollection.Count)
+                {
+                    parentCollection.Move(index, newIndex);
+                    if(parentGroup is GroupDisplayItem)
+                    {
+                        parentGroup.IsExpanded = true;
+                    }
                 }
             }
         }
 
         public void PushDisplayItemTo(DisplayItem displayItem, DisplayItem target)
         {
+            if (displayItem == null || target == null || displayItem == target)
+                return;
+
             lock (_displayItemsLock)
             {
-                if (DisplayItems == null) { return; }
-                var index = DisplayItems.IndexOf(displayItem);
-                var targetIndex = DisplayItems.IndexOf(target);
-                DisplayItems.Move(index, targetIndex + 1);
+                if (DisplayItems == null)
+                    return;
+
+                var sourceCollection = FindParentCollection(displayItem, out var sourceGroupDisplayItem);
+                var targetCollection = FindParentCollection(target, out var targetGroupDisplayItem);
+
+                if (sourceCollection == null || targetCollection == null || sourceCollection != targetCollection)
+                    return;
+
+                int sourceIndex = sourceCollection.IndexOf(displayItem);
+                int targetIndex = targetCollection.IndexOf(target);
+
+                if (sourceCollection == targetCollection)
+                {
+                    // Same collection: simple move
+                    sourceCollection.Move(sourceIndex, targetIndex + 1);
+                }
             }
         }
 
-        public void PushDisplayItemTo(DisplayItem displayItem, int newIndex)
+        public void PushDisplayItemToTop(DisplayItem displayItem)
         {
+            if (displayItem == null)
+                return;
+
             lock (_displayItemsLock)
             {
-                if (DisplayItems == null) { return; }
-                var index = DisplayItems.IndexOf(displayItem);
-                DisplayItems.Move(index, newIndex);
+                if (DisplayItems == null)
+                    return;
+
+                var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
+                if (sourceCollection == null)
+                    return;
+
+                int currentIndex = sourceCollection.IndexOf(displayItem);
+
+                if (sourceCollection == DisplayItems)
+                {
+                    if (currentIndex > 0)
+                    {
+                        DisplayItems.Move(currentIndex, 0);
+                    }
+                }
+                else
+                {
+                    if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
+                    {
+                        sourceCollection.RemoveAt(currentIndex);
+                        DisplayItems.Insert(0, displayItem);
+                    }else
+                    {
+                        if (currentIndex != 0)
+                        {
+                            sourceCollection.Move(currentIndex, 0);
+                        }
+                    }
+                }
+            }
+        }
+
+        public void PushDisplayItemToEnd(DisplayItem displayItem)
+        {
+            if (displayItem == null)
+                return;
+
+            lock (_displayItemsLock)
+            {
+                if (DisplayItems == null)
+                    return;
+
+                var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
+                if (sourceCollection == null)
+                    return;
+
+                int currentIndex = sourceCollection.IndexOf(displayItem);
+
+                if (sourceCollection == DisplayItems)
+                {
+                    if (currentIndex < DisplayItems.Count - 1)
+                    {
+                        DisplayItems.Move(currentIndex, DisplayItems.Count - 1);
+                    }
+                }
+                else
+                {
+                    if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
+                    {
+                        sourceCollection.RemoveAt(currentIndex);
+                        DisplayItems.Add(displayItem);
+                    } else
+                    {
+                        if (currentIndex != sourceCollection.Count - 1)
+                        {
+                            sourceCollection.Move(currentIndex, sourceCollection.Count - 1);
+                        }
+                    }
+                }
             }
         }
 
@@ -485,7 +796,7 @@ namespace InfoPanel
             }
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
 
-            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
+            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
 
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
             using var wr = XmlWriter.Create(fileName, settings);
@@ -576,7 +887,7 @@ namespace InfoPanel
             return null;
         }
 
-       
+
 
         public static async Task ImportSensorPanel(string importPath)
         {
@@ -638,7 +949,7 @@ namespace InfoPanel
                 }
             }
 
-            if(items.Count > 2)
+            if (items.Count > 2)
             {
                 await ProcessSensorPanelImport($"[Import] {Path.GetFileNameWithoutExtension(importPath)}", items);
             }
@@ -1359,7 +1670,7 @@ namespace InfoPanel
             if (File.Exists(fileName))
             {
                 XmlSerializer xs = new(typeof(List<DisplayItem>),
-                    [typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
+                    [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
 
                 using var rd = XmlReader.Create(fileName);
                 try
