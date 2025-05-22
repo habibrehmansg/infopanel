@@ -1,6 +1,7 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Plugins;
 using InfoPanel.Utils;
+using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -9,6 +10,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Numerics;
+using System.Windows.Media.Media3D;
 
 namespace InfoPanel.Drawing
 {
@@ -357,6 +359,23 @@ namespace InfoPanel.Drawing
 
                             g.DrawBitmap(d2dGraphics, chartDisplayItem.X, chartDisplayItem.Y, chartDisplayItem.Width, chartDisplayItem.Height);
                         }
+                    } else if(g is SkiaGraphics)
+                    {
+                        var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
+                        var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
+
+                        using var graphBitmap = new SKBitmap(width, height);
+                        using var canvas = new SKCanvas(graphBitmap);
+
+                        using var g1 = new SkiaGraphics(canvas);
+                        GraphDraw.Run(chartDisplayItem, g1);
+
+                        if (chartDisplayItem.FlipX)
+                        {
+                            //todo
+                        }
+
+                        g.DrawBitmap(graphBitmap, x, y, width, height);
                     }
 
                     if (displayItem.Selected)

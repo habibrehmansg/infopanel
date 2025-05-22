@@ -7,6 +7,7 @@
     xmlns:local="clr-namespace:InfoPanel.Views.Common"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
     Title="DisplayWindow"
     Background="Transparent"
     DataContext="{Binding RelativeSource={RelativeSource self}}"
@@ -63,5 +64,12 @@
                 </ContextMenu>
             </Image.ContextMenu>
         </Image>
+        <skia:SKElement
+            x:Name="skElement"
+            Width="{Binding Profile.Width}"
+            Height="{Binding Profile.Height}"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            PaintSurface="OnPaintSurface" />
     </Canvas>
 </local:D2DWindow>

@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Models;
+using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -127,6 +128,10 @@ namespace InfoPanel.Drawing
         }
 
         public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
+        {
+            throw new NotSupportedException();
+        }
+        public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             throw new NotSupportedException();
         }

@@ -4,6 +4,7 @@ using InfoPanel.Plugins.Loader;
 using InfoPanel.Services;
 using InfoPanel.Utils;
 using InfoPanel.ViewModels;
+using InfoPanel.Views;
 using InfoPanel.Views.Common;
 using InfoPanel.Views.Windows;
 using Microsoft.Extensions.DependencyInjection;
@@ -159,6 +160,8 @@ namespace InfoPanel
 
             _host.Start();
 
+            ConfigModel.Instance.Initialize();
+
             if (ConfigModel.Instance.Profiles.Count == 0)
             {
                 var profile = new Profile()
@@ -202,6 +205,9 @@ namespace InfoPanel
             Exit += App_Exit;
 
             await StartPanels();
+
+            //var window = new SkiaDisplayWindow();
+            //window.Show();
         }
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)

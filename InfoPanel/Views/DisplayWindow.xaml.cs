@@ -2,6 +2,8 @@
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Win32;
+using SkiaSharp.Views.Desktop;
+using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,8 +23,11 @@ using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 using unvell.D2DLib;
+using unvell.D2DLib.WinForm;
 using static System.Net.Mime.MediaTypeNames;
 using Profile = InfoPanel.Models.Profile;
+using System.Timers;
+using FpsCounter = InfoPanel.Utils.FpsCounter;
 
 namespace InfoPanel.Views.Common
 {
@@ -91,6 +96,62 @@ namespace InfoPanel.Views.Common
 
             using var g = new AcceleratedGraphics(d2dGraphics, this.Handle, Profile.Direct2DFontScale, Profile.Direct2DTextXOffset, Profile.Direct2DTextYOffset);
             PanelDraw.Run(Profile, g);
+        }
+
+        private readonly System.Timers.Timer _skiaTimer = new(1000 / 60.0);
+        private readonly FpsCounter FpsCounter = new(200);
+
+        private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
+        {
+            // Invalidate the SKElement on the UI thread
+            Dispatcher.Invoke(() => skElement.InvalidateVisual());
+        }
+
+        private void OnPaintSurface(object sender, SKPaintSurfaceEventArgs e)
+        {
+            if (!_skiaTimer.Enabled)
+            {
+                return;
+            }
+
+            var canvas = e.Surface.Canvas;
+
+            SkiaGraphics skiaGraphics = new(canvas, 1.33f);
+            PanelDraw.Run(Profile, skiaGraphics);
+            FpsCounter.Update();
+
+            {
+                using var paint = new SKPaint
+                {
+                    Color = new SKColor(0, 0, 0, 200), // R, G, B, A (A=128 for 50% opacity)
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Fill // Ensure the rectangle is filled
+                };
+
+                // Draw the rectangle at (x, y) with width and height
+                canvas.DrawRect(10, 10, 100, 100, paint);
+
+                using var p = new SKPaint
+                {
+                    Color = SKColors.LawnGreen,
+                    IsAntialias = true
+                };
+
+                using var f = new SKFont
+                {
+                    Size = 50
+                };
+
+                var metrics = f.Metrics;
+                // The ascent is negative, so subtracting it moves the baseline down
+                float y = 20 - metrics.Ascent;
+
+                canvas.DrawText($"{FpsCounter.FramesPerSecond}",
+                    new SKPoint(60, y),
+                    SKTextAlign.Center,
+                    f,
+                    p);
+            }
         }
 
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
@@ -609,6 +670,13 @@ namespace InfoPanel.Views.Common
             {
                 var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
                 await LoadVideoBackground(videoFilePath);
+            }
+
+            if (!Profile.Direct2DMode)
+            {
+                _skiaTimer.Elapsed += OnTimerElapsed;
+                _skiaTimer.AutoReset = true;
+                _skiaTimer.Start();
             }
         }
 

@@ -160,6 +160,11 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.DrawBitmap(bitmapGraphics, new D2DRect(x, y, width, height));
         }
 
+        public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
+        {
+            throw new NotSupportedException();
+        }
+
         public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
         {
             this.D2DGraphics.DrawLine(x1, y1, x2, y2, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)), strokeWidth);

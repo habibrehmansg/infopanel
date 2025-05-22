@@ -25,7 +25,7 @@ namespace InfoPanel
 
         public static ConfigModel Instance { get { return lazy.Value; } }
 
-        public ObservableCollection<Profile> Profiles { get; private set; }
+        public ObservableCollection<Profile> Profiles { get; private set; } = [];
         private readonly object _profilesLock = new();
 
         public Settings Settings { get; private set; }
@@ -46,12 +46,13 @@ namespace InfoPanel
                 }
             }
 
-            Profiles = [];
-            Profiles.CollectionChanged += Profiles_CollectionChanged;
-
-            LoadProfiles();
-
             Settings.PropertyChanged += Settings_PropertyChanged;
+            Profiles.CollectionChanged += Profiles_CollectionChanged;
+        }
+
+        public void Initialize()
+        {
+            LoadProfiles();
         }
 
         private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
