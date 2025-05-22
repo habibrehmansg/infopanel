@@ -24,6 +24,7 @@ namespace InfoPanel
 
         private TuringPanelTask() { }
 
+        private static int _maxSize = 1024 * 1024; // 1MB
 
         public byte[]? GenerateLcdBuffer()
         {
@@ -43,7 +44,8 @@ namespace InfoPanel
                    ? BitmapExtensions.EnsureBitmapSize(bitmap, bitmap.Width, bitmap.Height)
                    : BitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight);
 
-                return BitmapToPngBytes(resizedBitmap);
+                return BlackOutEdgesUntilUnderSize(resizedBitmap, _maxSize);
+
             }
 
             return null;
@@ -81,7 +83,7 @@ namespace InfoPanel
 
                     //set brightness
                     var brightness = ConfigModel.Instance.Settings.TuringPanelBrightness;
-                    device.SendBrightnessCommand((byte) brightness);
+                    device.SendBrightnessCommand((byte)brightness);
 
                     device.DelaySync();
 
@@ -111,7 +113,7 @@ namespace InfoPanel
                             if (stopwatch1.ElapsedMilliseconds < targetFrameTime)
                             {
                                 var sleep = (int)(targetFrameTime - stopwatch1.ElapsedMilliseconds);
-                                Trace.WriteLine($"Sleep {sleep}ms");
+                                //Trace.WriteLine($"Sleep {sleep}ms");
                                 await Task.Delay(sleep, token);
                             }
                         }
@@ -152,7 +154,7 @@ namespace InfoPanel
                             }
                             else
                             {
-                                await Task.Delay(1);
+                                await Task.Delay(10);
                             }
                         }
                     }, token);
@@ -201,6 +203,88 @@ namespace InfoPanel
                 SharedModel.Instance.TuringPanelRunning = false;
             }
         }
+
+        public static byte[] BlackOutEdgesUntilUnderSize(Bitmap original, int maxSizeBytes)
+        {
+            byte[] pngBytes = BitmapToPngBytes(original);
+
+            if (pngBytes.Length <= maxSizeBytes)
+            {
+                return pngBytes;
+            }
+
+            int width = original.Width;
+            int height = original.Height;
+
+            int border = 10;
+            int passCount = 0;
+            int totalBorder = 0;
+
+            using Graphics g = Graphics.FromImage(original);
+
+            int previousSize = pngBytes.Length;
+
+            while (true)
+            {
+                passCount++;
+                totalBorder += border;
+
+                if (totalBorder * 2 >= width || totalBorder * 2 >= height)
+                    throw new Exception("Cannot reduce image size under limit by blacking out edges.");
+
+                ApplyBlackBorder(g, width, height, totalBorder);
+                pngBytes = BitmapToPngBytes(original);
+                int newSize = pngBytes.Length;
+                int sizeDiff = previousSize - newSize;
+
+                Trace.WriteLine($"Pass {passCount}: PNG size = {newSize} bytes, reduced by {sizeDiff} bytes");
+
+                if (newSize <= maxSizeBytes)
+                {
+                    Trace.WriteLine($"Image reduced under size limit in {passCount} passes.");
+                    return pngBytes;
+                }
+
+                if (sizeDiff <= 0)
+                    throw new Exception("Blackout no longer reducing size. Cannot proceed.");
+
+                // Re-estimate how much more needs to be reduced
+                int bytesToReduce = newSize - maxSizeBytes;
+
+                // Estimate how many more passes needed at current effectiveness
+                int estimatedPasses = (int)Math.Ceiling((double)bytesToReduce / sizeDiff);
+
+                // Estimate next border increment
+                int baseBorder = Math.Max(10, (int)Math.Ceiling((double)(width + height) / 200));
+
+                // Cap estimated passes to avoid over-aggressive blackout
+                estimatedPasses = Math.Min(estimatedPasses, 3);
+
+                // Grow border more gradually
+                border = baseBorder + (estimatedPasses - 1) * (baseBorder / 2);
+
+                // Clamp to avoid over-blackout
+                int maxBorder = Math.Min(width, height) / 2 - totalBorder - 1;
+                border = Math.Min(border, maxBorder);
+
+                previousSize = newSize;
+            }
+
+        }
+
+        private static void ApplyBlackBorder(Graphics g, int width, int height, int border)
+        {
+            // Fill top
+            g.FillRectangle(Brushes.Black, 0, 0, width, border);
+            // Fill bottom
+            g.FillRectangle(Brushes.Black, 0, height - border, width, border);
+            // Fill left
+            g.FillRectangle(Brushes.Black, 0, border, border, height - 2 * border);
+            // Fill right
+            g.FillRectangle(Brushes.Black, width - border, border, border, height - 2 * border);
+        }
+
+
 
         private static bool SendPngBytes(TuringDevice device, byte[] pngData)
         {
