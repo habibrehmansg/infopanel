@@ -1679,15 +1679,7 @@ namespace InfoPanel
                     {
                         foreach (var displayItem in displayItems)
                         {
-                            displayItem.ProfileGuid = profile.Guid;
-
-                            if (displayItem is GaugeDisplayItem gaugeDisplayItem)
-                            {
-                                foreach (var imageDisplayItem in gaugeDisplayItem.Images)
-                                {
-                                    imageDisplayItem.ProfileGuid = profile.Guid;
-                                }
-                            }
+                            displayItem.SetProfileGuid(profile.Guid);
                         }
 
                         return displayItems;

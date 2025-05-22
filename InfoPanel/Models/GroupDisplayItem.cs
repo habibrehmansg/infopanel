@@ -86,5 +86,14 @@ namespace InfoPanel.Models
         {
             throw new NotImplementedException();
         }
+
+        public override void SetProfileGuid(Guid profileGuid)
+        {
+            ProfileGuid = profileGuid;
+            foreach (var displayItem in DisplayItems)
+            {
+                displayItem.SetProfileGuid(profileGuid);
+            }
+        }
     }
 }
