@@ -318,6 +318,11 @@ namespace InfoPanel.Models
             var size = EvaluateSize();
             return new Rect(X, Y, size.Width, size.Height);
         }
+
+        public override void SetProfileGuid(Guid profileGuid)
+        {
+            ProfileGuid = profileGuid;
+        }
     }
 
     public class GraphDisplayItem : ChartDisplayItem

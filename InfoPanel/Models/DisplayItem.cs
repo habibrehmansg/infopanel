@@ -128,6 +128,8 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
         }
     }
 
+    public abstract void SetProfileGuid(Guid profileGuid);
+
     public abstract string EvaluateText();
 
     public abstract string EvaluateColor();

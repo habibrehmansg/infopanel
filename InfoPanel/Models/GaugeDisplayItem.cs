@@ -336,6 +336,16 @@ namespace InfoPanel.Models
             return (Name, "#000000");
         }
 
+        public override void SetProfileGuid(Guid profileGuid)
+        {
+            ProfileGuid = profileGuid;
+
+            foreach (var imageDisplayItem in Images)
+            {
+                imageDisplayItem.SetProfileGuid(profileGuid);
+            }
+        }
+
         public override object Clone()
         {
             var clone = (GaugeDisplayItem)MemberwiseClone();
