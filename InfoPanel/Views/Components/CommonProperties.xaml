@@ -21,8 +21,8 @@
         <StackPanel
             Grid.Row="2"
             Margin="0,0,0,0"
-            IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSelectedItemMovable}"
-            Orientation="Vertical">
+            Orientation="Vertical"
+            Visibility="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSelectedItemMovable, Converter={StaticResource BooleanToVisibilityConverter}}">
             <ui:NumberBox
                 Margin="0,8,0,0"
                 FontSize="12"

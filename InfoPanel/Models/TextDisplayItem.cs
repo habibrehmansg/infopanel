@@ -181,6 +181,11 @@ namespace InfoPanel.Models
             }
         }
 
+        public override void SetProfileGuid(Guid profileGuid)
+        {
+            ProfileGuid = profileGuid;
+        }
+
         public override object Clone()
         {
             var clone = (DisplayItem)MemberwiseClone();

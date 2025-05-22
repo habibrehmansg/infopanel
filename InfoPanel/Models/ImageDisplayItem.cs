@@ -203,5 +203,9 @@ namespace InfoPanel.Models
             clone.Guid = Guid.NewGuid();
             return clone;
         }
+        public override void SetProfileGuid(Guid profileGuid)
+        {
+            ProfileGuid = profileGuid;
+        }
     }
 }
