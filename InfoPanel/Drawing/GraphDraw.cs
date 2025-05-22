@@ -350,8 +350,8 @@ namespace InfoPanel.Drawing
                                 value = sensorReading.Value.ValueNow;
                             }
 
-                            value = Math.Min(value, maxValue);
-                            value = value / (maxValue - minValue);
+                            value = (value - minValue) / (maxValue - minValue);
+                            value = Math.Clamp(value, 0, 1);
                             value = value * Math.Max(frameRect.Width, frameRect.Height);
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
@@ -401,9 +401,10 @@ namespace InfoPanel.Drawing
                                 }
                             }
 
-                            var value = Math.Max(tempValues.LastOrDefault(0.0) - minValue, 0);
-                            value = Math.Min(value, maxValue);
-                            value = value / (maxValue - minValue) * 100;
+                            var value = tempValues.LastOrDefault(0.0);
+                            value = (value - minValue) / (maxValue - minValue);
+                            value = Math.Clamp(value, 0, 1);
+                            value = value * 100;
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
                             value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 60 : SharedModel.Instance.CurrentFrameRate);
