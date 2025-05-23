@@ -1,5 +1,4 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using InfoPanel.Enums;
 using System;
 using System.Drawing;
 using System.Linq;
@@ -24,18 +23,21 @@ namespace InfoPanel.Models
             }
         }
 
+        public string? DeviceName { get; set; }
+
         public TargetWindow() { }
 
-        public TargetWindow(int x, int y, int width, int height)
+        public TargetWindow(int x, int y, int width, int height, string deviceName)
         {
             X = x;
             Y = y;
             Width = width;
             Height = height;
+            DeviceName = deviceName;
         }
     }
 
-    public sealed class Profile : ObservableObject, ICloneable
+    public partial class Profile : ObservableObject, ICloneable
     {
         private Guid _guid = Guid.NewGuid();
         public Guid Guid

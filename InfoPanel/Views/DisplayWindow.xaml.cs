@@ -2,32 +2,24 @@
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Win32;
-using SkiaSharp.Views.Desktop;
 using SkiaSharp;
+using SkiaSharp.Views.Desktop;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.DirectoryServices.ActiveDirectory;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using System.Timers;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
-using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 using unvell.D2DLib;
-using unvell.D2DLib.WinForm;
-using static System.Net.Mime.MediaTypeNames;
-using Profile = InfoPanel.Models.Profile;
-using System.Timers;
-using FpsCounter = InfoPanel.Utils.FpsCounter;
 
 namespace InfoPanel.Views.Common
 {
@@ -38,28 +30,23 @@ namespace InfoPanel.Views.Common
     {
         public Profile Profile { get; }
         public bool Direct2DMode { get; }
-        private readonly DispatcherTimer ResizeTimer;
-        public WriteableBitmap? WriteableBitmap;
 
         private MediaTimeline? mediaTimeline;
         private MediaClock? mediaClock;
 
         private bool _dragMove = false;
-        private DpiScale? _dpiScale;
+        private Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
 
         public DisplayWindow(Profile profile) : base(profile.Direct2DMode)
         {
             RenderOptions.ProcessRenderMode = RenderMode.Default;
-
             Profile = profile;
-            Width = Profile.Width;
-            Height = Profile.Height;
+            DataContext = this;
+
             Direct2DMode = profile.Direct2DMode;
             ShowFps = profile.Direct2DModeFps;
 
             InitializeComponent();
-
-            Topmost = profile.Topmost;
 
             if (profile.Resize)
             {
@@ -74,21 +61,10 @@ namespace InfoPanel.Views.Common
             Loaded += Window_Loaded;
 
             Profile.PropertyChanged += Profile_PropertyChanged;
-
-            WriteableBitmap = new WriteableBitmap(profile.Width, profile.Height, 96,
-                  96, System.Windows.Media.PixelFormats.Bgra32, null);
-            Image.Source = WriteableBitmap;
-
-            ResizeTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(50)
-            };
-            ResizeTimer.Tick += ResizeTimer_Tick;
+            ConfigModel.Instance.Settings.PropertyChanged += Config_PropertyChanged;
 
             SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
         }
-
-        private bool _dpiSet = false;
 
         protected override void OnRender(D2DGraphics d2dGraphics)
         {
@@ -98,27 +74,31 @@ namespace InfoPanel.Views.Common
             PanelDraw.Run(Profile, g);
         }
 
-        private readonly System.Timers.Timer _skiaTimer = new(1000 / 60.0);
-        private readonly FpsCounter FpsCounter = new(200);
+        private System.Timers.Timer? _skiaTimer;
+        private readonly FpsCounter FpsCounter = new();
 
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
             // Invalidate the SKElement on the UI thread
-            Dispatcher.Invoke(() => skElement.InvalidateVisual());
+            Dispatcher.Invoke(() => skElement.InvalidateVisual(), DispatcherPriority.Input);
         }
 
         private void OnPaintSurface(object sender, SKPaintSurfaceEventArgs e)
         {
-            if (!_skiaTimer.Enabled)
+            if (_skiaTimer == null || !_skiaTimer.Enabled)
             {
                 return;
             }
 
             var canvas = e.Surface.Canvas;
 
+            var sw = Stopwatch.StartNew();
+
             SkiaGraphics skiaGraphics = new(canvas, 1.33f);
             PanelDraw.Run(Profile, skiaGraphics);
             FpsCounter.Update();
+
+            //Trace.WriteLine(sw.ElapsedMilliseconds + "ms");
 
             {
                 using var paint = new SKPaint
@@ -154,6 +134,26 @@ namespace InfoPanel.Views.Common
             }
         }
 
+        private void UpdateSkiaTimer()
+        {
+            double interval = (1000.0 / ConfigModel.Instance.Settings.TargetFrameRate) - 1;
+            FpsCounter.SetMaxFrames(ConfigModel.Instance.Settings.TargetFrameRate);
+
+            if (_skiaTimer == null)
+            {
+                // Initialize the timer
+                _skiaTimer = new System.Timers.Timer(interval);
+                _skiaTimer.Elapsed += OnTimerElapsed;
+                _skiaTimer.AutoReset = true;
+                _skiaTimer.Start();
+            }
+            else
+            {
+                // Just update the interval if the timer already exists
+                _skiaTimer.Interval = interval;
+            }
+        }
+
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
         {
             SetWindowPositionRelativeToScreen();
@@ -161,35 +161,28 @@ namespace InfoPanel.Views.Common
 
         public void Fullscreen()
         {
-            var screen = GetCurrentScreen();
-            Profile.WindowX = 0;
-            Profile.WindowY = 0;
-            Profile.Width = screen.Bounds.Width;
-            Profile.Height = screen.Bounds.Height;
-        }
-
-        private void ResizeTimer_Tick(object? sender, EventArgs e)
-        {
-            ResizeTimer.Stop();
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            _dispatcher.BeginInvoke(() =>
             {
                 var screen = GetCurrentScreen();
-                var positionRelativeToScreen = GetWindowPositionRelativeToScreen(screen);
-
-                Profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
-                Profile.WindowX = (int)positionRelativeToScreen.X;
-                Profile.WindowY = (int)positionRelativeToScreen.Y;
-
-                Profile.Width = (int)Width;
-                Profile.Height = (int)Height;
+                if (screen != null)
+                {
+                    Profile.WindowX = 0;
+                    Profile.WindowY = 0;
+                    Profile.Width = screen.Bounds.Width;
+                    Profile.Height = screen.Bounds.Height;
+                }
             });
         }
 
+
         private void DisplayWindow_Closed(object? sender, EventArgs e)
         {
+            ConfigModel.Instance.Settings.PropertyChanged -= Config_PropertyChanged;
+
+            _skiaTimer?.Stop();
+            _skiaTimer?.Dispose();
+
             Profile.PropertyChanged -= Profile_PropertyChanged;
-            ResizeTimer.Stop();
-            ResizeTimer.Tick -= ResizeTimer_Tick;
             SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
 
             SharedModel.Instance.GetProfileDisplayItemsCopy(Profile).ForEach(item =>
@@ -208,73 +201,58 @@ namespace InfoPanel.Views.Common
             });
         }
 
-        private async void Profile_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        private void Config_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(Profile.Width))
+            if (e.PropertyName == nameof(ConfigModel.Instance.Settings.TargetFrameRate))
             {
-                Width = Profile.Width;
-                WriteableBitmap = new WriteableBitmap(Profile.Width, Profile.Height, 96,
-                  96, System.Windows.Media.PixelFormats.Bgra32, null);
-                Image.Source = WriteableBitmap;
-            }
-            else if (e.PropertyName == nameof(Profile.Height))
-            {
-                Height = Profile.Height;
-                WriteableBitmap = new WriteableBitmap(Profile.Width, Profile.Height, 96,
-                  96, System.Windows.Media.PixelFormats.Bgra32, null);
-                Image.Source = WriteableBitmap;
-
-            }
-            else if (e.PropertyName == nameof(Profile.TargetWindow) || e.PropertyName == nameof(Profile.WindowX)
-                || e.PropertyName == nameof(Profile.WindowY) || e.PropertyName == nameof(Profile.StrictWindowMatching))
-            {
-                if (!_dragMove)
-                {
-                    SetWindowPositionRelativeToScreen();
-                }
-            }
-            else if (e.PropertyName == nameof(Profile.Topmost))
-            {
-                Topmost = Profile.Topmost;
-            }
-            else if (e.PropertyName == nameof(Profile.Resize))
-            {
-                if (Profile.Resize)
-                {
-                    ResizeMode = ResizeMode.CanResize;
-                }
-                else
-                {
-                    ResizeMode = ResizeMode.NoResize;
-                }
-            }
-            else if (e.PropertyName == nameof(Profile.Direct2DModeFps))
-            {
-                ShowFps = Profile.Direct2DModeFps;
-            }
-            else if (e.PropertyName == nameof(Profile.VideoBackgroundFilePath) || e.PropertyName == nameof(Profile.VideoBackgroundRotation))
-            {
-                if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
-                {
-                    var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
-                    await LoadVideoBackground(videoFilePath);
-                }
-                else
-                {
-                    StopVideoBackground();
-                }
+                UpdateSkiaTimer();
             }
         }
 
-        private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
+        private void Profile_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (ResizeTimer.IsEnabled)
+            _dispatcher.BeginInvoke(() =>
             {
-                ResizeTimer.Stop();
-            }
+                if (e.PropertyName == nameof(Profile.TargetWindow) || e.PropertyName == nameof(Profile.WindowX)
+                                     || e.PropertyName == nameof(Profile.WindowY) || e.PropertyName == nameof(Profile.StrictWindowMatching))
+                {
+                    if (!_dragMove)
+                    {
+                        SetWindowPositionRelativeToScreen();
+                    }
+                }
+                else if (e.PropertyName == nameof(Profile.Resize))
+                {
+                    if (Profile.Resize)
+                    {
+                        ResizeMode = ResizeMode.CanResize;
+                    }
+                    else
+                    {
+                        ResizeMode = ResizeMode.NoResize;
+                    }
+                }
+                else if (e.PropertyName == nameof(Profile.Direct2DModeFps))
+                {
+                    ShowFps = Profile.Direct2DModeFps;
+                }
+                else if (e.PropertyName == nameof(Profile.VideoBackgroundFilePath) || e.PropertyName == nameof(Profile.VideoBackgroundRotation))
+                {
+                    if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
+                    {
+                        var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
+                        LoadVideoBackground(videoFilePath);
+                    }
+                    else
+                    {
+                        StopVideoBackground();
+                    }
+                }
 
-            ResizeTimer.Start();
+            });
         }
+
+
         private void Window_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (SharedModel.Instance.SelectedVisibleItems != null)
@@ -305,144 +283,192 @@ namespace InfoPanel.Views.Common
             dragStart = false;
         }
 
-        public Screen GetCurrentScreen()
+        public Screen? GetCurrentScreen()
         {
-            // Get the current position and size of the window
-            var window = this;
-            var left = (int)window.Left;
-            var top = (int)window.Top;
-            var width = (int)window.ActualWidth;
-            var height = (int)window.ActualHeight;
+            // Force refresh of screen data
+            ScreenHelper.RefreshScreens();
 
-            // Get the position and size of each monitor
-            var screens = Screen.AllScreens;
-
-            // Check if the window is fully contained within a monitor
-            foreach (var screen in screens)
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget == null)
             {
-                if (screen.Bounds.Contains(new Rectangle(left, top, width, height)))
+                return Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault();
+            }
+
+            // Get fresh monitor data
+            var freshMonitors = ScreenHelper.GetAllMonitors();
+
+            // Convert WPF coordinates to device pixels
+            var transformToDevice = source.CompositionTarget.TransformToDevice;
+            var windowTopLeft = transformToDevice.Transform(new System.Windows.Point(this.Left, this.Top));
+            var windowSize = transformToDevice.Transform(new System.Windows.Vector(this.ActualWidth, this.ActualHeight));
+
+            var windowRect = new Rectangle(
+                (int)Math.Round(windowTopLeft.X),
+                (int)Math.Round(windowTopLeft.Y),
+                (int)Math.Round(Math.Abs(windowSize.X)),
+                (int)Math.Round(Math.Abs(windowSize.Y))
+            );
+
+            // Handle zero-size windows
+            if (windowRect.Width == 0 || windowRect.Height == 0)
+            {
+                windowRect = new Rectangle(windowRect.X, windowRect.Y, 1, 1);
+            }
+
+            // Use window center for detection
+            var windowCenterX = windowRect.X + (windowRect.Width / 2);
+            var windowCenterY = windowRect.Y + (windowRect.Height / 2);
+            var windowCenter = new System.Drawing.Point(windowCenterX, windowCenterY);
+
+            // Find monitor containing window center using fresh data
+            MonitorInfo? currentMonitor = null;
+            foreach (var monitor in freshMonitors)
+            {
+                if (monitor.Bounds.Contains(windowCenter))
                 {
-                    // The window is fully contained within the bounds of the screen
-                    // Use this screen as the target screen
-                    return screen;
+                    currentMonitor = monitor;
+                    break;
                 }
             }
 
-            // Check if the window overlaps with a monitor
-            foreach (var screen in screens)
+            // If not found by center, find by largest intersection
+            if (currentMonitor == null)
             {
-                if (screen.WorkingArea.IntersectsWith(new Rectangle(left, top, width, height)))
+                long maxIntersectionArea = 0;
+                foreach (var monitor in freshMonitors)
                 {
-                    // The window overlaps with the screen
-                    // Use this screen as the target screen
-                    return screen;
+                    var intersection = Rectangle.Intersect(monitor.Bounds, windowRect);
+                    if (!intersection.IsEmpty)
+                    {
+                        long area = (long)intersection.Width * intersection.Height;
+                        if (area > maxIntersectionArea)
+                        {
+                            maxIntersectionArea = area;
+                            currentMonitor = monitor;
+                        }
+                    }
                 }
             }
 
-            // The window is outside the bounds of all monitors
-            // Use the primary screen as the default target screen
-            return Screen.PrimaryScreen;
+            // Now match the fresh monitor data with Screen.AllScreens
+            if (currentMonitor != null)
+            {
+                // Refresh screens again to ensure we have the latest
+                var screens = Screen.AllScreens;
+
+                // Try exact match first
+                foreach (var screen in screens)
+                {
+                    if (screen.DeviceName == currentMonitor.DeviceName)
+                    {
+                        return screen;
+                    }
+                }
+
+                // Try bounds match
+                foreach (var screen in screens)
+                {
+                    if (screen.Bounds.Equals(currentMonitor.Bounds))
+                    {
+                        return screen;
+                    }
+                }
+            }
+
+            // Fallback
+            return Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault();
         }
 
-        public System.Windows.Point GetWindowPositionRelativeToScreen(Screen screen)
+        public System.Windows.Point? GetWindowPositionRelativeToScreen(Screen screen)
         {
-            // Get the position of the window in device-independent units
+            if (screen == null)
+                return null;
+
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget == null)
+                return null;
+
+            // Window position is already in WPF DIU coordinates
             var windowPosition = new System.Windows.Point(this.Left, this.Top);
 
-            // Get the transformation from device-independent units to device pixels
-            var source = PresentationSource.FromVisual(this);
-            if (source == null)
-            {
-                throw new InvalidOperationException("The window is not connected to a presentation source.");
-            }
-
-            var transformToDevice = source.CompositionTarget.TransformToDevice;
+            // Convert screen BOUNDS (not working area) from device pixels to WPF DIU coordinates
+            // This ensures consistency with how we detect screens
             var transformFromDevice = source.CompositionTarget.TransformFromDevice;
+            var screenTopLeftInDiu = transformFromDevice.Transform(
+                new System.Windows.Point(screen.Bounds.Left, screen.Bounds.Top)
+            );
 
-            // Convert the screen's working area to device-independent units
-            var screenPosition = new System.Windows.Point(screen.WorkingArea.Left, screen.WorkingArea.Top);
-            var screenPositionInDiu = transformFromDevice.Transform(screenPosition);
-
-            // Calculate the window's position relative to the screen
-            var windowPositionRelativeToScreen = new System.Windows.Point(
-                (windowPosition.X - screenPositionInDiu.X),
-                (windowPosition.Y - screenPositionInDiu.Y));
-
-            return windowPositionRelativeToScreen;
-        }
-
-
-        public System.Windows.Point GetWindowPositionRelativeToScreen()
-        {
-            // Get the PresentationSource for the window
-            var source = PresentationSource.FromVisual(this);
-
-            if (source != null)
-            {
-                // Get the transformation matrix that maps device-independent units to device-dependent pixels
-                var transform = source.CompositionTarget.TransformFromDevice;
-
-                // Get the position of the window in device-independent units
-                var windowPosition = new System.Windows.Point(this.Left, this.Top);
-
-                // Convert the window position to device-dependent pixels relative to the screen
-                var screenPosition = transform.Transform(windowPosition);
-
-                return screenPosition;
-            }
-            else
-            {
-                return new System.Windows.Point(0, 0);
-            }
+            // Calculate relative position (window position minus screen top-left)
+            return new System.Windows.Point(
+                windowPosition.X - screenTopLeftInDiu.X,
+                windowPosition.Y - screenTopLeftInDiu.Y
+            );
         }
 
         private void SetWindowPositionRelativeToScreen()
         {
-            Screen? screen = Screen.AllScreens.FirstOrDefault(s =>
-                s.Bounds.X == Profile.TargetWindow?.X
-                && s.Bounds.Y == Profile.TargetWindow?.Y
-                && s.Bounds.Width == Profile.TargetWindow?.Width
-                && s.Bounds.Height == Profile.TargetWindow?.Height
-            );
-
-            if (Profile.StrictWindowMatching && screen == null)
-            {
-                if (this.Visibility == Visibility.Visible)
-                {
-                    this.Hide();
-                }
-
+            // Validate prerequisites
+            if (Profile?.TargetWindow == null)
                 return;
-            }
-            else
-            {
-                if (this.Visibility != Visibility.Visible)
-                {
-                    this.Show();
-                }
-            }
+
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget == null)
+                return;
+
+            // Force refresh of screen data
+            ScreenHelper.RefreshScreens();
+
+            Screen? screen = Screen.AllScreens.FirstOrDefault(s => s.DeviceName == Profile.TargetWindow.DeviceName && s.Bounds.Width == Profile.TargetWindow.Width && s.Bounds.Height == Profile.TargetWindow.Height);
 
             screen ??= Screen.AllScreens.FirstOrDefault(s =>
-                s.Bounds.Width == Profile.TargetWindow?.Width
-                && s.Bounds.Height == Profile.TargetWindow?.Height,
-                Screen.PrimaryScreen
-                );
+             s.Bounds.Width == Profile.TargetWindow.Width
+             && s.Bounds.Height == Profile.TargetWindow.Height
+         );
 
-            // Get the position of the screen in device-independent units
-            var source = PresentationSource.FromVisual(this);
-            var transform = source.CompositionTarget.TransformFromDevice;
-            var screenPosition = new System.Windows.Point(screen.WorkingArea.Left, screen.WorkingArea.Top);
-            var relativeScreenPosition = transform.Transform(screenPosition);
-
-            // Calculate the window position in device-independent units relative to the screen
-            var relativePosition = new System.Windows.Point(relativeScreenPosition.X + Profile.WindowX, relativeScreenPosition.Y + Profile.WindowY);
-
-            if (this.Left != relativePosition.X || this.Top != relativePosition.Y)
+            if (screen == null)
             {
-                // Set the window position to the calculated position
-                this.Left = relativePosition.X;
-                this.Top = relativePosition.Y;
+                if (Profile.StrictWindowMatching)
+                {
+                    if (this.Visibility == Visibility.Visible)
+                    {
+                        this.Hide();
+                    }
+                    return;
+                }
+
+                // Fallback to primary screen
+                screen = Screen.PrimaryScreen;
             }
+
+            if (screen == null)
+            {
+                return;
+            }
+
+            // Show window if hidden and we found a suitable screen
+            if (this.Visibility != Visibility.Visible)
+            {
+                this.Show();
+            }
+
+            // Convert screen BOUNDS from device pixels to WPF DIU
+            var transformFromDevice = source.CompositionTarget.TransformFromDevice;
+
+            // Convert screen bounds to WPF coordinates
+            var screenTopLeft = transformFromDevice.Transform(new System.Windows.Point(
+                screen.Bounds.Left,
+                screen.Bounds.Top
+            ));
+
+            // Calculate the absolute position by adding relative offset to screen position
+            var absolutePosition = new System.Windows.Point(
+                screenTopLeft.X + Profile.WindowX,
+                screenTopLeft.Y + Profile.WindowY
+            );
+
+            // Update position without clamping - allow negative coordinates
+            this.Left = absolutePosition.X;
+            this.Top = absolutePosition.Y;
         }
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
@@ -496,13 +522,22 @@ namespace InfoPanel.Views.Common
                         }
 
                         var screen = GetCurrentScreen();
-                        var positionRelativeToScreen = GetWindowPositionRelativeToScreen(screen);
 
-                        _dragMove = true;
-                        Profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
-                        Profile.WindowX = (int)positionRelativeToScreen.X;
-                        Profile.WindowY = (int)positionRelativeToScreen.Y;
-                        _dragMove = false;
+                        Trace.WriteLine($"screen={screen}");
+
+                        if (screen != null)
+                        {
+                            var positionRelativeToScreen = GetWindowPositionRelativeToScreen(screen);
+
+                            if (positionRelativeToScreen != null)
+                            {
+                                _dragMove = true;
+                                Profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height, screen.DeviceName);
+                                Profile.WindowX = (int)positionRelativeToScreen.Value.X;
+                                Profile.WindowY = (int)positionRelativeToScreen.Value.Y;
+                                _dragMove = false;
+                            }
+                        }
                     }
                 }
                 else
@@ -653,7 +688,7 @@ namespace InfoPanel.Views.Common
             Close();
         }
 
-        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             // Variable to hold the handle for the form
             var helper = new WindowInteropHelper(this).Handle;
@@ -662,21 +697,17 @@ namespace InfoPanel.Views.Common
 
             SetWindowPositionRelativeToScreen();
 
-            SizeChanged += Window_SizeChanged;
-
             VideoBackground.MediaOpened += VideoBackground_MediaOpened;
 
             if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
             {
                 var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
-                await LoadVideoBackground(videoFilePath);
+                LoadVideoBackground(videoFilePath);
             }
 
             if (!Profile.Direct2DMode)
             {
-                _skiaTimer.Elapsed += OnTimerElapsed;
-                _skiaTimer.AutoReset = true;
-                _skiaTimer.Start();
+                UpdateSkiaTimer();
             }
         }
 
@@ -707,28 +738,24 @@ namespace InfoPanel.Views.Common
             VideoBackground.RenderTransform = rotateTransform;
         }
 
-        private async Task LoadVideoBackground(string filePath)
+        private void LoadVideoBackground(string filePath)
         {
             try
             {
-                await Dispatcher.InvokeAsync(() =>
+                VideoBackground.Visibility = Visibility.Visible;
+
+                //stop existing video if any
+                mediaClock?.Controller.Stop();
+
+                mediaTimeline = new MediaTimeline(new Uri(filePath, UriKind.Absolute))
                 {
-                    VideoBackground.Visibility = Visibility.Visible;
+                    RepeatBehavior = RepeatBehavior.Forever
+                };
 
-                    //stop existing video if any
-                    mediaClock?.Controller.Stop();
+                mediaClock = mediaTimeline.CreateClock();
+                VideoBackground.Clock = mediaClock;
 
-                    // Load media asynchronously
-                    mediaTimeline = new MediaTimeline(new Uri(filePath, UriKind.Absolute))
-                    {
-                        RepeatBehavior = RepeatBehavior.Forever
-                    };
-
-                    mediaClock = mediaTimeline.CreateClock();
-                    VideoBackground.Clock = mediaClock;
-
-                    mediaClock.Controller.Begin();
-                });
+                mediaClock.Controller.Begin();
             }
             catch (Exception ex)
             {

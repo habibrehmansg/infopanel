@@ -7,6 +7,7 @@ using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using System.Windows.Media.Media3D;
 using unvell.D2DLib;
 
 namespace InfoPanel.Models
@@ -166,7 +167,9 @@ namespace InfoPanel.Models
         {
             if (_stream != null && _codec != null)
             {
-                _compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
+                var info = _codec.Info;
+                _compositeBitmap ??= new SKBitmap(info);
+                //_compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
 
                 SKBitmap? keepCopy = null;
 
@@ -202,7 +205,7 @@ namespace InfoPanel.Models
                         var options = new SKCodecOptions(i, requiredFrame);
                         try
                         {
-                            var r = _codec.GetPixels(_codec.Info, _compositeBitmap.GetPixels(), options);
+                            var r = _codec.GetPixels(info, _compositeBitmap.GetPixels(), options);
 
                             if (r != SKCodecResult.Success)
                             {
@@ -237,7 +240,9 @@ namespace InfoPanel.Models
         {
             if (_stream != null && _codec != null)
             {
-                _compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
+                var info = _codec.Info;
+                _compositeBitmap ??= new SKBitmap(info);
+                //_compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
 
                 SKBitmap? keepCopy = null;
 

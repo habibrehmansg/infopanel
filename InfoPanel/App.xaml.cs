@@ -313,43 +313,49 @@ namespace InfoPanel
             window?.Navigate(typeof(Views.Pages.DesignPage));
         }
 
+
+        private readonly DisplayWindowManager _displayManager = new();
+
         public DisplayWindow? GetDisplayWindow(Profile profile)
         {
-            DisplayWindows.TryGetValue(profile.Guid, out var displayWindow);
-            return displayWindow;
+            //DisplayWindows.TryGetValue(profile.Guid, out var displayWindow);
+            //return displayWindow;
+            return _displayManager.GetDisplayThread(profile.Guid)?.Window;
         }
 
         public void MaximiseDisplayWindow(Profile profile)
         {
-            var window = GetDisplayWindow(profile);
-            window?.Fullscreen();
-
+            //var window = GetDisplayWindow(profile);
+            //window?.Fullscreen();
+            _displayManager.GetDisplayThread(profile.Guid)?.Window?.Fullscreen();
         }
 
         public void ShowDisplayWindow(Profile profile)
         {
-            var window = GetDisplayWindow(profile);
+            _displayManager.ShowDisplayWindow(profile);
+            //var window = GetDisplayWindow(profile);
 
-            if(window != null && window.Direct2DMode != profile.Direct2DMode)
-            {
-                window.Close();
-                window = null;
-            }
+            //if (window != null && window.Direct2DMode != profile.Direct2DMode)
+            //{
+            //    window.Close();
+            //    window = null;
+            //}
 
-            if (window == null)
-            {
-                    window = new DisplayWindow(profile);
-                    DisplayWindows[profile.Guid] = window;
-                    window.Closed += DisplayWindow_Closed;
-            }
+            //if (window == null)
+            //{
+            //    window = new DisplayWindow(profile);
+            //    DisplayWindows[profile.Guid] = window;
+            //    window.Closed += DisplayWindow_Closed;
+            //}
 
-            window?.Show();
+            //window?.Show();
         }
 
         public void CloseDisplayWindow(Profile profile)
         {
-            var window = GetDisplayWindow(profile);
-            window?.Close();
+            _displayManager.CloseDisplayWindow(profile.Guid);
+            //var window = GetDisplayWindow(profile);
+            //window?.Close();
         }
 
         private void DisplayWindow_Closed(object? sender, EventArgs e)

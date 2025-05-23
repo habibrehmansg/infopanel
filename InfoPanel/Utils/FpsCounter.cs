@@ -18,6 +18,11 @@ namespace InfoPanel.Utils
             _maxFrames = maxFrames;
         }
 
+        public void SetMaxFrames(int maxFrames)
+        {
+            _maxFrames = maxFrames;
+        }
+
         public void Update()
         {
             _frameCounter++;

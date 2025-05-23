@@ -9,6 +9,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
     Title="DisplayWindow"
+    Width="{Binding Profile.Width, Mode=TwoWay, UpdateSourceTrigger=Default, Delay=100}"
+    Height="{Binding Profile.Height, Mode=TwoWay, UpdateSourceTrigger=Default, Delay=100}"
     Background="Transparent"
     DataContext="{Binding RelativeSource={RelativeSource self}}"
     KeyUp="Window_KeyUp"
@@ -17,6 +19,7 @@
     MouseUp="Window_MouseUp"
     ResizeMode="CanResize"
     ShowInTaskbar="False"
+    Topmost="{Binding Profile.Topmost}"
     WindowStyle="None"
     mc:Ignorable="d">
     <WindowChrome.WindowChrome>
@@ -39,35 +42,10 @@
                 <RotateTransform Angle="270" CenterX="425" CenterY="425" />
             </MediaElement.RenderTransform>-->
         </MediaElement>
-        <Image
-            x:Name="Image"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Top"
-            Stretch="None">
-            <Image.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="Quick settings">
-                        <CheckBox Content="Show panel" IsChecked="{Binding Path=Profile.Active}" />
-                        <CheckBox Content="Always on top" IsChecked="{Binding Path=Profile.Topmost}" />
-                        <CheckBox Content="Draggable" IsChecked="{Binding Path=Profile.Drag}" />
-                        <CheckBox Content="Resizeable" IsChecked="{Binding Path=Profile.Resize}" />
-                    </MenuItem>
-                    <Separator />
-                    <MenuItem
-                        Name="MenuItemConfig"
-                        Click="MenuItemConfig_Click"
-                        Header="Open design window" />
-                    <MenuItem
-                        Name="MenuItemSavePosition"
-                        Click="MenuItemSavePosition_Click"
-                        Header="Save position and settings" />
-                </ContextMenu>
-            </Image.ContextMenu>
-        </Image>
         <skia:SKElement
             x:Name="skElement"
-            Width="{Binding Profile.Width}"
-            Height="{Binding Profile.Height}"
+            Width="{Binding Profile.Width, Mode=OneWay}"
+            Height="{Binding Profile.Height, Mode=OneWay}"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             PaintSurface="OnPaintSurface" />

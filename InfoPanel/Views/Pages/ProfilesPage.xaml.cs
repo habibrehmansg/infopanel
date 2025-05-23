@@ -225,9 +225,9 @@ namespace InfoPanel.Views.Pages
         private void ButtonResetPosition_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             var screen = Screen.PrimaryScreen;
-            if (ViewModel.Profile is Profile profile)
+            if (screen != null && ViewModel.Profile is Profile profile)
             {
-                profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
+                profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height, screen.DeviceName);
                 profile.WindowX = 0;
                 profile.WindowY = 0;
             }

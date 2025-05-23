@@ -275,13 +275,13 @@
                                                     Margin="10,5,10,0"
                                                     HorizontalAlignment="Left"
                                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                    Text="{Binding TargetWindow.Name, Mode=OneWay}"
+                                                    Text="{Binding TargetWindow.DeviceName, Mode=OneWay}"
                                                     TextTrimming="CharacterEllipsis" />
                                                 <TextBlock
                                                     Margin="5,0,0,0"
                                                     FontSize="12"
                                                     Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                    Text="Window" />
+                                                    Text="{Binding TargetWindow.Name, Mode=OneWay}" />
                                             </StackPanel>
 
                                             <StackPanel

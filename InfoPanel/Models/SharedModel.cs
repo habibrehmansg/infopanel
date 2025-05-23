@@ -735,48 +735,48 @@ namespace InfoPanel
 
         public void UpdatePanel(Profile profile, Bitmap bitmap)
         {
-            if (Application.Current is App app)
-            {
-                var window = app.GetDisplayWindow(profile);
+            //if (Application.Current is App app)
+            //{
+            //    var window = app.GetDisplayWindow(profile);
 
-                if (window is DisplayWindow displayWindow && !window.Direct2DMode)
-                {
-                    var writeableBitmap = displayWindow?.WriteableBitmap;
+            //    if (window is DisplayWindow displayWindow && !window.Direct2DMode)
+            //    {
+            //        var writeableBitmap = displayWindow?.WriteableBitmap;
 
-                    if (writeableBitmap != null)
-                    {
-                        IntPtr backBuffer = IntPtr.Zero;
+            //        if (writeableBitmap != null)
+            //        {
+            //            IntPtr backBuffer = IntPtr.Zero;
 
-                        writeableBitmap.Dispatcher.Invoke(() =>
-                         {
-                             if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
-                             {
-                                 writeableBitmap.Lock();
-                                 backBuffer = writeableBitmap.BackBuffer;
-                             }
-                         });
+            //            writeableBitmap.Dispatcher.Invoke(() =>
+            //             {
+            //                 if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
+            //                 {
+            //                     writeableBitmap.Lock();
+            //                     backBuffer = writeableBitmap.BackBuffer;
+            //                 }
+            //             });
 
-                        if (backBuffer == IntPtr.Zero)
-                        {
-                            return;
-                        }
+            //            if (backBuffer == IntPtr.Zero)
+            //            {
+            //                return;
+            //            }
 
-                        // copy the pixel data from the bitmap to the back buffer
-                        BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                        int stride = bitmapData.Stride;
-                        byte[] pixels = new byte[stride * bitmap.Height];
-                        Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-                        Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-                        bitmap.UnlockBits(bitmapData);
+            //            // copy the pixel data from the bitmap to the back buffer
+            //            BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            //            int stride = bitmapData.Stride;
+            //            byte[] pixels = new byte[stride * bitmap.Height];
+            //            Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
+            //            Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
+            //            bitmap.UnlockBits(bitmapData);
 
-                        writeableBitmap.Dispatcher.Invoke(() =>
-                        {
-                            writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
-                            writeableBitmap.Unlock();
-                        });
-                    }
-                }
-            }
+            //            writeableBitmap.Dispatcher.Invoke(() =>
+            //            {
+            //                writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
+            //                writeableBitmap.Unlock();
+            //            });
+            //        }
+            //    }
+            //}
         }
 
         public void SetPanelBitmap(Profile profile, Bitmap bitmap)
