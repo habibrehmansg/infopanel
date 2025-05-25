@@ -294,6 +294,7 @@ namespace InfoPanel
 
         public static async Task CleanShutDown()
         {
+            _displayManager.CloseAll();
             await StopPanels();
             await LibreMonitor.Instance.StopAsync();
             await PluginMonitor.Instance.StopAsync();
@@ -314,7 +315,7 @@ namespace InfoPanel
         }
 
 
-        private readonly DisplayWindowManager _displayManager = new();
+        private static readonly DisplayWindowManager _displayManager = new();
 
         public DisplayWindow? GetDisplayWindow(Profile profile)
         {

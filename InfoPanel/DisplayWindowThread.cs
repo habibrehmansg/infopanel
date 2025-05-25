@@ -35,7 +35,7 @@ namespace InfoPanel
 
             // Call SetApartmentState as a method before starting
             _thread.SetApartmentState(ApartmentState.STA);
-
+            
             _thread.Start();
             _readyEvent.Wait(5000); // Wait for window to be ready
         }
