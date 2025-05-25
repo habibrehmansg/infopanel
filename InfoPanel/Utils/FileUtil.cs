@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Views.Components;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -125,23 +126,7 @@ namespace InfoPanel.Utils
                                 {
                                     foreach (var item in displayItems)
                                     {
-                                        if (item is ImageDisplayItem imageDisplayItem)
-                                        {
-                                            if (imageDisplayItem.CalculatedPath != null)
-                                            {
-                                                assetFiles.Remove(imageDisplayItem.CalculatedPath);
-                                            }
-                                        }
-                                        else if (item is GaugeDisplayItem gaugeDisplayItem)
-                                        {
-                                            foreach (var image in gaugeDisplayItem.Images)
-                                            {
-                                                if (image.CalculatedPath != null)
-                                                {
-                                                    assetFiles.Remove(image.CalculatedPath);
-                                                }
-                                            }
-                                        }
+                                        FilterAssetFiles(item, assetFiles);
                                     }
                                 }
 
@@ -170,6 +155,34 @@ namespace InfoPanel.Utils
                     catch { }
                 }
             });
+        }
+
+        private static void FilterAssetFiles(DisplayItem item, List<string> assetFiles)
+        {
+            if (item is GroupDisplayItem groupDisplayItem)
+            {
+                foreach (var child in groupDisplayItem.DisplayItems)
+                {
+                    FilterAssetFiles(child, assetFiles);
+                }
+            }
+            else if (item is ImageDisplayItem imageDisplayItem)
+            {
+                if (imageDisplayItem.CalculatedPath != null)
+                {
+                    assetFiles.Remove(imageDisplayItem.CalculatedPath);
+                }
+            }
+            else if (item is GaugeDisplayItem gaugeDisplayItem)
+            {
+                foreach (var image in gaugeDisplayItem.Images)
+                {
+                    if (image.CalculatedPath != null)
+                    {
+                        assetFiles.Remove(image.CalculatedPath);
+                    }
+                }
+            }
         }
     }
 }
