@@ -6,6 +6,7 @@ using InfoPanel.Utils;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Common;
 using InfoPanel.Views.Windows;
+using InfoPanel.AX206Panel;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Win32;
@@ -211,6 +212,7 @@ namespace InfoPanel
                 await TuringPanelATask.Instance.StopAsync(true);
                 await TuringPanelCTask.Instance.StopAsync(true);
                 await TuringPanelETask.Instance.StopAsync(true);
+                await AX206PanelTask.Instance.StopAsync(true);
             }).ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
@@ -230,6 +232,7 @@ namespace InfoPanel
                         await TuringPanelATask.Instance.StopAsync(true);
                         await TuringPanelCTask.Instance.StopAsync(true);
                         await TuringPanelETask.Instance.StopAsync(true);
+                        await AX206PanelTask.Instance.StopAsync(true);
                     }).ConfigureAwait(false).GetAwaiter().GetResult();
                     break;
             }
@@ -264,6 +267,11 @@ namespace InfoPanel
                 await TuringPanelETask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.AX206Panel)
+            {
+                await AX206PanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.WebServer)
             {
                 await WebServerTask.Instance.StartAsync();
@@ -279,6 +287,7 @@ namespace InfoPanel
             await TuringPanelATask.Instance.StopAsync();
             await TuringPanelCTask.Instance.StopAsync();
             await TuringPanelETask.Instance.StopAsync();
+            await AX206PanelTask.Instance.StopAsync();
         }
 
         private void App_Exit(object sender, ExitEventArgs e)

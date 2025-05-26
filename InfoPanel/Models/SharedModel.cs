@@ -204,6 +204,37 @@ namespace InfoPanel
             }
         }
 
+        private bool _ax206PanelRunning = false;
+
+        public bool AX206PanelRunning
+        {
+            get { return _ax206PanelRunning; }
+            set
+            {
+                SetProperty(ref _ax206PanelRunning, value);
+            }
+        }
+
+        private int _ax206PanelFrameRate = 0;
+        public int AX206PanelFrameRate
+        {
+            get { return _ax206PanelFrameRate; }
+            set
+            {
+                SetProperty(ref _ax206PanelFrameRate, value);
+            }
+        }
+
+        private long _ax206PanelFrameTime = 0;
+        public long AX206PanelFrameTime
+        {
+            get { return _ax206PanelFrameTime; }
+            set
+            {
+                SetProperty(ref _ax206PanelFrameTime, value);
+            }
+        }
+
         private int _webserverFrameRate = 0;
         public int WebserverFrameRate
         {

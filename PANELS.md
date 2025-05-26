@@ -6,6 +6,7 @@
 - [Display Types Comparison](#display-types-comparison)
 - [BeadaPanel Models](#beadapanel-models)
 - [Turing Smart Screen/TURZX Models](#turing-smart-screenturzx-models)
+- [AX206 Digital Photo Frame Panels](#ax206-digital-photo-frame-panels)
 - [Connection and Setup](#connection-and-setup)
 - [Troubleshooting](#troubleshooting)
 - [Recommendations](#recommendations)
@@ -81,6 +82,14 @@ Turing Smart Screen (also known as TURZX) models are also supported by InfoPanel
 | 5" Model | 800×480 | Serial over USB | 2-3 FPS | ~10 FPS | Wake after sleep issues |
 | 3.5" Model | 480×320 | Serial over USB | 1 FPS | ~3 FPS | Wake after sleep issues, lower bandwidth |
 
+## AX206 Digital Photo Frame Panels
+
+InfoPanel supports AX206-based panels commonly found in digital photo frames. These panels are a cost-effective option for system monitoring.
+
+| Model | Resolution | Connection | Performance | Notes |
+|-------|------------|------------|------------|-------|
+| AX206 3.5" | 480×320 | USB | ~10-15 FPS | Common in digital photo frames, requires hacked firmware |
+
 **Limitations of Turing/TURZX Panels**:
 - Single communication channel for both display and commands
 - When the panel is "stuck," InfoPanel's restart attempts may not succeed because display and control commands use the same channel
@@ -88,6 +97,13 @@ Turing Smart Screen (also known as TURZX) models are also supported by InfoPanel
 - Generally slower refresh rates than BeadaPanel options
 - Closed protocol with no official documentation (InfoPanel is compatible at best effort basis)
 - Turing's official software may provide better performance than third-party applications (e.g high FPS video backgrounds)
+
+**AX206 Panel Features**:
+- Commonly found in digital photo frames, often available at low cost
+- Requires custom firmware (hacked firmware) to be controllable via USB
+- Decent refresh rates, suitable for system monitoring
+- SCSI-like protocol with simple command structure
+- RGB565 color format for image display
 
 ## Connection and Setup
 
@@ -153,7 +169,8 @@ BeadaPanel is the recommended choice for use with InfoPanel due to:
 
 1. **For best performance**: BeadaPanel (any model, particularly the 6P 6.8" model)
 2. **For large display with USB**: Turing/TURZX 8.8" Rev 1.1
-3. **If already own a Turing/TURZX panel**: They work well with InfoPanel despite limitations
+3. **For budget option**: AX206 3.5" digital photo frame (with hacked firmware)
+4. **If already own a Turing/TURZX panel**: They work well with InfoPanel despite limitations
 
 If choosing between USB and HDMI connections, USB panels are generally recommended as they don't have the Windows display management issues that can occur with HDMI connections.
 

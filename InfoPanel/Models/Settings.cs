@@ -278,6 +278,40 @@ namespace InfoPanel.Models
             set { SetProperty(ref _targetGraphUpdateRate, value); }
         }
 
+        private bool _ax206Panel = false;
+        public bool AX206Panel
+        {
+            get { return _ax206Panel; }
+            set { SetProperty(ref _ax206Panel, value); }
+        }
+
+        private Guid _ax206PanelProfile = Guid.Empty;
+        public Guid AX206PanelProfile
+        {
+            get { return _ax206PanelProfile; }
+            set { SetProperty(ref _ax206PanelProfile, value); }
+        }
+
+        private LCD_ROTATION _ax206PanelRotation = 0;
+        public LCD_ROTATION AX206PanelRotation
+        {
+            get { return _ax206PanelRotation; }
+            set
+            {
+                SetProperty(ref _ax206PanelRotation, value);
+            }
+        }
+
+        private int _ax206PanelBrightness = 100;
+        public int AX206PanelBrightness
+        {
+            get { return _ax206PanelBrightness; }
+            set
+            {
+                SetProperty(ref _ax206PanelBrightness, value);
+            }
+        }
+
         private int _version = 114;
         public int Version
         {
