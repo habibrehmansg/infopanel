@@ -35,7 +35,7 @@ namespace InfoPanel.Models
             {
                 if (reading.Data is IPluginSensor sensor)
                 {
-                    return new SensorReading(0, 0, 0, sensor.Value, sensor.Unit ?? "");
+                    return new SensorReading(sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg, sensor.Value, sensor.Unit ?? "");
                 }
                 else if (reading.Data is IPluginText text)
                 {
