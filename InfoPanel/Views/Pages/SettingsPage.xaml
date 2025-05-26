@@ -934,6 +934,123 @@
                         </StackPanel>
                     </ui:CardControl>
                     <!--  end panel e settings  -->
+
+                    <!--  start AX206Panel settings  -->
+                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        FontSize="13"
+                                        FontWeight="Medium"
+                                        Text="AX206 Digital Photo Frame 3.5&quot;" />
+                                    <TextBlock
+                                        Margin="0,5,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="USB-based 480x320 panel (requires hacked firmware)" />
+                                    <!--  start display status  -->
+                                    <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AX206Panel, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel
+                                            Margin="0,5,0,0"
+                                            Orientation="Horizontal"
+                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=AX206PanelRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="Panel is running:" />
+                                            <TextBlock
+                                                Margin="10,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=AX206PanelFrameRate, StringFormat={}{0} FPS}" />
+                                            <TextBlock
+                                                Margin="0,0,0,0"
+                                                FontSize="12"
+                                                Foreground="LawnGreen"
+                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=AX206PanelFrameTime, StringFormat={} @ {0}ms}" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Margin="0,5,0,0"
+                                            FontSize="12"
+                                            Foreground="Orange"
+                                            Text="Display is not running. Check your USB connection and try again."
+                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=AX206PanelRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                    </StackPanel>
+                                    <!--  end display status  -->
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardControl.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <StackPanel Margin="10,0,0,0">
+                                <!--  start profile  -->
+                                <ComboBox
+                                    Width="300"
+                                    Margin="0,0,0,0"
+                                    DisplayMemberPath="Name"
+                                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                    SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AX206PanelProfile}"
+                                    SelectedValuePath="Guid" />
+                                <!--  end profile  -->
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <!--  start rotation  -->
+                                    <ComboBox
+                                        Margin="0,0,10,0"
+                                        ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
+                                        SelectedItem="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AX206PanelRotation}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <!--  end rotation  -->
+                                    <!--  start brightness  -->
+                                    <StackPanel Grid.Column="1" Margin="0,0,0,0">
+                                        <Slider
+                                            Margin="0,0,0,0"
+                                            IsSnapToTickEnabled="True"
+                                            Maximum="100"
+                                            Minimum="0"
+                                            TickFrequency="1"
+                                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AX206PanelBrightness}" />
+                                        <Grid Margin="0,0,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="Brightness" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AX206PanelBrightness}" />
+                                        </Grid>
+                                    </StackPanel>
+                                    <!--  end brightness  -->
+                                </Grid>
+                            </StackPanel>
+                            <!--  start enable  -->
+                            <ui:ToggleSwitch Margin="20,0,0,0" IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AX206Panel}" />
+                            <!--  end enable  -->
+                        </StackPanel>
+                    </ui:CardControl>
+                    <!--  end AX206Panel settings  -->
+                
                 </StackPanel>
 
                 <StackPanel Grid.Row="3" Margin="0,40,0,0">
