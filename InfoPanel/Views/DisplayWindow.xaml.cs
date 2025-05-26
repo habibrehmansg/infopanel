@@ -93,6 +93,7 @@ namespace InfoPanel.Views.Common
             }
 
             var canvas = e.Surface.Canvas;
+            canvas.Clear();
 
             var sw = Stopwatch.StartNew();
 

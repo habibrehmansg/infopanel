@@ -12,6 +12,12 @@ namespace InfoPanel.Drawing
         private readonly SKCanvas Canvas = canvas;
         private readonly float FontScale = fontScale;
 
+        public static SkiaGraphics FromBitmap(SKBitmap bitmap)
+        {
+            var canvas = new SKCanvas(bitmap);
+            return new SkiaGraphics(canvas);
+        }
+
         public override void Clear(Color color)
         {
             this.Canvas.Clear(new SKColor(color.R, color.G, color.B, color.A));

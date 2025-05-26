@@ -62,11 +62,6 @@ namespace InfoPanel.Drawing
                 }
             }
 
-            if (g is SkiaGraphics)
-            {
-                g.Clear(Color.Transparent);
-            }
-
             List<SelectedRectangle> selectedRectangles = [];
 
             foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))

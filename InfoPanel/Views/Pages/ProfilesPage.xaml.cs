@@ -2,6 +2,7 @@
 using InfoPanel.Models;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
+using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
 using System.Drawing;
@@ -102,40 +103,46 @@ namespace InfoPanel.Views.Pages
                     var width = (int)(profile.Width * scale);
                     var height = (int)(profile.Height * scale);
 
-                    using var bitmap = new Bitmap(width, height);
-                    bitmap.SetResolution(96, 96);
+                    ////using var bitmap = new Bitmap(width, height);
+                    ////bitmap.SetResolution(96, 96);
+                    //var bitmap = new SKBitmap(width, height);
 
-                    using var g = CompatGraphics.FromBitmap(bitmap);
-                    PanelDraw.Run(profile, g, false, scale, false, true);
+                    ////using var g = CompatGraphics.FromBitmap(bitmap);
+                    //using var g = SkiaGraphics.FromBitmap(bitmap);
+                    //PanelDraw.Run(profile, g, false, scale, false, true);
 
-                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        if (profile.BitmapImagePreview == null || profile.BitmapImagePreview.Width != bitmap.Width || profile.BitmapImagePreview.Height != bitmap.Height)
-                        {
-                            profile.BitmapImagePreview = new WriteableBitmap(bitmap.Width, bitmap.Height,
-                                                          96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
-                        }
-
-                        profile.BitmapImagePreview.Lock();
-                        IntPtr backBuffer = profile.BitmapImagePreview.BackBuffer;
-
-                        if (backBuffer == IntPtr.Zero)
-                        {
-                            return;
-                        }
-
-                        // copy the pixel data from the bitmap to the back buffer
-                        BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                        int stride = bitmapData.Stride;
-                        byte[] pixels = new byte[stride * bitmap.Height];
-                        Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-                        Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-                        bitmap.UnlockBits(bitmapData);
+                    //profile.SkPreviewBitmap?.Dispose();
+                    //profile.SkPreviewBitmap = bitmap;
 
 
-                        profile.BitmapImagePreview?.AddDirtyRect(new Int32Rect(0, 0, profile.BitmapImagePreview.PixelWidth, profile.BitmapImagePreview.PixelHeight));
-                        profile.BitmapImagePreview?.Unlock();
-                    });
+                    //System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    //{
+                    //    if (profile.BitmapImagePreview == null || profile.BitmapImagePreview.Width != bitmap.Width || profile.BitmapImagePreview.Height != bitmap.Height)
+                    //    {
+                    //        profile.BitmapImagePreview = new WriteableBitmap(bitmap.Width, bitmap.Height,
+                    //                                      96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+                    //    }
+
+                    //    profile.BitmapImagePreview.Lock();
+                    //    IntPtr backBuffer = profile.BitmapImagePreview.BackBuffer;
+
+                    //    if (backBuffer == IntPtr.Zero)
+                    //    {
+                    //        return;
+                    //    }
+
+                    //    // copy the pixel data from the bitmap to the back buffer
+                    //    BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                    //    int stride = bitmapData.Stride;
+                    //    byte[] pixels = new byte[stride * bitmap.Height];
+                    //    Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
+                    //    Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
+                    //    bitmap.UnlockBits(bitmapData);
+
+
+                    //    profile.BitmapImagePreview?.AddDirtyRect(new Int32Rect(0, 0, profile.BitmapImagePreview.PixelWidth, profile.BitmapImagePreview.PixelHeight));
+                    //    profile.BitmapImagePreview?.Unlock();
+                    //});
                 }, ct);
             });
         }
@@ -185,43 +192,6 @@ namespace InfoPanel.Views.Pages
             }
         }
 
-        private void ButtonExportProfile_Click(object sender, RoutedEventArgs e)
-        {
-            if (ViewModel.Profile is Profile profile)
-            {
-                FolderBrowserDialog folderBrowserDialog = new();
-                if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
-                {
-                    string selectedFolderPath = folderBrowserDialog.SelectedPath;
-                    string? result = SharedModel.Instance.ExportProfile(profile, selectedFolderPath);
-                    if (result != null)
-                    {
-                        _snackbarControl.ShowAsync("Profile Exported", $"{result}");
-                    }
-                }
-            }
-        }
-
-        private async void ButtonDeleteProfile_Click(object sender, RoutedEventArgs e)
-        {
-            if (ConfigModel.Instance.Profiles.First() == ViewModel.Profile)
-            {
-                return;
-            }
-
-            var result = await _dialogControl.ShowAndWaitAsync("Confirm Deletion", "This will permanently delete the profile and all associated items.");
-
-            if (result == IDialogControl.ButtonPressed.Left)
-            {
-                if (ViewModel.Profile is Profile profile && ConfigModel.Instance.RemoveProfile(profile))
-                {
-                    var newSelectedProfile = ConfigModel.Instance.Profiles.FirstOrDefault(profile => { return profile.Active; }, ConfigModel.Instance.Profiles[0]);
-                    SharedModel.Instance.SelectedProfile = newSelectedProfile;
-                    ConfigModel.Instance.SaveProfiles();
-                }
-            }
-        }
-
         private void ButtonResetPosition_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             var screen = Screen.PrimaryScreen;
@@ -252,11 +222,6 @@ namespace InfoPanel.Views.Pages
         private void ButtonClose_Click(object sender, RoutedEventArgs e)
         {
             ViewModel.Profile = null;
-        }
-
-        private void ToggleSwitch_Checked(object sender, RoutedEventArgs e)
-        {
-            ConfigModel.Instance.SaveProfiles();
         }
 
         private async void ButtonVideoBackground_Click(object sender, RoutedEventArgs e)

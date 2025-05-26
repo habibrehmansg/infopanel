@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Linq;
@@ -52,31 +53,9 @@ namespace InfoPanel.Models
         private string _name = "Profile";
 
         [XmlIgnore]
-        private WriteableBitmap? _bitmapImage;
-
-        [XmlIgnore]
-        public WriteableBitmap? BitmapImage
-        {
-            get { return _bitmapImage; }
-            set { SetProperty(ref _bitmapImage, value); }
-        }
+        public SKBitmap? PreviewBitmap;
 
         public void NotifyBitmapUpdate()
-        {
-            OnPropertyChanged(nameof(Bitmap));
-        }
-
-        [XmlIgnore]
-        private WriteableBitmap? _bitmapImagePreview;
-
-        [XmlIgnore]
-        public WriteableBitmap? BitmapImagePreview
-        {
-            get { return _bitmapImagePreview; }
-            set { SetProperty(ref _bitmapImagePreview, value); }
-        }
-
-        public void NotifyBitmapPreviewUpdate()
         {
             OnPropertyChanged(nameof(Bitmap));
         }

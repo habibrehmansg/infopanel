@@ -6,6 +6,7 @@ using InfoPanel.Utils;
 using InfoPanel.ViewModels;
 using InfoPanel.Views;
 using InfoPanel.Views.Common;
+using InfoPanel.Views.Components;
 using InfoPanel.Views.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
