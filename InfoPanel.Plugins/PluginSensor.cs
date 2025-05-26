@@ -6,7 +6,37 @@
 
         public string Name { get; } = name;
 
-        public float Value { get; set; } = value;
+        private float _value = value;
+        private readonly Queue<float> _samples = new(60);
+        public int SampleWindow { get; set; } = 60;
+
+        public float Value
+        {
+            get => _value;
+            set
+            {
+                _value = value;
+                _samples.Enqueue(value);
+
+                if (_samples.Count > SampleWindow)
+                    _samples.Dequeue();
+
+                if (value < ValueMin)
+                {
+                    ValueMin = value;
+                }
+                else if (value > ValueMax)
+                {
+                    ValueMax = value;
+                }
+
+                ValueAvg = _samples.Average();
+            }
+        }
+
+        public float ValueMin { get; private set; } = value;
+        public float ValueMax { get; private set; } = value;
+        public float ValueAvg { get; private set; } = value;
 
         public string? Unit { get; } = unit;
 
@@ -20,7 +50,7 @@
             {
                 return "100%";
             }
-            else if(Unit == "%" && Math.Round(Value, 1) == 0)
+            else if (Unit == "%" && Math.Round(Value, 1) == 0)
             {
                 return "0%";
             }
