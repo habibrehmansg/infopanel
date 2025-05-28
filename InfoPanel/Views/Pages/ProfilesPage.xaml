@@ -17,7 +17,7 @@
     mc:Ignorable="d">
     <Page.Resources>
         <DataTemplate x:Key="ProfilePreviewTemplate">
-            <components:ProfilePageItemView />
+            <components:ProfilePageItemView Margin="5,5,5,5" />
         </DataTemplate>
     </Page.Resources>
 
@@ -61,15 +61,24 @@
             ItemTemplate="{StaticResource ProfilePreviewTemplate}"
             ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
             SelectedItem="{Binding ViewModel.Profile}"
-            SelectionMode="Single">
+            SelectionMode="Single"
+            VirtualizingPanel.ScrollUnit="Pixel">
             <ListView.ItemsPanel>
                 <ItemsPanelTemplate>
                     <ui:VirtualizingWrapPanel
                         Orientation="Vertical"
-                        SpacingMode="Uniform"
+                        SpacingMode="StartAndEndOnly"
                         StretchItems="False" />
                 </ItemsPanelTemplate>
             </ListView.ItemsPanel>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="IsSelected" Value="{Binding IsSelected}" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                    <Setter Property="Margin" Value="5,5,5,5" />
+                </Style>
+            </ListView.ItemContainerStyle>
         </ListView>
 
         <Expander
@@ -515,10 +524,7 @@
                                                 </StackPanel>
                                             </ui:CardControl>
 
-                                            <ui:CardControl
-                                                Grid.Column="1"
-                                                Margin="10,0,0,0"
-                                                IsEnabled="{Binding Direct2DMode}">
+                                            <ui:CardControl Grid.Column="1" Margin="10,0,0,0">
                                                 <ui:CardControl.Header>
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                         <TextBlock
@@ -528,7 +534,7 @@
                                                     </StackPanel>
                                                 </ui:CardControl.Header>
                                                 <StackPanel>
-                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DModeFps}" />
+                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowFps}" />
                                                 </StackPanel>
                                             </ui:CardControl>
                                         </Grid>

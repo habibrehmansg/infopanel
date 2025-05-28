@@ -55,6 +55,10 @@ namespace InfoPanel.Models
         [XmlIgnore]
         public SKBitmap? PreviewBitmap;
 
+        [XmlIgnore]
+        [ObservableProperty]
+        private bool _isSelected;
+
         public void NotifyBitmapUpdate()
         {
             OnPropertyChanged(nameof(Bitmap));
@@ -97,6 +101,9 @@ namespace InfoPanel.Models
                 SetProperty(ref _height, value);
             }
         }
+
+        [ObservableProperty]
+        private bool _showFps = false;
 
         private bool _overrideDpi = true;
         public bool OverrideDpi
@@ -181,16 +188,6 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _direct2DMode, value);
-            }
-        }
-
-        private bool _direct2DModeFps = false;
-        public bool Direct2DModeFps
-        {
-            get { return _direct2DModeFps; }
-            set
-            {
-                SetProperty(ref _direct2DModeFps, value);
             }
         }
 

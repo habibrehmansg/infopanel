@@ -55,18 +55,7 @@
                     Appearance="Success"
                     Click="ButtonExport_Click"
                     Content="Export"
-                    Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}">
-                    <!--<ui:Button.Style>
-                 <Style TargetType="{x:Type ui:Button}" BasedOn="{StaticResource {x:Type ui:Button}}">
-                     <Setter Property="Visibility" Value="Collapsed"/>
-                     <Style.Triggers>
-                         <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
-                             <Setter Property="Visibility" Value="Visible"/>
-                         </DataTrigger>
-                     </Style.Triggers>
-                 </Style>
-             </ui:Button.Style>-->
-                </ui:Button>
+                    Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
                 <ui:Button
                     Name="ButtonDelete"
                     Grid.Column="1"
@@ -78,12 +67,7 @@
                     Content=""
                     Icon="Delete20"
                     ToolTip="Delete Profile"
-                    Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
-                <Border
-                    BorderBrush="{DynamicResource SystemAccentColorPrimaryBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8,8,8,8"
-                    Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
+                    Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
             </Grid>
         </Border>
     </Grid>
