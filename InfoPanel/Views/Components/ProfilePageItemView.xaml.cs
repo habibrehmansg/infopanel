@@ -39,6 +39,7 @@ namespace InfoPanel.Views.Components
         }
         private async void ProfilePageItemView_Loaded(object sender, RoutedEventArgs e)
         {
+            Trace.WriteLine($"{DataContext} loaded");
             await Update();
 
             timer = new DispatcherTimer
@@ -51,6 +52,7 @@ namespace InfoPanel.Views.Components
 
         private void ProfilePageItemView_Unloaded(object sender, RoutedEventArgs e)
         {
+            Trace.WriteLine($"{DataContext} unloaded");
             if (timer != null)
             {
                 timer.Stop();
@@ -92,13 +94,14 @@ namespace InfoPanel.Views.Components
                     profile.PreviewBitmap = null;
                 }
 
-                profile.PreviewBitmap = new SKBitmap(width, height);
-                using var g = SkiaGraphics.FromBitmap(profile.PreviewBitmap);
+                profile.PreviewBitmap ??= new SKBitmap(width, height);
 
                 await Task.Run(() =>
                 {
+                    using var g = SkiaGraphics.FromBitmap(profile.PreviewBitmap);
                     PanelDraw.Run(profile, g, false, scale, false, true);
                 });
+
 
                 _paintCompletionSource = new TaskCompletionSource<bool>();
 
