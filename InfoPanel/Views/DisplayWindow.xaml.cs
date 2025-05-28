@@ -95,46 +95,9 @@ namespace InfoPanel.Views.Common
             var canvas = e.Surface.Canvas;
             canvas.Clear();
 
-            var sw = Stopwatch.StartNew();
-
             SkiaGraphics skiaGraphics = new(canvas, 1.33f);
             PanelDraw.Run(Profile, skiaGraphics);
             FpsCounter.Update();
-
-            //Trace.WriteLine(sw.ElapsedMilliseconds + "ms");
-
-            {
-                using var paint = new SKPaint
-                {
-                    Color = new SKColor(0, 0, 0, 200), // R, G, B, A (A=128 for 50% opacity)
-                    IsAntialias = true,
-                    Style = SKPaintStyle.Fill // Ensure the rectangle is filled
-                };
-
-                // Draw the rectangle at (x, y) with width and height
-                canvas.DrawRect(10, 10, 100, 100, paint);
-
-                using var p = new SKPaint
-                {
-                    Color = SKColors.LawnGreen,
-                    IsAntialias = true
-                };
-
-                using var f = new SKFont
-                {
-                    Size = 50
-                };
-
-                var metrics = f.Metrics;
-                // The ascent is negative, so subtracting it moves the baseline down
-                float y = 20 - metrics.Ascent;
-
-                canvas.DrawText($"{FpsCounter.FramesPerSecond}",
-                    new SKPoint(60, y),
-                    SKTextAlign.Center,
-                    f,
-                    p);
-            }
         }
 
         private void UpdateSkiaTimer()
