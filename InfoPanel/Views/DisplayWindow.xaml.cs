@@ -46,7 +46,7 @@ namespace InfoPanel.Views.Common
             DataContext = this;
 
             Direct2DMode = profile.Direct2DMode;
-            ShowFps = profile.Direct2DModeFps;
+            ShowFps = profile.ShowFps;
 
             InitializeComponent();
 
@@ -98,6 +98,13 @@ namespace InfoPanel.Views.Common
             SkiaGraphics skiaGraphics = new(canvas, 1.33f);
             PanelDraw.Run(Profile, skiaGraphics);
             FpsCounter.Update();
+
+            if (ShowFps)
+            {
+                skiaGraphics.FillRectangle("#64000000", e.Info.Width - 40, 0, 40, 30);
+                skiaGraphics.DrawString($"{FpsCounter.FramesPerSecond}", "Arial", 14, "#FF00FF00", e.Info.Width - 40, 3, centerAlign: true, width: 40, height: 30);
+            }
+
         }
 
         private void UpdateSkiaTimer()
@@ -198,9 +205,9 @@ namespace InfoPanel.Views.Common
                         ResizeMode = ResizeMode.NoResize;
                     }
                 }
-                else if (e.PropertyName == nameof(Profile.Direct2DModeFps))
+                else if (e.PropertyName == nameof(Profile.ShowFps))
                 {
-                    ShowFps = Profile.Direct2DModeFps;
+                    ShowFps = Profile.ShowFps;
                 }
                 else if (e.PropertyName == nameof(Profile.VideoBackgroundFilePath) || e.PropertyName == nameof(Profile.VideoBackgroundRotation))
                 {

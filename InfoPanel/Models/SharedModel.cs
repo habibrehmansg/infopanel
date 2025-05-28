@@ -837,6 +837,7 @@ namespace InfoPanel
                     //add profile settings
                     var exportProfile = new Profile(SelectedProfile.Name, SelectedProfile.Width, SelectedProfile.Height)
                     {
+                        ShowFps = SelectedProfile.ShowFps,
                         BackgroundColor = SelectedProfile.BackgroundColor,
                         Font = SelectedProfile.Font,
                         FontSize = SelectedProfile.FontSize,
@@ -845,7 +846,6 @@ namespace InfoPanel
                         VideoBackgroundFilePath = SelectedProfile.VideoBackgroundFilePath,
                         VideoBackgroundRotation = SelectedProfile.VideoBackgroundRotation,
                         Direct2DMode = SelectedProfile.Direct2DMode,
-                        Direct2DModeFps = SelectedProfile.Direct2DModeFps,
                         Direct2DFontScale = SelectedProfile.Direct2DFontScale,
                         Direct2DTextXOffset = SelectedProfile.Direct2DTextXOffset,
                         Direct2DTextYOffset = SelectedProfile.Direct2DTextYOffset,
