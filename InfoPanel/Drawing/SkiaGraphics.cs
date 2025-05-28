@@ -3,6 +3,7 @@ using SkiaSharp;
 using System;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
@@ -13,7 +14,7 @@ namespace InfoPanel.Drawing
         private readonly float FontScale = fontScale;
 
         public static SkiaGraphics FromBitmap(SKBitmap bitmap)
-        {
+            {
             var canvas = new SKCanvas(bitmap);
             return new SkiaGraphics(canvas);
         }
@@ -79,7 +80,7 @@ namespace InfoPanel.Drawing
                 {
                     DrawBitmap(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
                 }
-            });
+            }, cache);
         }
 
         public static SKBitmap ConvertToSKBitmap(System.Drawing.Bitmap bitmap)
