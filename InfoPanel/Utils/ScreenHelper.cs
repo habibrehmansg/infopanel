@@ -1,12 +1,12 @@
-﻿using ControlzEx.Standard;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Interop;
+using Point = System.Drawing.Point;
 
 namespace InfoPanel.Utils
 {
@@ -43,27 +43,67 @@ namespace InfoPanel.Utils
         private const int CCHDEVICENAME = 32;
         private const uint MONITORINFOF_PRIMARY = 0x00000001;
 
-        // Force refresh of screen information
-        public static void RefreshScreens()
-        {
-            // This forces Windows Forms to refresh its cached screen data
-            var dummy = Screen.PrimaryScreen;
-            var allScreens = Screen.AllScreens;
+        [DllImport("user32.dll")]
+        static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
-            // Alternative: Use reflection to clear the cache (if available)
-            try
+        const uint SWP_NOSIZE = 0x0001;
+        const uint SWP_NOZORDER = 0x0004;
+
+        public static void MoveWindowPhysical(Window window, int x, int y)
+        {
+            var hwnd = new WindowInteropHelper(window).Handle;
+            SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        public static Point GetWindowPositionPhysical(Window window)
+        {
+            var hWnd = new WindowInteropHelper(window).Handle;
+            GetWindowRect(hWnd, out var rect);
+            return new Point(rect.Left, rect.Top);
+        }
+
+        public static MonitorInfo? GetWindowScreen(Window window)
+        {
+            var hwnd = new WindowInteropHelper(window).Handle;
+            if (!GetWindowRect(hwnd, out var rect))
+                return null;
+
+            var windowPos = new Point(rect.Left, rect.Top);
+            var monitors = GetAllMonitors();
+
+            // Find the monitor whose bounds contain the window position
+            foreach (var monitor in monitors)
             {
-                var screenType = typeof(Screen);
-                var screensField = screenType.GetField("screens", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-                if (screensField != null)
+                if (monitor.Bounds.Contains(windowPos))
                 {
-                    screensField.SetValue(null, null);
+                    return monitor;
                 }
             }
-            catch
-            {
-                // Ignore if reflection fails
-            }
+
+            // If not contained (e.g., overlapping), return the closest by distance
+            return monitors
+                .OrderBy(m => DistanceSquared(windowPos, m.Bounds))
+                .FirstOrDefault();
+        }
+
+        private static double DistanceSquared(Point point, Rectangle rect)
+        {
+            int centerX = rect.Left + rect.Width / 2;
+            int centerY = rect.Top + rect.Height / 2;
+            int dx = (int)(centerX - point.X);
+            int dy = (int)(centerY - point.Y);
+            return dx * dx + dy * dy;
+        }
+
+        public static Point GetWindowRelativePosition(MonitorInfo screen, Point absolutePosition)
+        {
+            var relativeX = absolutePosition.X - screen.Bounds.X;
+            var relativeY = absolutePosition.Y - screen.Bounds.Y;
+
+            return new Point(relativeX, relativeY);
         }
 
         // Get fresh monitor list using Win32 API
@@ -99,9 +139,14 @@ namespace InfoPanel.Utils
 
     public class MonitorInfo
     {
-        public string DeviceName { get; set; }
+        public string? DeviceName { get; set; }
         public Rectangle Bounds { get; set; }
         public Rectangle WorkingArea { get; set; }
         public bool IsPrimary { get; set; }
+
+        public override string ToString()
+        {
+            return $"Monitor: {DeviceName}, Bounds={Bounds}, WorkingArea={WorkingArea}, Primary={IsPrimary}";
+        }
     }
 }
