@@ -1,4 +1,5 @@
-﻿using InfoPanel.Drawing;
+﻿using ControlzEx.Standard;
+using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Win32;
@@ -32,6 +33,10 @@ namespace InfoPanel.Views.Common
         private bool _dragMove = false;
         private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
 
+        private bool _isUserResizing = false;
+        private readonly DispatcherTimer _resizeTimer;
+        private bool _isDpiChanging = false;
+
         public DisplayWindow(Profile profile) : base(profile.Direct2DMode)
         {
             RenderOptions.ProcessRenderMode = RenderMode.Default;
@@ -59,6 +64,86 @@ namespace InfoPanel.Views.Common
             ConfigModel.Instance.Settings.PropertyChanged += Config_PropertyChanged;
 
             SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
+
+            DpiChanged += DisplayWindow_DpiChanged;
+            LocationChanged += DisplayWindow_LocationChanged;
+            SizeChanged += DisplayWindow_SizeChanged;
+
+            _resizeTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(300) // 300ms delay
+            };
+            _resizeTimer.Tick += OnResizeCompleted;
+        }
+
+        private void DisplayWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            // Only track user-initiated size changes, not our DPI corrections
+            if (!_isDpiChanging)
+            {
+                _isUserResizing = true;
+
+                // Restart the timer - user is still resizing
+                _resizeTimer.Stop();
+                _resizeTimer.Start();
+            }
+        }
+
+        private void DisplayWindow_DpiChanged(object sender, DpiChangedEventArgs e)
+        {
+            _isDpiChanging = true;
+            MaintainPixelSize();
+            _isDpiChanging = false;
+        }
+
+        private void DisplayWindow_LocationChanged(object? sender, EventArgs e)
+        {
+            _isDpiChanging = true;
+            MaintainPixelSize();
+            _isDpiChanging = false;
+        }
+
+        private void OnResizeCompleted(object? sender, EventArgs e)
+        {
+            _resizeTimer.Stop();
+
+            if (_isUserResizing)
+            {
+                _isUserResizing = false;
+                UpdateModelWithNewSize();
+            }
+        }
+
+        private void MaintainPixelSize()
+        {
+            // Convert desired pixel size to WPF units for current DPI
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget != null)
+            {
+                var dpiX = source.CompositionTarget.TransformToDevice.M11;
+                var dpiY = source.CompositionTarget.TransformToDevice.M22;
+
+                // Set size in WPF units that will result in exact pixel dimensions
+                this.Width = Profile.Width / dpiX;
+                this.Height = Profile.Height / dpiY;
+            }
+        }
+
+        private void UpdateModelWithNewSize()
+        {
+            // Convert current WPF size back to pixels
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget != null)
+            {
+                var dpiX = source.CompositionTarget.TransformToDevice.M11;
+                var dpiY = source.CompositionTarget.TransformToDevice.M22;
+
+                var newPixelWidth = this.ActualWidth * dpiX;
+                var newPixelHeight = this.ActualHeight * dpiY;
+
+                Profile.Width = (int)newPixelWidth;
+                Profile.Height = (int)newPixelHeight;
+            }
         }
 
         protected override void OnRender(D2DGraphics d2dGraphics)
@@ -147,6 +232,9 @@ namespace InfoPanel.Views.Common
 
         private void DisplayWindow_Closed(object? sender, EventArgs e)
         {
+            _resizeTimer.Stop();
+            _resizeTimer.Tick -= OnResizeCompleted;
+
             ConfigModel.Instance.Settings.PropertyChanged -= Config_PropertyChanged;
 
             _skiaTimer?.Stop();
