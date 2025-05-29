@@ -154,9 +154,13 @@ namespace InfoPanel.Models
                 var cachedImage = InfoPanel.Cache.GetLocalImage(CalculatedPath);
                 if (cachedImage != null)
                 {
-                    if (cachedImage.Width != 0 && cachedImage.Height != 0)
+                    if(result.Width == 0)
                     {
                         result.Width = cachedImage.Width;
+                    }
+
+                    if (result.Height == 0)
+                    {
                         result.Height = cachedImage.Height;
                     }
                 }
