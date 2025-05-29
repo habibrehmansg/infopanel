@@ -160,7 +160,7 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.DrawBitmap(bitmapGraphics, new D2DRect(x, y, width, height));
         }
 
-        public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
+        public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
         {
             throw new NotSupportedException();
         }

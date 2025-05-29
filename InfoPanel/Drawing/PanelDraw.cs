@@ -289,7 +289,7 @@ namespace InfoPanel.Drawing
 
                         if (chartDisplayItem.FlipX)
                         {
-                            g.DrawBitmap(graphBitmap, x, y, width, height, 180);
+                            g.DrawBitmap(graphBitmap, x, y, width, height, flipX: true);
                         }
                         else
                         {

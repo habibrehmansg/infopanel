@@ -50,7 +50,7 @@ namespace InfoPanel.Drawing
         {
         }
 
-        public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
+        public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
         {
             using var image = SKImage.FromBitmap(bitmap);
             using var paint = new SKPaint
@@ -62,6 +62,16 @@ namespace InfoPanel.Drawing
             var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Nearest);
 
             Canvas.Save();
+
+            if (flipX || flipY)
+            {
+                float scaleX = flipX ? -1 : 1;
+                float scaleY = flipY ? -1 : 1;
+                int flipCenterX = x + width / 2;
+                int flipCenterY = y + height / 2;
+
+                Canvas.Scale(scaleX, scaleY, flipCenterX, flipCenterY);
+            }
 
             if (rotation != 0)
             {
