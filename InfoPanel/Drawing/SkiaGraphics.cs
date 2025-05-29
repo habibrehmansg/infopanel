@@ -4,6 +4,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Windows.Documents;
 using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
@@ -51,10 +52,12 @@ namespace InfoPanel.Drawing
 
         public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
-            if (bitmap == null || Canvas == null)
-                return;
-
             using var image = SKImage.FromBitmap(bitmap);
+            using var paint = new SKPaint
+            {
+                IsAntialias = true
+            };
+
             var destRect = new SKRect(x, y, x + width, y + height);
             var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Nearest);
 
@@ -62,12 +65,13 @@ namespace InfoPanel.Drawing
 
             if (rotation != 0)
             {
-                Canvas.Translate(rotationCenterX, rotationCenterY);
-                Canvas.RotateDegrees(rotation);
-                Canvas.Translate(-rotationCenterX, -rotationCenterY);
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+                Canvas.RotateDegrees(rotation, centerX, centerY);
             }
 
-            Canvas.DrawImage(image, destRect, sampling);
+            Canvas.DrawImage(image, destRect, sampling, paint);
 
             Canvas.Restore();
         }
@@ -81,14 +85,6 @@ namespace InfoPanel.Drawing
                     DrawBitmap(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
                 }
             }, cache);
-        }
-
-        public static SKBitmap ConvertToSKBitmap(System.Drawing.Bitmap bitmap)
-        {
-            using var ms = new MemoryStream();
-            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png); // or BMP/JPEG
-            ms.Seek(0, SeekOrigin.Begin);
-            return SKBitmap.Decode(ms);
         }
 
         public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
@@ -125,10 +121,10 @@ namespace InfoPanel.Drawing
                 Style = SKPaintStyle.Stroke
             };
 
-            Canvas.DrawPath(path, paint); // assuming 'canvas' is your SKCanvas instance
+            Canvas.DrawPath(path, paint);
         }
 
-        public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height)
+        public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             using var paint = new SKPaint
             {
@@ -138,10 +134,22 @@ namespace InfoPanel.Drawing
                 Style = SKPaintStyle.Stroke
             };
 
+            Canvas.Save();
+
+            if (rotation != 0)
+            {
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+                Canvas.RotateDegrees(rotation, centerX, centerY);
+            }
+
             Canvas.DrawRect(x, y, width, height, paint);
+
+            Canvas.Restore();
         }
 
-        public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height)
+        public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             using var paint = new SKPaint
             {
@@ -151,7 +159,19 @@ namespace InfoPanel.Drawing
                 Style = SKPaintStyle.Stroke // or Fill
             };
 
+            Canvas.Save();
+
+            if (rotation != 0)
+            {
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+                Canvas.RotateDegrees(rotation, centerX, centerY);
+            }
+
             Canvas.DrawRect(x, y, width, height, paint);
+
+            Canvas.Restore();
         }
 
         public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0)
@@ -171,7 +191,7 @@ namespace InfoPanel.Drawing
             SKFontStyleWidth widthStyle = SKFontStyleWidth.Normal;
             SKFontStyleSlant slant = italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright;
 
-            var fontStyle = new SKFontStyle(weight, widthStyle, slant);
+            using var fontStyle = new SKFontStyle(weight, widthStyle, slant);
             using var typeface = SKTypeface.FromFamilyName(fontName, fontStyle);
             using var font = new SKFont(typeface, size: (float)(fontSize * FontScale));
 
@@ -443,7 +463,7 @@ namespace InfoPanel.Drawing
             Canvas.DrawPath(path, paint);
         }
 
-        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true)
+        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             using var paint = new SKPaint
             {
@@ -473,23 +493,37 @@ namespace InfoPanel.Drawing
                 paint.Color = SKColor.Parse(color);
             }
 
+            Canvas.Save();
+
+            if (rotation != 0)
+            {
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+                Canvas.RotateDegrees(rotation, centerX, centerY);
+            }
+
             Canvas.DrawRect(x, y, width, height, paint);
+
+            Canvas.Restore();
         }
 
         public override (float width, float height) MeasureString(string text, string fontName, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
         {
-            // Handle font style (bold, italic)
             SKFontStyleWeight weight = bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
             SKFontStyleWidth widthStyle = SKFontStyleWidth.Normal;
             SKFontStyleSlant slant = italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright;
 
-            var fontStyle = new SKFontStyle(weight, widthStyle, slant);
+            using var fontStyle = new SKFontStyle(weight, widthStyle, slant);
             using var typeface = SKTypeface.FromFamilyName(fontName, fontStyle);
-            using var font = new SKFont(typeface, size: (float)(fontSize * FontScale));
+            using var font = new SKFont(typeface, size: fontSize * FontScale);
 
             var metrics = font.Metrics;
 
-            return (font.MeasureText(text), metrics.Ascent);
+            float width = font.MeasureText(text);
+            float height = metrics.Descent - metrics.Ascent;
+
+            return (width, height);
         }
     }
 }

@@ -1,8 +1,8 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Linq;
-using System.Windows;
 
 namespace InfoPanel.Models
 {
@@ -152,33 +152,31 @@ namespace InfoPanel.Models
             return (Name, Color);
         }
 
-        public override SizeF EvaluateSize()
+        public override SKSize EvaluateSize()
         {
-            using Bitmap bitmap = new(1, 1);
-            using Graphics g = Graphics.FromImage(bitmap);
-            using Font font = new(Font, FontSize);
+            SKFontStyleWeight weight = Bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
+            SKFontStyleWidth widthStyle = SKFontStyleWidth.Normal;
+            SKFontStyleSlant slant = Italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright;
+
+            using var fontStyle = new SKFontStyle(weight, widthStyle, slant);
+            using var typeface = SKTypeface.FromFamilyName(Font, fontStyle);
+            using var font = new SKFont(typeface, size: FontSize * 1.33f);
+
+            var metrics = font.Metrics;
             var text = EvaluateText();
-            var sizeF = g.MeasureString(text, font, 0, StringFormat.GenericTypographic);
 
-            if(Width != 0)
-            {
-                sizeF.Width = Width;
-            }
+            float width = font.MeasureText(text);
+            float height = metrics.Descent - metrics.Ascent;
 
-            return sizeF;
+            return new SKSize(width, height);
         }
 
-        public override Rect EvaluateBounds()
+        public override SKRect EvaluateBounds()
         {
             var size = EvaluateSize();
-            if (RightAlign && Width == 0)
-            {
-                return new Rect(X - size.Width, Y, size.Width, size.Height);
-            }
-            else
-            {
-                return new Rect(X, Y, size.Width, size.Height);
-            }
+            int rectX = Width == 0 && RightAlign ? (int)(X - size.Width) : X;
+
+            return new SKRect(rectX, Y, rectX + size.Width, Y + size.Height);
         }
 
         public override void SetProfileGuid(Guid profileGuid)

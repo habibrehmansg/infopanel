@@ -1,5 +1,4 @@
-﻿using ControlzEx.Standard;
-using InfoPanel.Drawing;
+﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Win32;
@@ -304,18 +303,18 @@ namespace InfoPanel.Views.Common
             }
             else if (e.PropertyName == nameof(Profile.VideoBackgroundFilePath) || e.PropertyName == nameof(Profile.VideoBackgroundRotation))
             {
-                _dispatcher.BeginInvoke(() =>
-                {
-                    if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
-                    {
-                        var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
-                        LoadVideoBackground(videoFilePath);
-                    }
-                    else
-                    {
-                        StopVideoBackground();
-                    }
-                });
+                //_dispatcher.BeginInvoke(() =>
+                //{
+                //    if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
+                //    {
+                //        var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
+                //        LoadVideoBackground(videoFilePath);
+                //    }
+                //    else
+                //    {
+                //        StopVideoBackground();
+                //    }
+                //});
             }
         }
 
@@ -400,10 +399,7 @@ namespace InfoPanel.Views.Common
                     var inSelectionBounds = false;
                     foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                     {
-                        var evaluatedSize = displayItem.EvaluateSize();
-                        Rect bounds = displayItem.EvaluateBounds();
-
-                        if (bounds.Contains(e.GetPosition(this)))
+                        if (displayItem.ContainsPoint(e.GetPosition(this)))
                         {
                             inSelectionBounds = true;
                             break;
@@ -414,7 +410,9 @@ namespace InfoPanel.Views.Common
                     {
                         foreach (var selectedItem in SharedModel.Instance.SelectedVisibleItems)
                         {
-                            selectedItem.Selected = false;
+                            App.Current.Dispatcher.BeginInvoke(() => {
+                                selectedItem.Selected = false;
+                            });
                         }
                     }
                 }
@@ -489,7 +487,6 @@ namespace InfoPanel.Views.Common
                 }
 
                 DisplayItem? clickedItem = null;
-                Rect clickedItemBounds = new(0, 0, 0, 0);
 
                 var displayItems = SharedModel.Instance.DisplayItems.ToList();
                 displayItems.Reverse();
@@ -510,17 +507,9 @@ namespace InfoPanel.Views.Common
                                 continue;
                             }
 
-                            var groupItemBounds = groupItem.EvaluateBounds();
-
-                            if (groupItemBounds.Width >= Profile.Width && groupItemBounds.Height >= Profile.Height && groupItemBounds.X == 0 && groupItemBounds.Y == 0)
-                            {
-                                continue;
-                            }
-
-                            if (groupItemBounds.Contains(e.GetPosition(this)))
+                            if (groupItem.ContainsPoint(e.GetPosition(this)))
                             {
                                 clickedItem = groupItem;
-                                clickedItemBounds = groupItemBounds;
                                 break;
                             }
                         }
@@ -528,17 +517,14 @@ namespace InfoPanel.Views.Common
                         continue;
                     }
 
-                    var itemBounds = item.EvaluateBounds();
-
-                    if (itemBounds.Width >= Profile.Width && itemBounds.Height >= Profile.Height && itemBounds.X == 0 && itemBounds.Y == 0)
+                    if(clickedItem != null)
                     {
-                        continue;
+                        break;
                     }
 
-                    if (itemBounds.Contains(e.GetPosition(this)))
+                    if (item.ContainsPoint(e.GetPosition(this)))
                     {
                         clickedItem = item;
-                        clickedItemBounds = itemBounds;
                         break;
                     }
                 }
@@ -548,14 +534,22 @@ namespace InfoPanel.Views.Common
 
                     if (!Keyboard.IsKeyDown(Key.LeftCtrl) && !Keyboard.IsKeyDown(Key.LeftShift))
                     {
-                        SharedModel.Instance.SelectedItem = clickedItem;
+                        Application.Current.Dispatcher.BeginInvoke(() => {
+                            SharedModel.Instance.SelectedItem = clickedItem;
+                        });
                     }
 
-                    clickedItem.Selected = true;
+                    Application.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        clickedItem.Selected = true;
+                    });
                 }
                 else
                 {
-                    SharedModel.Instance.SelectedItem = null;
+                    Application.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        SharedModel.Instance.SelectedItem = null;
+                    });
                 }
             }
         }
@@ -625,11 +619,11 @@ namespace InfoPanel.Views.Common
 
             VideoBackground.MediaOpened += VideoBackground_MediaOpened;
 
-            if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
-            {
-                var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
-                LoadVideoBackground(videoFilePath);
-            }
+            //if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
+            //{
+            //    var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
+            //    LoadVideoBackground(videoFilePath);
+            //}
 
             if (!Profile.Direct2DMode)
             {

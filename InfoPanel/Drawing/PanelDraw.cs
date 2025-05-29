@@ -35,7 +35,7 @@ namespace InfoPanel.Drawing
         public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false)
         {
             //Compat graphics has background handled by WPF
-            if (g is AcceleratedGraphics || videoBackgroundFallback)
+            if (g is AcceleratedGraphics || videoBackgroundFallback || g is SkiaGraphics)
             {
                 g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
 
@@ -86,45 +86,7 @@ namespace InfoPanel.Drawing
                     {
                         // Pen width
                         int penWidth = 2;
-
-                        // Calculate the center of the rectangle
-                        var centerX = rectangle.X + rectangle.Width / 2;
-                        var centerY = rectangle.Y + rectangle.Height / 2;
-
-                        // Create a matrix for transformation
-                        var matrix = new Matrix();
-
-                        // Translate to the center, rotate, then translate back
-                        matrix.Translate(centerX, centerY);
-                        matrix.Rotate(rectangle.Rotation);
-                        matrix.Translate(-centerX, -centerY);
-
-                        // Define the rectangle points
-                        PointF[] points =
-                        [
-                            new PointF(rectangle.X, rectangle.Y),
-                            new PointF(rectangle.X + rectangle.Width, rectangle.Y),
-                            new PointF(rectangle.X + rectangle.Width, rectangle.Y + rectangle.Height),
-                            new PointF(rectangle.X, rectangle.Y + rectangle.Height)
-                        ];
-
-                        // Apply the transformation
-                        matrix.TransformPoints(points);
-
-                        // Find the bounding box of the transformed points
-                        float minX = points.Min(p => p.X);
-                        float minY = points.Min(p => p.Y);
-                        float maxX = points.Max(p => p.X);
-                        float maxY = points.Max(p => p.Y);
-
-                        // Clamp the bounding box
-                        minX = Math.Clamp(minX, penWidth / 2, profile.Width - penWidth / 2);
-                        minY = Math.Clamp(minY, penWidth / 2, profile.Height - penWidth / 2);
-                        maxX = Math.Clamp(maxX, penWidth / 2, profile.Width - penWidth / 2);
-                        maxY = Math.Clamp(maxY, penWidth / 2, profile.Height - penWidth / 2);
-
-                        // Draw the rectangle using the bounding box
-                        g.DrawRectangle(Color.FromArgb(255, 0, 255, 0), penWidth, (int)minX, (int)minY, (int)(maxX - minX), (int)(maxY - minY)); // Rotation already applied
+                        g.DrawRectangle(Color.FromArgb(255, 0, 255, 0), penWidth, rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height, rectangle.Rotation);
                     }
                 }
             }
@@ -220,15 +182,6 @@ namespace InfoPanel.Drawing
                             textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout,
                             textDisplayItem.Width);
 
-
-                        if (displayItem.Selected)
-                        {
-                            var size = textDisplayItem.EvaluateSize();
-                            int rectX = textDisplayItem.Width == 0 && textDisplayItem.RightAlign ? (int)(x - size.Width) : x;
-
-                            selectedRectangles.Add(new SelectedRectangle(rectX, y, (int)size.Width, (int)size.Height));
-                        }
-
                         break;
                     }
                 case ImageDisplayItem imageDisplayItem:
@@ -269,17 +222,12 @@ namespace InfoPanel.Drawing
 
                         if (cachedImage != null)
                         {
-                            g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, (int)(x + scaledWidth / 2.0f), (int)(y + scaledHeight / 2.0f), imageDisplayItem.Cache && cache);
+                            g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, cache: imageDisplayItem.Cache && cache);
 
                             if (imageDisplayItem.Layer)
                             {
-                                g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight);
+                                g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight, rotation: imageDisplayItem.Rotation);
                             }
-                        }
-
-                        if (displayItem.Selected)
-                        {
-                            selectedRectangles.Add(new SelectedRectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4, imageDisplayItem.Rotation));
                         }
                         break;
                     }
@@ -310,11 +258,6 @@ namespace InfoPanel.Drawing
                                 scaledHeight = (int)Math.Ceiling(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
 
                                 g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache);
-
-                                if (displayItem.Selected)
-                                {
-                                    selectedRectangles.Add(new SelectedRectangle(x - 2, y - 2, scaledWidth + 4, scaledHeight + 4));
-                                }
                             }
                         }
                         break;
@@ -372,18 +315,21 @@ namespace InfoPanel.Drawing
 
                         if (chartDisplayItem.FlipX)
                         {
-                            //todo
+                            g.DrawBitmap(graphBitmap, x, y, width, height, 180);
                         }
-
-                        g.DrawBitmap(graphBitmap, x, y, width, height);
-                    }
-
-                    if (displayItem.Selected)
-                    {
-                        selectedRectangles.Add(new SelectedRectangle(chartDisplayItem.X - 2, chartDisplayItem.Y - 2, chartDisplayItem.Width + 4, chartDisplayItem.Height + 4));
+                        else
+                        {
+                            g.DrawBitmap(graphBitmap, x, y, width, height);
+                        }
                     }
 
                     break;
+            }
+
+            if (displayItem.Selected)
+            {
+                var bounds = displayItem.EvaluateBounds();
+                selectedRectangles.Add(new SelectedRectangle((int)bounds.Left, (int)bounds.Top, (int)bounds.Width, (int)bounds.Height, displayItem.Rotation));
             }
         }
 

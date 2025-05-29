@@ -142,18 +142,18 @@ namespace InfoPanel.Drawing
             this.Graphics.DrawLine(pen, new PointF(x1, y1), new PointF(x2, y2));
         }
 
-        public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height)
+        public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             using var pen = new Pen(color, strokeWidth);
             this.Graphics.DrawRectangle(pen, x, y, width, height);
         }
 
-        public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height)
+        public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height);
         }
 
-        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true)
+        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             if (gradientColor != null)
             {
