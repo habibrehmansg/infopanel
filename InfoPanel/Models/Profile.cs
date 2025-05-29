@@ -125,26 +125,6 @@ namespace InfoPanel.Models
             }
         }
 
-        private string? _videoBackgroundFilePath;
-        public string? VideoBackgroundFilePath
-        {
-            get { return _videoBackgroundFilePath; }
-            set
-            {
-                SetProperty(ref _videoBackgroundFilePath, value);
-            }
-        }
-
-        private Enums.Rotation _videoBackgroundRotation = 0;
-        public Enums.Rotation VideoBackgroundRotation
-        {
-            get { return _videoBackgroundRotation; }
-            set
-            {
-                SetProperty(ref _videoBackgroundRotation, value);
-            }
-        }
-
         private string _backgroundColor = "#FFFFFFFF";
         public string BackgroundColor
         {

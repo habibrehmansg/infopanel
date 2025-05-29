@@ -28,19 +28,7 @@
             GlassFrameThickness="0"
             ResizeBorderThickness="10" />
     </WindowChrome.WindowChrome>
-    <Canvas Background="{Binding Path=Profile.BackgroundColor}">
-        <MediaElement
-            Name="VideoBackground"
-            LoadedBehavior="Manual"
-            Stretch="None"
-            UnloadedBehavior="Manual">
-            <MediaElement.Effect>
-                <app:DeeperColorEffect />
-            </MediaElement.Effect>
-            <!--<MediaElement.RenderTransform>
-                <RotateTransform Angle="270" CenterX="425" CenterY="425" />
-            </MediaElement.RenderTransform>-->
-        </MediaElement>
+    <Canvas>
         <skia:SKElement
             x:Name="skElement"
             Width="{Binding Profile.Width, Mode=OneWay}"

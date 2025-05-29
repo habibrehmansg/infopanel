@@ -843,8 +843,6 @@ namespace InfoPanel
                         FontSize = SelectedProfile.FontSize,
                         Color = SelectedProfile.Color,
                         OverrideDpi = SelectedProfile.OverrideDpi,
-                        VideoBackgroundFilePath = SelectedProfile.VideoBackgroundFilePath,
-                        VideoBackgroundRotation = SelectedProfile.VideoBackgroundRotation,
                         Direct2DMode = SelectedProfile.Direct2DMode,
                         Direct2DFontScale = SelectedProfile.Direct2DFontScale,
                         Direct2DTextXOffset = SelectedProfile.Direct2DTextXOffset,

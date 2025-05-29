@@ -63,7 +63,7 @@
                     VerticalAlignment="Top"
                     Appearance="Primary"
                     Click="ButtonSelect_Click"
-                    Content="Select Image"
+                    Content="Select Media"
                     Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
             </Grid>
 

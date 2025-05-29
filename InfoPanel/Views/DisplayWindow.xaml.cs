@@ -12,7 +12,6 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using unvell.D2DLib;
 
@@ -25,9 +24,6 @@ namespace InfoPanel.Views.Common
     {
         public Profile Profile { get; }
         public bool Direct2DMode { get; }
-
-        private MediaTimeline? mediaTimeline;
-        private MediaClock? mediaClock;
 
         private bool _dragMove = false;
         private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
@@ -300,21 +296,6 @@ namespace InfoPanel.Views.Common
                 {
                     ShowFps = Profile.ShowFps;
                 });
-            }
-            else if (e.PropertyName == nameof(Profile.VideoBackgroundFilePath) || e.PropertyName == nameof(Profile.VideoBackgroundRotation))
-            {
-                //_dispatcher.BeginInvoke(() =>
-                //{
-                //    if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
-                //    {
-                //        var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
-                //        LoadVideoBackground(videoFilePath);
-                //    }
-                //    else
-                //    {
-                //        StopVideoBackground();
-                //    }
-                //});
             }
         }
 
@@ -617,81 +598,11 @@ namespace InfoPanel.Views.Common
 
             SetWindowPositionRelativeToScreen();
 
-            VideoBackground.MediaOpened += VideoBackground_MediaOpened;
-
-            //if (!Profile.Direct2DMode && Profile.VideoBackgroundFilePath is string filePath)
-            //{
-            //    var videoFilePath = FileUtil.GetRelativeAssetPath(Profile, filePath);
-            //    LoadVideoBackground(videoFilePath);
-            //}
-
             if (!Profile.Direct2DMode)
             {
                 UpdateSkiaTimer();
             }
         }
-
-        private void VideoBackground_MediaOpened(object sender, RoutedEventArgs e)
-        {
-            double videoWidth = VideoBackground.NaturalVideoWidth;
-            double videoHeight = VideoBackground.NaturalVideoHeight;
-
-            Trace.WriteLine($"Video: {videoWidth} x {videoHeight}");
-
-            (double angle, double centerX, double centerY) = Profile.VideoBackgroundRotation switch
-            {
-                Enums.Rotation.Rotate90FlipNone => (90, videoHeight / 2, videoHeight / 2),
-                Enums.Rotation.Rotate180FlipNone => (180, videoWidth / 2, videoHeight / 2),
-                Enums.Rotation.Rotate270FlipNone => (270, videoWidth / 2, videoWidth / 2),
-                _ => (0, 0, 0)
-            };
-
-            RotateTransform rotateTransform = new()
-            {
-                Angle = angle,
-                CenterX = centerX,
-                CenterY = centerY,
-            };
-
-            Trace.WriteLine($"Transform {rotateTransform.Angle} {rotateTransform.CenterX} {rotateTransform.CenterY}");
-
-            VideoBackground.RenderTransform = rotateTransform;
-        }
-
-        private void LoadVideoBackground(string filePath)
-        {
-            try
-            {
-                VideoBackground.Visibility = Visibility.Visible;
-
-                //stop existing video if any
-                mediaClock?.Controller.Stop();
-
-                mediaTimeline = new MediaTimeline(new Uri(filePath, UriKind.Absolute))
-                {
-                    RepeatBehavior = RepeatBehavior.Forever
-                };
-
-                mediaClock = mediaTimeline.CreateClock();
-                VideoBackground.Clock = mediaClock;
-
-                mediaClock.Controller.Begin();
-            }
-            catch (Exception ex)
-            {
-                // Handle exceptions
-                Console.WriteLine("Error loading media: " + ex.Message);
-            }
-        }
-
-        private void StopVideoBackground()
-        {
-            mediaClock?.Controller.Stop();
-            VideoBackground.Clock = null;
-            VideoBackground.Source = null;
-            VideoBackground.Visibility = Visibility.Hidden;
-        }
-
 
         //     [DllImport("user32.dll", SetLastError = true)]
         //     public static extern IntPtr FindWindowEx(IntPtr hP, IntPtr hC, string sC,
