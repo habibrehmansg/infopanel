@@ -1,6 +1,7 @@
 ﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.Utils;
+using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -104,6 +105,16 @@ namespace InfoPanel
             return bitmap;
         }
 
+        public static SKBitmap RenderSK(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul)
+        {
+            var bitmap = new SKBitmap(profile.Width, profile.Height, colorType, alphaType);
+            
+            using var g = SkiaGraphics.FromBitmap(bitmap) as MyGraphics;
+            PanelDraw.Run(profile, g, drawSelected, scale, cache, videoBackgroundFallback);
+
+            return bitmap;
+        }
+
         public static Bitmap RenderSplash(int width, int height, PixelFormat pixelFormat = PixelFormat.Format32bppArgb, RotateFlipType rotateFlipType = RotateFlipType.RotateNoneFlipNone)
         {
             var bitmap = new Bitmap(width, height, pixelFormat);
@@ -116,6 +127,18 @@ namespace InfoPanel
             var size = Math.Min(width, height) / 3;
             g.DrawBitmap(logo, width / 2 - size / 2, height / 2 - size / 2, size, size);
             
+            return bitmap;
+        }
+
+        public static SKBitmap RenderSplashSK(int width, int height, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul, RotateFlipType rotateFlipType = RotateFlipType.RotateNoneFlipNone)
+        {
+            var bitmap = new SKBitmap(width, height, colorType, alphaType);
+            using var g = SkiaGraphics.FromBitmap(bitmap) as MyGraphics;
+            //g.Clear(SKColors.Black);
+            //using var logo = LoadBitmapFromResource("logo.png");
+            //logo.RotateFlip(rotateFlipType);
+            var size = Math.Min(width, height) / 3;
+            //g.DrawBitmap(logo, width / 2 - size / 2, height / 2 - size / 2, size, size);
             return bitmap;
         }
 

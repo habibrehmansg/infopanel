@@ -125,27 +125,6 @@ namespace InfoPanel.Extensions
             return CombineRectangles(changedSectors, maxSectorWidth, maxSectorHeight);
         }
 
-        //public static unsafe bool AreSectorsEqual(BitmapData data1, BitmapData data2, int startX, int startY, int sectorWidth, int sectorHeight, int bitmapWidth)
-        //{
-        //    int bytesPerPixel = Image.GetPixelFormatSize(data1.PixelFormat) / 8;
-        //    byte* ptr1 = (byte*)data1.Scan0;
-        //    byte* ptr2 = (byte*)data2.Scan0;
-
-        //    for (int y = startY; y < startY + sectorHeight; y++)
-        //    {
-        //        byte* row1 = ptr1 + y * data1.Stride;
-        //        byte* row2 = ptr2 + y * data2.Stride;
-        //        for (int x = startX * bytesPerPixel; x < (startX + sectorWidth) * bytesPerPixel; x++)
-        //        {
-        //            if (row1[x] != row2[x])
-        //            {
-        //                return false;
-        //            }
-        //        }
-        //    }
-        //    return true;
-        //}
-
         public static unsafe bool AreSectorsEqual(BitmapData data1, BitmapData data2, int startX, int startY, int sectorWidth, int sectorHeight, int bitmapWidth)
         {
             int bytesPerPixel = Image.GetPixelFormatSize(data1.PixelFormat) / 8;
@@ -199,16 +178,6 @@ namespace InfoPanel.Extensions
             return true;
         }
 
-        public static Bitmap GetSectorBitmap(Bitmap sourceBitmap, Point sectorTopLeft, int sectorWidth, int sectorHeight)
-        {
-            // Define the rectangle for the sector
-            Rectangle sector = new(sectorTopLeft.X, sectorTopLeft.Y, sectorWidth, sectorHeight);
-
-            // Clone the sector into a new Bitmap
-            Bitmap sectorBitmap = sourceBitmap.Clone(sector, sourceBitmap.PixelFormat);
-
-            return sectorBitmap;
-        }
 
         public static List<Rectangle> CombineRectangles(List<Rectangle> rectangles, int maxWidth, int maxHeight)
         {

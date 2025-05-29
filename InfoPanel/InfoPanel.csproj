@@ -75,6 +75,9 @@
 		<Reference Include="TuringSmartScreenLib.Helpers.GDI">
 			<HintPath>Lib\TuringSmartScreenLib.Helpers.GDI.dll</HintPath>
 		</Reference>
+		<Reference Include="TuringSmartScreenLib.Helpers.SkiaSharp">
+		  <HintPath>Lib\TuringSmartScreenLib.Helpers.SkiaSharp.dll</HintPath>
+		</Reference>
 	</ItemGroup>
 
 	<ItemGroup>

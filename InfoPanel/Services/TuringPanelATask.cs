@@ -1,14 +1,13 @@
 ﻿using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
+using SkiaSharp;
 using System;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
-
 using TuringSmartScreenLib;
+using TuringSmartScreenLib.Helpers.SkiaSharp;
 
 namespace InfoPanel
 {
@@ -23,21 +22,16 @@ namespace InfoPanel
         private TuringPanelATask()
         { }
 
-        public Bitmap? GenerateLcdBitmap()
+        public SKBitmap? GenerateLcdBitmap()
         {
             var profileGuid = ConfigModel.Instance.Settings.TuringPanelAProfile;
 
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
-                var bitmap = PanelDrawTask.Render(profile, false, videoBackgroundFallback: true, overrideDpi: true);
+                var bitmap = PanelDrawTask.RenderSK(profile, false, videoBackgroundFallback: true, alphaType: SKAlphaType.Opaque);
                 var rotation = ConfigModel.Instance.Settings.TuringPanelARotation;
-                if (rotation != ViewModels.LCD_ROTATION.RotateNone)
-                {
-                    var rotateFlipType = (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), rotation);
-                    bitmap.RotateFlip(rotateFlipType);
-                }
 
-                var ensuredBitmap = BitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight);
+                var ensuredBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
                 if (!ReferenceEquals(bitmap, ensuredBitmap))
                 {
@@ -73,7 +67,7 @@ namespace InfoPanel
                 var brightness = ConfigModel.Instance.Settings.TuringPanelABrightness;
                 screen.SetBrightness((byte)brightness);
 
-                Bitmap? sentBitmap = null;
+                SKBitmap? sentBitmap = null;
 
                 try
                 {
@@ -101,7 +95,7 @@ namespace InfoPanel
                             }
                             else
                             {
-                                var sectors = BitmapExtensions.GetChangedSectors(sentBitmap, bitmap, 10, 10, 20, 80);
+                                var sectors = SKBitmapComparison.GetChangedSectors(sentBitmap, bitmap, 10, 10, 20, 80);
                                 //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
 
                                 if (sectors.Count > 76)
@@ -112,7 +106,7 @@ namespace InfoPanel
                                 {
                                     foreach (var sector in sectors)
                                     {
-                                        screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
+                                        screen.DisplayBuffer(sector.Left, sector.Top, screen.CreateBufferFrom(bitmap, sector.Left, sector.Top, sector.Width, sector.Height));
                                     }
 
                                     //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
@@ -144,22 +138,9 @@ namespace InfoPanel
                     Trace.WriteLine($"Exception during work: {ex.Message}");
                 }
                 finally
-                {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            {
                     sentBitmap?.Dispose();
-                    Trace.WriteLine("Resetting screen");
-
-                    if (_shutdown)
-                    {
-                        screen.Clear();
-                        screen.SetBrightness(0);
-                    }
-                    else
-                    {
-                        using var bitmap = PanelDrawTask.RenderSplash(screen.Width, screen.Height,
-                       rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.TuringPanelARotation));
-                        screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
-                    }
-                    //screen.Reset();
+                    screen.ScreenOff();
                 }
             }
             catch (Exception e)
