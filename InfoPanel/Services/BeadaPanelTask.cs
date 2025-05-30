@@ -34,7 +34,7 @@ namespace InfoPanel
             {
                 var rotation = ConfigModel.Instance.Settings.BeadaPanelRotation;
                 using var bitmap = PanelDrawTask.RenderSK(profile, false, videoBackgroundFallback: true, colorType: SKColorType.Rgb565, alphaType: SKAlphaType.Opaque);
-                
+
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
                 return resizedBitmap.Bytes;
@@ -123,9 +123,6 @@ namespace InfoPanel
                     Payload = [100]
                 };
 
-                //always reset first
-                //iface.Pipes[0x2].Write(resetTag.ToBuffer());
-
                 writer.Write(resetTag.ToBuffer(), 2000, out int _);
 
                 //wait for reset
@@ -146,73 +143,70 @@ namespace InfoPanel
 
                 try
                 {
-                    var fpsCounter = new FpsCounter();
-                    var stopwatch = new Stopwatch();
+                    FpsCounter fpsCounter = new(60);
+                    byte[]? _latestFrame = null;
+                    AutoResetEvent _frameAvailable = new(false);
 
-                    var queue = new ConcurrentQueue<byte[]>();
+                    var frameBufferPool = new ConcurrentBag<byte[]>();
 
                     var renderTask = Task.Run(async () =>
                     {
                         var stopwatch1 = new Stopwatch();
+
                         while (!token.IsCancellationRequested)
                         {
                             stopwatch1.Restart();
                             var frame = GenerateLcdBuffer();
-                            //Trace.WriteLine($"GenerateBuffer {stopwatch1.ElapsedMilliseconds}ms");
-                            if (frame != null)
-                                queue.Enqueue(frame);
 
-                            // Remove oldest if over capacity
-                            while (queue.Count > 2)
+                            if (frame != null)
                             {
-                                queue.TryDequeue(out _);
+                                var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
+                                _frameAvailable.Set();
                             }
 
-                            var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
-                            if (stopwatch1.ElapsedMilliseconds < targetFrameTime)
+                            var targetFrameTime = 1000 / ConfigModel.Instance.Settings.TargetFrameRate;
+                            var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
+                            var adaptiveFrameTime = 0;
+
+                            var elapsedMs = (int)stopwatch1.ElapsedMilliseconds;
+
+                            if (elapsedMs < desiredFrameTime)
                             {
-                                var sleep = (int)(targetFrameTime - stopwatch1.ElapsedMilliseconds);
-                                //Trace.WriteLine($"Sleep {sleep}ms");
-                                await Task.Delay(sleep, token);
+                                adaptiveFrameTime = desiredFrameTime - elapsedMs;
+                            }
+
+                            if (adaptiveFrameTime > 0)
+                            {
+                                await Task.Delay(adaptiveFrameTime, token);
                             }
                         }
                     }, token);
 
-                    var sendTask = Task.Run(async () =>
+                    var sendTask = Task.Run(() =>
                     {
                         var stopwatch2 = new Stopwatch();
+
                         while (!token.IsCancellationRequested)
                         {
                             if (brightness != ConfigModel.Instance.Settings.BeadaPanelBrightness)
                             {
                                 brightness = ConfigModel.Instance.Settings.BeadaPanelBrightness;
                                 brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
-                                //iface.Pipes[0x2].Write(brightnessTag.ToBuffer());
                                 writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
                             }
 
-                            if (queue.TryDequeue(out var frame))
+                            if (_frameAvailable.WaitOne(100))
                             {
-                                stopwatch2.Restart();
-                                dataWriter.Write(frame, 2000, out int _);
-                                //Trace.WriteLine($"Post render: {stopwatch2.ElapsedMilliseconds}ms.");
-                                fpsCounter.Update();
-                                //Trace.WriteLine($"FPS: {fpsCounter.FramesPerSecond}");
-
-                                SharedModel.Instance.BeadaPanelFrameRate = fpsCounter.FramesPerSecond;
-                                SharedModel.Instance.BeadaPanelFrameTime = stopwatch2.ElapsedMilliseconds;
-
-                                var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
-                                if (stopwatch2.ElapsedMilliseconds < targetFrameTime)
+                                var frame = Interlocked.Exchange(ref _latestFrame, null);
+                                if (frame != null)
                                 {
-                                    var sleep = (int)(targetFrameTime - stopwatch2.ElapsedMilliseconds);
-                                    //Trace.WriteLine($"Sleep {sleep}ms");
-                                    await Task.Delay(sleep, token);
+                                    stopwatch2.Restart();
+                                    dataWriter.Write(frame, 2000, out int _);
+
+                                    fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
+                                    SharedModel.Instance.BeadaPanelFrameRate = fpsCounter.FramesPerSecond;
+                                    SharedModel.Instance.BeadaPanelFrameTime = fpsCounter.FrameTime;
                                 }
-                            }
-                            else
-                            {
-                                await Task.Delay(1);
                             }
                         }
                     }, token);

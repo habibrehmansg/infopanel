@@ -16,8 +16,8 @@ namespace InfoPanel
     {
         private static readonly Lazy<TuringPanelTask> _instance = new(() => new TuringPanelTask());
 
-        private volatile int _panelWidth = 480;
-        private volatile int _panelHeight = 1920;
+        private readonly int _panelWidth = 480;
+        private readonly int _panelHeight = 1920;
 
         public static TuringPanelTask Instance => _instance.Value;
 
@@ -35,27 +35,40 @@ namespace InfoPanel
                 var rotation = ConfigModel.Instance.Settings.TuringPanelRotation;
                 using var bitmap = PanelDrawTask.RenderSK(profile, false, videoBackgroundFallback: true,
                     colorType: DateTime.Now > _downgradeRenderingUntil ? SKColorType.Rgba8888 : SKColorType.Argb4444);
-                
+
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
-                using var data = resizedBitmap.Encode(SKEncodedImageFormat.Png, 100);
+                var options = new SKPngEncoderOptions(
+                        filterFlags: SKPngEncoderFilterFlags.NoFilters,
+                        zLibLevel: 3
+                        );
+
+                using var pixmap = resizedBitmap.PeekPixels();
+                using var data = pixmap.Encode(options);
+
+                if (data == null || data.IsEmpty)
+                {
+                    Trace.WriteLine("Failed to encode bitmap to PNG");
+                    return null;
+                }
+
+                //using var data = resizedBitmap.Encode(SKEncodedImageFormat.Png, 100);
                 var result = data.ToArray();
 
                 if (resizedBitmap.ColorType != SKColorType.Argb4444 && result.Length > _maxSize)
                 {
                     Trace.WriteLine("Downgrading rendering to ARGB4444");
                     DateTime now = DateTime.Now;
-                    DateTime targetTime = now.AddSeconds(5);
+                    DateTime targetTime = now.AddSeconds(10);
                     _downgradeRenderingUntil = targetTime;
                     return null;
                 }
-                else if(result.Length > _maxSize)
+                else if (result.Length > _maxSize)
                 {
-                    Trace.WriteLine("DownscaleUpscaleAndEncode");
                     result = DownscaleUpscaleAndEncode(resizedBitmap);
                 }
 
-                Trace.WriteLine($"Size: {result.Length / 1024}kb");
+                //Trace.WriteLine($"Size: {result.Length / 1024}kb");
                 return result;
             }
 
@@ -100,41 +113,51 @@ namespace InfoPanel
 
                     device.DelaySync();
 
-                    var fpsCounter = new FpsCounter();
-                    var stopwatch = new Stopwatch();
+                    FpsCounter fpsCounter = new(60);
+                    byte[]? _latestFrame = null;
+                    AutoResetEvent _frameAvailable = new(false);
 
-                    var queue = new ConcurrentQueue<byte[]>();
+                    var frameBufferPool = new ConcurrentBag<byte[]>();
 
                     var renderTask = Task.Run(async () =>
                     {
                         var stopwatch1 = new Stopwatch();
+
                         while (!token.IsCancellationRequested)
                         {
                             stopwatch1.Restart();
                             var frame = GenerateLcdBuffer();
-                            //Trace.WriteLine($"GenerateBuffer {stopwatch1.ElapsedMilliseconds}ms");
-                            if (frame != null)
-                                queue.Enqueue(frame);
 
-                            // Remove oldest if over capacity
-                            while (queue.Count > 2)
+                            if (frame != null)
                             {
-                                queue.TryDequeue(out _);
+                                var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
+                                _frameAvailable.Set();
                             }
 
-                            var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
-                            if (stopwatch1.ElapsedMilliseconds < targetFrameTime)
+                            var targetFrameTime = 1000 / ConfigModel.Instance.Settings.TargetFrameRate;
+                            var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
+                            var adaptiveFrameTime = 0;
+
+                            var elapsedMs = (int)stopwatch1.ElapsedMilliseconds;
+
+                            //Trace.WriteLine($"elapsed={elapsedMs}ms");
+
+                            if (elapsedMs < desiredFrameTime)
                             {
-                                var sleep = (int)(targetFrameTime - stopwatch1.ElapsedMilliseconds);
-                                //Trace.WriteLine($"Sleep {sleep}ms");
-                                await Task.Delay(sleep, token);
+                                adaptiveFrameTime = desiredFrameTime - elapsedMs;
+                            }
+
+                            if (adaptiveFrameTime > 0)
+                            {
+                                await Task.Delay(adaptiveFrameTime, token);
                             }
                         }
                     }, token);
 
-                    var sendTask = Task.Run(async () =>
+                    var sendTask = Task.Run(() =>
                     {
                         var stopwatch2 = new Stopwatch();
+
                         while (!token.IsCancellationRequested)
                         {
                             if (brightness != ConfigModel.Instance.Settings.TuringPanelBrightness)
@@ -144,30 +167,19 @@ namespace InfoPanel
                                 device.DelaySync();
                             }
 
-                            if (queue.TryDequeue(out var frame))
+                            if (_frameAvailable.WaitOne(100))
                             {
-                                stopwatch2.Restart();
-                                SendPngBytes(device, frame);
-                                //Trace.WriteLine($"Post render: {stopwatch2.ElapsedMilliseconds}ms.");
-                                device.ReadFlush();
-                                fpsCounter.Update();
-
-                                //Trace.WriteLine($"FPS: {fpsCounter.FramesPerSecond}");
-
-                                SharedModel.Instance.TuringPanelFrameRate = fpsCounter.FramesPerSecond;
-                                SharedModel.Instance.TuringPanelFrameTime = stopwatch2.ElapsedMilliseconds;
-
-                                var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
-                                if (stopwatch2.ElapsedMilliseconds < targetFrameTime)
+                                var frame = Interlocked.Exchange(ref _latestFrame, null);
+                                if (frame != null)
                                 {
-                                    var sleep = (int)(targetFrameTime - stopwatch2.ElapsedMilliseconds);
-                                    //Trace.WriteLine($"Sleep {sleep}ms");
-                                    await Task.Delay(sleep, token);
+                                    stopwatch2.Restart();
+                                    SendPngBytes(device, frame);
+                                    device.ReadFlush();
+
+                                    fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
+                                    SharedModel.Instance.TuringPanelFrameRate = fpsCounter.FramesPerSecond;
+                                    SharedModel.Instance.TuringPanelFrameTime = fpsCounter.FrameTime;
                                 }
-                            }
-                            else
-                            {
-                                await Task.Delay(10);
                             }
                         }
                     }, token);

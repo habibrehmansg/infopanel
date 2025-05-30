@@ -96,10 +96,10 @@ namespace InfoPanel
                             }
                             else
                             {
-                                var sectors = SKBitmapComparison.GetChangedSectors(sentBitmap, bitmap, 20, 20, 160, 100);
+                                var sectors = SKBitmapComparison.GetChangedSectors(sentBitmap, bitmap, 32, 32, 128, 96);
                                 //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
 
-                                if (sectors.Count > 46)
+                                if (sectors.Count > 38)
                                 {
                                     canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
                                     //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");

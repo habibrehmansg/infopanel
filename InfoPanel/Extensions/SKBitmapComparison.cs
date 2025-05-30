@@ -63,6 +63,11 @@ public static class SKBitmapComparison
         // Convert concurrent bag to list
         changedSectors.AddRange(localChanges);
 
+        if(sectorWidth >= maxSectorWidth && sectorHeight >= maxSectorHeight)
+        {
+            return changedSectors;
+        }
+
         return CombineRectangles(changedSectors, maxSectorWidth, maxSectorHeight);
     }
 
@@ -163,13 +168,13 @@ public static class SKBitmapComparison
     public static List<SKRectI> CombineRectangles(List<SKRectI> rectangles, int maxWidth, int maxHeight)
     {
         if (rectangles == null || rectangles.Count == 0)
-            return new List<SKRectI>();
+            return [];
 
         // Sort rectangles to make processing predictable
-        rectangles = rectangles.OrderBy(r => r.Top).ThenBy(r => r.Left).ToList();
+        rectangles = [.. rectangles.OrderBy(r => r.Top).ThenBy(r => r.Left)];
 
-        List<SKRectI> result = new List<SKRectI>();
-        HashSet<int> processed = new HashSet<int>();
+        List<SKRectI> result = [];
+        HashSet<int> processed = [];
 
         for (int i = 0; i < rectangles.Count; i++)
         {
