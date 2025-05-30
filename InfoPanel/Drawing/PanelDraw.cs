@@ -58,9 +58,43 @@ namespace InfoPanel.Drawing
                 {
                     foreach (var rectangle in selectedRectangles)
                     {
-                        // Pen width
                         int penWidth = 2;
-                        g.DrawRectangle(Color.FromArgb(255, 0, 255, 0), penWidth, rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height, rectangle.Rotation);
+
+                        // Calculate the selection rectangle position
+                        int selX = rectangle.X - penWidth;
+                        int selY = rectangle.Y - penWidth;
+                        int selWidth = rectangle.Width + penWidth + penWidth;
+                        int selHeight = rectangle.Height + penWidth + penWidth;
+
+                        // Ensure rectangle doesn't overshoot the profile bounds
+                        if (selX < 0)
+                        {
+                            selWidth += selX;
+                            selX = 0;
+                        }
+
+                        if (selY < 0)
+                        {
+                            selHeight += selY;
+                            selY = 0;
+                        }
+
+                        if (selX + selWidth > profile.Width)
+                        {
+                            selWidth = profile.Width - selX;
+                        }
+
+                        if (selY + selHeight > profile.Height)
+                        {
+                            selHeight = profile.Height - selY;
+                        }
+
+                        g.DrawRectangle(
+                            Color.FromArgb(255, 0, 255, 0),
+                            penWidth,
+                            selX, selY, selWidth, selHeight,
+                            rectangle.Rotation
+                        );
                     }
                 }
             }
@@ -100,7 +134,7 @@ namespace InfoPanel.Drawing
 
                             if (formatParts.Length > 0)
                             {
-                                (float fWidth, float fHeight) = g.MeasureString("A", textDisplayItem.Font, fontSize, textDisplayItem.Bold,
+                                (float fWidth, float fHeight) = g.MeasureString("A", textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, textDisplayItem.Bold,
                                               textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
 
                                 var tWidth = 0;
@@ -113,7 +147,7 @@ namespace InfoPanel.Drawing
                                         {
                                             if (tableSensorDisplayItem.ShowHeader)
                                             {
-                                                g.DrawString(table.Columns[column].ColumnName, textDisplayItem.Font, fontSize, color,
+                                                g.DrawString(table.Columns[column].ColumnName, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color,
                                                     x + tWidth, y,
                                           i != 0 && textDisplayItem.RightAlign, textDisplayItem.CenterAlign, textDisplayItem.Bold,
                                           textDisplayItem.Italic, textDisplayItem.Underline,
@@ -129,7 +163,7 @@ namespace InfoPanel.Drawing
                                                 if (table.Rows[j][column] is IPluginData pluginData)
                                                 {
 
-                                                    g.DrawString(pluginData.ToString(), textDisplayItem.Font, fontSize, color,
+                                                    g.DrawString(pluginData.ToString(), textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color,
                                                         x + tWidth, (int)(y + (fHeight * (j + (tableSensorDisplayItem.ShowHeader ? 1 : 0)))),
                                        i != 0 && textDisplayItem.RightAlign, textDisplayItem.CenterAlign, textDisplayItem.Bold,
                                        textDisplayItem.Italic, textDisplayItem.Underline,
@@ -152,7 +186,7 @@ namespace InfoPanel.Drawing
                             break;
                         }
 
-                        g.DrawString(text, textDisplayItem.Font, fontSize, color, x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
+                        g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
                             textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout,
                             textDisplayItem.Width);
 
@@ -237,22 +271,23 @@ namespace InfoPanel.Drawing
                         break;
                     }
                 case ChartDisplayItem chartDisplayItem:
-                    if (g is CompatGraphics)
-                    {
-                        var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
-                        var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
-                        using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
-                        using var g1 = CompatGraphics.FromBitmap(graphBitmap);
-                        GraphDraw.Run(chartDisplayItem, g1);
+                    //if (g is CompatGraphics)
+                    //{
+                    //    var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
+                    //    var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
+                    //    using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
+                    //    using var g1 = CompatGraphics.FromBitmap(graphBitmap);
+                    //    GraphDraw.Run(chartDisplayItem, g1);
 
-                        if (chartDisplayItem.FlipX)
-                        {
-                            graphBitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
-                        }
+                    //    if (chartDisplayItem.FlipX)
+                    //    {
+                    //        graphBitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                    //    }
 
-                        g.DrawBitmap(graphBitmap, x, y, width, height);
-                    }
-                    else if (g is AcceleratedGraphics acceleratedGraphics)
+                    //    g.DrawBitmap(graphBitmap, x, y, width, height);
+                    //}
+                    //else
+                    if (g is AcceleratedGraphics acceleratedGraphics)
                     {
                         using var d2dGraphics = acceleratedGraphics.D2DDevice
                             .CreateBitmapGraphics(chartDisplayItem.Width, chartDisplayItem.Height);
@@ -300,7 +335,7 @@ namespace InfoPanel.Drawing
                     break;
             }
 
-            if (displayItem.Selected)
+            if (displayItem.Selected && displayItem is not GroupDisplayItem)
             {
                 var bounds = displayItem.EvaluateBounds();
                 selectedRectangles.Add(new SelectedRectangle((int)bounds.Left, (int)bounds.Top, (int)bounds.Width, (int)bounds.Height, displayItem.Rotation));

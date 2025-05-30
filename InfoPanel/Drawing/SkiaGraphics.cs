@@ -1,9 +1,13 @@
 ﻿using InfoPanel.Models;
 using SkiaSharp;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows.Documents;
 using unvell.D2DLib;
 
@@ -15,7 +19,7 @@ namespace InfoPanel.Drawing
         private readonly float FontScale = fontScale;
 
         public static SkiaGraphics FromBitmap(SKBitmap bitmap)
-            {
+        {
             var canvas = new SKCanvas(bitmap);
             return new SkiaGraphics(canvas);
         }
@@ -184,7 +188,7 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0)
+        public override void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0)
         {
             if (string.IsNullOrEmpty(text))
                 return;
@@ -193,16 +197,9 @@ namespace InfoPanel.Drawing
             {
                 Color = SKColor.Parse(color),
                 IsAntialias = true
-
             };
 
-            // Handle font style (bold, italic)
-            SKFontStyleWeight weight = bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
-            SKFontStyleWidth widthStyle = SKFontStyleWidth.Normal;
-            SKFontStyleSlant slant = italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright;
-
-            using var fontStyle = new SKFontStyle(weight, widthStyle, slant);
-            using var typeface = SKTypeface.FromFamilyName(fontName, fontStyle);
+            SKTypeface typeface = CreateTypeface(fontName, fontStyle, bold, italic);
             using var font = new SKFont(typeface, size: (float)(fontSize * FontScale));
 
             // Calculate position
@@ -288,6 +285,144 @@ namespace InfoPanel.Drawing
 
                 Canvas.DrawLine(startX, underlineY, startX + textWidth, underlineY, underlinePaint);
             }
+        }
+
+        private static readonly ConcurrentDictionary<string, SKTypeface> _typefaceCache = [];
+
+        public static SKTypeface CreateTypeface(string fontName, string fontStyle, bool bold, bool italic)
+        {
+            string cacheKey = $"{fontName}-{fontStyle}-{bold}-{italic}";
+
+            if (_typefaceCache.TryGetValue(cacheKey, out var cached))
+            {
+                return cached;
+            }
+
+            Trace.WriteLine("Cache miss: " + cacheKey);
+
+            SKTypeface? result = null;
+
+            if (string.IsNullOrEmpty(fontStyle))
+            {
+                result = LoadTypeface(fontName, bold, italic);
+            }
+            else
+            {
+                using var typeface = SKTypeface.FromFamilyName(fontName);
+                using var fontStyles = SKFontManager.Default.GetFontStyles(fontName);
+
+                for (int i = 0; i < fontStyles.Count; i++)
+                {
+                    if (fontStyles.GetStyleName(i).Equals(fontStyle))
+                    {
+                        result = SKTypeface.FromFamilyName(fontName, fontStyles[i]);
+                        break;
+                    }
+                }
+            }
+
+            result ??= SKTypeface.CreateDefault();
+
+            _typefaceCache.TryAdd(cacheKey, result);
+            return result;
+        }
+
+        private static SKTypeface LoadTypeface(string fontName, bool bold, bool italic)
+        {
+            SKFontStyleWeight weight = bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
+            SKFontStyleWidth widthStyle = SKFontStyleWidth.Normal;
+            SKFontStyleSlant slant = italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright;
+
+            // Check if font name contains width indicators
+            if (fontName.Contains("Ultra Compressed", StringComparison.OrdinalIgnoreCase) ||
+                fontName.Contains("Ultra Condensed", StringComparison.OrdinalIgnoreCase))
+            {
+                widthStyle = SKFontStyleWidth.UltraCondensed;
+            }
+            else if (fontName.Contains("Compressed", StringComparison.OrdinalIgnoreCase) ||
+                     fontName.Contains("Condensed", StringComparison.OrdinalIgnoreCase))
+            {
+                widthStyle = SKFontStyleWidth.Condensed;
+            }
+
+            using var fontStyle = new SKFontStyle(weight, widthStyle, slant);
+
+            var typeface = TryLoadTypeface(fontName, fontStyle);
+            if (typeface != null) return typeface;
+
+            var baseFamilyName = ExtractBaseFamilyName(fontName);
+            if (baseFamilyName != fontName)
+            {
+                typeface = TryLoadTypeface(baseFamilyName, fontStyle);
+                if (typeface != null) return typeface;
+            }
+
+            typeface = FindSimilarFont(fontName, fontStyle);
+            if (typeface != null) return typeface;
+
+            // Fallback to default
+            Console.WriteLine($"Warning: Font '{fontName}' not found, using fallback");
+            return SKTypeface.FromFamilyName("Arial", fontStyle);
+        }
+
+        private static SKTypeface? TryLoadTypeface(string familyName, SKFontStyle fontStyle)
+        {
+            var typeface = SKTypeface.FromFamilyName(familyName, fontStyle);
+
+            // Check if we actually got the requested font or a fallback
+            if (typeface != null &&
+                !typeface.FamilyName.Equals("Segoe UI", StringComparison.OrdinalIgnoreCase) &&
+                (familyName.Contains(typeface.FamilyName, StringComparison.OrdinalIgnoreCase) ||
+                 typeface.FamilyName.Contains(familyName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return typeface;
+            }
+
+            typeface?.Dispose();
+            return null;
+        }
+
+        public static string ExtractBaseFamilyName(string fontName)
+        {
+            // Remove common style descriptors
+            var descriptors = new[]
+            {
+            "Ultra Compressed", "Ultra Condensed", "Compressed", "Condensed",
+            "Extended", "Narrow", "Wide", "Black", "Bold", "Semibold", "Light", "Thin",
+            "Heavy", "Medium", "Regular", "Italic", "Oblique", "BT"
+        };
+
+            var result = fontName;
+            foreach (var descriptor in descriptors)
+            {
+                result = Regex.Replace(result, $@"\s*{Regex.Escape(descriptor)}\s*", " ",
+                    RegexOptions.IgnoreCase);
+            }
+
+            return result.Trim();
+        }
+
+        public static SKTypeface? FindSimilarFont(string requestedFont, SKFontStyle fontStyle)
+        {
+            var fontManager = SKFontManager.Default;
+            var searchTerms = requestedFont.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var family in fontManager.GetFontFamilies())
+            {
+                // Check if family contains any of our search terms
+                if (searchTerms.Any(term => family.Contains(term, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var typeface = SKTypeface.FromFamilyName(family, fontStyle);
+                    if (typeface != null && !typeface.FamilyName.Equals("Segoe UI", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Trace.WriteLine($"Using similar font: '{family}' for requested '{requestedFont}'");
+                        return typeface;
+                    }
+                    typeface?.Dispose();
+                }
+            }
+
+            return null;
         }
 
         public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor)
@@ -518,19 +653,16 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public override (float width, float height) MeasureString(string text, string fontName, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        public override (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
         {
-            SKFontStyleWeight weight = bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
-            SKFontStyleWidth widthStyle = SKFontStyleWidth.Normal;
-            SKFontStyleSlant slant = italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright;
-
-            using var fontStyle = new SKFontStyle(weight, widthStyle, slant);
-            using var typeface = SKTypeface.FromFamilyName(fontName, fontStyle);
+            var typeface = CreateTypeface(fontName, fontStyle, bold, italic);
             using var font = new SKFont(typeface, size: fontSize * FontScale);
+
+            font.MeasureText(text, out var bounds);
 
             var metrics = font.Metrics;
 
-            float width = font.MeasureText(text);
+            float width = bounds.Width;
             float height = metrics.Descent - metrics.Ascent;
 
             return (width, height);

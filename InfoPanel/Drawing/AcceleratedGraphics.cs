@@ -4,6 +4,7 @@ using System;
 using System.Drawing;
 using System.Numerics;
 using System.Reflection.Metadata;
+using System.Windows.Media.Media3D;
 using unvell.D2DLib;
 using unvell.D2DLib.WinForm;
 
@@ -33,7 +34,7 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.Clear(D2DColor.FromGDIColor(color));
         }
 
-        private D2DTextFormat CreateTextFormat(string fontName, float fontSize, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        private D2DTextFormat CreateTextFormat(string fontName, string fontStyle, float fontSize, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
         {
             DWriteTextAlignment alignment = DWriteTextAlignment.Leading;
 
@@ -47,24 +48,54 @@ namespace InfoPanel.Drawing
                 alignment = DWriteTextAlignment.Center;
             }
 
-            return this.D2DDevice.CreateTextFormat(fontName, fontSize,
-                bold ? D2DFontWeight.Bold : D2DFontWeight.Normal, italic ? D2DFontStyle.Italic : D2DFontStyle.Normal, D2DFontStretch.Normal,
+            var skiaTypeFace = SkiaGraphics.CreateTypeface(fontName, fontStyle, bold, italic);
+
+            D2DFontWeight weight;
+            if (Enum.IsDefined(typeof(D2DFontWeight), skiaTypeFace.FontWeight))
+            {
+                weight = (D2DFontWeight)skiaTypeFace.FontWeight;
+            }
+            else
+            {
+                weight = D2DFontWeight.Normal;
+            }
+
+            return this.D2DDevice.CreateTextFormat(skiaTypeFace.FamilyName, fontSize,
+                weight, skiaTypeFace.IsItalic ? D2DFontStyle.Italic : D2DFontStyle.Normal, ConvertToD2DFontStretch(skiaTypeFace),
                 alignment);
         }
 
-        public override (float width, float height) MeasureString(string text, string fontName, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        private static D2DFontStretch ConvertToD2DFontStretch(SKTypeface typeface)
         {
-            using var textFormat = CreateTextFormat(fontName, fontSize, false, false, bold, italic, underline, strikeout);
+            // Standard font stretch values (1-9)
+            return typeface.FontWidth switch
+            {
+                1 => D2DFontStretch.UltraCondensed,
+                2 => D2DFontStretch.ExtraCondensed,
+                3 => D2DFontStretch.Condensed,
+                4 => D2DFontStretch.SemiCondensed,
+                5 => D2DFontStretch.Normal,
+                6 => D2DFontStretch.SemiExpanded,
+                7 => D2DFontStretch.Expanded,
+                8 => D2DFontStretch.ExtraExpanded,
+                9 => D2DFontStretch.UltraExpanded,
+                _ => D2DFontStretch.Normal
+            };
+        }
+
+        public override (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        {
+            using var textFormat = CreateTextFormat(fontName, fontStyle, fontSize, false, false, bold, italic, underline, strikeout);
             var textSize = new D2DSize(float.MaxValue, 0);
             this.D2DGraphics.MeasureText(text, textFormat, ref textSize);
             return (textSize.width, textSize.height);
         }
 
-        public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, 
+        public override void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, 
             bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, 
             int width = 0, int height = 0)
         {
-            using var textFormat = CreateTextFormat(fontName, fontSize * FontScale, rightAlign, width > 0 && centerAlign, bold, italic, underline, strikeout);
+            using var textFormat = CreateTextFormat(fontName, fontStyle, fontSize * FontScale, rightAlign, width > 0 && centerAlign, bold, italic, underline, strikeout);
             using var textColor = this.D2DDevice.CreateSolidColorBrush(D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
 
             var rect = new D2DRect(x + TextXOffset, y + TextYOffset, width == 0 ? float.MaxValue: width, height);

@@ -58,27 +58,27 @@ namespace InfoPanel.Models
 
         public override SKRect EvaluateBounds()
         {
-            throw new NotImplementedException();
+            return new SKRect(0, 0, 0, 0);
         }
 
         public override string EvaluateColor()
         {
-            throw new NotImplementedException();
+            return "#FFFFFFFF";
         }
 
         public override SKSize EvaluateSize()
         {
-            throw new NotImplementedException();
+            return new SKSize(0, 0);
         }
 
         public override string EvaluateText()
         {
-            throw new NotImplementedException();
+            return "";
         }
 
         public override (string, string) EvaluateTextAndColor()
         {
-            throw new NotImplementedException();
+            return (EvaluateText(), EvaluateColor());
         }
 
         public override void SetProfileGuid(Guid profileGuid)

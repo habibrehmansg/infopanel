@@ -90,20 +90,20 @@ namespace InfoPanel
             }
         }
 
-        public static Bitmap Render(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, PixelFormat pixelFormat = PixelFormat.Format32bppArgb, bool overrideDpi = false)
-        {
-            var bitmap = new Bitmap(profile.Width, profile.Height, pixelFormat);
+        //public static Bitmap Render(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, PixelFormat pixelFormat = PixelFormat.Format32bppArgb, bool overrideDpi = false)
+        //{
+        //    var bitmap = new Bitmap(profile.Width, profile.Height, pixelFormat);
 
-            if (profile.OverrideDpi || overrideDpi)
-            {
-                bitmap.SetResolution(96, 96);
-            }
+        //    if (profile.OverrideDpi || overrideDpi)
+        //    {
+        //        bitmap.SetResolution(96, 96);
+        //    }
 
-            using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
-            PanelDraw.Run(profile, g, drawSelected, scale, cache, videoBackgroundFallback);
+        //    using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
+        //    PanelDraw.Run(profile, g, drawSelected, scale, cache, videoBackgroundFallback);
 
-            return bitmap;
-        }
+        //    return bitmap;
+        //}
 
         public static SKBitmap RenderSK(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul)
         {
@@ -115,20 +115,20 @@ namespace InfoPanel
             return bitmap;
         }
 
-        public static Bitmap RenderSplash(int width, int height, PixelFormat pixelFormat = PixelFormat.Format32bppArgb, RotateFlipType rotateFlipType = RotateFlipType.RotateNoneFlipNone)
-        {
-            var bitmap = new Bitmap(width, height, pixelFormat);
-            using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
-            g.Clear(Color.Black);
+        //public static Bitmap RenderSplash(int width, int height, PixelFormat pixelFormat = PixelFormat.Format32bppArgb, RotateFlipType rotateFlipType = RotateFlipType.RotateNoneFlipNone)
+        //{
+        //    var bitmap = new Bitmap(width, height, pixelFormat);
+        //    using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
+        //    g.Clear(Color.Black);
 
-            using var logo = LoadBitmapFromResource("logo.png");
-            logo.RotateFlip(rotateFlipType);
+        //    using var logo = LoadBitmapFromResource("logo.png");
+        //    logo.RotateFlip(rotateFlipType);
 
-            var size = Math.Min(width, height) / 3;
-            g.DrawBitmap(logo, width / 2 - size / 2, height / 2 - size / 2, size, size);
+        //    var size = Math.Min(width, height) / 3;
+        //    g.DrawBitmap(logo, width / 2 - size / 2, height / 2 - size / 2, size, size);
             
-            return bitmap;
-        }
+        //    return bitmap;
+        //}
 
         public static SKBitmap RenderSplashSK(int width, int height, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul, RotateFlipType rotateFlipType = RotateFlipType.RotateNoneFlipNone)
         {

@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
 using SkiaSharp;
 using System;
 using System.Drawing;
@@ -9,7 +10,7 @@ namespace InfoPanel.Models
     [Serializable]
     public partial class TextDisplayItem : DisplayItem
     {
-        private string _font = System.Windows.Media.Fonts.SystemFontFamilies.First().ToString();
+        private string _font = SKFontManager.Default.GetFontFamilies().First();
         public string Font
         {
             get { return _font; }
@@ -21,6 +22,9 @@ namespace InfoPanel.Models
                 }
             }
         }
+
+        [ObservableProperty]
+        private string _fontStyle;
 
         private int _fontSize = 20;
         public int FontSize
@@ -154,18 +158,15 @@ namespace InfoPanel.Models
 
         public override SKSize EvaluateSize()
         {
-            SKFontStyleWeight weight = Bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
-            SKFontStyleWidth widthStyle = SKFontStyleWidth.Normal;
-            SKFontStyleSlant slant = Italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright;
-
-            using var fontStyle = new SKFontStyle(weight, widthStyle, slant);
-            using var typeface = SKTypeface.FromFamilyName(Font, fontStyle);
+            var typeface = SkiaGraphics.CreateTypeface(Font, FontStyle, Bold, Italic);
             using var font = new SKFont(typeface, size: FontSize * 1.33f);
 
-            var metrics = font.Metrics;
             var text = EvaluateText();
+            font.MeasureText(text, out var bounds);
 
-            float width = font.MeasureText(text);
+            var metrics = font.Metrics;
+
+            float width = bounds.Width;
             float height = metrics.Descent - metrics.Ascent;
 
             return new SKSize(width, height);

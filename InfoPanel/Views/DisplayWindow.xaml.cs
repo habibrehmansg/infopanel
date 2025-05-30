@@ -175,7 +175,7 @@ namespace InfoPanel.Views.Common
             if (ShowFps)
             {
                 skiaGraphics.FillRectangle("#64000000", e.Info.Width - 40, 0, 40, 30);
-                skiaGraphics.DrawString($"{FpsCounter.FramesPerSecond}", "Arial", 14, "#FF00FF00", e.Info.Width - 40, 3, centerAlign: true, width: 40, height: 30);
+                skiaGraphics.DrawString($"{FpsCounter.FramesPerSecond}", "Arial", "Normal", 14, "#FF00FF00", e.Info.Width - 40, 3, centerAlign: true, width: 40, height: 30);
             }
 
         }

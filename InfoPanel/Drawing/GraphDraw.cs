@@ -422,14 +422,7 @@ namespace InfoPanel.Drawing
 
                 if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem.Frame)
                 {
-                    if (g is CompatGraphics)
-                    {
-                        g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width - 1, chartDisplayItem.Height - 1);
-                    }
-                    else
-                    {
-                        g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
-                    }
+                    g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
                 }
             }
         }

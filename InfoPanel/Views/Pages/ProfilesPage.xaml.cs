@@ -1,7 +1,9 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.ViewModels;
+using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Drawing.Text;
 using System.Linq;
 using System.Windows;
@@ -20,7 +22,7 @@ namespace InfoPanel.Views.Pages
         private readonly IDialogControl _dialogControl;
         private readonly ISnackbarControl _snackbarControl;
 
-        public ObservableCollection<string> InstalledFonts { get; } = new ObservableCollection<string>();
+        public ObservableCollection<string> InstalledFonts { get; } = [];
         public ProfilesViewModel ViewModel { get; }
 
         public ProfilesPage(ProfilesViewModel viewModel, IDialogService dialogService, ISnackbarService snackbarService)
@@ -28,7 +30,7 @@ namespace InfoPanel.Views.Pages
             ViewModel = viewModel;
             DataContext = this;
 
-            FetchInstalledFontNames();
+            LoadAllFonts();
             _dialogControl = dialogService.GetDialogControl();
             _snackbarControl = snackbarService.GetSnackbarControl();
 
@@ -38,10 +40,13 @@ namespace InfoPanel.Views.Pages
             Unloaded += ProfilesPage_Unloaded;
         }
 
-        private void FetchInstalledFontNames()
+        private void LoadAllFonts()
         {
-            InstalledFontCollection installedFonts = new InstalledFontCollection();
-            foreach (var font in installedFonts.Families.Select(f => f.Name))
+            var allFonts = SKFontManager.Default.GetFontFamilies()
+                .OrderBy(f => f)
+                .ToList();
+
+            foreach (var font in allFonts)
             {
                 InstalledFonts.Add(font);
             }
