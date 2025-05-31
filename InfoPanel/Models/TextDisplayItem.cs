@@ -169,7 +169,7 @@ namespace InfoPanel.Models
             float width = bounds.Width;
             float height = metrics.Descent - metrics.Ascent;
 
-            return new SKSize(width, height);
+            return new SKSize(Width == 0 ? width : Width, height);
         }
 
         public override SKRect EvaluateBounds()

@@ -124,6 +124,7 @@
                         <metro:ColorPicker
                             Grid.Row="7"
                             Height="35"
+                            MinWidth="200"
                             metro:TextBoxHelper.UseFloatingWatermark="False"
                             Background="Transparent"
                             SelectedColor="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.SelectedItemColor}" />
@@ -179,11 +180,16 @@
                             <metro:ColorPicker
                                 Grid.Row="7"
                                 Height="35"
+                                MinWidth="200"
                                 metro:TextBoxHelper.UseFloatingWatermark="False"
                                 Background="Transparent"
                                 SelectedColor="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.GridLinesColor}" />
-                            <StackPanel Grid.Column="0" Margin="0,10,0,0">
+                            <StackPanel
+                                Grid.Column="0"
+                                Margin="0,10,0,0"
+                                HorizontalAlignment="Right">
                                 <ui:NumberBox
+                                    Width="150"
                                     Margin="0,0,0,0"
                                     FontSize="14"
                                     LargeChange="10"

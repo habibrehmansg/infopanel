@@ -1,15 +1,10 @@
 ﻿using InfoPanel.Models;
 using SkiaSharp;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
-using System.Linq;
 using System.Numerics;
-using System.Windows.Controls;
 using unvell.D2DLib;
 using unvell.D2DLib.WinForm;
-using Wpf.Ui.Interop.WinDef;
 
 namespace InfoPanel.Drawing
 {
