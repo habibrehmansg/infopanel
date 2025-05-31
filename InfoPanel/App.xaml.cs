@@ -244,8 +244,6 @@ namespace InfoPanel
 
         private static async Task StartPanels()
         {
-            await PanelDrawTask.Instance.StartAsync();
-
             if (ConfigModel.Instance.Settings.BeadaPanel)
             {
                 await BeadaPanelTask.Instance.StartAsync();
@@ -280,7 +278,6 @@ namespace InfoPanel
 
         private static async Task StopPanels()
         {
-            await PanelDrawTask.Instance.StopAsync();
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelTask.Instance.StopAsync();
             await TuringPanelATask.Instance.StopAsync();

@@ -842,7 +842,6 @@ namespace InfoPanel
                         Font = SelectedProfile.Font,
                         FontSize = SelectedProfile.FontSize,
                         Color = SelectedProfile.Color,
-                        OverrideDpi = SelectedProfile.OverrideDpi,
                         Direct2DMode = SelectedProfile.Direct2DMode,
                         Direct2DFontScale = SelectedProfile.Direct2DFontScale,
                         Direct2DTextXOffset = SelectedProfile.Direct2DTextXOffset,

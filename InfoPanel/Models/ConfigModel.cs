@@ -279,6 +279,12 @@ namespace InfoPanel
                             Settings.AutoStart = settings.AutoStart;
                             Settings.StartMinimized = settings.StartMinimized;
                             Settings.MinimizeToTray = settings.MinimizeToTray;
+
+                            Settings.SelectedItemColor = settings.SelectedItemColor;
+                            Settings.ShowGridLines = settings.ShowGridLines;
+                            Settings.GridLinesColor = settings.GridLinesColor;
+                            Settings.GridLinesSpacing = settings.GridLinesSpacing;
+
                             Settings.LibreHardwareMonitor = settings.LibreHardwareMonitor;
                             Settings.LibreHardMonitorRing0 = settings.LibreHardMonitorRing0;
                             Settings.WebServer = settings.WebServer;

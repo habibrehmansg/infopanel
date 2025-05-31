@@ -6,8 +6,6 @@ using System.Drawing;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography.X509Certificates;
-using System.Windows.Media.Media3D;
 using unvell.D2DLib;
 
 namespace InfoPanel.Models
@@ -585,6 +583,7 @@ namespace InfoPanel.Models
                 if (!IsDisposed)
                 {
                     DisposeAssets();
+                    DisposeSKAssets();
                     DisposeD2DAssets();
                     _codec?.Dispose();
                     _stream?.Dispose();

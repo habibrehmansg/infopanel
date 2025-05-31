@@ -4,7 +4,6 @@ using System;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Xml.Serialization;
 
 namespace InfoPanel.Models
@@ -104,16 +103,6 @@ namespace InfoPanel.Models
 
         [ObservableProperty]
         private bool _showFps = false;
-
-        private bool _overrideDpi = true;
-        public bool OverrideDpi
-        {
-            get => _overrideDpi;
-            set
-            {
-                SetProperty(ref _overrideDpi, value);
-            }
-        }
 
         private bool _drag = true;
         public bool Drag

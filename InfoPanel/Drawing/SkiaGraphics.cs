@@ -114,6 +114,19 @@ namespace InfoPanel.Drawing
             Canvas.DrawLine(x1, y1, x2, y2, paint);
         }
 
+        public override void DrawPath(SKPath path, SKColor color, int strokeWidth)
+        {
+            using var paint = new SKPaint
+            {
+                Color = color,
+                StrokeWidth = strokeWidth,
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke
+            };
+
+            Canvas.DrawPath(path, paint);
+        }
+
         public override void DrawPath(MyPoint[] points, string color, int strokeWidth)
         {
             if (points == null || points.Length < 2)

@@ -14,12 +14,9 @@ using System.Windows.Media.Media3D;
 
 namespace InfoPanel.Drawing
 {
-    struct SelectedRectangle(int x, int y, int width, int height, int rotation = 0)
+    struct SelectedRectangle(SKRect rect, int rotation = 0)
     {
-        public readonly int X = x;
-        public readonly int Y = y;
-        public readonly int Width = width;
-        public readonly int Height = height;
+        public readonly SKRect Rect = rect;
         public readonly int Rotation = rotation;
     }
 
@@ -44,60 +41,115 @@ namespace InfoPanel.Drawing
                 Draw(g, scale, cache, displayItem, selectedRectangles);
             }
 
-            if (drawSelected && SharedModel.Instance.SelectedProfile == profile && selectedRectangles.Any())
+            if (drawSelected && SharedModel.Instance.SelectedProfile == profile && selectedRectangles.Count != 0)
             {
-                var elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
-
-                // Define "on" and "off" durations
-                int onDuration = 600;  // Time the rectangle is visible
-                int offDuration = 400; // Time the rectangle is invisible
-                int cycleDuration = onDuration + offDuration; // Total cycle time
-
-                // Determine if we are in the "on" phase
-                if (elapsedMilliseconds % cycleDuration < onDuration) // "on" phase
+                if (ConfigModel.Instance.Settings.ShowGridLines)
                 {
-                    foreach (var rectangle in selectedRectangles)
+                    var gridSpace = ConfigModel.Instance.Settings.GridLinesSpacing;
+                    var gridColor = ConfigModel.Instance.Settings.GridLinesColor;
+
+                    var verticalLines = profile.Width / gridSpace;
+                    for (int i = 1; i < verticalLines; i++)
                     {
-                        int penWidth = 2;
+                        //draw vertical lines
+                        g.DrawLine(i * gridSpace, 0, i * gridSpace, profile.Height, gridColor, 1);
+                    }
 
-                        // Calculate the selection rectangle position
-                        int selX = rectangle.X - penWidth;
-                        int selY = rectangle.Y - penWidth;
-                        int selWidth = rectangle.Width + penWidth + penWidth;
-                        int selHeight = rectangle.Height + penWidth + penWidth;
-
-                        // Ensure rectangle doesn't overshoot the profile bounds
-                        if (selX < 0)
-                        {
-                            selWidth += selX;
-                            selX = 0;
-                        }
-
-                        if (selY < 0)
-                        {
-                            selHeight += selY;
-                            selY = 0;
-                        }
-
-                        if (selX + selWidth > profile.Width)
-                        {
-                            selWidth = profile.Width - selX;
-                        }
-
-                        if (selY + selHeight > profile.Height)
-                        {
-                            selHeight = profile.Height - selY;
-                        }
-
-                        g.DrawRectangle(
-                            Color.FromArgb(255, 0, 255, 0),
-                            penWidth,
-                            selX, selY, selWidth, selHeight,
-                            rectangle.Rotation
-                        );
+                    var horizontalLines = profile.Height / gridSpace;
+                    for (int j = 1; j < horizontalLines; j++)
+                    {
+                        //draw horizontal lines
+                        g.DrawLine(0, j * gridSpace, profile.Width, j * gridSpace, gridColor, 1);
                     }
                 }
+
+                if (SKColor.TryParse(ConfigModel.Instance.Settings.SelectedItemColor, out var color))
+                {
+                    var elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
+
+                    // Define "on" and "off" durations
+                    int onDuration = 600;  // Time the rectangle is visible
+                    int offDuration = 400; // Time the rectangle is invisible
+                    int cycleDuration = onDuration + offDuration; // Total cycle time
+
+                    // Determine if we are in the "on" phase
+                    if (elapsedMilliseconds % cycleDuration < onDuration) // "on" phase
+                    {
+                        foreach (var rectangle in selectedRectangles)
+                        {
+                            using var path = RectToPath(rectangle.Rect, rectangle.Rotation, profile.Width, profile.Height, 2);
+
+                            if (path != null)
+                            {
+                                g.DrawPath(path, color, 2);
+                            }
+                        }
+                    }
+                }else
+                {
+                    Trace.WriteLine("Fail to parse color");
+                }
             }
+        }
+
+
+        public static SKPath? RectToPath(SKRect rect, int rotation, float maxWidth, float maxHeight, float penWidth = 2)
+        {
+            float halfPenWidth = penWidth / 2f;
+            var canvasBounds = new SKRect(halfPenWidth, halfPenWidth,
+                                          maxWidth - halfPenWidth, maxHeight - halfPenWidth);
+
+            // Early check: if the rectangle is entirely outside canvas bounds before rotation
+            if (!rect.IntersectsWith(canvasBounds) && rotation == 0)
+            {
+                return null;
+            }
+
+            var path = new SKPath();
+            path.AddRect(rect);
+
+            // Apply rotation if needed
+            if (rotation != 0)
+            {
+                float centerX = rect.MidX;
+                float centerY = rect.MidY;
+                var rotationMatrix = SKMatrix.CreateRotationDegrees(rotation, centerX, centerY);
+                path.Transform(rotationMatrix);
+            }
+
+            // Get the bounds of the transformed path
+            var pathBounds = path.Bounds;
+
+            // Check if the path is entirely outside the canvas bounds
+            if (pathBounds.Right < halfPenWidth || pathBounds.Left > maxWidth - halfPenWidth ||
+                pathBounds.Bottom < halfPenWidth || pathBounds.Top > maxHeight - halfPenWidth)
+            {
+                path.Dispose();
+                return null;
+            }
+
+            // Check if the path is entirely within the canvas bounds
+            if (pathBounds.Left >= halfPenWidth && pathBounds.Top >= halfPenWidth &&
+                pathBounds.Right <= maxWidth - halfPenWidth && pathBounds.Bottom <= maxHeight - halfPenWidth)
+            {
+                return path;
+            }
+
+            // Path partially overlaps with canvas, perform intersection
+            using var canvasPath = new SKPath();
+            canvasPath.AddRect(canvasBounds);
+            var clippedPath = new SKPath();
+
+            if (path.Op(canvasPath, SKPathOp.Intersect, clippedPath))
+            {
+                path.Dispose();
+                return clippedPath;
+            }
+
+            // Intersection failed (shouldn't happen if bounds checks are correct)
+            path.Dispose();
+            clippedPath.Dispose();
+            return null;
         }
 
         private static void Draw(MyGraphics g, double scale, bool cache, DisplayItem displayItem, List<SelectedRectangle> selectedRectangles)
@@ -174,12 +226,6 @@ namespace InfoPanel.Drawing
                                             tWidth += length + 10;
                                         }
                                     }
-                                }
-
-                                if (displayItem.Selected)
-                                {
-                                    var size = tableSensorDisplayItem.EvaluateSize();
-                                    selectedRectangles.Add(new SelectedRectangle(x, y, (int)size.Width, (int)size.Height));
                                 }
                             }
 
@@ -311,7 +357,8 @@ namespace InfoPanel.Drawing
 
                             g.DrawBitmap(d2dGraphics, chartDisplayItem.X, chartDisplayItem.Y, chartDisplayItem.Width, chartDisplayItem.Height);
                         }
-                    } else if(g is SkiaGraphics)
+                    }
+                    else if (g is SkiaGraphics)
                     {
                         var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
                         var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
@@ -337,8 +384,7 @@ namespace InfoPanel.Drawing
 
             if (displayItem.Selected && displayItem is not GroupDisplayItem)
             {
-                var bounds = displayItem.EvaluateBounds();
-                selectedRectangles.Add(new SelectedRectangle((int)bounds.Left, (int)bounds.Top, (int)bounds.Width, (int)bounds.Height, displayItem.Rotation));
+                selectedRectangles.Add(new SelectedRectangle(displayItem.EvaluateBounds(), displayItem.Rotation));
             }
         }
 

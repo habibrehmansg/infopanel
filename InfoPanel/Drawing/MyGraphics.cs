@@ -24,6 +24,7 @@ namespace InfoPanel.Drawing
         public abstract void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0);
         public abstract void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0);
         public abstract void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0);
+        public abstract void DrawPath(SKPath path, SKColor color, int strokeWidth);
         public abstract void DrawPath(MyPoint[] points, string color, int strokeWidth);
         public abstract void FillPath(MyPoint[] points, string color);
         public abstract void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor);

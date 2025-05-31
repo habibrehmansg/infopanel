@@ -232,13 +232,6 @@
 
                                                 <ToggleButton
                                                     Margin="10,0,0,0"
-                                                    IsChecked="{Binding OverrideDpi}"
-                                                    ToolTip="Override the desktop DPI. When enabled, maintain a standard DPI scaling ignoring Windows DPI settings.">
-                                                    <ui:SymbolIcon Symbol="ShareScreenPerson20" />
-                                                </ToggleButton>
-
-                                                <ToggleButton
-                                                    Margin="10,0,0,0"
                                                     IsChecked="{Binding Topmost}"
                                                     ToolTip="Keep panel visible on top of all other windows.">
                                                     <ui:SymbolIcon Symbol="ShareScreenStart20" />

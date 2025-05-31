@@ -1,12 +1,15 @@
 ﻿using InfoPanel.Models;
 using SkiaSharp;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.Linq;
 using System.Numerics;
-using System.Reflection.Metadata;
-using System.Windows.Media.Media3D;
+using System.Windows.Controls;
 using unvell.D2DLib;
 using unvell.D2DLib.WinForm;
+using Wpf.Ui.Interop.WinDef;
 
 namespace InfoPanel.Drawing
 {
@@ -145,7 +148,7 @@ namespace InfoPanel.Drawing
             {
                 if (d2dBitmap != null)
                     this.DrawBitmap(d2dBitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
-            }, cache);
+            }, true);
         }
 
         public override void DrawBitmap(D2DBitmap bitmap, int x, int y)
@@ -160,9 +163,13 @@ namespace InfoPanel.Drawing
                 // Save the current transform state
                 var originalTransform = this.D2DGraphics.GetTransform();
 
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+
                 // Create a rotation matrix
                 var radians = (float)(rotation * (Math.PI / 180.0));
-                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(rotationCenterX, rotationCenterY));
+                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(centerX, centerY));
 
                 // Apply the rotation transformation
                 this.D2DGraphics.SetTransform(rotationMatrix);
@@ -203,12 +210,32 @@ namespace InfoPanel.Drawing
 
         public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
+            // Save the current transform state
+            var originalTransform = this.D2DGraphics.GetTransform();
+
+            if (rotation != 0)
+            {
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+
+                // Create a rotation matrix
+                var radians = (float)(rotation * (Math.PI / 180.0));
+                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(centerX, centerY));
+
+                // Apply the rotation transformation
+                this.D2DGraphics.SetTransform(rotationMatrix);
+            }
+
             this.D2DGraphics.DrawRectangle(new D2DRect(x, y, width, height), D2DColor.FromGDIColor(color), strokeWidth);
+
+            // Undo the transformation
+            this.D2DGraphics.SetTransform(originalTransform);
         }
 
         public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
-            this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height);
+            this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
         }
 
         public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
@@ -348,6 +375,30 @@ namespace InfoPanel.Drawing
             d2dPath.ClosePath();
 
             return d2dPath;
+        }
+
+        private D2DPathGeometry CreateGraphicsPath(SKPath path)
+        {
+            var points = path.Points;
+            var vectors = new Vector2[points.Length];
+            for (int i = 0; i < points.Length; i++)
+            {
+                vectors[i] = new Vector2(points[i].X, points[i].Y);
+            }
+
+            var d2dPath = this.D2DDevice.CreatePathGeometry();
+            d2dPath.SetStartPoint(vectors[0]);
+            d2dPath.AddLines(vectors);
+            d2dPath.ClosePath();
+
+            return d2dPath;
+        }
+
+        public override void DrawPath(SKPath path, SKColor color, int strokeWidth)
+        {
+            using var d2dPath = CreateGraphicsPath(path);
+            this.D2DGraphics.DrawPath(d2dPath, new D2DColor(color.Alpha, color.Red, color.Green, color.Blue), strokeWidth);
+
         }
 
         public override void DrawPath(MyPoint[] points, string color, int strokeWidth)

@@ -6,7 +6,6 @@ using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -75,7 +74,7 @@ namespace InfoPanel
             return null;
         }
 
-        private static byte[] DownscaleUpscaleAndEncode(SKBitmap original, float scale = 0.5f)
+        private static byte[]? DownscaleUpscaleAndEncode(SKBitmap original, float scale = 0.5f)
         {
             int downWidth = (int)(original.Width * scale);
             int downHeight = (int)(original.Height * scale);
@@ -83,7 +82,19 @@ namespace InfoPanel
             using var downscaled = original.Resize(new SKImageInfo(downWidth, downHeight), SKSamplingOptions.Default);
             using var upscaled = downscaled.Resize(new SKImageInfo(original.Width, original.Height), SKSamplingOptions.Default);
 
-            using var data = upscaled.Encode(SKEncodedImageFormat.Png, 100);
+            var options = new SKPngEncoderOptions(
+                      filterFlags: SKPngEncoderFilterFlags.NoFilters,
+                      zLibLevel: 3
+                      );
+
+            using var pixmap = upscaled.PeekPixels();
+            using var data = pixmap.Encode(options);
+
+            if (data == null || data.IsEmpty)
+            {
+                Trace.WriteLine("Failed to encode bitmap to PNG");
+                return null;
+            }
             return data.ToArray();
         }
 
