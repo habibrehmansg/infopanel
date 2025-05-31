@@ -112,15 +112,6 @@ namespace InfoPanel.Utils
                             {
                                 var assetFiles = Directory.GetFiles(assetFolder).ToList();
 
-                                if (profile.VideoBackgroundFilePath is string videoBackgroundFilePath)
-                                {
-                                    var videoBackgroundFileAbsolutePath = FileUtil.GetRelativeAssetPath(profile, videoBackgroundFilePath);
-                                    var webPBackgroundFileAbsolutePath = $"{videoBackgroundFileAbsolutePath}.webp";
-
-                                    assetFiles.Remove(videoBackgroundFileAbsolutePath);
-                                    assetFiles.Remove(webPBackgroundFileAbsolutePath);
-                                }
-
                                 //load from file as there may be unsaved changes
                                 if (SharedModel.LoadDisplayItemsFromFile(profile) is List<DisplayItem> displayItems)
                                 {

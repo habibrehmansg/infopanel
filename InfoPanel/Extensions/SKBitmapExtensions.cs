@@ -1,0 +1,87 @@
+﻿using InfoPanel.ViewModels;
+using SkiaSharp;
+using System;
+
+namespace InfoPanel.Extensions
+{
+    public static partial class SKBitmapExtensions
+    {
+        public static SKBitmap EnsureBitmapSize(SKBitmap sourceBitmap, int targetWidth, int targetHeight, LCD_ROTATION rotation = LCD_ROTATION.RotateNone)
+        {
+            // Get effective dimensions after rotation
+            var (effectiveWidth, effectiveHeight) = GetRotatedDimensions(sourceBitmap.Width, sourceBitmap.Height, rotation);
+
+            // If already the right size and no rotation needed, return original
+            if (rotation == LCD_ROTATION.RotateNone &&
+                effectiveWidth == targetWidth &&
+                effectiveHeight == targetHeight)
+            {
+                return sourceBitmap;
+            }
+
+            // Calculate scaling to maintain aspect ratio
+            var scale = Math.Min((float)targetWidth / effectiveWidth, (float)targetHeight / effectiveHeight);
+            var scaledWidth = (int)(effectiveWidth * scale);
+            var scaledHeight = (int)(effectiveHeight * scale);
+
+            // Center coordinates
+            var x = (targetWidth - scaledWidth) / 2;
+            var y = (targetHeight - scaledHeight) / 2;
+
+            // Create result bitmap
+            var resultBitmap = new SKBitmap(targetWidth, targetHeight, sourceBitmap.ColorType, sourceBitmap.AlphaType);
+
+            using (var canvas = new SKCanvas(resultBitmap))
+            {
+                canvas.Clear(SKColors.Transparent);
+
+                // Apply transformations in one go
+                canvas.Translate(x + scaledWidth / 2f, y + scaledHeight / 2f);
+
+                if (rotation != LCD_ROTATION.RotateNone)
+                {
+                    var rotationAngle = GetRotationAngle(rotation);
+                    canvas.RotateDegrees(rotationAngle);
+                }
+
+                canvas.Scale(scale);
+                canvas.Translate(-sourceBitmap.Width / 2f, -sourceBitmap.Height / 2f);
+
+                using var image = SKImage.FromBitmap(sourceBitmap);
+                using var paint = new SKPaint
+                {
+                    IsAntialias = true
+                };
+
+                // Draw at origin since transformations are already applied
+                var sourceRect = new SKRect(0, 0, sourceBitmap.Width, sourceBitmap.Height);
+                var destRect = new SKRect(0, 0, sourceBitmap.Width, sourceBitmap.Height);
+                var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None);
+
+                canvas.DrawImage(image, sourceRect, destRect, sampling, paint);
+            }
+
+            return resultBitmap;
+        }
+
+        private static (int width, int height) GetRotatedDimensions(int width, int height, LCD_ROTATION rotation)
+        {
+            return rotation switch
+            {
+                LCD_ROTATION.Rotate90FlipNone or LCD_ROTATION.Rotate270FlipNone => (height, width),
+                _ => (width, height)
+            };
+        }
+
+        private static float GetRotationAngle(LCD_ROTATION rotation)
+        {
+            return rotation switch
+            {
+                LCD_ROTATION.Rotate90FlipNone => 90f,
+                LCD_ROTATION.Rotate180FlipNone => 180f,
+                LCD_ROTATION.Rotate270FlipNone => 270f,
+                _ => 0f
+            };
+        }
+    }
+}

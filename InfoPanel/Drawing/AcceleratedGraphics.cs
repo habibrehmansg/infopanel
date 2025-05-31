@@ -3,7 +3,6 @@ using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Numerics;
-using System.Reflection.Metadata;
 using unvell.D2DLib;
 using unvell.D2DLib.WinForm;
 
@@ -33,7 +32,7 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.Clear(D2DColor.FromGDIColor(color));
         }
 
-        private D2DTextFormat CreateTextFormat(string fontName, float fontSize, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        private D2DTextFormat CreateTextFormat(string fontName, string fontStyle, float fontSize, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
         {
             DWriteTextAlignment alignment = DWriteTextAlignment.Leading;
 
@@ -47,24 +46,54 @@ namespace InfoPanel.Drawing
                 alignment = DWriteTextAlignment.Center;
             }
 
-            return this.D2DDevice.CreateTextFormat(fontName, fontSize,
-                bold ? D2DFontWeight.Bold : D2DFontWeight.Normal, italic ? D2DFontStyle.Italic : D2DFontStyle.Normal, D2DFontStretch.Normal,
+            var skiaTypeFace = SkiaGraphics.CreateTypeface(fontName, fontStyle, bold, italic);
+
+            D2DFontWeight weight;
+            if (Enum.IsDefined(typeof(D2DFontWeight), skiaTypeFace.FontWeight))
+            {
+                weight = (D2DFontWeight)skiaTypeFace.FontWeight;
+            }
+            else
+            {
+                weight = D2DFontWeight.Normal;
+            }
+
+            return this.D2DDevice.CreateTextFormat(skiaTypeFace.FamilyName, fontSize,
+                weight, skiaTypeFace.IsItalic ? D2DFontStyle.Italic : D2DFontStyle.Normal, ConvertToD2DFontStretch(skiaTypeFace),
                 alignment);
         }
 
-        public override (float width, float height) MeasureString(string text, string fontName, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        private static D2DFontStretch ConvertToD2DFontStretch(SKTypeface typeface)
         {
-            using var textFormat = CreateTextFormat(fontName, fontSize, false, false, bold, italic, underline, strikeout);
+            // Standard font stretch values (1-9)
+            return typeface.FontWidth switch
+            {
+                1 => D2DFontStretch.UltraCondensed,
+                2 => D2DFontStretch.ExtraCondensed,
+                3 => D2DFontStretch.Condensed,
+                4 => D2DFontStretch.SemiCondensed,
+                5 => D2DFontStretch.Normal,
+                6 => D2DFontStretch.SemiExpanded,
+                7 => D2DFontStretch.Expanded,
+                8 => D2DFontStretch.ExtraExpanded,
+                9 => D2DFontStretch.UltraExpanded,
+                _ => D2DFontStretch.Normal
+            };
+        }
+
+        public override (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        {
+            using var textFormat = CreateTextFormat(fontName, fontStyle, fontSize, false, false, bold, italic, underline, strikeout);
             var textSize = new D2DSize(float.MaxValue, 0);
             this.D2DGraphics.MeasureText(text, textFormat, ref textSize);
             return (textSize.width, textSize.height);
         }
 
-        public override void DrawString(string text, string fontName, int fontSize, string color, int x, int y, 
+        public override void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, 
             bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, 
             int width = 0, int height = 0)
         {
-            using var textFormat = CreateTextFormat(fontName, fontSize * FontScale, rightAlign, width > 0 && centerAlign, bold, italic, underline, strikeout);
+            using var textFormat = CreateTextFormat(fontName, fontStyle, fontSize * FontScale, rightAlign, width > 0 && centerAlign, bold, italic, underline, strikeout);
             using var textColor = this.D2DDevice.CreateSolidColorBrush(D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
 
             var rect = new D2DRect(x + TextXOffset, y + TextYOffset, width == 0 ? float.MaxValue: width, height);
@@ -114,7 +143,7 @@ namespace InfoPanel.Drawing
             {
                 if (d2dBitmap != null)
                     this.DrawBitmap(d2dBitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
-            }, cache);
+            }, true);
         }
 
         public override void DrawBitmap(D2DBitmap bitmap, int x, int y)
@@ -129,9 +158,13 @@ namespace InfoPanel.Drawing
                 // Save the current transform state
                 var originalTransform = this.D2DGraphics.GetTransform();
 
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+
                 // Create a rotation matrix
                 var radians = (float)(rotation * (Math.PI / 180.0));
-                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(rotationCenterX, rotationCenterY));
+                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(centerX, centerY));
 
                 // Apply the rotation transformation
                 this.D2DGraphics.SetTransform(rotationMatrix);
@@ -160,22 +193,47 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.DrawBitmap(bitmapGraphics, new D2DRect(x, y, width, height));
         }
 
+        public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
+        {
+            throw new NotSupportedException();
+        }
+
         public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
         {
             this.D2DGraphics.DrawLine(x1, y1, x2, y2, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)), strokeWidth);
         }
 
-        public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height)
+        public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
+            // Save the current transform state
+            var originalTransform = this.D2DGraphics.GetTransform();
+
+            if (rotation != 0)
+            {
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+
+                // Create a rotation matrix
+                var radians = (float)(rotation * (Math.PI / 180.0));
+                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(centerX, centerY));
+
+                // Apply the rotation transformation
+                this.D2DGraphics.SetTransform(rotationMatrix);
+            }
+
             this.D2DGraphics.DrawRectangle(new D2DRect(x, y, width, height), D2DColor.FromGDIColor(color), strokeWidth);
+
+            // Undo the transformation
+            this.D2DGraphics.SetTransform(originalTransform);
         }
 
-        public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height)
+        public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
-            this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height);
+            this.DrawRectangle(ColorTranslator.FromHtml(color), strokeWidth, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
         }
 
-        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true)
+        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             if (gradientColor != null)
             {
@@ -312,6 +370,30 @@ namespace InfoPanel.Drawing
             d2dPath.ClosePath();
 
             return d2dPath;
+        }
+
+        private D2DPathGeometry CreateGraphicsPath(SKPath path)
+        {
+            var points = path.Points;
+            var vectors = new Vector2[points.Length];
+            for (int i = 0; i < points.Length; i++)
+            {
+                vectors[i] = new Vector2(points[i].X, points[i].Y);
+            }
+
+            var d2dPath = this.D2DDevice.CreatePathGeometry();
+            d2dPath.SetStartPoint(vectors[0]);
+            d2dPath.AddLines(vectors);
+            d2dPath.ClosePath();
+
+            return d2dPath;
+        }
+
+        public override void DrawPath(SKPath path, SKColor color, int strokeWidth)
+        {
+            using var d2dPath = CreateGraphicsPath(path);
+            this.D2DGraphics.DrawPath(d2dPath, new D2DColor(color.Alpha, color.Red, color.Green, color.Blue), strokeWidth);
+
         }
 
         public override void DrawPath(MyPoint[] points, string color, int strokeWidth)

@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Views.Windows;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -18,14 +19,18 @@ namespace InfoPanel.Views.Components
             InitializeComponent();
          }
 
-        private void ButtonSelect_Click(object sender, RoutedEventArgs e)
+        private async void ButtonSelect_Click(object sender, RoutedEventArgs e)
         {
             if (SharedModel.Instance.SelectedItem is ImageDisplayItem imageDisplayItem)
             {
                 Microsoft.Win32.OpenFileDialog openFileDialog = new()
                 {
                     Multiselect = false,
-                    Filter = "Image files (*.jpg, *.jpeg, *.png, *.gif, *.webp)|*.jpg;*.jpeg;*.png;*.gif;*.webp",
+                    Filter =
+                    "All supported files|*.jpg;*.jpeg;*.png;*.gif;*.webp;*.mp4" +
+                    "|Image files (*.jpg, *.jpeg, *.png)|*.jpg;*.jpeg;*.png" +
+                    "|Animated files (*.gif, *.webp)|*.gif;*.webp" +
+                    "|Video files (*.mp4)|*.mp4;",
                     InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
                 };
                 if (openFileDialog.ShowDialog() == true)
@@ -42,15 +47,36 @@ namespace InfoPanel.Views.Components
 
                         try
                         {
-                            var filePath = Path.Combine(imageFolder, openFileDialog.SafeFileName);
-                            File.Copy(openFileDialog.FileName, filePath, true);
+                            var fileName = openFileDialog.SafeFileName;
+
+                            if (openFileDialog.SafeFileName.EndsWith(".mp4"))
+                            {
+                                var loadingWindow = new LoadingWindow
+                                {
+                                    Owner = App.Current.MainWindow
+                                };
+                                loadingWindow.SetText("Processing video..");
+                                loadingWindow.Show();
+
+                                fileName = $"{fileName}.webp";
+                                var webPFilePath = Path.Combine(imageFolder, fileName);
+                                await VideoBackgroundHelper.GenerateWebP(openFileDialog.FileName, webPFilePath);
+                                loadingWindow.Close();
+
+                                imageDisplayItem.Cache = false;
+                            }
+                            else
+                            {
+                                var filePath = Path.Combine(imageFolder, openFileDialog.SafeFileName);
+                                File.Copy(openFileDialog.FileName, filePath, true);
+                            }
 
                             //OptimizeGif(filePath);
 
                             imageDisplayItem.Guid = Guid.NewGuid();
                             imageDisplayItem.RelativePath = true;
                             imageDisplayItem.Name = openFileDialog.SafeFileName;
-                            imageDisplayItem.FilePath = openFileDialog.SafeFileName;
+                            imageDisplayItem.FilePath = fileName;
 
                             var lockedImage = Cache.GetLocalImage(imageDisplayItem);
 
@@ -77,6 +103,7 @@ namespace InfoPanel.Views.Components
                 && Cache.GetLocalImage(path) is LockedImage lockedImage)
             {
                 lockedImage.DisposeAssets();
+                lockedImage.DisposeSKAssets();
                 lockedImage.DisposeD2DAssets();
             }
         }

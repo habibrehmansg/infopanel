@@ -14,6 +14,7 @@ namespace InfoPanel.Models
     {
         public readonly string ImagePath;
         private Bitmap?[]? BitmapCache;
+        private SKBitmap?[]? SKBitmapCache;
         private IntPtr? D2DHandle;
         private D2DBitmap?[]? D2DBitmapCache;
         public int Width = 0;
@@ -101,6 +102,9 @@ namespace InfoPanel.Models
                             DisposeD2DAssets();
                             D2DBitmapCache = new D2DBitmap[Frames];
 
+                            DisposeSKAssets();
+                            SKBitmapCache = new SKBitmap[Frames];
+
                             _cumulativeFrameTimes = new long[Frames];
 
                             if (Frames > 1)
@@ -157,11 +161,86 @@ namespace InfoPanel.Models
             return bitmap;
         }
 
+        private SKBitmap? GetSKBitmapFromSK(int frame)
+        {
+            if (_stream != null && _codec != null)
+            {
+                var info = _codec.Info;
+                _compositeBitmap ??= new SKBitmap(info);
+                //_compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
+
+                SKBitmap? keepCopy = null;
+
+                if (frame != _lastRenderedFrame)
+                {
+                    if (_lastRenderedFrame >= frame)
+                    {
+                        ResetCompositeBitmap(_compositeBitmap);
+                        _lastRenderedFrame = -1;
+                    }
+
+                    for (int i = _lastRenderedFrame + 1; i <= frame; i++)
+                    {
+
+                        SKCodecFrameInfo? frameInfo = null;
+                        if (_codec.FrameCount > 0)
+                        {
+                            frameInfo = _codec.FrameInfo[i];
+                            if (frameInfo?.DisposalMethod == SKCodecAnimationDisposalMethod.RestoreBackgroundColor)
+                            {
+                                ResetCompositeBitmap(_compositeBitmap);
+                            }
+                            else if (frameInfo?.DisposalMethod == SKCodecAnimationDisposalMethod.RestorePrevious)
+                            {
+                                keepCopy?.Dispose();
+                                keepCopy = _compositeBitmap.Copy();
+                            }
+                        }
+
+                        //var options = new SKCodecOptions(i, i > 0 ? i - 1 : 0);
+                        var requiredFrame = frameInfo?.RequiredFrame ?? (i > 0 ? i - 1 : 0);
+
+                        var options = new SKCodecOptions(i, requiredFrame);
+                        try
+                        {
+                            var r = _codec.GetPixels(info, _compositeBitmap.GetPixels(), options);
+
+                            if (r != SKCodecResult.Success)
+                            {
+                                Trace.WriteLine(r + $" i={i}");
+                                return null;
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            Trace.WriteLine(e.Message);
+                        }
+                    }
+
+                    _lastRenderedFrame = frame;
+                }
+
+                var result = _compositeBitmap.Copy();
+
+                if (keepCopy != null)
+                {
+                    _compositeBitmap?.Dispose();
+                    _compositeBitmap = keepCopy;
+                }
+
+                return result;
+            }
+
+            return null;
+        }
+
         private Bitmap? GetBitmapFromSK(int frame)
         {
             if (_stream != null && _codec != null)
             {
-                _compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
+                var info = _codec.Info;
+                _compositeBitmap ??= new SKBitmap(info);
+                //_compositeBitmap ??= new SKBitmap(_codec.Info.Width, _codec.Info.Height);
 
                 SKBitmap? keepCopy = null;
 
@@ -268,6 +347,50 @@ namespace InfoPanel.Models
             }
 
             return index;
+        }
+
+        public void AccessSK(Action<SKBitmap?> access, bool cache = true)
+        {
+            if (IsDisposed)
+            {
+                throw new ObjectDisposedException("LockedImage");
+            }
+
+            lock (Lock)
+            {
+                if (_codec != null && SKBitmapCache != null)
+                {
+                    var frame = GetCurrentFrameCount();
+                    var bitmap = SKBitmapCache[frame];
+                    var dispose = false;
+
+                    try
+                    {
+                        if (bitmap == null && _codec != null)
+                        {
+                            bitmap = GetSKBitmapFromSK(frame);
+
+                            if (cache)
+                            {
+                                SKBitmapCache[frame] = bitmap;
+                            }
+                            else
+                            {
+                                dispose = true;
+                            }
+                        }
+
+                        access(bitmap);
+                    }
+                    finally
+                    {
+                        if (dispose)
+                        {
+                            bitmap?.Dispose();
+                        }
+                    }
+                }
+            }
         }
 
         public void AccessD2D(D2DDevice device, IntPtr handle, Action<D2DBitmap?> action, bool cache = true)
@@ -405,6 +528,21 @@ namespace InfoPanel.Models
             return result;
         }
 
+        public void DisposeSKAssets()
+        {
+            lock(Lock)
+            {
+                if(SKBitmapCache != null)
+                {
+                    for(int i = 0; i< SKBitmapCache.Length; i++)
+                    {
+                        SKBitmapCache[i]?.Dispose();
+                        SKBitmapCache[i] = null;
+                    }
+                }
+            }
+        }
+
         public void DisposeD2DAssets()
         {
             lock (Lock)
@@ -445,6 +583,7 @@ namespace InfoPanel.Models
                 if (!IsDisposed)
                 {
                     DisposeAssets();
+                    DisposeSKAssets();
                     DisposeD2DAssets();
                     _codec?.Dispose();
                     _stream?.Dispose();

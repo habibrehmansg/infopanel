@@ -1,14 +1,6 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
-using InfoPanel.Enums;
-using InfoPanel.Utils;
-using System;
-using System.ComponentModel;
+﻿using InfoPanel.Enums;
 using System.Diagnostics;
-using System.Drawing;
-using System.IO;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Xml.Serialization;
 
 namespace InfoPanel.Models
 {
@@ -40,7 +32,7 @@ namespace InfoPanel.Models
 
         public static async Task GenerateWebP(string inputFile, string outputFile)
         {
-            var operation = "-vf \"fps=15\" -loop 0 -lossless 0 -compression_level 0 -quality 90";
+            var operation = "-vf \"fps=20\" -loop 0 -lossless 0 -compression_level 6 -quality 85 -preset photo";
             await FFmpegOperation(inputFile, operation, outputFile);
         }
 
@@ -62,7 +54,7 @@ namespace InfoPanel.Models
             var startInfo = new ProcessStartInfo
             {
                 FileName = ffmpegPath,
-                Arguments = $"-i {inputFile} {operation} -t {timeLimit} -an -y {outputFile}",
+                Arguments = $"-i \"{inputFile}\" {operation} -t {timeLimit} -an -y \"{outputFile}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.ViewModels;
+using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace InfoPanel.Models
 {
-    public class Settings : ObservableObject
+    public partial class Settings : ObservableObject
     {
         private bool _autostart = false;
         public bool AutoStart
@@ -30,6 +31,18 @@ namespace InfoPanel.Models
             get { return _minimizeToTray; }
             set { SetProperty(ref _minimizeToTray, value); }
         }
+
+        [ObservableProperty]
+        private string _selectedItemColor = "#FF00FF00";
+
+        [ObservableProperty]
+        private bool _showGridLines = true;
+
+        [ObservableProperty]
+        private float _gridLinesSpacing = 50;
+
+        [ObservableProperty]
+        private string _gridLinesColor = "#FF708090";
 
         private bool _libreHardwareMonitor = true;
         public bool LibreHardwareMonitor

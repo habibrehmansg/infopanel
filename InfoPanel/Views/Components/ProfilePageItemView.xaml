@@ -1,0 +1,74 @@
+﻿<UserControl
+    x:Class="InfoPanel.Views.Components.ProfilePageItemView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:InfoPanel.Views.Components"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
+    <Grid>
+        <Border
+            Width="260"
+            Margin="0,0,0,0"
+            Background="#601A1a1a"
+            CornerRadius="8,8,8,8">
+            <Grid>
+                <Border
+                    Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                    BorderThickness="0"
+                    CornerRadius="8,8,8,8"
+                    Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
+                <StackPanel>
+                    <skia:SKElement
+                        x:Name="skElement"
+                        Height="150"
+                        Margin="20,20,20,20"
+                        PaintSurface="skElement_PaintSurface" />
+
+                    <Border Background="#FF1A1a1a" CornerRadius="0,0,8,8">
+                        <Grid Margin="10,0,10,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="auto" />
+                            </Grid.ColumnDefinitions>
+                            <Label Margin="10,10,10,10">
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                            </Label>
+                            <ui:ToggleSwitch
+                                Grid.Column="1"
+                                Checked="ToggleSwitch_Checked"
+                                IsChecked="{Binding Active}"
+                                Unchecked="ToggleSwitch_Checked" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+                <ui:Button
+                    Name="ButtonExport"
+                    Grid.Column="1"
+                    Margin="10,10,0,0"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Appearance="Success"
+                    Click="ButtonExport_Click"
+                    Content="Export"
+                    Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
+                <ui:Button
+                    Name="ButtonDelete"
+                    Grid.Column="1"
+                    Margin="0,10,10,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Appearance="Danger"
+                    Click="ButtonDelete_Click"
+                    Content=""
+                    Icon="Delete20"
+                    ToolTip="Delete Profile"
+                    Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
