@@ -1,4 +1,5 @@
-﻿using InfoPanel.Models;
+﻿using InfoPanel.Extensions;
+using InfoPanel.Models;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
@@ -8,7 +9,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Windows.Documents;
 using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
@@ -92,13 +92,23 @@ namespace InfoPanel.Drawing
 
         public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true)
         {
-            lockedImage.AccessSK(bitmap =>
+            if (lockedImage.IsSvg)
             {
-                if (bitmap != null)
+                lockedImage.AccessSVG(picture =>
                 {
-                    DrawBitmap(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
-                }
-            }, cache);
+                    Canvas.DrawPicture(picture, x, y, width, height, rotation);
+                });
+            }
+            else
+            {
+                lockedImage.AccessSK(width, height, bitmap =>
+                {
+                    if (bitmap != null)
+                    {
+                        DrawBitmap(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
+                    }
+                }, cache);
+            }
         }
 
         public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)

@@ -248,7 +248,7 @@ namespace InfoPanel.Views.Common
                     }
                     else
                     {
-                        Cache.GetLocalImage(imageDisplayItem, false)?.DisposeAssets();
+                        Cache.GetLocalImage(imageDisplayItem, false)?.DisposeSKAssets();
                     }
                 }
             });

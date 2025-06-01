@@ -248,24 +248,7 @@ namespace InfoPanel.Drawing
                             }
                         }
 
-                        LockedImage? cachedImage = null;
-
-                        if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
-                        {
-                            var sensorReading = httpImageDisplayItem.GetValue();
-
-                            if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
-                            {
-                                cachedImage = Cache.GetLocalImage(sensorReading.Value.ValueText);
-                            }
-                        }
-                        else
-                        {
-                            if (imageDisplayItem.CalculatedPath != null)
-                            {
-                                cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);
-                            }
-                        }
+                        LockedImage? cachedImage = Cache.GetLocalImage(imageDisplayItem);
 
                         var size = imageDisplayItem.EvaluateSize();
                         var scaledWidth = (int)size.Width;
@@ -289,9 +272,9 @@ namespace InfoPanel.Drawing
                     {
                         var imageDisplayItem = gaugeDisplayItem.EvaluateImage();
 
-                        if (imageDisplayItem?.CalculatedPath != null)
+                        if (imageDisplayItem != null)
                         {
-                            var cachedImage = Cache.GetLocalImage(imageDisplayItem.CalculatedPath);
+                            var cachedImage = Cache.GetLocalImage(imageDisplayItem);
 
                             if (cachedImage != null)
                             {

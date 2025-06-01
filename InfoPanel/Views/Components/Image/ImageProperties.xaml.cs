@@ -27,8 +27,8 @@ namespace InfoPanel.Views.Components
                 {
                     Multiselect = false,
                     Filter =
-                    "All supported files|*.jpg;*.jpeg;*.png;*.gif;*.webp;*.mp4" +
-                    "|Image files (*.jpg, *.jpeg, *.png)|*.jpg;*.jpeg;*.png" +
+                    "All supported files|*.jpg;*.jpeg;*.png;*.svg;*.gif;*.webp;*.mp4" +
+                    "|Image files (*.jpg, *.jpeg, *.png, *.svg)|*.jpg;*.jpeg;*.png;*.svg" +
                     "|Animated files (*.gif, *.webp)|*.gif;*.webp" +
                     "|Video files (*.mp4)|*.mp4;",
                     InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyComputer)
@@ -99,10 +99,8 @@ namespace InfoPanel.Views.Components
         private void CheckBoxCache_Unchecked(object sender, RoutedEventArgs e)
         {
             if (SharedModel.Instance.SelectedItem is ImageDisplayItem imageDisplayItem && !imageDisplayItem.Cache
-                && imageDisplayItem.CalculatedPath is string path
-                && Cache.GetLocalImage(path) is LockedImage lockedImage)
+                && Cache.GetLocalImage(imageDisplayItem) is LockedImage lockedImage)
             {
-                lockedImage.DisposeAssets();
                 lockedImage.DisposeSKAssets();
                 lockedImage.DisposeD2DAssets();
             }

@@ -137,7 +137,7 @@ namespace InfoPanel.Models
 
                 if (sensorReading.HasValue && sensorReading.Value.ValueText != null && sensorReading.Value.ValueText.IsUrl())
                 {
-                    var cachedImage = InfoPanel.Cache.GetLocalImage(sensorReading.Value.ValueText);
+                    var cachedImage = InfoPanel.Cache.GetLocalImage(this);
                     if (cachedImage != null)
                     {
                         if (result.Width == 0)

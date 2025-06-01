@@ -83,5 +83,44 @@ namespace InfoPanel.Extensions
                 _ => 0f
             };
         }
+
+        public static SKBitmap Resize(this SKBitmap bitmap, int targetWidth, int targetHeight, SKColor backgroundColor = default)
+        {
+            // Set default background to transparent if not specified
+            if (backgroundColor == default)
+                backgroundColor = SKColors.Transparent;
+
+            // Calculate the scaling factor to fit the image within bounds
+            float scaleX = (float)targetWidth / bitmap.Width;
+            float scaleY = (float)targetHeight / bitmap.Height;
+            float scale = Math.Min(scaleX, scaleY);
+
+            // Calculate the scaled dimensions
+            int scaledWidth = (int)(bitmap.Width * scale);
+            int scaledHeight = (int)(bitmap.Height * scale);
+
+            // Calculate position to center the image
+            int x = (targetWidth - scaledWidth) / 2;
+            int y = (targetHeight - scaledHeight) / 2;
+
+            // Create new bitmap with exact target dimensions
+            var result = new SKBitmap(targetWidth, targetHeight);
+            using (var canvas = new SKCanvas(result))
+            {
+                // Fill background
+                canvas.Clear(backgroundColor);
+
+                // Draw the resized image centered
+                using var paint = new SKPaint();
+                paint.IsAntialias = true;
+
+                var destRect = new SKRect(x, y, x + scaledWidth, y + scaledHeight);
+                var srcRect = new SKRect(0, 0, bitmap.Width, bitmap.Height);
+
+                canvas.DrawBitmap(bitmap, srcRect, destRect, paint);
+            }
+
+            return result;
+        }
     }
 }

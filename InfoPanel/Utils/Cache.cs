@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Threading;
 
 namespace InfoPanel
 {
@@ -13,10 +14,26 @@ namespace InfoPanel
     {
         private static readonly IMemoryCache ImageCache = new MemoryCache(new MemoryCacheOptions()
         {
-            ExpirationScanFrequency = TimeSpan.FromSeconds(1)
+            ExpirationScanFrequency = TimeSpan.FromSeconds(10)
         });
 
+        private static readonly Timer _expirationTimer;
         private static readonly object _imageLock = new();
+
+        static Cache()
+        {
+            _expirationTimer = new Timer(
+                callback: _ => ForceExpirationScan(),
+                state: null,
+                dueTime: TimeSpan.FromSeconds(10),
+                period: TimeSpan.FromSeconds(10)
+            );
+        }
+        private static void ForceExpirationScan()
+        {
+            _ = ImageCache.Get("__dummy_key_for_expiration__");
+        }
+
 
         public static Stream ToStream(this Image image, ImageFormat format)
         {
@@ -28,17 +45,29 @@ namespace InfoPanel
 
         public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)
         {
-            if (imageDisplayItem.CalculatedPath != null)
+            if(imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
             {
-                return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
+                var sensorReading = httpImageDisplayItem.GetValue();
+
+                if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
+                {
+                    return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing, imageDisplayItem.Guid.ToString());
+                }
+            }else
+            {
+                if (imageDisplayItem.CalculatedPath != null)
+                {
+                    return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing, imageDisplayItem.Guid.ToString());
+                }
             }
 
             return null;
         }
 
-        public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
+        public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true, string tag = "default")
         {
-            ImageCache.TryGetValue(path, out LockedImage? result);
+            var cacheKey = $"{tag}-{path}";
+            ImageCache.TryGetValue(cacheKey, out LockedImage? result);
 
             if (result != null || !initialiseIfMissing)
             {
@@ -54,7 +83,7 @@ namespace InfoPanel
                         result = new LockedImage(path);
                     }
 
-                    ImageCache.Set(path, result, new MemoryCacheEntryOptions
+                    ImageCache.Set(cacheKey, result, new MemoryCacheEntryOptions
                     {
                         SlidingExpiration = TimeSpan.FromSeconds(5),
                         PostEvictionCallbacks = { new PostEvictionCallbackRegistration

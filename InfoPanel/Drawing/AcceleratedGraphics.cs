@@ -89,31 +89,32 @@ namespace InfoPanel.Drawing
             return (textSize.width, textSize.height);
         }
 
-        public override void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, 
-            bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, 
+        public override void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y,
+            bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false,
             int width = 0, int height = 0)
         {
             using var textFormat = CreateTextFormat(fontName, fontStyle, fontSize * FontScale, rightAlign, width > 0 && centerAlign, bold, italic, underline, strikeout);
             using var textColor = this.D2DDevice.CreateSolidColorBrush(D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
 
-            var rect = new D2DRect(x + TextXOffset, y + TextYOffset, width == 0 ? float.MaxValue: width, height);
+            var rect = new D2DRect(x + TextXOffset, y + TextYOffset, width == 0 ? float.MaxValue : width, height);
 
             if (rightAlign && width == 0 && height == 0)
             {
                 rect.X = 0;
                 rect.Width = x - TextXOffset;
-            }else if(width > 0)
+            }
+            else if (width > 0)
             {
                 //add truncate support manually
                 var textSize = new D2DSize(float.MaxValue, 0);
                 this.D2DGraphics.MeasureText(text, textFormat, ref textSize);
 
-                if(textSize.width > width)
+                if (textSize.width > width)
                 {
                     string ellipsis = "...";
                     string truncatedText = text.TrimEnd();
 
-                    while(truncatedText.Length > 0)
+                    while (truncatedText.Length > 0)
                     {
                         var tempText = truncatedText + ellipsis;
 
@@ -139,11 +140,10 @@ namespace InfoPanel.Drawing
 
         public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true)
         {
-            lockedImage.AccessD2D(this.D2DDevice, this.Handle, d2dBitmap =>
+            lockedImage.AccessD2D(this.D2DDevice, this.Handle, width, height, d2dBitmap =>
             {
-                if (d2dBitmap != null)
-                    this.DrawBitmap(d2dBitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
-            }, true);
+                this.DrawBitmap(d2dBitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
+            });
         }
 
         public override void DrawBitmap(D2DBitmap bitmap, int x, int y)
@@ -240,17 +240,18 @@ namespace InfoPanel.Drawing
                 if (gradientHorizontal)
                 {
                     using var brush = this.D2DDevice.CreateLinearGradientBrush(
-                     new Vector2(x, y),             
-                     new Vector2(x + width, y),   
+                     new Vector2(x, y),
+                     new Vector2(x + width, y),
                      [
-                        new(0, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color))),         
-                        new(1, D2DColor.FromGDIColor(ColorTranslator.FromHtml(gradientColor)))  
+                        new(0, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color))),
+                        new(1, D2DColor.FromGDIColor(ColorTranslator.FromHtml(gradientColor)))
                      ]);
                     this.D2DGraphics.FillRectangle(new D2DRect(x, y, width, height), brush);
-                } else
+                }
+                else
                 {
                     using var brush = this.D2DDevice.CreateLinearGradientBrush(
-                     new Vector2(x, y),    
+                     new Vector2(x, y),
                      new Vector2(x, y + height),
                      [
                         new(0, D2DColor.FromGDIColor(ColorTranslator.FromHtml(gradientColor))),
@@ -258,7 +259,7 @@ namespace InfoPanel.Drawing
                      ]);
                     this.D2DGraphics.FillRectangle(new D2DRect(x, y, width, height), brush);
                 }
-               
+
             }
             else
             {
@@ -321,7 +322,7 @@ namespace InfoPanel.Drawing
 
             //Fill usage
             using var path = this.D2DDevice.CreatePieGeometry(
-                new Vector2(x + radius, y + radius),  
+                new Vector2(x + radius, y + radius),
                 new D2DSize(radius * 2, radius * 2),
                 rotation, rotation + angleSpan
             );
