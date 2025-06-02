@@ -46,24 +46,27 @@ namespace InfoPanel
 
         public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)
         {
-            if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
+            lock (_imageLock)
             {
-                var sensorReading = httpImageDisplayItem.GetValue();
-
-                if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
+                if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
                 {
-                    return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
-                }
-            }
-            else
-            {
-                if (imageDisplayItem.CalculatedPath != null)
-                {
-                    return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
-                }
-            }
+                    var sensorReading = httpImageDisplayItem.GetValue();
 
-            return null;
+                    if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
+                    {
+                        return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
+                    }
+                }
+                else
+                {
+                    if (imageDisplayItem.CalculatedPath != null)
+                    {
+                        return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
+                    }
+                }
+
+                return null;
+            }
         }
 
         public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
@@ -87,7 +90,7 @@ namespace InfoPanel
 
                     if (result != null)
                     {
-                        ImageCache.Set(cacheKey, result, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
+                        ImageCache.Set(cacheKey, result, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(10) });
                     }
 
                 }

@@ -46,7 +46,7 @@ namespace InfoPanel
                                 writeableBitmap.Freeze();
                                 bitmapImage = writeableBitmap.ToBitmapImage();
                             }
-                        }, false);
+                        }, true, "ImageConverter");
                     }
 
                     return bitmapImage;

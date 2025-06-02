@@ -235,6 +235,23 @@ namespace InfoPanel.Drawing
 
         public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
+            // Save the current transform state
+            var originalTransform = this.D2DGraphics.GetTransform();
+
+            if (rotation != 0)
+            {
+                // Default to rectangle center if no rotation center specified
+                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
+                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
+
+                // Create a rotation matrix
+                var radians = (float)(rotation * (Math.PI / 180.0));
+                var rotationMatrix = Matrix3x2.CreateRotation(radians, new Vector2(centerX, centerY));
+
+                // Apply the rotation transformation
+                this.D2DGraphics.SetTransform(rotationMatrix);
+            }
+
             if (gradientColor != null)
             {
                 if (gradientHorizontal)
@@ -265,6 +282,9 @@ namespace InfoPanel.Drawing
             {
                 this.D2DGraphics.FillRectangle(x, y, width, height, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
             }
+
+            // Undo the transformation
+            this.D2DGraphics.SetTransform(originalTransform);
         }
 
         public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor)

@@ -368,7 +368,7 @@ namespace InfoPanel.Models
                 if (bitmapFrame.Bitmap == null)
                 {
                     using var bitmap = GetSKBitmapFromSK(frame);
-                    bitmapFrame.Bitmap = bitmap?.Resize(targetWidth, targetHeight, expand: false);
+                    bitmapFrame.Bitmap = bitmap?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
 
                     if (!cache)
                     {
@@ -388,7 +388,7 @@ namespace InfoPanel.Models
             }
         }
 
-        public void AccessD2D(D2DDevice device, IntPtr handle, int targetWidth, int targetHeight, Action<D2DBitmap> access, bool cache, string cacheHint = "default")
+        public void AccessD2D(D2DDevice device, IntPtr handle, int targetWidth, int targetHeight, Action<D2DBitmap> access, bool cache = true, string cacheHint = "default")
         {
             ObjectDisposedException.ThrowIf(IsDisposed, this);
             ArgumentNullException.ThrowIfNull(access);
@@ -410,7 +410,7 @@ namespace InfoPanel.Models
                     D2DHandle = handle;
                 }
 
-                var D2DBitmapCache = GetD2DBitmapFrameCache("cacheHint");
+                var D2DBitmapCache = GetD2DBitmapFrameCache(cacheHint);
 
                 var frame = GetCurrentFrameCount();
                 var d2dbitmapFrame = D2DBitmapCache[frame];
@@ -443,7 +443,7 @@ namespace InfoPanel.Models
                     else if (_codec != null)
                     {
                         var b = GetSKBitmapFromSK(frame);
-                        bitmap = b?.Resize(targetWidth, targetHeight, expand: false);
+                        bitmap = b?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
                         b?.Dispose();
                     }
 

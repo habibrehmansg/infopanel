@@ -101,14 +101,34 @@ namespace InfoPanel.Views.Controls
                     }
                     else
                     {
-                        image.AccessSK(width, height, bitmap =>
+                        double imageAspectRatio = (double)image.Width / image.Height;
+                        double containerAspectRatio = (double)width / height;
+
+                        int targetWidth, targetHeight;
+
+                        if (imageAspectRatio > containerAspectRatio)
+                        {
+                            // Image is wider relative to its height than the container
+                            // Fit to width, adjust height
+                            targetWidth = width;
+                            targetHeight = (int)Math.Ceiling(width / imageAspectRatio);
+                        }
+                        else
+                        {
+                            // Image is taller relative to its width than the container
+                            // Fit to height, adjust width
+                            targetWidth = (int)Math.Ceiling(height * imageAspectRatio);
+                            targetHeight = height;
+                        }
+
+                        image.AccessSK(targetWidth, targetHeight, bitmap =>
                         {
                             if (bitmap != null)
                             {
                                 writeableBitmap = bitmap.ToWriteableBitmap();
                                 writeableBitmap.Freeze();
                             }
-                        }, true, "PROPERTIES");
+                        }, true, "MyImage");
                     }
                 }
 
