@@ -32,7 +32,7 @@ namespace InfoPanel
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
                 var rotation = ConfigModel.Instance.Settings.TuringPanelRotation;
-                using var bitmap = PanelDrawTask.RenderSK(profile, false, videoBackgroundFallback: true,
+                using var bitmap = PanelDrawTask.RenderSK(profile, false,
                     colorType: DateTime.Now > _downgradeRenderingUntil ? SKColorType.Rgba8888 : SKColorType.Argb4444);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);

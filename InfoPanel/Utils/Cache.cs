@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Extensions;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Diagnostics;
@@ -12,7 +13,7 @@ namespace InfoPanel
 {
     internal static class Cache
     {
-        private static readonly IMemoryCache ImageCache = new MemoryCache(new MemoryCacheOptions()
+        private static readonly TypedMemoryCache<LockedImage> ImageCache = new(new MemoryCacheOptions()
         {
             ExpirationScanFrequency = TimeSpan.FromSeconds(10)
         });
@@ -45,37 +46,38 @@ namespace InfoPanel
 
         public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)
         {
-            if(imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
+            if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
             {
                 var sensorReading = httpImageDisplayItem.GetValue();
 
                 if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
                 {
-                    return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing, imageDisplayItem.Guid.ToString());
+                    return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
                 }
-            }else
+            }
+            else
             {
                 if (imageDisplayItem.CalculatedPath != null)
                 {
-                    return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing, imageDisplayItem.Guid.ToString());
+                    return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
                 }
             }
 
             return null;
         }
 
-        public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true, string tag = "default")
+        public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
         {
-            var cacheKey = $"{tag}-{path}";
-            ImageCache.TryGetValue(cacheKey, out LockedImage? result);
-
-            if (result != null || !initialiseIfMissing)
-            {
-                return result;
-            }
-
             lock (_imageLock)
             {
+                var cacheKey = $"{path}";
+                ImageCache.TryGetValue(cacheKey, out LockedImage? result);
+
+                if (result != null || !initialiseIfMissing)
+                {
+                    return result;
+                }
+
                 try
                 {
                     if (!path.Equals("NO_IMAGE") && (path.IsUrl() || File.Exists(path)))
@@ -83,28 +85,19 @@ namespace InfoPanel
                         result = new LockedImage(path);
                     }
 
-                    ImageCache.Set(cacheKey, result, new MemoryCacheEntryOptions
+                    if (result != null)
                     {
-                        SlidingExpiration = TimeSpan.FromSeconds(5),
-                        PostEvictionCallbacks = { new PostEvictionCallbackRegistration
-                        {
-                            EvictionCallback = (key, value, reason, state) =>
-                            {
-                                if(value is LockedImage lockedImage)
-                                {
-                                   lockedImage.Dispose();
-                                }
-                            }
-                        } }
-                    });
+                        ImageCache.Set(cacheKey, result, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
+                    }
 
                 }
                 catch (Exception e)
                 {
                     Trace.WriteLine(e.ToString());
                 }
+
+                return result;
             }
-            return result;
         }
     }
 

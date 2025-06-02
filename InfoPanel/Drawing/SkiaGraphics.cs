@@ -90,7 +90,7 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default")
         {
             if (lockedImage.IsSvg)
             {
@@ -107,7 +107,7 @@ namespace InfoPanel.Drawing
                     {
                         DrawBitmap(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
                     }
-                }, cache);
+                }, cache, cacheHint);
             }
         }
 

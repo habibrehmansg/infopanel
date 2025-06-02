@@ -28,7 +28,7 @@ namespace InfoPanel
 
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
-                var bitmap = PanelDrawTask.RenderSK(profile, false, videoBackgroundFallback: true, alphaType: SKAlphaType.Opaque);
+                var bitmap = PanelDrawTask.RenderSK(profile, false, alphaType: SKAlphaType.Opaque);
                 var rotation = ConfigModel.Instance.Settings.TuringPanelARotation;
 
                 var ensuredBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);

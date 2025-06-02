@@ -14,7 +14,7 @@ using System.Windows.Media.Media3D;
 
 namespace InfoPanel.Drawing
 {
-    struct SelectedRectangle(SKRect rect, int rotation = 0)
+    readonly struct SelectedRectangle(SKRect rect, int rotation = 0)
     {
         public readonly SKRect Rect = rect;
         public readonly int Rotation = rotation;
@@ -29,7 +29,7 @@ namespace InfoPanel.Drawing
             stopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false)
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default")
         {
             List<SelectedRectangle> selectedRectangles = [];
 
@@ -38,7 +38,7 @@ namespace InfoPanel.Drawing
             foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))
             {
                 if (displayItem.Hidden) continue;
-                Draw(g, scale, cache, displayItem, selectedRectangles);
+                Draw(g, scale, cache, cacheHint, displayItem, selectedRectangles);
             }
 
             if (drawSelected && SharedModel.Instance.SelectedProfile == profile && selectedRectangles.Count != 0)
@@ -152,7 +152,7 @@ namespace InfoPanel.Drawing
             return null;
         }
 
-        private static void Draw(MyGraphics g, double scale, bool cache, DisplayItem displayItem, List<SelectedRectangle> selectedRectangles)
+        private static void Draw(MyGraphics g, double scale, bool cache, string cacheHint, DisplayItem displayItem, List<SelectedRectangle> selectedRectangles)
         {
             var x = (int)Math.Ceiling(displayItem.X * scale);
             var y = (int)Math.Ceiling(displayItem.Y * scale);
@@ -164,7 +164,7 @@ namespace InfoPanel.Drawing
                         foreach (var item in groupDisplayItem.DisplayItems)
                         {
                             if (item.Hidden) continue;
-                            Draw(g, scale, cache, item, selectedRectangles);
+                            Draw(g, scale, cache, cacheHint, item, selectedRectangles);
                         }
                         break;
                     }
@@ -259,7 +259,7 @@ namespace InfoPanel.Drawing
 
                         if (cachedImage != null)
                         {
-                            g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, cache: imageDisplayItem.Cache && cache);
+                            g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, cache: imageDisplayItem.Cache && cache, cacheHint: cacheHint);
 
                             if (imageDisplayItem.Layer)
                             {
@@ -294,7 +294,7 @@ namespace InfoPanel.Drawing
                                 scaledWidth = (int)Math.Ceiling(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
                                 scaledHeight = (int)Math.Ceiling(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
 
-                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache);
+                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint);
                             }
                         }
                         break;

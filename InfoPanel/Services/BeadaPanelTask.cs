@@ -33,7 +33,7 @@ namespace InfoPanel
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
                 var rotation = ConfigModel.Instance.Settings.BeadaPanelRotation;
-                using var bitmap = PanelDrawTask.RenderSK(profile, false, videoBackgroundFallback: true, colorType: SKColorType.Rgb565, alphaType: SKAlphaType.Opaque);
+                using var bitmap = PanelDrawTask.RenderSK(profile, false, colorType: SKColorType.Rgb565, alphaType: SKAlphaType.Opaque);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 

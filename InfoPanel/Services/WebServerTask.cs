@@ -295,7 +295,7 @@ namespace InfoPanel
                     {
                         var profile = ConfigModel.Instance.Profiles[id];
 
-                        using var bitmap = PanelDrawTask.RenderSK(profile, false, videoBackgroundFallback: true);
+                        using var bitmap = PanelDrawTask.RenderSK(profile, false);
                         using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
 
                         context.Response.ContentType = "image/png";

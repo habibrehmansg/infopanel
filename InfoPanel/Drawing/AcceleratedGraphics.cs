@@ -138,12 +138,12 @@ namespace InfoPanel.Drawing
                    rect);
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true)
+        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default")
         {
             lockedImage.AccessD2D(this.D2DDevice, this.Handle, width, height, d2dBitmap =>
             {
                 this.DrawBitmap(d2dBitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
-            });
+            }, cache, cacheHint);
         }
 
         public override void DrawBitmap(D2DBitmap bitmap, int x, int y)

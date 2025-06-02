@@ -101,14 +101,14 @@ namespace InfoPanel.Views.Controls
                     }
                     else
                     {
-                        image.AccessSK(image.Width, image.Height, bitmap =>
+                        image.AccessSK(width, height, bitmap =>
                         {
                             if (bitmap != null)
                             {
                                 writeableBitmap = bitmap.ToWriteableBitmap();
                                 writeableBitmap.Freeze();
                             }
-                        }, false);
+                        }, true, "PROPERTIES");
                     }
                 }
 

@@ -146,7 +146,7 @@ namespace InfoPanel.Views.Common
             base.OnRender(d2dGraphics);
 
             using var g = new AcceleratedGraphics(d2dGraphics, this.Handle, Profile.Direct2DFontScale, Profile.Direct2DTextXOffset, Profile.Direct2DTextYOffset);
-            PanelDraw.Run(Profile, g);
+            PanelDraw.Run(Profile, g, cacheHint: $"DISPLAY-{Profile.Guid}");
         }
 
         private System.Timers.Timer? _skiaTimer;
@@ -169,7 +169,7 @@ namespace InfoPanel.Views.Common
             canvas.Clear();
 
             SkiaGraphics skiaGraphics = new(canvas, 1.33f);
-            PanelDraw.Run(Profile, skiaGraphics);
+            PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}");
             FpsCounter.Update();
 
             if (ShowFps)

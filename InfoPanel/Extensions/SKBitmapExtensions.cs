@@ -84,7 +84,7 @@ namespace InfoPanel.Extensions
             };
         }
 
-        public static SKBitmap Resize(this SKBitmap bitmap, int targetWidth, int targetHeight, SKColor backgroundColor = default)
+        public static SKBitmap Resize(this SKBitmap bitmap, int targetWidth, int targetHeight, SKColor backgroundColor = default, bool expand = true)
         {
             // Set default background to transparent if not specified
             if (backgroundColor == default)
@@ -98,6 +98,11 @@ namespace InfoPanel.Extensions
             // Calculate the scaled dimensions
             int scaledWidth = (int)(bitmap.Width * scale);
             int scaledHeight = (int)(bitmap.Height * scale);
+
+            if(!expand && scale > 1.0f)
+            {
+                return bitmap.Copy();
+            }
 
             // Calculate position to center the image
             int x = (targetWidth - scaledWidth) / 2;

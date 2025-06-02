@@ -3,6 +3,7 @@ using SkiaSharp;
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -23,6 +24,8 @@ namespace InfoPanel.Views.Components
 
         private DispatcherTimer? timer;
         private TaskCompletionSource<bool>? _paintCompletionSource;
+        private CancellationTokenSource? _cancellationTokenSource;
+        private readonly SemaphoreSlim _updateSemaphore = new(1, 1);
 
         public ProfilePageItemView()
         {
@@ -39,75 +42,106 @@ namespace InfoPanel.Views.Components
         }
         private async void ProfilePageItemView_Loaded(object sender, RoutedEventArgs e)
         {
-            Trace.WriteLine($"{DataContext} loaded");
-            await Update();
+            _cancellationTokenSource = new CancellationTokenSource();
 
-            timer = new DispatcherTimer
+            try
             {
-                Interval = TimeSpan.FromSeconds(1)
-            };
-            timer.Tick += Timer_Tick;
-            timer.Start();
+                await UpdateAsync(_cancellationTokenSource.Token);
+
+                timer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(1)
+                };
+                timer.Tick += Timer_Tick;
+                timer.Start();
+            }
+            catch (OperationCanceledException) { }
         }
 
         private void ProfilePageItemView_Unloaded(object sender, RoutedEventArgs e)
         {
-            Trace.WriteLine($"{DataContext} unloaded");
+            _cancellationTokenSource?.Cancel();
+
             if (timer != null)
             {
                 timer.Stop();
                 timer.Tick -= Timer_Tick;
                 timer = null;
             }
+
+            if(DataContext is Profile profile)
+            {
+                profile.PreviewBitmap?.Dispose();
+                profile.PreviewBitmap = null;
+            }
+
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
         }
 
         private async void Timer_Tick(object? sender, EventArgs e)
         {
-            await Update();
+            if (_cancellationTokenSource != null && !_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    await UpdateAsync(_cancellationTokenSource.Token);
+                }
+                catch (OperationCanceledException) { }
+            }
         }
 
-        private async Task Update()
+        private async Task UpdateAsync(CancellationToken cancellationToken)
         {
-            if (DataContext is Profile profile)
+            await _updateSemaphore.WaitAsync(cancellationToken);
+
+            try
             {
-                var canvasWidth = skElement.CanvasSize.Width;
-                var canvasHeight = skElement.CanvasSize.Height;
-
-                var scale = 1.0;
-
-                if (profile.Height > canvasHeight)
+                if (DataContext is Profile profile)
                 {
-                    scale = canvasHeight / profile.Height;
+                    var canvasWidth = skElement.CanvasSize.Width;
+                    var canvasHeight = skElement.CanvasSize.Height;
+
+                    var scale = 1.0;
+
+                    if (profile.Height > canvasHeight)
+                    {
+                        scale = canvasHeight / profile.Height;
+                    }
+
+                    if (profile.Width > canvasWidth)
+                    {
+                        scale = Math.Min(scale, canvasWidth / profile.Width);
+                    }
+
+                    var width = (int)(profile.Width * scale);
+                    var height = (int)(profile.Height * scale);
+
+                    if (profile.PreviewBitmap != null && (profile.PreviewBitmap.Width != width || profile.PreviewBitmap.Height != height))
+                    {
+                        profile.PreviewBitmap.Dispose();
+                        profile.PreviewBitmap = null;
+                    }
+
+                    profile.PreviewBitmap ??= new SKBitmap(width, height);
+
+                    await Task.Run(() =>
+                    {
+                        using var g = SkiaGraphics.FromBitmap(profile.PreviewBitmap);
+                        PanelDraw.Run(profile, g, false, scale, true, $"PREVIEW-{profile.Guid}");
+                    }, cancellationToken);
+
+                    _paintCompletionSource = new TaskCompletionSource<bool>();
+
+                    skElement.InvalidateVisual();
+
+                    await _paintCompletionSource.Task;
                 }
-
-                if (profile.Width > canvasWidth)
-                {
-                    scale = Math.Min(scale, canvasWidth / profile.Width);
-                }
-
-                var width = (int)(profile.Width * scale);
-                var height = (int)(profile.Height * scale);
-
-                if (profile.PreviewBitmap != null && (profile.PreviewBitmap.Width != width || profile.PreviewBitmap.Height != height))
-                {
-                    profile.PreviewBitmap.Dispose();
-                    profile.PreviewBitmap = null;
-                }
-
-                profile.PreviewBitmap ??= new SKBitmap(width, height);
-
-                await Task.Run(() =>
-                {
-                    using var g = SkiaGraphics.FromBitmap(profile.PreviewBitmap);
-                    PanelDraw.Run(profile, g, false, scale, false, true);
-                });
-
-
-                _paintCompletionSource = new TaskCompletionSource<bool>();
-
-                skElement.InvalidateVisual();
-
-                await _paintCompletionSource.Task;
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                _updateSemaphore.Release();
             }
         }
 

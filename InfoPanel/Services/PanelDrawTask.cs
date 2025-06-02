@@ -18,12 +18,12 @@ namespace InfoPanel
 {
     public sealed class PanelDrawTask
     {
-        public static SKBitmap RenderSK(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul)
+        public static SKBitmap RenderSK(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul)
         {
             var bitmap = new SKBitmap(profile.Width, profile.Height, colorType, alphaType);
             
             using var g = SkiaGraphics.FromBitmap(bitmap) as MyGraphics;
-            PanelDraw.Run(profile, g, drawSelected, scale, cache, videoBackgroundFallback);
+            PanelDraw.Run(profile, g, drawSelected, scale, cache, $"DISPLAY-{profile.Guid}");
 
             return bitmap;
         }
