@@ -16,9 +16,6 @@ namespace InfoPanel.Views.Common
 
         private readonly Timer Timer = new (TimeSpan.FromMilliseconds(16));
 
-        internal bool ShowFps = false;
-        private readonly FpsCounter FpsCounter = new();
-
         internal readonly bool D2DDraw;
 
         private float _width;
@@ -30,7 +27,6 @@ namespace InfoPanel.Views.Common
             if (D2DDraw)
             {
                 AllowsTransparency = false;
-                //WindowStyle = WindowStyle.None;
                 Loaded += D2DWindow_Loaded;
                 Closed += D2DWindow_Closed;
             } else
@@ -65,7 +61,6 @@ namespace InfoPanel.Views.Common
                 this.Device = D2DDevice.FromHwnd(Handle);
                 this.Device.Resize();
                 this.Graphics = new D2DGraphics(this.Device);
-                //this.Graphics.SetDPI(96, 96);
             }
 
             this._width = (float)this.Width;
@@ -84,14 +79,17 @@ namespace InfoPanel.Views.Common
             }
         }
 
-        private static readonly object _syncObj = new();
-        private static volatile bool _isProcessing = false; // Flag to prevent overlapping
+        private readonly object _syncObj = new();
+        private volatile bool _isProcessing = false; // Flag to prevent overlapping
         private void Timer_Tick(object? sender, EventArgs e)
         {
            if(!Timer.Enabled)
             {
                 return;
             }
+
+            if (_isProcessing)
+                return;
 
             lock (_syncObj)
             {
@@ -100,32 +98,16 @@ namespace InfoPanel.Views.Common
                     return;
                 }
 
-                if (_isProcessing)
-                    return;
-
                 _isProcessing = true;
-
 
                 try
                 {
                     this.Graphics.BeginRender(D2DColor.Transparent);
                     this.OnRender(this.Graphics);
-
-                    if (ShowFps)
-                    {
-                        FpsCounter.Update();
-                        var rect = new D2DRect(this._width - 40, 0, 40, 30);
-                        this.Graphics.FillRectangle(rect, D2DColor.FromGDIColor(System.Drawing.Color.FromArgb(100, 0, 0, 0)));
-                        this.Graphics.DrawTextCenter($"{FpsCounter.FramesPerSecond}", D2DColor.FromGDIColor(System.Drawing.Color.FromArgb(255, 0, 255, 0)),
-                            "Arial", 18, rect);
-                    }
-
                     this.Graphics.EndRender();
                 }
                 finally
                 {
-                    // After work is done, reset flag
-                    //lock (_syncObj) { _isProcessing = false; }
                     _isProcessing = false;
                 }
             }

@@ -22,15 +22,17 @@ namespace InfoPanel.Drawing
 
     internal class PanelDraw
     {
-        private static readonly Stopwatch stopwatch = new();
+        private static readonly Stopwatch _selectionStopwatch = new();
 
         static PanelDraw()
         {
-            stopwatch.Start();
+            _selectionStopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default")
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
         {
+            var stopwatch = Stopwatch.StartNew();
+
             List<SelectedRectangle> selectedRectangles = [];
 
             g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
@@ -65,7 +67,7 @@ namespace InfoPanel.Drawing
 
                 if (SKColor.TryParse(ConfigModel.Instance.Settings.SelectedItemColor, out var color))
                 {
-                    var elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
+                    var elapsedMilliseconds = _selectionStopwatch.ElapsedMilliseconds;
 
                     // Define "on" and "off" durations
                     int onDuration = 600;  // Time the rectangle is visible
@@ -89,6 +91,22 @@ namespace InfoPanel.Drawing
                 {
                     Trace.WriteLine("Fail to parse color");
                 }
+            }
+
+            fpsCounter?.Update(stopwatch.ElapsedMilliseconds);
+
+            if (profile.ShowFps && fpsCounter != null)
+            {
+                var text = $"FPS {fpsCounter.FramesPerSecond} @ {stopwatch.ElapsedMilliseconds}ms  ";
+                var font = "Arial";
+                var fontStyle = "Normal";
+                var fontSize = 12;
+
+                var rect = new SKRect(0, 0, profile.Width, 20);
+
+                g.FillRectangle("#84000000", (int)rect.Left, (int)rect.Top, (int)rect.Width, (int)rect.Height);
+                g.DrawString(profile.Name, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height);
+                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00",(int)rect.Left, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height, rightAlign: true);
             }
         }
 

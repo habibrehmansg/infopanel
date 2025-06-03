@@ -13,7 +13,7 @@ namespace InfoPanel.Utils
 
         private readonly Stopwatch _stopwatch = new();
         private int _frameCounter = 0;
-        private Queue<long> _frameTimeQueue = new(10);
+        private readonly Queue<long> _frameTimeQueue;
         private int _maxFrames;
         private const float UpdateInterval = 0.5f; // 0.5 seconds
 
@@ -21,6 +21,8 @@ namespace InfoPanel.Utils
         {
             _stopwatch.Start();
             _maxFrames = maxFrames;
+
+            _frameTimeQueue = new(maxFrames);
         }
 
         public void SetMaxFrames(int maxFrames)
@@ -47,11 +49,11 @@ namespace InfoPanel.Utils
 
             if(frameTime > 0)
             {
-                if(_frameTimeQueue.Count > 10)
+                _frameTimeQueue.Enqueue(frameTime);
+                if (_frameTimeQueue.Count > _maxFrames)
                 {
                     _frameTimeQueue.Dequeue();
                 }
-                _frameTimeQueue.Enqueue(frameTime);
                 FrameTime = (long)_frameTimeQueue.Average();
             }
         }

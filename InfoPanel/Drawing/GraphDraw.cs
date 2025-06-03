@@ -356,7 +356,7 @@ namespace InfoPanel.Drawing
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : SharedModel.Instance.CurrentFrameRate * 3);
+                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var usageRect = new Rectangle(frameRect.X, frameRect.Y, (int)value, frameRect.Height);
@@ -407,7 +407,7 @@ namespace InfoPanel.Drawing
                             value = value * 100;
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 60 : SharedModel.Instance.CurrentFrameRate);
+                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var offset = 1;

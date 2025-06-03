@@ -3,11 +3,13 @@ using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace InfoPanel
 {
@@ -19,7 +21,7 @@ namespace InfoPanel
         });
 
         private static readonly Timer _expirationTimer;
-        private static readonly object _imageLock = new();
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = [];
 
         static Cache()
         {
@@ -46,62 +48,64 @@ namespace InfoPanel
 
         public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)
         {
-            lock (_imageLock)
+            if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
             {
-                if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
-                {
-                    var sensorReading = httpImageDisplayItem.GetValue();
+                var sensorReading = httpImageDisplayItem.GetValue();
 
-                    if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
-                    {
-                        return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
-                    }
-                }
-                else
+                if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText))
                 {
-                    if (imageDisplayItem.CalculatedPath != null)
-                    {
-                        return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
-                    }
+                    return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
                 }
-
-                return null;
             }
+            else
+            {
+                if (!string.IsNullOrEmpty(imageDisplayItem.CalculatedPath))
+                {
+                    return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
+                }
+            }
+
+            return null;
         }
 
         public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
         {
-            lock (_imageLock)
+            if (string.IsNullOrEmpty(path) || path.Equals("NO_IMAGE"))
             {
-                var cacheKey = $"{path}";
-                ImageCache.TryGetValue(cacheKey, out LockedImage? result);
-
-                if (result != null || !initialiseIfMissing)
-                {
-                    return result;
-                }
-
-                try
-                {
-                    if (!path.Equals("NO_IMAGE") && (path.IsUrl() || File.Exists(path)))
-                    {
-                        result = new LockedImage(path);
-                    }
-
-                    if (result != null)
-                    {
-                        ImageCache.Set(cacheKey, result, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(10) });
-                    }
-
-                }
-                catch (Exception e)
-                {
-                    Trace.WriteLine(e.ToString());
-                }
-
-                return result;
+                return null;
             }
+
+            if (ImageCache.TryGetValue(path, out LockedImage? cachedImage) || !initialiseIfMissing)
+            {
+                return cachedImage;
+            }
+
+            var semaphore = _locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+            semaphore.Wait();
+
+            try
+            {
+                cachedImage = new LockedImage(path);
+
+                if (cachedImage != null)
+                {
+                    ImageCache.Set(path, cachedImage, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(10) });
+                }
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLine(e.ToString());
+            }
+            finally
+            {
+                semaphore.Release();
+                _locks.TryRemove(path, out _);
+            }
+
+            return cachedImage;
         }
+
+
     }
 
 

@@ -112,7 +112,7 @@ namespace InfoPanel.Drawing
                 if (textSize.width > width)
                 {
                     string ellipsis = "...";
-                    string truncatedText = text.TrimEnd();
+                    string truncatedText = text;
 
                     while (truncatedText.Length > 0)
                     {

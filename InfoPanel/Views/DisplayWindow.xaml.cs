@@ -39,7 +39,6 @@ namespace InfoPanel.Views.Common
             DataContext = this;
 
             Direct2DMode = profile.Direct2DMode;
-            ShowFps = profile.ShowFps;
 
             InitializeComponent();
 
@@ -146,21 +145,24 @@ namespace InfoPanel.Views.Common
             base.OnRender(d2dGraphics);
 
             using var g = new AcceleratedGraphics(d2dGraphics, this.Handle, Profile.Direct2DFontScale, Profile.Direct2DTextXOffset, Profile.Direct2DTextYOffset);
-            PanelDraw.Run(Profile, g, cacheHint: $"DISPLAY-{Profile.Guid}");
+            PanelDraw.Run(Profile, g, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
         }
 
-        private System.Timers.Timer? _skiaTimer;
+        private Timer? _skiaTimer;
         private readonly FpsCounter FpsCounter = new();
 
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
-            // Invalidate the SKElement on the UI thread
-            Dispatcher.Invoke(() => skElement.InvalidateVisual(), DispatcherPriority.Input);
+            if (!Direct2DMode)
+            {
+                // Invalidate the SKElement on the UI thread
+                Dispatcher.Invoke(() => skElement.InvalidateVisual(), DispatcherPriority.Input);
+            }
         }
 
         private void OnPaintSurface(object sender, SKPaintSurfaceEventArgs e)
         {
-            if (_skiaTimer == null || !_skiaTimer.Enabled)
+            if (_skiaTimer == null || !_skiaTimer.Enabled || Direct2DMode)
             {
                 return;
             }
@@ -169,15 +171,7 @@ namespace InfoPanel.Views.Common
             canvas.Clear();
 
             SkiaGraphics skiaGraphics = new(canvas, 1.33f);
-            PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}");
-            FpsCounter.Update();
-
-            if (ShowFps)
-            {
-                skiaGraphics.FillRectangle("#64000000", e.Info.Width - 40, 0, 40, 30);
-                skiaGraphics.DrawString($"{FpsCounter.FramesPerSecond}", "Arial", "Normal", 14, "#FF00FF00", e.Info.Width - 40, 3, centerAlign: true, width: 40, height: 30);
-            }
-
+            PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
         }
 
         private void UpdateSkiaTimer()
@@ -288,13 +282,6 @@ namespace InfoPanel.Views.Common
                     {
                         ResizeMode = ResizeMode.NoResize;
                     }
-                });
-            }
-            else if (e.PropertyName == nameof(Profile.ShowFps))
-            {
-                _dispatcher.BeginInvoke(() =>
-                {
-                    ShowFps = Profile.ShowFps;
                 });
             }
         }

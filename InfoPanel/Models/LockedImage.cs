@@ -18,13 +18,13 @@ namespace InfoPanel.Models
     {
         public readonly string ImagePath;
 
-        private readonly TypedMemoryCache<SKBitmapFrameSlot[]> SKBitmapCache = new(new MemoryCacheOptions()
+        private readonly TypedMemoryCache<SKBitmapFrameSlot[]> SKBitmapMemoryCache = new(new MemoryCacheOptions()
         {
             ExpirationScanFrequency = TimeSpan.FromSeconds(5)
         });
 
         private IntPtr? D2DHandle;
-        private readonly TypedMemoryCache<D2DBitmapFrameSlot[]> D2DBitmapCache = new(new MemoryCacheOptions()
+        private readonly TypedMemoryCache<D2DBitmapFrameSlot[]> D2DBitmapMemoryCache = new(new MemoryCacheOptions()
         {
             ExpirationScanFrequency = TimeSpan.FromSeconds(5)
         });
@@ -48,7 +48,6 @@ namespace InfoPanel.Models
         private bool IsDisposed = false;
 
         private readonly Stopwatch Stopwatch = new();
-
 
         public LockedImage(string imagePath)
         {
@@ -88,7 +87,7 @@ namespace InfoPanel.Models
 
             if (_stream == null)
             {
-                return;
+                throw new ArgumentException("Image path is invalid or file does not exist.", nameof(imagePath));
             }
 
             lock (Lock)
@@ -310,36 +309,42 @@ namespace InfoPanel.Models
 
         private SKBitmapFrameSlot[] GetSKBitmapFrameCache(string cacheHint)
         {
-            SKBitmapCache.TryGetValue(cacheHint, out var cacheValue);
-            if (cacheValue == null)
+            lock (Lock)
             {
-                cacheValue = new SKBitmapFrameSlot[Frames];
-                for (int i = 0; i < Frames; i++)
+                SKBitmapMemoryCache.TryGetValue(cacheHint, out var cacheValue);
+                if (cacheValue == null)
                 {
-                    cacheValue[i] = new SKBitmapFrameSlot();
+                    cacheValue = new SKBitmapFrameSlot[Frames];
+                    for (int i = 0; i < Frames; i++)
+                    {
+                        cacheValue[i] = new SKBitmapFrameSlot();
+                    }
+
+                    SKBitmapMemoryCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
                 }
 
-                SKBitmapCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
+                return cacheValue;
             }
-
-            return cacheValue;
         }
 
         private D2DBitmapFrameSlot[] GetD2DBitmapFrameCache(string cacheHint)
         {
-            D2DBitmapCache.TryGetValue(cacheHint, out var cacheValue);
-            if (cacheValue == null)
+            lock (Lock)
             {
-                cacheValue = new D2DBitmapFrameSlot[Frames];
-                for (int i = 0; i < Frames; i++)
+                D2DBitmapMemoryCache.TryGetValue(cacheHint, out var cacheValue);
+                if (cacheValue == null)
                 {
-                    cacheValue[i] = new D2DBitmapFrameSlot();
+                    cacheValue = new D2DBitmapFrameSlot[Frames];
+                    for (int i = 0; i < Frames; i++)
+                    {
+                        cacheValue[i] = new D2DBitmapFrameSlot();
+                    }
+
+                    D2DBitmapMemoryCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
                 }
 
-                D2DBitmapCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
+                return cacheValue;
             }
-
-            return cacheValue;
         }
 
         public void AccessSK(int targetWidth, int targetHeight, Action<SKBitmap> access, bool cache = true, string cacheHint = "default")
@@ -470,7 +475,7 @@ namespace InfoPanel.Models
         {
             lock (Lock)
             {
-                SKBitmapCache.Clear();
+                SKBitmapMemoryCache.Clear();
             }
         }
 
@@ -478,7 +483,7 @@ namespace InfoPanel.Models
         {
             lock (Lock)
             {
-                D2DBitmapCache.Clear();
+                D2DBitmapMemoryCache.Clear();
             }
         }
 
@@ -491,8 +496,8 @@ namespace InfoPanel.Models
             {
                 if (!IsDisposed)
                 {
-                    SKBitmapCache.Dispose();
-                    D2DBitmapCache.Dispose();
+                    SKBitmapMemoryCache.Dispose();
+                    D2DBitmapMemoryCache.Dispose();
 
                     SKSvg?.Dispose();
 
