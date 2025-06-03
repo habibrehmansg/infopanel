@@ -430,8 +430,15 @@ namespace InfoPanel.Drawing
             var fontManager = SKFontManager.Default;
             var searchTerms = requestedFont.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
+            // Simple list of fonts to skip
+            var symbolFonts = new[] { "Webdings", "Wingdings", "Symbol", "Marlett" };
+
             foreach (var family in fontManager.GetFontFamilies())
             {
+                // Skip symbol fonts
+                if (symbolFonts.Any(sf => family.Contains(sf, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
                 // Check if family contains any of our search terms
                 if (searchTerms.Any(term => family.Contains(term, StringComparison.OrdinalIgnoreCase)))
                 {

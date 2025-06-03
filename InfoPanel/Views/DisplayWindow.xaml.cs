@@ -331,7 +331,7 @@ namespace InfoPanel.Views.Common
 
                 if (!Profile.StrictWindowMatching)
                 {
-                    targetScreen ??= screens.FirstOrDefault(s => s.DeviceName.Equals(targetWindow.DeviceName));
+                    targetScreen ??= screens.FirstOrDefault(s => s.DeviceName == targetWindow.DeviceName);
                     targetScreen ??= screens.FirstOrDefault(s => s.Bounds.Width == targetWindow.Width && s.Bounds.Height == targetWindow.Height);
                 }
             }

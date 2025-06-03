@@ -31,7 +31,7 @@
                 Margin="0,50,10,0"
                 CornerRadius="8,8,8,8">
                 <TabControl TabStripPlacement="Top">
-                    <TabItem Width="150">
+                    <TabItem Width="140">
                         <TabItem.Header>
                             <StackPanel
                                 HorizontalAlignment="Center"
@@ -86,7 +86,7 @@
                             </Border>
                         </Grid>
                     </TabItem>
-                    <TabItem Width="150">
+                    <TabItem Width="140">
                         <TabItem.Header>
                             <StackPanel
                                 HorizontalAlignment="Center"

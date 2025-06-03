@@ -224,56 +224,6 @@ namespace InfoPanel
             }
         }
 
-        private int _currentFrameRate = 0;
-        public int CurrentFrameRate
-        {
-            get { return _currentFrameRate; }
-            set
-            {
-                SetProperty(ref _currentFrameRate, value);
-            }
-        }
-
-        private long _currentFrameTime = 0;
-        public long CurrentFrameTime
-        {
-            get { return _currentFrameTime; }
-            set
-            {
-                SetProperty(ref _currentFrameTime, value);
-                OnPropertyChanged(nameof(PerformanceRating));
-            }
-        }
-
-
-        public string PerformanceRating
-        {
-            get
-            {
-                if (_currentFrameTime <= 33)
-                {
-                    return "Excellent";
-                }
-
-                if (_currentFrameTime <= 42)
-                {
-                    return "Very Good";
-                }
-
-                if (_currentFrameTime <= 67)
-                {
-                    return "Good";
-                }
-
-                if (_currentFrameTime <= 100)
-                {
-                    return "Average";
-                }
-
-                return "Poor";
-            }
-        }
-
         private bool _placementControlExpanded = false;
         public bool PlacementControlExpanded
         {

@@ -94,16 +94,16 @@ namespace InfoPanel.Drawing
 
             if (profile.ShowFps && fpsCounter != null)
             {
-                var text = $"FPS {fpsCounter.FramesPerSecond} @ {fpsCounter.FrameTime}ms  ";
-                var font = "Arial";
-                var fontStyle = "Normal";
-                var fontSize = 12;
+                var text = $"FPS {fpsCounter.FramesPerSecond} | {fpsCounter.FrameTime}ms";
+                var font = "Consolas";
+                var fontStyle = "Regular";
+                var fontSize = 10;
 
-                var rect = new SKRect(0, 0, profile.Width, 20);
+                var rect = new SKRect(0, 0, profile.Width, 15);
 
                 g.FillRectangle("#84000000", (int)rect.Left, (int)rect.Top, (int)rect.Width, (int)rect.Height);
-                g.DrawString(profile.Name, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height);
-                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00",(int)rect.Left, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height, rightAlign: true);
+                g.DrawString(profile.Name, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left + 1, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height);
+                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00",(int)rect.Left, (int)rect.Top, width: (int)rect.Width - 1, height: (int)rect.Height, rightAlign: true);
             }
         }
 

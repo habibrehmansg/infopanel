@@ -432,7 +432,22 @@
                                 </StackPanel>
 
                                 <!--  Start Col 3  -->
-                                <StackPanel Grid.Column="2" Margin="10,0,0,0" />
+                                <StackPanel Grid.Column="2" Margin="10,0,0,0">
+
+                                    <ui:CardControl Grid.Column="1" Margin="10,0,0,0">
+                                        <ui:CardControl.Header>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                    Text="Show Panel Overlay" />
+                                            </StackPanel>
+                                        </ui:CardControl.Header>
+                                        <StackPanel>
+                                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowFps}" />
+                                        </StackPanel>
+                                    </ui:CardControl>
+                                </StackPanel>
                             </Grid>
 
                             <Grid>
@@ -451,7 +466,6 @@
                                         <Grid Margin="0,0,0,0" IsEnabled="{Binding Active}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
                                             <ui:CardControl Margin="0,0,0,0">
                                                 <ui:CardControl.Header>
@@ -459,25 +473,11 @@
                                                         <TextBlock
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Direct2D Acceleration" />
+                                                            Text="Direct2D Acceleration (GPU)" />
                                                     </StackPanel>
                                                 </ui:CardControl.Header>
                                                 <StackPanel>
                                                     <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DMode}" />
-                                                </StackPanel>
-                                            </ui:CardControl>
-
-                                            <ui:CardControl Grid.Column="1" Margin="10,0,0,0">
-                                                <ui:CardControl.Header>
-                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                        <TextBlock
-                                                            FontSize="12"
-                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Panel FPS" />
-                                                    </StackPanel>
-                                                </ui:CardControl.Header>
-                                                <StackPanel>
-                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowFps}" />
                                                 </StackPanel>
                                             </ui:CardControl>
                                         </Grid>

@@ -39,10 +39,10 @@ namespace InfoPanel.Models
         private bool _showGridLines = true;
 
         [ObservableProperty]
-        private float _gridLinesSpacing = 50;
+        private float _gridLinesSpacing = 20;
 
         [ObservableProperty]
-        private string _gridLinesColor = "#FF708090";
+        private string _gridLinesColor = "#1A808080";
 
         private bool _libreHardwareMonitor = true;
         public bool LibreHardwareMonitor
