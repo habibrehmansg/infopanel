@@ -63,9 +63,9 @@ namespace InfoPanel.Views.Common
             LocationChanged += DisplayWindow_LocationChanged;
             SizeChanged += DisplayWindow_SizeChanged;
 
-            _resizeTimer = new DispatcherTimer
+            _resizeTimer = new DispatcherTimer(DispatcherPriority.Input)
             {
-                Interval = TimeSpan.FromMilliseconds(300) // 300ms delay
+                Interval = TimeSpan.FromMilliseconds(300)
             };
             _resizeTimer.Tick += OnResizeCompleted;
         }
@@ -148,7 +148,7 @@ namespace InfoPanel.Views.Common
             PanelDraw.Run(Profile, g, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
         }
 
-        private Timer? _skiaTimer;
+        private Timer? _renderTimer;
         private readonly FpsCounter FpsCounter = new();
 
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
@@ -157,12 +157,15 @@ namespace InfoPanel.Views.Common
             {
                 // Invalidate the SKElement on the UI thread
                 Dispatcher.Invoke(() => skElement.InvalidateVisual(), DispatcherPriority.Input);
+            }else
+            {
+                D2DRender();
             }
         }
 
         private void OnPaintSurface(object sender, SKPaintSurfaceEventArgs e)
         {
-            if (_skiaTimer == null || !_skiaTimer.Enabled || Direct2DMode)
+            if (_renderTimer == null || !_renderTimer.Enabled || Direct2DMode)
             {
                 return;
             }
@@ -179,18 +182,18 @@ namespace InfoPanel.Views.Common
             double interval = (1000.0 / ConfigModel.Instance.Settings.TargetFrameRate) - 1;
             FpsCounter.SetMaxFrames(ConfigModel.Instance.Settings.TargetFrameRate);
 
-            if (_skiaTimer == null)
+            if (_renderTimer == null)
             {
                 // Initialize the timer
-                _skiaTimer = new System.Timers.Timer(interval);
-                _skiaTimer.Elapsed += OnTimerElapsed;
-                _skiaTimer.AutoReset = true;
-                _skiaTimer.Start();
+                _renderTimer = new System.Timers.Timer(interval);
+                _renderTimer.Elapsed += OnTimerElapsed;
+                _renderTimer.AutoReset = true;
+                _renderTimer.Start();
             }
             else
             {
                 // Just update the interval if the timer already exists
-                _skiaTimer.Interval = interval;
+                _renderTimer.Interval = interval;
             }
         }
 
@@ -226,8 +229,8 @@ namespace InfoPanel.Views.Common
 
             ConfigModel.Instance.Settings.PropertyChanged -= Config_PropertyChanged;
 
-            _skiaTimer?.Stop();
-            _skiaTimer?.Dispose();
+            _renderTimer?.Stop();
+            _renderTimer?.Dispose();
 
             Profile.PropertyChanged -= Profile_PropertyChanged;
             SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
@@ -585,10 +588,7 @@ namespace InfoPanel.Views.Common
 
             SetWindowPositionRelativeToScreen();
 
-            if (!Profile.Direct2DMode)
-            {
-                UpdateSkiaTimer();
-            }
+            UpdateSkiaTimer();
         }
 
         //     [DllImport("user32.dll", SetLastError = true)]

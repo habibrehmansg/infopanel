@@ -1,5 +1,4 @@
-﻿using InfoPanel.Utils;
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Timers;
 using System.Windows;
@@ -13,8 +12,6 @@ namespace InfoPanel.Views.Common
         internal IntPtr Handle;
         private D2DDevice? Device;
         private D2DGraphics? Graphics;
-
-        private readonly Timer Timer = new (TimeSpan.FromMilliseconds(16));
 
         internal readonly bool D2DDraw;
 
@@ -39,16 +36,13 @@ namespace InfoPanel.Views.Common
         {
             SizeChanged -= D2DWindow_SizeChanged;
 
-            Timer.Stop();
-            Timer.Elapsed -= Timer_Tick;
-            Timer.Dispose();
-
             lock(_syncObj)
             {
                 Device?.Dispose();
                 Device = null;
                 Graphics = null;
             }
+
             Trace.WriteLine("D2DWindow closed");
         }
 
@@ -65,9 +59,6 @@ namespace InfoPanel.Views.Common
 
             this._width = (float)this.Width;
             this.SizeChanged += D2DWindow_SizeChanged;
-            
-            Timer.Elapsed += Timer_Tick;
-            Timer.Start();
         }
 
         private void D2DWindow_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -81,13 +72,9 @@ namespace InfoPanel.Views.Common
 
         private readonly object _syncObj = new();
         private volatile bool _isProcessing = false; // Flag to prevent overlapping
-        private void Timer_Tick(object? sender, EventArgs e)
-        {
-           if(!Timer.Enabled)
-            {
-                return;
-            }
 
+        protected void D2DRender()
+        {
             if (_isProcessing)
                 return;
 

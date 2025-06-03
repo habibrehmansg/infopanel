@@ -30,7 +30,7 @@ namespace InfoPanel.Utils
             _maxFrames = maxFrames;
         }
 
-        public void Update(long frameTime = 0)
+        public void Update(long? frameTime = null)
         {
             _frameCounter++;
             var elapsedSeconds = (float)_stopwatch.Elapsed.TotalSeconds;
@@ -39,7 +39,7 @@ namespace InfoPanel.Utils
             {
                 FramesPerSecond = Math.Clamp((int)(_frameCounter / elapsedSeconds),1, _maxFrames);
 
-                if (frameTime <= 0)
+                if (frameTime == null)
                 {
                     FrameTime = (int)(elapsedSeconds / _frameCounter * 1000);
                 }
@@ -47,9 +47,9 @@ namespace InfoPanel.Utils
                 _stopwatch.Restart(); // resets and starts the stopwatch
             }
 
-            if(frameTime > 0)
+            if(frameTime != null)
             {
-                _frameTimeQueue.Enqueue(frameTime);
+                _frameTimeQueue.Enqueue(frameTime.Value);
                 if (_frameTimeQueue.Count > _maxFrames)
                 {
                     _frameTimeQueue.Dequeue();

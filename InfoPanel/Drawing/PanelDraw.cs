@@ -7,10 +7,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Linq;
 using System.Numerics;
-using System.Windows.Media.Media3D;
 
 namespace InfoPanel.Drawing
 {
@@ -97,7 +94,7 @@ namespace InfoPanel.Drawing
 
             if (profile.ShowFps && fpsCounter != null)
             {
-                var text = $"FPS {fpsCounter.FramesPerSecond} @ {stopwatch.ElapsedMilliseconds}ms  ";
+                var text = $"FPS {fpsCounter.FramesPerSecond} @ {fpsCounter.FrameTime}ms  ";
                 var font = "Arial";
                 var fontStyle = "Normal";
                 var fontSize = 12;
