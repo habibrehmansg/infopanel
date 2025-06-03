@@ -84,7 +84,6 @@ namespace InfoPanel.Drawing
                 int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
                 Canvas.RotateDegrees(rotation, centerX, centerY);
             }
-
             Canvas.DrawImage(image, destRect, sampling, paint);
 
             Canvas.Restore();
@@ -611,6 +610,58 @@ namespace InfoPanel.Drawing
             float endInnerX = centerX + innerRadius * (float)Math.Cos(endRad);
             float endInnerY = centerY + innerRadius * (float)Math.Sin(endRad);
             Canvas.DrawLine(endInnerX, endInnerY, endOuterX, endOuterY, paint);
+        }
+
+        public override void FillPath(SKPath path, SKColor color, SKColor? gradientColor = null, float gradientAngle = 90f)
+        {
+            if (path == null || path.IsEmpty)
+                return; // Nothing to fill
+
+            using var paint = new SKPaint
+            {
+                IsAntialias = true,
+                Style = SKPaintStyle.Fill
+            };
+
+            if (gradientColor.HasValue)
+            {
+                // Get path bounds for gradient
+                var bounds = path.Bounds;
+                var centerX = bounds.MidX;
+                var centerY = bounds.MidY;
+
+                // Calculate the diagonal length for gradient coverage
+                var diagonal = (float)Math.Sqrt(bounds.Width * bounds.Width + bounds.Height * bounds.Height);
+                var halfDiagonal = diagonal / 2;
+
+                // Convert angle to radians
+                var angleRad = gradientAngle * (float)(Math.PI / 180);
+
+                // Calculate start and end points based on angle
+                var dx = (float)Math.Cos(angleRad) * halfDiagonal;
+                var dy = (float)Math.Sin(angleRad) * halfDiagonal;
+
+                var startPoint = new SKPoint(centerX - dx, centerY - dy);
+                var endPoint = new SKPoint(centerX + dx, centerY + dy);
+
+                // Create linear gradient
+                using var shader = SKShader.CreateLinearGradient(
+                    startPoint,
+                    endPoint,
+                    new[] { color, gradientColor.Value },
+                    null,
+                    SKShaderTileMode.Clamp
+                );
+
+                paint.Shader = shader;
+            }
+            else
+            {
+                // Solid color fill
+                paint.Color = color;
+            }
+
+            Canvas.DrawPath(path, paint);
         }
 
         public override void FillPath(MyPoint[] points, string color)

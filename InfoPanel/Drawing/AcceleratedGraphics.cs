@@ -429,6 +429,13 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.FillPath(d2dPath, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
         }
 
+        public override void FillPath(SKPath path, SKColor color, SKColor? gradientColor = null, float gradientAngle = 90f)
+        {
+            //gradient not supported
+            using var d2dPath = CreateGraphicsPath(path);
+            this.D2DGraphics.FillPath(d2dPath, new D2DColor(color.Alpha, color.Red, color.Green, color.Blue));
+        }
+
         public override void Dispose()
         {
             //do nothing

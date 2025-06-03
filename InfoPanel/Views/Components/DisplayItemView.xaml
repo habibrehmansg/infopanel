@@ -62,6 +62,9 @@
                         <DataTrigger Binding="{Binding Kind}" Value="Http Image">
                             <Setter Property="Symbol" Value="WebAsset20" />
                         </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Shape">
+                            <Setter Property="Symbol" Value="DrawShape20" />
+                        </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </ui:SymbolIcon.Style>

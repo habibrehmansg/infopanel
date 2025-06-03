@@ -378,6 +378,239 @@ namespace InfoPanel.Drawing
                     }
 
                     break;
+                case ShapeDisplayItem shapeDisplayItem:
+                    {
+                        var width = scale == 1 ? (int)shapeDisplayItem.Width : (int)Math.Ceiling(shapeDisplayItem.Width * scale);
+                        var height = scale == 1 ? (int)shapeDisplayItem.Height : (int)Math.Ceiling(shapeDisplayItem.Height * scale);
+
+                        var centerX = x + width / 2;
+                        var centerY = y + height / 2;
+
+                        using var path = new SKPath();
+
+                        switch (shapeDisplayItem.Type)
+                        {
+                            case ShapeDisplayItem.ShapeType.Rectangle:
+                                {
+                                    path.AddRect(SKRect.Create(x, y, width, height));
+                                    break;
+                                }
+                            case ShapeDisplayItem.ShapeType.Capsule:
+                                {
+                                    path.AddRoundRect(SKRect.Create(x, y, width, height), shapeDisplayItem.CornerRadius, shapeDisplayItem.CornerRadius);
+                                    break;
+                                }
+                            case ShapeDisplayItem.ShapeType.Ellipse:
+                                {
+                                    path.AddOval(SKRect.Create(x, y, width, height));
+                                    break;
+                                }
+                            case ShapeDisplayItem.ShapeType.Triangle:
+                                {
+                                    // Top point
+                                    var topX = centerX;
+                                    var topY = y;
+
+                                    // Bottom left point
+                                    var bottomLeftX = x;
+                                    var bottomLeftY = y + height;
+
+                                    // Bottom right point
+                                    var bottomRightX = x + width;
+                                    var bottomRightY = y + height;
+
+                                    // Create the triangle path
+                                    path.MoveTo(topX, topY);
+                                    path.LineTo(bottomLeftX, bottomLeftY);
+                                    path.LineTo(bottomRightX, bottomRightY);
+                                    path.Close();
+                                    break;
+                                }
+                            case ShapeDisplayItem.ShapeType.Star:
+                                {
+                                    // Star that stretches to fit the bounding box
+                                    var scaleX = width / 2;
+                                    var scaleY = height / 2;
+
+                                    // Calculate the 5 outer points with scaling
+                                    var points = new SKPoint[10];
+                                    for (int i = 0; i < 10; i++)
+                                    {
+                                        var angle = (i * 36 - 90) * Math.PI / 180;
+                                        var r = (i % 2 == 0) ? 1f : 0.382f; // 1 for outer, 0.382 for inner
+
+                                        // Apply different scaling for X and Y
+                                        points[i] = new SKPoint(
+                                            centerX + (float)(r * scaleX * Math.Cos(angle)),
+                                            centerY + (float)(r * scaleY * Math.Sin(angle))
+                                        );
+                                    }
+
+                                    // Create the path
+                                    path.MoveTo(points[0]);
+                                    for (int i = 1; i < 10; i++)
+                                    {
+                                        path.LineTo(points[i]);
+                                    }
+                                    path.Close();
+                                    break;
+                                }
+                            case ShapeDisplayItem.ShapeType.Pentagon:
+                                {
+                                    var scaleX = width / 2;
+                                    var scaleY = height / 2;
+
+                                    for (int i = 0; i < 5; i++)
+                                    {
+                                        var angle = (i * 72 - 90) * Math.PI / 180;
+                                        var pointX = centerX + scaleX * Math.Cos(angle);
+                                        var pointY = centerY + scaleY * Math.Sin(angle);
+
+                                        if (i == 0)
+                                            path.MoveTo((float)pointX, (float)pointY);
+                                        else
+                                            path.LineTo((float)pointX, (float)pointY);
+                                    }
+                                    path.Close();
+                                    break;
+                                }
+
+                            case ShapeDisplayItem.ShapeType.Hexagon:
+                                {
+                                    var scaleX = width / 2;
+                                    var scaleY = height / 2;
+
+                                    for (int i = 0; i < 6; i++)
+                                    {
+                                        var angle = (i * 60 - 90) * Math.PI / 180;
+                                        var pointX = centerX + scaleX * Math.Cos(angle);
+                                        var pointY = centerY + scaleY * Math.Sin(angle);
+
+                                        if (i == 0)
+                                            path.MoveTo((float)pointX, (float)pointY);
+                                        else
+                                            path.LineTo((float)pointX, (float)pointY);
+                                    }
+                                    path.Close();
+                                    break;
+                                }
+
+                            case ShapeDisplayItem.ShapeType.Plus:
+                                {
+                                    var thickness = Math.Min(width, height) / 3;
+                                    var horizontalY = centerY - thickness / 2;
+                                    var verticalX = centerX - thickness / 2;
+
+                                    // Create plus shape as single path
+                                    path.MoveTo(verticalX, y);
+                                    path.LineTo(verticalX + thickness, y);
+                                    path.LineTo(verticalX + thickness, horizontalY);
+                                    path.LineTo(x + width, horizontalY);
+                                    path.LineTo(x + width, horizontalY + thickness);
+                                    path.LineTo(verticalX + thickness, horizontalY + thickness);
+                                    path.LineTo(verticalX + thickness, y + height);
+                                    path.LineTo(verticalX, y + height);
+                                    path.LineTo(verticalX, horizontalY + thickness);
+                                    path.LineTo(x, horizontalY + thickness);
+                                    path.LineTo(x, horizontalY);
+                                    path.LineTo(verticalX, horizontalY);
+                                    path.Close();
+                                    break;
+                                }
+                            case ShapeDisplayItem.ShapeType.Arrow:
+                                {
+                                    var headHeight = height * 0.4f;
+                                    var shaftWidth = width * 0.5f;
+
+                                    // Arrow pointing up
+                                    path.MoveTo(centerX, y);                                    // Tip
+                                    path.LineTo(x + width, y + headHeight);                     // Right head
+                                    path.LineTo(x + width * 0.75f, y + headHeight);
+                                    path.LineTo(x + width * 0.75f, y + height);                // Right shaft bottom
+                                    path.LineTo(x + width * 0.25f, y + height);                // Left shaft bottom
+                                    path.LineTo(x + width * 0.25f, y + headHeight);
+                                    path.LineTo(x, y + headHeight);                            // Left head
+                                    path.Close();
+                                    break;
+                                }
+
+                            case ShapeDisplayItem.ShapeType.Octagon:
+                                {
+                                    var scaleX = width / 2;
+                                    var scaleY = height / 2;
+
+                                    for (int i = 0; i < 8; i++)
+                                    {
+                                        var angle = (i * 45 - 90) * Math.PI / 180;
+                                        var pointX = centerX + scaleX * Math.Cos(angle);
+                                        var pointY = centerY + scaleY * Math.Sin(angle);
+
+                                        if (i == 0)
+                                            path.MoveTo((float)pointX, (float)pointY);
+                                        else
+                                            path.LineTo((float)pointX, (float)pointY);
+                                    }
+                                    path.Close();
+                                    break;
+                                }
+
+                            case ShapeDisplayItem.ShapeType.Trapezoid:
+                                {
+                                    var topInset = width * 0.2f;
+
+                                    path.MoveTo(x + topInset, y);                    // Top left
+                                    path.LineTo(x + width - topInset, y);            // Top right
+                                    path.LineTo(x + width, y + height);              // Bottom right
+                                    path.LineTo(x, y + height);                      // Bottom left
+                                    path.Close();
+                                    break;
+                                }
+
+                            case ShapeDisplayItem.ShapeType.Parallelogram:
+                                {
+                                    var skew = width * 0.25f;
+
+                                    path.MoveTo(x + skew, y);                        // Top left
+                                    path.LineTo(x + width, y);                       // Top right
+                                    path.LineTo(x + width - skew, y + height);       // Bottom right
+                                    path.LineTo(x, y + height);                      // Bottom left
+                                    path.Close();
+                                    break;
+                                }
+                        }
+
+
+                        if (shapeDisplayItem.Rotation != 0)
+                        {
+                            var matrix = SKMatrix.CreateRotationDegrees(shapeDisplayItem.Rotation, centerX, centerY);
+                            path.Transform(matrix);
+                        }
+
+                        if (shapeDisplayItem.ShowFrame)
+                        {
+                            if (SKColor.TryParse(shapeDisplayItem.FrameColor, out var color))
+                            {
+                                g.DrawPath(path, color, 1);
+                            }
+                        }
+
+                        if (shapeDisplayItem.ShowFill)
+                        {
+                            if (SKColor.TryParse(shapeDisplayItem.FillColor, out var color))
+                            {
+                                if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor))
+                                {
+                                    g.FillPath(path, color, gradientColor, shapeDisplayItem.GradientAngle);
+                                }
+                                else
+                                {
+                                    g.FillPath(path, color);
+                                }
+                            }
+                        }
+
+                        break;
+                    }
             }
 
             if (displayItem.Selected && displayItem is not GroupDisplayItem)

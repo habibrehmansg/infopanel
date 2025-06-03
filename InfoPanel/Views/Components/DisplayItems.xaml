@@ -360,19 +360,6 @@
                             <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.ShowFps}" />
                         </StackPanel>
                     </ui:CardControl>
-                    <ui:CardControl
-                        Grid.Column="1"
-                        Margin="0,10,0,0"
-                        IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}">
-                        <ui:CardControl.Header>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="12" Text="GPU Acceleration" />
-                            </StackPanel>
-                        </ui:CardControl.Header>
-                        <StackPanel>
-                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Direct2DMode}" />
-                        </StackPanel>
-                    </ui:CardControl>
 
                     <StackPanel
                         Grid.Column="1"

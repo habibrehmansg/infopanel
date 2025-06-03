@@ -388,6 +388,11 @@
                                 <components:DonutProperties DonutDisplayItem="{Binding}" />
                             </StackPanel>
                         </DataTemplate>
+                        <DataTemplate DataType="{x:Type models:ShapeDisplayItem}">
+                            <StackPanel Orientation="Vertical">
+                                <components:ShapeProperties ShapeDisplayItem="{Binding}" />
+                            </StackPanel>
+                        </DataTemplate>
                     </ContentControl.Resources>
                 </ContentControl>
             </Grid>

@@ -60,5 +60,11 @@ namespace InfoPanel.Views.Components
             };
             SharedModel.Instance.AddDisplayItem(item);
         }
+
+        private void ButtonNewShape_Click(object sender, RoutedEventArgs e)
+        {
+            var item = new ShapeDisplayItem("Shape");
+            SharedModel.Instance.AddDisplayItem(item);
+        }
     }
 }

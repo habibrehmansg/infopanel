@@ -71,6 +71,8 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
                     return "Gauge";
                 case DonutDisplayItem:
                     return "Donut";
+                case ShapeDisplayItem:
+                    return "Shape";
                 default:
                     return "";
             }
