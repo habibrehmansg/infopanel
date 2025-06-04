@@ -1,4 +1,5 @@
-﻿using InfoPanel.Enums;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Enums;
 using SkiaSharp;
 using System;
 
@@ -433,8 +434,11 @@ namespace InfoPanel.Models
         }
     }
 
-    public class BarDisplayItem : ChartDisplayItem
+    public partial class BarDisplayItem : ChartDisplayItem
     {
+
+        [ObservableProperty]
+        private int _cornerRadius = 0;
 
         private bool _gradient = true;
         public bool Gradient

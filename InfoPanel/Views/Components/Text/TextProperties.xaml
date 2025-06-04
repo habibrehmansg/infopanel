@@ -134,6 +134,7 @@
                             Margin="0,0,0,0"
                             FontSize="14"
                             MaxDecimalPlaces="0"
+                            Minimum="0"
                             SmallChange="1"
                             Text="{Binding Width}"
                             Value="{Binding Width}" />
