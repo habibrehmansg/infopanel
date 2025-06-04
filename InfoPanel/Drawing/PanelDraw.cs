@@ -590,9 +590,9 @@ namespace InfoPanel.Drawing
                         {
                             if (SKColor.TryParse(shapeDisplayItem.FillColor, out var color))
                             {
-                                if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor))
+                                if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor) && SKColor.TryParse(shapeDisplayItem.GradientColor2, out var gradientColor2))
                                 {
-                                    g.FillPath(path, color, gradientColor, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
+                                    g.FillPath(path, color, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
                                 }
                                 else
                                 {
@@ -605,9 +605,9 @@ namespace InfoPanel.Drawing
                         {
                             if (SKColor.TryParse(shapeDisplayItem.FrameColor, out var color))
                             {
-                                if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor))
+                                if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor) && SKColor.TryParse(shapeDisplayItem.GradientColor2, out var gradientColor2))
                                 {
-                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness, gradientColor, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
+                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
                                 }
                                 else
                                 {

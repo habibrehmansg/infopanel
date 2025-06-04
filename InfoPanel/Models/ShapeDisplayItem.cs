@@ -48,22 +48,25 @@ namespace InfoPanel.Models
         private bool _showFrame = true;
 
         [ObservableProperty]
-        private int _frameThickness = 1;
+        private int _frameThickness = 5;
 
         [ObservableProperty]
-        private string _frameColor = "#000000";
+        private string _frameColor = "#FFFF0000";
 
         [ObservableProperty]
         private bool _showFill = true;
 
         [ObservableProperty]
-        private string _fillColor = "#FFBF00FF";
+        private string _fillColor = "#FFFF0000";
 
         [ObservableProperty]
         private bool _showGradient = true;
 
         [ObservableProperty]
-        private string _gradientColor = "#FF00FFFF";
+        private string _gradientColor = "#FF00FF00";
+
+        [ObservableProperty]
+        private string _gradientColor2 = "#FF0000FF";
 
         [ObservableProperty]
         private GradientType _gradientType = GradientType.Linear;
@@ -72,13 +75,10 @@ namespace InfoPanel.Models
         private int _gradientAngle = 0;
 
         [ObservableProperty]
-        private bool _gradientAnimation = true;
-
-        [ObservableProperty]
-        private int _gradientAnimationSpeed = 1000; // milliseconds
+        private int _gradientAnimationSpeed = 300; // milliseconds
 
         [XmlIgnore]
-        private Stopwatch _animationTimer = Stopwatch.StartNew();
+        private readonly Stopwatch _animationTimer = Stopwatch.StartNew();
 
         public ShapeDisplayItem()
         {
@@ -92,7 +92,7 @@ namespace InfoPanel.Models
 
         public int GetGradientAnimationOffset()
         {
-            if (!GradientAnimation)
+            if (GradientAnimationSpeed == 0)
                 return GradientAngle;
 
             double degreesPerSecond = GradientAnimationSpeed;

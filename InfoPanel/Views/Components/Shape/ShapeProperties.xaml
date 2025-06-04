@@ -137,16 +137,16 @@
                 <CheckBox
                     x:Name="CheckBoxBackground"
                     Grid.Row="5"
-                    Margin="0,10,0,10"
+                    Margin="0,0,0,10"
                     VerticalAlignment="Top"
-                    Content="Show Background"
+                    Content="Fill Shape"
                     IsChecked="{Binding ShowFill}" />
                 <metro:ColorPicker
                     Grid.Column="1"
                     Height="40"
-                    Margin="0,10,0,0"
+                    Margin="0,0,0,0"
                     metro:TextBoxHelper.UseFloatingWatermark="True"
-                    metro:TextBoxHelper.Watermark="Background color"
+                    metro:TextBoxHelper.Watermark="Fill color"
                     Background="Transparent"
                     SelectedColor="{Binding FillColor, Mode=TwoWay}" />
             </Grid>
@@ -204,76 +204,59 @@
                     <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
                 <CheckBox
-                    Grid.Row="5"
-                    Margin="0,0,0,10"
+                    Margin="0,0,0,0"
                     VerticalAlignment="Top"
-                    Content="Show Gradient"
+                    Content="Add Gradient"
                     IsChecked="{Binding ShowGradient}" />
-                <StackPanel Grid.Column="1">
-                    <metro:ColorPicker
-                        Grid.Column="1"
-                        Height="40"
-                        Margin="0,0,0,0"
-                        metro:TextBoxHelper.UseFloatingWatermark="True"
-                        metro:TextBoxHelper.Watermark="Gradient color"
-                        Background="Transparent"
-                        SelectedColor="{Binding GradientColor, Mode=TwoWay}" />
-
-                    <StackPanel Grid.Column="0" Margin="0,10,0,0">
-                        <ComboBox Name="ComboBoxGradientType" SelectedValue="{Binding GradientType}" />
-                        <TextBlock
-                            Margin="5,0,0,0"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                            Text="Gradient type" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="5" Margin="0,10,0,0">
-                        <Slider
-                            Margin="0,0,0,0"
-                            Maximum="180"
-                            Minimum="-180"
-                            Value="{Binding GradientAngle}" />
-
-                        <Grid Margin="5,0,5,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                Grid.Column="0"
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                Text="Gradient angle" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Margin="0,0,0,0"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                Text="{Binding GradientAngle, Mode=OneWay}" />
-                        </Grid>
-                    </StackPanel>
+                <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                    <ComboBox Name="ComboBoxGradientType" SelectedValue="{Binding GradientType}" />
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Gradient type" />
                 </StackPanel>
             </Grid>
+
 
             <Grid Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1*" />
                     <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
-                <CheckBox
-                    Grid.Row="5"
-                    Margin="0,0,0,10"
-                    Content="Animate Gradient"
-                    IsChecked="{Binding GradientAnimation}" />
-                <StackPanel Grid.Column="1">
 
-                    <StackPanel Grid.Row="5" Margin="0,10,0,0">
+                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                    <Slider
+                        Margin="0,0,0,0"
+                        Maximum="180"
+                        Minimum="-180"
+                        Value="{Binding GradientAngle}" />
+                    <Grid Margin="5,0,5,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="Gradient angle" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="{Binding GradientAngle, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                    <StackPanel Grid.Row="5" Margin="0,0,0,0">
                         <Slider
                             Margin="0,0,0,0"
                             Maximum="3600"
-                            Minimum="1"
+                            Minimum="0"
                             Value="{Binding GradientAnimationSpeed}" />
 
                         <Grid Margin="5,0,5,0">
@@ -296,6 +279,29 @@
                         </Grid>
                     </StackPanel>
                 </StackPanel>
+            </Grid>
+            <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <metro:ColorPicker
+                    Grid.Column="0"
+                    Height="40"
+                    Margin="0,0,10,0"
+                    metro:TextBoxHelper.UseFloatingWatermark="True"
+                    metro:TextBoxHelper.Watermark="Gradient color 1"
+                    Background="Transparent"
+                    SelectedColor="{Binding GradientColor, Mode=TwoWay}" />
+
+                <metro:ColorPicker
+                    Grid.Column="1"
+                    Height="40"
+                    Margin="10,0,0,0"
+                    metro:TextBoxHelper.UseFloatingWatermark="True"
+                    metro:TextBoxHelper.Watermark="Gradient color 2"
+                    Background="Transparent"
+                    SelectedColor="{Binding GradientColor2, Mode=TwoWay}" />
             </Grid>
 
         </StackPanel>

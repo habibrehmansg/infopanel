@@ -124,7 +124,7 @@ namespace InfoPanel.Drawing
             Canvas.DrawLine(x1, y1, x2, y2, paint);
         }
 
-        public override void DrawPath(SKPath path, SKColor color, int strokeWidth, SKColor? gradientColor = null, float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
+        public override void DrawPath(SKPath path, SKColor color, int strokeWidth, SKColor? gradientColor = null, SKColor? gradientColor2 = null, float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
         {
             using var paint = new SKPaint
             {
@@ -136,7 +136,7 @@ namespace InfoPanel.Drawing
 
             if(gradientColor.HasValue)
             {
-                using var shader = CreateGradient(path, color, gradientColor.Value, gradientAngle, gradientType);
+                using var shader = CreateGradient(path, color, gradientColor.Value, gradientColor2, gradientAngle, gradientType);
                 if (shader != null)
                 {
                     paint.Shader = shader;
@@ -622,7 +622,7 @@ namespace InfoPanel.Drawing
             Canvas.DrawLine(endInnerX, endInnerY, endOuterX, endOuterY, paint);
         }
 
-        private static SKShader? CreateGradient(SKPath path, SKColor color, SKColor gradientColor, float gradientAngle, GradientType gradientType)
+        private static SKShader? CreateGradient(SKPath path, SKColor color, SKColor gradientColor, SKColor? gradientColor2, float gradientAngle, GradientType gradientType)
         {
             SKShader? shader = null;
 
@@ -630,6 +630,9 @@ namespace InfoPanel.Drawing
             var bounds = path.Bounds;
             var centerX = bounds.MidX;
             var centerY = bounds.MidY;
+
+            // Use the third color if provided, otherwise use the first color for symmetry
+            var thirdColor = gradientColor2 ?? color;
 
             switch (gradientType)
             {
@@ -652,8 +655,8 @@ namespace InfoPanel.Drawing
                         shader = SKShader.CreateLinearGradient(
                             startPoint,
                             endPoint,
-                            new[] { color, gradientColor },
-                            null,
+                            [color, gradientColor, thirdColor],
+                            [0f, 0.5f, 1f],
                             SKShaderTileMode.Clamp
                         );
                         break;
@@ -662,17 +665,16 @@ namespace InfoPanel.Drawing
                 case GradientType.Sweep:
                     {
                         // Create a sweep gradient (angular/conic gradient)
-                        // The angle determines the starting position of the sweep
                         var startAngle = gradientAngle - 90f; // Adjust so 0° starts at top
 
                         // Create rotation matrix to rotate the gradient
                         var matrix = SKMatrix.CreateRotationDegrees(startAngle, centerX, centerY);
 
-                        // Create sweep gradient
+                        // Create sweep gradient with three colors
                         shader = SKShader.CreateSweepGradient(
-                            new SKPoint(centerX, centerY),  // Center point
-                            [color, gradientColor, color], // Add color again for smooth loop
-                            [0f, 0.5f, 1f]  // Positions
+                            new SKPoint(centerX, centerY),
+                            [color, gradientColor, thirdColor, color], // Loop back to first color
+                            [0f, 0.33f, 0.67f, 1f]
                         );
 
                         // Apply rotation
@@ -682,22 +684,25 @@ namespace InfoPanel.Drawing
 
                 case GradientType.Radial:
                     {
-                        // Radial gradient that pulses based on angle
-                        var maxRadius = Math.Min(bounds.Width, bounds.Height) / 2;
+                        // Radial gradient that pulses and overextends
+                        var baseRadius = Math.Max(bounds.Width, bounds.Height);
 
-                        // Convert angle to a 0-1 scale for radius multiplier
-                        // Use sine wave for smooth pulsing effect
                         var angleRad = gradientAngle * (float)(Math.PI / 180);
-                        var pulseFactor = (float)(Math.Sin(angleRad) + 1) / 2; // Converts -1 to 1 range to 0 to 1
+                        var pulseFactor = (float)(Math.Sin(angleRad) + 1) / 2;
 
-                        // Calculate animated radius from 0 to max
-                        var animatedRadius = maxRadius * pulseFactor;
+                        // Add overextension effect - goes from 0.8x to 1.3x the base radius
+                        var overextendFactor = 0.8f + (0.5f * pulseFactor);
+                        var animatedRadius = baseRadius * overextendFactor;
+
+                        // Animate color positions with slight overshoot
+                        var pos1 = Math.Min(0.3f * pulseFactor * 1.2f, 1f);  // Overshoot by 20%
+                        var pos2 = Math.Min(0.6f * pulseFactor * 1.1f, 1f);  // Overshoot by 10%
 
                         shader = SKShader.CreateRadialGradient(
                             new SKPoint(centerX, centerY),
                             animatedRadius,
-                            new[] { color, gradientColor },
-                            null,
+                            [color, gradientColor, thirdColor, thirdColor],
+                            [0f, pos1, pos2, 1f],
                             SKShaderTileMode.Clamp
                         );
                         break;
@@ -709,24 +714,20 @@ namespace InfoPanel.Drawing
                         var diagonal = (float)Math.Sqrt(bounds.Width * bounds.Width + bounds.Height * bounds.Height);
                         var halfDiagonal = diagonal / 2;
 
-                        // Convert angle to radians
                         var angleRad = gradientAngle * (float)(Math.PI / 180);
-
-                        // Calculate perpendicular angle
                         var perpAngleRad = angleRad + (float)(Math.PI / 2);
 
-                        // Calculate directions for both gradients
                         var dx1 = (float)Math.Cos(angleRad) * halfDiagonal;
                         var dy1 = (float)Math.Sin(angleRad) * halfDiagonal;
                         var dx2 = (float)Math.Cos(perpAngleRad) * halfDiagonal;
                         var dy2 = (float)Math.Sin(perpAngleRad) * halfDiagonal;
 
-                        // Create first gradient
+                        // Create first gradient with three colors
                         var shader1 = SKShader.CreateLinearGradient(
                             new SKPoint(centerX - dx1, centerY - dy1),
                             new SKPoint(centerX + dx1, centerY + dy1),
-                            [gradientColor, color, gradientColor],
-                            [0f, 0.5f, 1f],
+                            [thirdColor, gradientColor, color, gradientColor, thirdColor],
+                            [0f, 0.25f, 0.5f, 0.75f, 1f],
                             SKShaderTileMode.Clamp
                         );
 
@@ -734,12 +735,11 @@ namespace InfoPanel.Drawing
                         var shader2 = SKShader.CreateLinearGradient(
                             new SKPoint(centerX - dx2, centerY - dy2),
                             new SKPoint(centerX + dx2, centerY + dy2),
-                            [gradientColor, color, gradientColor],
-                            [0f, 0.5f, 1f],
+                            [thirdColor, gradientColor, color, gradientColor, thirdColor],
+                            [0f, 0.25f, 0.5f, 0.75f, 1f],
                             SKShaderTileMode.Clamp
                         );
 
-                        // Combine to create diamond shape
                         shader = SKShader.CreateCompose(shader1, shader2, SKBlendMode.Multiply);
                         shader1.Dispose();
                         shader2.Dispose();
@@ -751,7 +751,6 @@ namespace InfoPanel.Drawing
                         var diagonal = (float)Math.Sqrt(bounds.Width * bounds.Width + bounds.Height * bounds.Height);
                         var halfDiagonal = diagonal / 2;
 
-                        // Reflected gradient (mirror effect)
                         var reflectAngleRad = gradientAngle * (float)(Math.PI / 180);
                         var reflectDx = (float)Math.Cos(reflectAngleRad) * halfDiagonal;
                         var reflectDy = (float)Math.Sin(reflectAngleRad) * halfDiagonal;
@@ -759,8 +758,8 @@ namespace InfoPanel.Drawing
                         shader = SKShader.CreateLinearGradient(
                             new SKPoint(centerX - reflectDx, centerY - reflectDy),
                             new SKPoint(centerX + reflectDx, centerY + reflectDy),
-                            [color, gradientColor, color],
-                            [0f, 0.5f, 1f],
+                            [color, gradientColor, thirdColor, gradientColor, color],
+                            [0f, 0.25f, 0.5f, 0.75f, 1f],
                             SKShaderTileMode.Clamp
                         );
                         break;
@@ -768,14 +767,15 @@ namespace InfoPanel.Drawing
 
                 case GradientType.Spiral:
                     {
-                        // Simple spiral using repeated sweep gradient
+                        // Spiral with three colors for more variety
                         var spiralColors = new List<SKColor>();
                         var spiralPositions = new List<float>();
-                        var segments = 8; // Number of spiral segments
+                        var segments = 9; // Divisible by 3 for three colors
 
                         for (int i = 0; i <= segments; i++)
                         {
-                            spiralColors.Add(i % 2 == 0 ? color : gradientColor);
+                            var colorIndex = i % 3;
+                            spiralColors.Add(colorIndex == 0 ? color : (colorIndex == 1 ? gradientColor : thirdColor));
                             spiralPositions.Add(i / (float)segments);
                         }
 
@@ -785,7 +785,6 @@ namespace InfoPanel.Drawing
                             [.. spiralPositions]
                         );
 
-                        // Apply rotation based on gradient angle
                         var matrix = SKMatrix.CreateRotationDegrees(gradientAngle, centerX, centerY);
                         shader = shader.WithLocalMatrix(matrix);
                         break;
@@ -795,7 +794,7 @@ namespace InfoPanel.Drawing
             return shader;
         }
 
-        public override void FillPath(SKPath path, SKColor color, SKColor? gradientColor = null,
+        public override void FillPath(SKPath path, SKColor color, SKColor? gradientColor = null, SKColor? gradientColor2 = null,
             float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
         {
             if (path == null || path.IsEmpty)
@@ -810,7 +809,7 @@ namespace InfoPanel.Drawing
 
             if (gradientColor.HasValue)
             {
-                using var shader = CreateGradient(path, color, gradientColor.Value, gradientAngle, gradientType);
+                using var shader = CreateGradient(path, color, gradientColor.Value, gradientColor2, gradientAngle, gradientType);
                 if (shader != null)
                 {
                     paint.Shader = shader;
