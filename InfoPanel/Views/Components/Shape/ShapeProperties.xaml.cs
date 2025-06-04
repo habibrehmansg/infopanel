@@ -1,4 +1,5 @@
-﻿using InfoPanel.Models;
+﻿using InfoPanel.Drawing;
+using InfoPanel.Models;
 using System;
 using System.Linq;
 using System.Windows;
@@ -25,6 +26,7 @@ namespace InfoPanel.Views.Components
         {
             InitializeComponent();
             ComboBoxType.ItemsSource = Enum.GetValues(typeof(ShapeType)).Cast<ShapeType>();
+            ComboBoxGradientType.ItemsSource = Enum.GetValues(typeof(GradientType)).Cast<GradientType>();
         }
     }
 }

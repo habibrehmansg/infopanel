@@ -586,25 +586,32 @@ namespace InfoPanel.Drawing
                             path.Transform(matrix);
                         }
 
-                        if (shapeDisplayItem.ShowFrame)
-                        {
-                            if (SKColor.TryParse(shapeDisplayItem.FrameColor, out var color))
-                            {
-                                g.DrawPath(path, color, 1);
-                            }
-                        }
-
                         if (shapeDisplayItem.ShowFill)
                         {
                             if (SKColor.TryParse(shapeDisplayItem.FillColor, out var color))
                             {
                                 if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor))
                                 {
-                                    g.FillPath(path, color, gradientColor, shapeDisplayItem.GradientAngle);
+                                    g.FillPath(path, color, gradientColor, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
                                 }
                                 else
                                 {
                                     g.FillPath(path, color);
+                                }
+                            }
+                        }
+
+                        if (shapeDisplayItem.ShowFrame)
+                        {
+                            if (SKColor.TryParse(shapeDisplayItem.FrameColor, out var color))
+                            {
+                                if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor))
+                                {
+                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness, gradientColor, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
+                                }
+                                else
+                                {
+                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness);
                                 }
                             }
                         }

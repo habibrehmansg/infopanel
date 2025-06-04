@@ -1,6 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
 using SkiaSharp;
 using System;
+using System.Diagnostics;
+using System.Xml.Serialization;
 
 namespace InfoPanel.Models
 {
@@ -45,6 +48,9 @@ namespace InfoPanel.Models
         private bool _showFrame = true;
 
         [ObservableProperty]
+        private int _frameThickness = 1;
+
+        [ObservableProperty]
         private string _frameColor = "#000000";
 
         [ObservableProperty]
@@ -60,7 +66,19 @@ namespace InfoPanel.Models
         private string _gradientColor = "#FF00FFFF";
 
         [ObservableProperty]
+        private GradientType _gradientType = GradientType.Linear;
+
+        [ObservableProperty]
         private int _gradientAngle = 0;
+
+        [ObservableProperty]
+        private bool _gradientAnimation = true;
+
+        [ObservableProperty]
+        private int _gradientAnimationSpeed = 1000; // milliseconds
+
+        [XmlIgnore]
+        private Stopwatch _animationTimer = Stopwatch.StartNew();
 
         public ShapeDisplayItem()
         {
@@ -70,6 +88,33 @@ namespace InfoPanel.Models
         public ShapeDisplayItem(string name) : base(name)
         {
             Name = name;
+        }
+
+        public int GetGradientAnimationOffset()
+        {
+            if (!GradientAnimation)
+                return GradientAngle;
+
+            double degreesPerSecond = GradientAnimationSpeed;
+
+            // Calculate the animated angle based on time
+            double elapsedSeconds = _animationTimer.Elapsed.TotalSeconds;
+            double animationOffset = elapsedSeconds * degreesPerSecond;
+
+            // If GradientAngle is negative, rotate in opposite direction
+            if (GradientAngle < 0)
+            {
+                animationOffset = -animationOffset;
+            }
+
+            // Add the animation offset to the base GradientAngle
+            int animatedAngle = (int)(animationOffset) % 360;
+
+            // Ensure the result is positive
+            if (animatedAngle < 0)
+                animatedAngle += 360;
+
+            return animatedAngle;
         }
 
         public override object Clone()

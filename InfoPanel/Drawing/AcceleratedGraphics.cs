@@ -410,7 +410,7 @@ namespace InfoPanel.Drawing
             return d2dPath;
         }
 
-        public override void DrawPath(SKPath path, SKColor color, int strokeWidth)
+        public override void DrawPath(SKPath path, SKColor color, int strokeWidth, SKColor? gradientColor = null, float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
         {
             using var d2dPath = CreateGraphicsPath(path);
             this.D2DGraphics.DrawPath(d2dPath, new D2DColor(color.Alpha, color.Red, color.Green, color.Blue), strokeWidth);
@@ -429,7 +429,7 @@ namespace InfoPanel.Drawing
             this.D2DGraphics.FillPath(d2dPath, D2DColor.FromGDIColor(ColorTranslator.FromHtml(color)));
         }
 
-        public override void FillPath(SKPath path, SKColor color, SKColor? gradientColor = null, float gradientAngle = 90f)
+        public override void FillPath(SKPath path, SKColor color, SKColor? gradientColor = null, float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
         {
             //gradient not supported
             using var d2dPath = CreateGraphicsPath(path);
