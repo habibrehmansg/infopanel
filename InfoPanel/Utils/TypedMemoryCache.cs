@@ -1,16 +1,20 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace InfoPanel.Utils
 {
     public class TypedMemoryCache<T> : IDisposable
     {
+        private readonly ConcurrentDictionary<string, byte> _keys = [];
         private readonly MemoryCache _cache;
         private readonly MemoryCacheOptions _options;
         private bool _disposed;
+        public IEnumerable<string> Keys => _keys.Keys;
 
         public TypedMemoryCache(MemoryCacheOptions? options = null)
         {
@@ -25,15 +29,25 @@ namespace InfoPanel.Utils
 
         public void Set(string key, T value, MemoryCacheEntryOptions? options = null)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            _cache.Set(key, value, options);
+            _keys.TryAdd(key, 0);
+        }
 
-            options ??= new MemoryCacheEntryOptions();
+        public T? Get(string key)
+        {
+            return _cache.Get<T>(key);
+        }
 
-            options.RegisterPostEvictionCallback((k, v, reason, state) =>
+        public bool TryGetValue(string key, out T? value)
+        {
+            return _cache.TryGetValue(key, out value);
+        }
+
+        public void Remove(string key)
+        {
+            if (_cache.TryGetValue<T>(key, out var value))
             {
-                Trace.WriteLine($"Cache entry '{k}' `{v}` evicted due to {reason}.");
-
-                switch (v)
+                switch (value)
                 {
                     case IDisposable disposable:
                         disposable.Dispose();
@@ -47,46 +61,18 @@ namespace InfoPanel.Utils
                             item?.Dispose();
                         break;
                 }
-            });
-
-            _cache.Set(key, value, options);
-        }
-
-        public T? Get(string key)
-        {
-            ArgumentNullException.ThrowIfNull(key);
-            return _cache.Get<T>(key);
-        }
-
-        public bool TryGetValue(string key, out T? value)
-        {
-            ArgumentNullException.ThrowIfNull(key);
-            return _cache.TryGetValue(key, out value);
-        }
-
-        public void Remove(string key)
-        {
-            ArgumentNullException.ThrowIfNull(key);
-
-            // Dispose if needed
-            if (_cache.TryGetValue<T>(key, out var value) && value is IDisposable disposable)
-            {
-                disposable.Dispose();
             }
 
             _cache.Remove(key);
+            _keys.TryRemove(key, out _);
         }
 
-        // MemoryCache specific methods
         public void Clear()
         {
-            // Compact with 1.0 removes all entries
-            _cache.Compact(1.0);
-        }
-
-        public void Compact(double percentage)
-        {
-            _cache.Compact(percentage);
+            foreach (var key in _keys.Keys)
+            {
+                Remove(key);
+            }
         }
 
         public MemoryCacheStatistics? GetCurrentStatistics()

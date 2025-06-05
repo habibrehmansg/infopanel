@@ -18,16 +18,12 @@ namespace InfoPanel.Models
     {
         public readonly string ImagePath;
 
-        private readonly TypedMemoryCache<SKBitmapFrameSlot[]> SKBitmapMemoryCache = new(new MemoryCacheOptions()
+        private readonly TypedMemoryCache<SKImageFrameSlot[]> SKImageMemoryCache = new(new MemoryCacheOptions()
         {
             ExpirationScanFrequency = TimeSpan.FromSeconds(5)
         });
 
-        private IntPtr? D2DHandle;
-        private readonly TypedMemoryCache<D2DBitmapFrameSlot[]> D2DBitmapMemoryCache = new(new MemoryCacheOptions()
-        {
-            ExpirationScanFrequency = TimeSpan.FromSeconds(5)
-        });
+        private readonly TypedMemoryCache<SKImageFrameSlot[]> SKGLImageMemoryCache = new();
 
         public int Width { get; private set; } = 0;
         public int Height { get; private set; } = 0;
@@ -307,57 +303,71 @@ namespace InfoPanel.Models
             }
         }
 
-        private SKBitmapFrameSlot[] GetSKBitmapFrameCache(string cacheHint)
+        private SKImageFrameSlot[] GetSKBitmapFrameCache(string cacheHint)
         {
             lock (Lock)
             {
-                SKBitmapMemoryCache.TryGetValue(cacheHint, out var cacheValue);
+                SKImageMemoryCache.TryGetValue(cacheHint, out var cacheValue);
                 if (cacheValue == null)
                 {
-                    cacheValue = new SKBitmapFrameSlot[Frames];
+                    cacheValue = new SKImageFrameSlot[Frames];
                     for (int i = 0; i < Frames; i++)
                     {
-                        cacheValue[i] = new SKBitmapFrameSlot();
+                        cacheValue[i] = new SKImageFrameSlot();
                     }
 
-                    SKBitmapMemoryCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
+                    SKImageMemoryCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5), PostEvictionCallbacks = {
+                            new PostEvictionCallbackRegistration
+                            {
+                                EvictionCallback = (key, value, reason, state) =>
+                                {
+                                    Trace.WriteLine($"Cache entry '{key}' evicted due to {reason}.");
+                                    if (value is SKImageFrameSlot[] slots)
+                                    {
+                                        foreach (var slot in slots)
+                                        {
+                                            slot.Dispose();
+                                        }
+                                    }
+                                }
+                            }
+                        } });
                 }
 
                 return cacheValue;
             }
         }
 
-        private D2DBitmapFrameSlot[] GetD2DBitmapFrameCache(string cacheHint)
+        public SKImageFrameSlot[] GetD2DBitmapFrameCache(string cacheHint)
         {
             lock (Lock)
             {
-                D2DBitmapMemoryCache.TryGetValue(cacheHint, out var cacheValue);
+                SKGLImageMemoryCache.TryGetValue(cacheHint, out var cacheValue);
                 if (cacheValue == null)
                 {
-                    cacheValue = new D2DBitmapFrameSlot[Frames];
+                    cacheValue = new SKImageFrameSlot[Frames];
                     for (int i = 0; i < Frames; i++)
                     {
-                        cacheValue[i] = new D2DBitmapFrameSlot();
+                        cacheValue[i] = new SKImageFrameSlot();
                     }
 
-                    D2DBitmapMemoryCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
+                    SKGLImageMemoryCache.Set(cacheHint, cacheValue);
                 }
 
                 return cacheValue;
             }
         }
 
-        public void AccessSK(int targetWidth, int targetHeight, Action<SKBitmap> access, bool cache = true, string cacheHint = "default")
+        public void AccessSK(int targetWidth, int targetHeight, Action<SKImage> access, bool cache = true, string cacheHint = "default", GRContext? grContext = null)
         {
             ObjectDisposedException.ThrowIf(IsDisposed, this);
-            ArgumentNullException.ThrowIfNull(access);
 
             if (targetWidth <= 0 || targetHeight <= 0)
                 throw new ArgumentException("Target dimensions must be positive");
 
             lock (Lock)
             {
-                var SKBitmapCache = GetSKBitmapFrameCache(cacheHint);
+                var SKBitmapCache = grContext != null ? GetD2DBitmapFrameCache(cacheHint) : GetSKBitmapFrameCache(cacheHint);
 
                 var frame = GetCurrentFrameCount();
 
@@ -368,22 +378,37 @@ namespace InfoPanel.Models
                     bitmapFrame.Invalidate();
                 }
 
+                if(bitmapFrame.Image != null && grContext != null && !bitmapFrame.Image.IsValid(grContext))
+                {
+                    bitmapFrame.Invalidate();
+                }
+
                 var shouldDispose = false;
 
-                if (bitmapFrame.Bitmap == null)
+                if (bitmapFrame.Image == null)
                 {
                     using var bitmap = GetSKBitmapFromSK(frame);
-                    bitmapFrame.Bitmap = bitmap?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
+                    using var resizedBitmap = bitmap?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
 
-                    if (!cache)
+                    if (grContext != null && resizedBitmap != null)
+                    {
+                        using var image = SKImage.FromBitmap(resizedBitmap);
+                        bitmapFrame.Image = image.ToTextureImage(grContext);
+                    }
+                    else
+                    {
+                        bitmapFrame.Image = SKImage.FromBitmap(resizedBitmap);
+                    }
+
+                    if (grContext == null && !cache)
                     {
                         shouldDispose = true;
                     }
                 }
 
-                if (bitmapFrame.Bitmap != null)
+                if (bitmapFrame.Image != null)
                 {
-                    access(bitmapFrame.Bitmap);
+                    access(bitmapFrame.Image);
 
                     if (shouldDispose)
                     {
@@ -395,87 +420,91 @@ namespace InfoPanel.Models
 
         public void AccessD2D(D2DDevice device, IntPtr handle, int targetWidth, int targetHeight, Action<D2DBitmap> access, bool cache = true, string cacheHint = "default")
         {
-            ObjectDisposedException.ThrowIf(IsDisposed, this);
-            ArgumentNullException.ThrowIfNull(access);
+            //ObjectDisposedException.ThrowIf(IsDisposed, this);
+            //ArgumentNullException.ThrowIfNull(access);
 
-            if (targetWidth <= 0 || targetHeight <= 0)
-                throw new ArgumentException("Target dimensions must be positive");
+            //if (targetWidth <= 0 || targetHeight <= 0)
+            //    throw new ArgumentException("Target dimensions must be positive");
 
-            lock (Lock)
-            {
+            //lock (Lock)
+            //{
 
-                if (D2DHandle == null)
-                {
-                    D2DHandle = handle;
-                }
-                else if (D2DHandle != handle)
-                {
-                    Trace.WriteLine("D2DDevice changed, disposing assets");
-                    DisposeD2DAssets();
-                    D2DHandle = handle;
-                }
+            //    if (D2DHandle == null)
+            //    {
+            //        D2DHandle = handle;
+            //    }
+            //    else if (D2DHandle != handle)
+            //    {
+            //        Trace.WriteLine("D2DDevice changed, disposing assets");
+            //        DisposeD2DAssets();
+            //        D2DHandle = handle;
+            //    }
 
-                var D2DBitmapCache = GetD2DBitmapFrameCache(cacheHint);
+            //    var D2DBitmapCache = GetD2DBitmapFrameCache(cacheHint);
 
-                var frame = GetCurrentFrameCount();
-                var d2dbitmapFrame = D2DBitmapCache[frame];
+            //    var frame = GetCurrentFrameCount();
+            //    var d2dbitmapFrame = D2DBitmapCache[frame];
 
-                if (d2dbitmapFrame.Width != targetWidth || d2dbitmapFrame.Height != targetHeight)
-                {
-                    d2dbitmapFrame.Invalidate();
-                }
+            //    if (d2dbitmapFrame.Width != targetWidth || d2dbitmapFrame.Height != targetHeight)
+            //    {
+            //        d2dbitmapFrame.Invalidate();
+            //    }
 
-                if (d2dbitmapFrame.Bitmap == null)
-                {
-                    SKBitmap? bitmap = null;
+            //    if (d2dbitmapFrame.Bitmap == null)
+            //    {
+            //        SKBitmap? bitmap = null;
 
-                    if (IsSvg && SKSvg?.Picture is SKPicture picture)
-                    {
-                        var bounds = picture.CullRect;
+            //        if (IsSvg && SKSvg?.Picture is SKPicture picture)
+            //        {
+            //            var bounds = picture.CullRect;
 
-                        float scaleX = targetWidth / bounds.Width;
-                        float scaleY = targetHeight / bounds.Height;
+            //            float scaleX = targetWidth / bounds.Width;
+            //            float scaleY = targetHeight / bounds.Height;
 
-                        bitmap = picture.ToBitmap(
-                           background: SKColors.Transparent,
-                           scaleX,
-                           scaleY,
-                           skColorType: SKColorType.Bgra8888,
-                           skAlphaType: SKAlphaType.Premul,
-                           skColorSpace: SKColorSpace.CreateSrgb()
-                        );
-                    }
-                    else if (_codec != null)
-                    {
-                        var b = GetSKBitmapFromSK(frame);
-                        bitmap = b?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
-                        b?.Dispose();
-                    }
+            //            bitmap = picture.ToBitmap(
+            //               background: SKColors.Transparent,
+            //               scaleX,
+            //               scaleY,
+            //               skColorType: SKColorType.Bgra8888,
+            //               skAlphaType: SKAlphaType.Premul,
+            //               skColorSpace: SKColorSpace.CreateSrgb()
+            //            );
+            //        }
+            //        else if (_codec != null)
+            //        {
+            //            var b = GetSKBitmapFromSK(frame);
+            //            bitmap = b?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
+            //            b?.Dispose();
+            //        }
 
-                    if (bitmap != null)
-                    {
-                        uint width = (uint)bitmap.Width;
-                        uint height = (uint)bitmap.Height;
-                        uint stride = (uint)bitmap.RowBytes;
-                        IntPtr pixelPtr = bitmap.GetPixels();
-                        uint length = stride * height;
+            //        if (bitmap != null)
+            //        {
+            //            uint width = (uint)bitmap.Width;
+            //            uint height = (uint)bitmap.Height;
+            //            uint stride = (uint)bitmap.RowBytes;
+            //            IntPtr pixelPtr = bitmap.GetPixels();
+            //            uint length = stride * height;
 
-                        d2dbitmapFrame.Bitmap = device.CreateBitmapFromMemory(width, height, stride, pixelPtr, 0, length);
-                    }
-                }
+            //            d2dbitmapFrame.Bitmap = device.CreateBitmapFromMemory(width, height, stride, pixelPtr, 0, length);
+            //        }
+            //    }
 
-                if (d2dbitmapFrame.Bitmap != null)
-                {
-                    access(d2dbitmapFrame.Bitmap);
-                }
-            }
+            //    if (d2dbitmapFrame.Bitmap != null)
+            //    {
+            //        access(d2dbitmapFrame.Bitmap);
+            //    }
+            //}
         }
 
         public void DisposeSKAssets()
         {
             lock (Lock)
             {
-                SKBitmapMemoryCache.Clear();
+                foreach (var key in SKImageMemoryCache.Keys)
+                {
+                    Trace.WriteLine($"Clearing SKImageMemoryCache[{key}]");
+                }
+                SKImageMemoryCache.Clear();
             }
         }
 
@@ -483,7 +512,11 @@ namespace InfoPanel.Models
         {
             lock (Lock)
             {
-                D2DBitmapMemoryCache.Clear();
+                foreach (var key in SKGLImageMemoryCache.Keys)
+                {
+                    Trace.WriteLine($"Clearing SKGLImageMemoryCache[{key}]");
+                }
+                SKGLImageMemoryCache.Clear();
             }
         }
 
@@ -496,8 +529,8 @@ namespace InfoPanel.Models
             {
                 if (!IsDisposed)
                 {
-                    SKBitmapMemoryCache.Dispose();
-                    D2DBitmapMemoryCache.Dispose();
+                    SKImageMemoryCache.Dispose();
+                    SKGLImageMemoryCache.Dispose();
 
                     SKSvg?.Dispose();
 
@@ -514,17 +547,15 @@ namespace InfoPanel.Models
             GC.SuppressFinalize(this);
         }
 
-        private static long size = 0;
-
-        private class SKBitmapFrameSlot : IDisposable
+        public class SKImageFrameSlot : IDisposable
         {
-            private SKBitmap? _bitmap;
-            public SKBitmap? Bitmap
+            private SKImage? _bitmap;
+            public SKImage? Image
             {
                 get => _bitmap;
                 set
                 {
-                    _bitmap?.Dispose();
+                    Invalidate();
                     _bitmap = value;
                 }
             }
@@ -534,42 +565,25 @@ namespace InfoPanel.Models
 
             public void Invalidate()
             {
-                size -= _bitmap?.ByteCount ?? 0;
-                _bitmap?.Dispose();
-                _bitmap = null;
-            }
+                if (_bitmap == null)
+                    return;
 
-            public void Dispose()
-            {
-                Invalidate();
-            }
-        }
-
-        private class D2DBitmapFrameSlot : IDisposable
-        {
-            private D2DBitmap? _bitmap;
-            public D2DBitmap? Bitmap
-            {
-                get => _bitmap;
-                set
+                try
                 {
                     _bitmap?.Dispose();
-                    _bitmap = value;
                 }
-            }
+                catch (Exception e)
+                {
+                    Trace.WriteLine($"Error invalidating SKImageFrameSlot: {e.Message}");
+                }
 
-            public int Width => (int)(_bitmap?.Width ?? 0);
-            public int Height => (int)(_bitmap?.Height ?? 0);
-
-            public void Invalidate()
-            {
-                _bitmap?.Dispose();
                 _bitmap = null;
             }
 
             public void Dispose()
             {
                 Invalidate();
+                GC.SuppressFinalize(this);
             }
         }
     }

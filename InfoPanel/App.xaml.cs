@@ -319,14 +319,18 @@ namespace InfoPanel
         {
             //DisplayWindows.TryGetValue(profile.Guid, out var displayWindow);
             //return displayWindow;
-            return _displayManager.GetDisplayThread(profile.Guid)?.Window;
+            //return _displayManager.GetDisplayThread(profile.Guid)?.Window;
+
+            return null;
         }
 
         public void MaximiseDisplayWindow(Profile profile)
         {
             //var window = GetDisplayWindow(profile);
             //window?.Fullscreen();
-            _displayManager.GetDisplayThread(profile.Guid)?.Window?.Fullscreen();
+            //_displayManager.GetDisplayThread(profile.Guid)?.Window?.Fullscreen();
+
+
         }
 
         public void ShowDisplayWindow(Profile profile)

@@ -2,26 +2,32 @@
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Win32;
+using SkiaSharp;
 using SkiaSharp.Views.Desktop;
+using SkiaSharp.Views.WPF;
 using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Timers;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-using unvell.D2DLib;
 
 namespace InfoPanel.Views.Common
 {
     /// <summary>
     /// Interaction logic for DisplayWindow.xaml
     /// </summary>
-    public partial class DisplayWindow : D2DWindow
+    public partial class DisplayWindow
     {
+        SKElement? _sKElement;
+        SKGLElement? _skGlElement;
+
         public Profile Profile { get; }
         public bool Direct2DMode { get; }
 
@@ -32,7 +38,10 @@ namespace InfoPanel.Views.Common
         private readonly DispatcherTimer _resizeTimer;
         private bool _isDpiChanging = false;
 
-        public DisplayWindow(Profile profile) : base(profile.Direct2DMode)
+        private Timer? _renderTimer;
+        private readonly FpsCounter FpsCounter = new();
+
+        public DisplayWindow(Profile profile)
         {
             RenderOptions.ProcessRenderMode = RenderMode.Default;
             Profile = profile;
@@ -41,6 +50,7 @@ namespace InfoPanel.Views.Common
             Direct2DMode = profile.Direct2DMode;
 
             InitializeComponent();
+            InjectSkiaElement();
 
             if (profile.Resize)
             {
@@ -51,8 +61,8 @@ namespace InfoPanel.Views.Common
                 ResizeMode = ResizeMode.NoResize;
             }
 
-            Closed += DisplayWindow_Closed;
             Loaded += Window_Loaded;
+            Closing += DisplayWindow_Closing;
 
             Profile.PropertyChanged += Profile_PropertyChanged;
             ConfigModel.Instance.Settings.PropertyChanged += Config_PropertyChanged;
@@ -68,6 +78,150 @@ namespace InfoPanel.Views.Common
                 Interval = TimeSpan.FromMilliseconds(300)
             };
             _resizeTimer.Tick += OnResizeCompleted;
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Variable to hold the handle for the form
+            var helper = new WindowInteropHelper(this).Handle;
+            //Performing some magic to hide the form from Alt+Tab
+            _ = SetWindowLong(helper, GWL_EX_STYLE, (GetWindowLong(helper, GWL_EX_STYLE) | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW);
+
+            SetWindowPositionRelativeToScreen();
+
+            UpdateSkiaTimer();
+        }
+
+        private void UpdateSkiaTimer()
+        {
+            double interval = (1000.0 / ConfigModel.Instance.Settings.TargetFrameRate) - 1;
+            FpsCounter.SetMaxFrames(ConfigModel.Instance.Settings.TargetFrameRate);
+
+            if (_renderTimer == null)
+            {
+                // Initialize the timer
+                _renderTimer = new System.Timers.Timer(interval);
+                _renderTimer.Elapsed += OnTimerElapsed;
+                _renderTimer.AutoReset = true;
+                _renderTimer.Start();
+            }
+            else
+            {
+                // Just update the interval if the timer already exists
+                _renderTimer.Interval = interval;
+            }
+        }
+
+        private void Clear(DisplayItem displayItem)
+        {
+            if (displayItem is GroupDisplayItem group)
+            {
+                foreach (var groupItem in group.DisplayItems)
+                {
+                    Clear(groupItem);
+                }
+            }
+            else if (displayItem is GaugeDisplayItem gauge)
+            {
+                foreach (var gaugeItem in gauge.Images)
+                {
+                    Clear(gaugeItem);
+                }
+            }
+            else if (displayItem is ImageDisplayItem image)
+            {
+                Cache.GetLocalImage(image, false)?.DisposeD2DAssets();
+            }
+        }
+
+        private void DisplayWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            _resizeTimer.Stop();
+            _resizeTimer.Tick -= OnResizeCompleted;
+
+            ConfigModel.Instance.Settings.PropertyChanged -= Config_PropertyChanged;
+
+            if (_renderTimer != null)
+            {
+                _renderTimer.Stop();
+                _renderTimer.Dispose();
+                _renderTimer.Elapsed -= OnTimerElapsed;
+            }
+
+            Profile.PropertyChanged -= Profile_PropertyChanged;
+            SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
+
+            DpiChanged -= DisplayWindow_DpiChanged;
+            LocationChanged -= DisplayWindow_LocationChanged;
+            SizeChanged -= DisplayWindow_SizeChanged;
+
+            if (Direct2DMode)
+            {
+                foreach (var item in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile))
+                {
+                    Clear(item);
+                }
+            }
+
+            if (_skGlElement != null && _skGlElement.GRContext is GRContext grContext)
+            {
+                grContext.PurgeResources();
+                grContext.Flush();
+                grContext.Submit(true);
+
+                grContext.GetResourceCacheUsage(out var maxResources, out var maxResourceBytes);
+                Trace.WriteLine($"Closing {maxResources} items, {maxResourceBytes / 1024 / 1024}mb");
+
+                _skGlElement.PaintSurface -= SkGlElement_PaintSurface;
+
+                BindingOperations.ClearBinding(_skGlElement, WidthProperty);
+                BindingOperations.ClearBinding(_skGlElement, HeightProperty);
+
+                _skGlElement = null;
+
+                Trace.WriteLine("Disposed _skGLElement");
+            }
+        }
+
+        private void InjectSkiaElement()
+        {
+            var container = FindName("SkiaContainer") as Panel;
+            if (container == null) return;
+
+            container.Children.Clear();
+
+            if (Direct2DMode)
+            {
+                AllowsTransparency = false;
+                var skGlElement = new SKGLElement
+                {
+                    Name = "skGlElement",
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Top
+                };
+                skGlElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
+                skGlElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
+                skGlElement.PaintSurface += SkGlElement_PaintSurface;
+                container.Children.Add(skGlElement);
+
+                _skGlElement = skGlElement;
+            }
+            else
+            {
+                AllowsTransparency = true;
+                var skElement = new SKElement
+                {
+                    Name = "skElement",
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Top
+                };
+                skElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
+                skElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
+                skElement.PaintSurface += SkElement_PaintSurface;
+                container.Children.Add(skElement);
+
+                _sKElement = skElement;
+            }
         }
 
         private void DisplayWindow_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -140,61 +294,39 @@ namespace InfoPanel.Views.Common
             }
         }
 
-        protected override void OnRender(D2DGraphics d2dGraphics)
-        {
-            base.OnRender(d2dGraphics);
-
-            using var g = new AcceleratedGraphics(d2dGraphics, this.Handle, Profile.Direct2DFontScale, Profile.Direct2DTextXOffset, Profile.Direct2DTextYOffset);
-            PanelDraw.Run(Profile, g, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
-        }
-
-        private Timer? _renderTimer;
-        private readonly FpsCounter FpsCounter = new();
-
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
             if (!Direct2DMode)
             {
-                // Invalidate the SKElement on the UI thread
-                Dispatcher.Invoke(() => skElement.InvalidateVisual(), DispatcherPriority.Input);
-            }else
+                Dispatcher.Invoke(() => _sKElement?.InvalidateVisual(), DispatcherPriority.Input);
+            }
+            else
             {
-                D2DRender();
+                Dispatcher.Invoke(() => _skGlElement?.InvalidateVisual(), DispatcherPriority.Input);
             }
         }
 
-        private void OnPaintSurface(object sender, SKPaintSurfaceEventArgs e)
+        private void SkElement_PaintSurface(object? sender, SKPaintSurfaceEventArgs e)
         {
-            if (_renderTimer == null || !_renderTimer.Enabled || Direct2DMode)
+            PaintSurface(e.Surface.Canvas);
+        }
+
+        private void SkGlElement_PaintSurface(object? sender, SKPaintGLSurfaceEventArgs e)
+        {
+            PaintSurface(e.Surface.Canvas);
+        }
+
+        private void PaintSurface(SKCanvas canvas)
+        {
+            if (_renderTimer == null || !_renderTimer.Enabled)
             {
                 return;
             }
 
-            var canvas = e.Surface.Canvas;
             canvas.Clear();
 
             SkiaGraphics skiaGraphics = new(canvas, 1.33f);
             PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
-        }
-
-        private void UpdateSkiaTimer()
-        {
-            double interval = (1000.0 / ConfigModel.Instance.Settings.TargetFrameRate) - 1;
-            FpsCounter.SetMaxFrames(ConfigModel.Instance.Settings.TargetFrameRate);
-
-            if (_renderTimer == null)
-            {
-                // Initialize the timer
-                _renderTimer = new System.Timers.Timer(interval);
-                _renderTimer.Elapsed += OnTimerElapsed;
-                _renderTimer.AutoReset = true;
-                _renderTimer.Start();
-            }
-            else
-            {
-                // Just update the interval if the timer already exists
-                _renderTimer.Interval = interval;
-            }
         }
 
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
@@ -217,36 +349,6 @@ namespace InfoPanel.Views.Common
                     Profile.WindowY = 0;
                     Profile.Width = screen.Bounds.Width;
                     Profile.Height = screen.Bounds.Height;
-                }
-            });
-        }
-
-
-        private void DisplayWindow_Closed(object? sender, EventArgs e)
-        {
-            _resizeTimer.Stop();
-            _resizeTimer.Tick -= OnResizeCompleted;
-
-            ConfigModel.Instance.Settings.PropertyChanged -= Config_PropertyChanged;
-
-            _renderTimer?.Stop();
-            _renderTimer?.Dispose();
-
-            Profile.PropertyChanged -= Profile_PropertyChanged;
-            SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
-
-            SharedModel.Instance.GetProfileDisplayItemsCopy(Profile).ForEach(item =>
-            {
-                if (item is ImageDisplayItem imageDisplayItem)
-                {
-                    if (Direct2DMode)
-                    {
-                        Cache.GetLocalImage(imageDisplayItem, false)?.DisposeD2DAssets();
-                    }
-                    else
-                    {
-                        Cache.GetLocalImage(imageDisplayItem, false)?.DisposeSKAssets();
-                    }
                 }
             });
         }
@@ -381,7 +483,8 @@ namespace InfoPanel.Views.Common
                     {
                         foreach (var selectedItem in SharedModel.Instance.SelectedVisibleItems)
                         {
-                            App.Current.Dispatcher.BeginInvoke(() => {
+                            App.Current.Dispatcher.Invoke(() =>
+                            {
                                 selectedItem.Selected = false;
                             });
                         }
@@ -392,23 +495,7 @@ namespace InfoPanel.Views.Common
                 {
                     if (Profile.Drag)
                     {
-                        if (this.ResizeMode != System.Windows.ResizeMode.NoResize)
-                        {
-                            this.ResizeMode = System.Windows.ResizeMode.NoResize;
-                            this.UpdateLayout();
-                        }
-
                         this.DragMove();
-
-                        if (Profile.Resize)
-                        {
-                            if (this.ResizeMode == System.Windows.ResizeMode.NoResize)
-                            {
-                                // restore resize grips
-                                this.ResizeMode = System.Windows.ResizeMode.CanResizeWithGrip;
-                                this.UpdateLayout();
-                            }
-                        }
 
                         var screen = ScreenHelper.GetWindowScreen(this);
 
@@ -488,7 +575,7 @@ namespace InfoPanel.Views.Common
                         continue;
                     }
 
-                    if(clickedItem != null)
+                    if (clickedItem != null)
                     {
                         break;
                     }
@@ -505,7 +592,8 @@ namespace InfoPanel.Views.Common
 
                     if (!Keyboard.IsKeyDown(Key.LeftCtrl) && !Keyboard.IsKeyDown(Key.LeftShift))
                     {
-                        Application.Current.Dispatcher.BeginInvoke(() => {
+                        Application.Current.Dispatcher.BeginInvoke(() =>
+                        {
                             SharedModel.Instance.SelectedItem = clickedItem;
                         });
                     }
@@ -577,18 +665,6 @@ namespace InfoPanel.Views.Common
         private void MenuItemClose_Click(object sender, RoutedEventArgs e)
         {
             Close();
-        }
-
-        private void Window_Loaded(object sender, RoutedEventArgs e)
-        {
-            // Variable to hold the handle for the form
-            var helper = new WindowInteropHelper(this).Handle;
-            //Performing some magic to hide the form from Alt+Tab
-            _ = SetWindowLong(helper, GWL_EX_STYLE, (GetWindowLong(helper, GWL_EX_STYLE) | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW);
-
-            SetWindowPositionRelativeToScreen();
-
-            UpdateSkiaTimer();
         }
 
         //     [DllImport("user32.dll", SetLastError = true)]

@@ -1,4 +1,4 @@
-﻿<local:D2DWindow
+﻿<Window
     x:Class="InfoPanel.Views.Common.DisplayWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -28,13 +28,22 @@
             GlassFrameThickness="0"
             ResizeBorderThickness="10" />
     </WindowChrome.WindowChrome>
-    <Canvas>
-        <skia:SKElement
+    <Canvas x:Name="SkiaContainer">
+        <!--<skia:SKElement
             x:Name="skElement"
             Width="{Binding Profile.Width, Mode=OneWay}"
             Height="{Binding Profile.Height, Mode=OneWay}"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             PaintSurface="OnPaintSurface" />
+
+        <skia:SKGLElement
+            x:Name="skGlElement"
+            Width="{Binding Profile.Width, Mode=OneWay}"
+            Height="{Binding Profile.Height, Mode=OneWay}"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            PaintSurface="skGlElement_PaintSurface"
+            Visibility="Hidden" />-->
     </Canvas>
-</local:D2DWindow>
+</Window>

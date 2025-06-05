@@ -26,7 +26,7 @@ namespace InfoPanel.Drawing
             _selectionStopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null, GRContext? grContext = null)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -94,7 +94,14 @@ namespace InfoPanel.Drawing
 
             if (profile.ShowFps && fpsCounter != null)
             {
-                var text = $"FPS {fpsCounter.FramesPerSecond} | {fpsCounter.FrameTime}ms";
+                var renderingEngine = "CPU";
+
+                if(g is SkiaGraphics skiaGraphics && skiaGraphics.OpenGL)
+                {
+                    renderingEngine = "OpenGL";
+                }
+
+                var text = $"{renderingEngine} | FPS {fpsCounter.FramesPerSecond} | {fpsCounter.FrameTime}ms";
                 var font = "Consolas";
                 var fontStyle = "Regular";
                 var fontSize = 10;

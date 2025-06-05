@@ -89,7 +89,23 @@ namespace InfoPanel
 
                 if (cachedImage != null)
                 {
-                    ImageCache.Set(path, cachedImage, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(10) });
+                    ImageCache.Set(path, cachedImage, new MemoryCacheEntryOptions
+                    {
+                        SlidingExpiration = TimeSpan.FromSeconds(10),
+                        PostEvictionCallbacks = {
+                            new PostEvictionCallbackRegistration
+                            {
+                                EvictionCallback = (key, value, reason, state) =>
+                                {
+                                     Trace.WriteLine($"Cache entry '{key}' evicted due to {reason}.");
+                                    if (value is LockedImage lockedImage)
+                                    {
+                                        lockedImage.Dispose();
+                                    }
+                                }
+                            }
+                        }
+                    });
                 }
             }
             catch (Exception e)

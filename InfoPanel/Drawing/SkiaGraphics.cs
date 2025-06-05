@@ -17,7 +17,10 @@ namespace InfoPanel.Drawing
     internal partial class SkiaGraphics(SKCanvas canvas, float fontScale = 1.33f) : MyGraphics
     {
         private readonly SKCanvas Canvas = canvas;
+        private readonly GRContext? GRContext = canvas.Context as GRContext;
         private readonly float FontScale = fontScale;
+
+        public bool OpenGL => GRContext != null;
 
         public static SkiaGraphics FromBitmap(SKBitmap bitmap)
         {
@@ -58,6 +61,11 @@ namespace InfoPanel.Drawing
         public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
         {
             using var image = SKImage.FromBitmap(bitmap);
+            DrawImage(image, x, y, width, height, rotation, rotationCenterX, rotationCenterY, flipX, flipY);
+        }
+
+        public void DrawImage(SKImage image, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
+        {
             using var paint = new SKPaint
             {
                 IsAntialias = true
@@ -103,11 +111,10 @@ namespace InfoPanel.Drawing
             {
                 lockedImage.AccessSK(width, height, bitmap =>
                 {
-                    if (bitmap != null)
-                    {
-                        DrawBitmap(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
+                    if (bitmap != null) { 
+                        DrawImage(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
                     }
-                }, cache, cacheHint);
+                }, cache, cacheHint, GRContext);
             }
         }
 
