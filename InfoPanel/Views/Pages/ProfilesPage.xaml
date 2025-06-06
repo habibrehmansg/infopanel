@@ -15,6 +15,11 @@
     d:DesignHeight="450"
     d:DesignWidth="800"
     mc:Ignorable="d">
+    <Page.Resources>
+        <DataTemplate x:Key="ProfilePreviewTemplate">
+            <components:ProfilePageItemView Margin="5,5,5,5" />
+        </DataTemplate>
+    </Page.Resources>
 
     <Grid MaxWidth="1400" Margin="0,60,0,20">
         <Grid.RowDefinitions>
@@ -53,99 +58,27 @@
             x:Name="ListViewProfiles"
             Grid.Row="0"
             Margin="0,20,0,0"
+            ItemTemplate="{StaticResource ProfilePreviewTemplate}"
             ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
             SelectedItem="{Binding ViewModel.Profile}"
-            SelectionMode="Single">
-            <ListView.ItemContainerStyle>
-                <Style BasedOn="{StaticResource {x:Type ListViewItem}}" TargetType="ListViewItem">
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="ListViewItem">
-                                <Border
-                                    Width="260"
-                                    Margin="0,0,0,20"
-                                    Background="#601A1a1a"
-                                    CornerRadius="8,8,8,8">
-                                    <Grid>
-                                        <Border
-                                            Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                            CornerRadius="8,8,8,8"
-                                            Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
-                                        <StackPanel>
-                                            <Image
-                                                Height="150"
-                                                Margin="20,20,20,20"
-                                                Source="{Binding BitmapImagePreview}" />
-                                            <Border Background="#FF1A1a1a" CornerRadius="0,0,8,8">
-                                                <Grid Margin="10,0,10,0">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <Label Margin="10,10,10,10">
-                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                                    </Label>
-                                                    <ui:ToggleSwitch
-                                                        Grid.Column="1"
-                                                        Checked="ToggleSwitch_Checked"
-                                                        IsChecked="{Binding Active}"
-                                                        Unchecked="ToggleSwitch_Checked" />
-                                                </Grid>
-                                            </Border>
-                                        </StackPanel>
-                                        <ui:Button
-                                            Name="ButtonExport"
-                                            Grid.Column="1"
-                                            Margin="10,10,0,0"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Top"
-                                            Appearance="Success"
-                                            Click="ButtonExportProfile_Click"
-                                            Content="Export"
-                                            Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}">
-                                            <!--<ui:Button.Style>
-                                                <Style TargetType="{x:Type ui:Button}" BasedOn="{StaticResource {x:Type ui:Button}}">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </ui:Button.Style>-->
-                                        </ui:Button>
-                                        <ui:Button
-                                            Name="ButtonDelete"
-                                            Grid.Column="1"
-                                            Margin="0,10,10,0"
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Top"
-                                            Appearance="Danger"
-                                            Click="ButtonDeleteProfile_Click"
-                                            Content=""
-                                            Icon="Delete20"
-                                            ToolTip="Delete Profile"
-                                            Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
-                                        <Border
-                                            BorderBrush="{DynamicResource SystemAccentColorPrimaryBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="8,8,8,8"
-                                            Visibility="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
-                                    </Grid>
-                                </Border>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </ListView.ItemContainerStyle>
+            SelectionMode="Single"
+            VirtualizingPanel.ScrollUnit="Pixel">
             <ListView.ItemsPanel>
                 <ItemsPanelTemplate>
                     <ui:VirtualizingWrapPanel
                         Orientation="Vertical"
-                        SpacingMode="Uniform"
+                        SpacingMode="StartAndEndOnly"
                         StretchItems="False" />
                 </ItemsPanelTemplate>
             </ListView.ItemsPanel>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="IsSelected" Value="{Binding IsSelected}" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                    <Setter Property="Margin" Value="5,5,5,5" />
+                </Style>
+            </ListView.ItemContainerStyle>
         </ListView>
 
         <Expander
@@ -275,13 +208,13 @@
                                                     Margin="10,5,10,0"
                                                     HorizontalAlignment="Left"
                                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                    Text="{Binding TargetWindow.Name, Mode=OneWay}"
+                                                    Text="{Binding TargetWindow.DeviceName, Mode=OneWay}"
                                                     TextTrimming="CharacterEllipsis" />
                                                 <TextBlock
                                                     Margin="5,0,0,0"
                                                     FontSize="12"
                                                     Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                    Text="Window" />
+                                                    Text="{Binding TargetWindow.Name, Mode=OneWay}" />
                                             </StackPanel>
 
                                             <StackPanel
@@ -295,13 +228,6 @@
                                                     IsChecked="{Binding StrictWindowMatching}"
                                                     ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
                                                     <ui:SymbolIcon Symbol="WindowInprivate20" />
-                                                </ToggleButton>
-
-                                                <ToggleButton
-                                                    Margin="10,0,0,0"
-                                                    IsChecked="{Binding OverrideDpi}"
-                                                    ToolTip="Override the desktop DPI. When enabled, maintain a standard DPI scaling ignoring Windows DPI settings.">
-                                                    <ui:SymbolIcon Symbol="ShareScreenPerson20" />
                                                 </ToggleButton>
 
                                                 <ToggleButton
@@ -505,57 +431,22 @@
 
                                 </StackPanel>
 
-
+                                <!--  Start Col 3  -->
                                 <StackPanel Grid.Column="2" Margin="10,0,0,0">
-                                    <StackPanel Margin="0,0,0,0">
-                                        <TextBox IsReadOnly="True" Text="{Binding VideoBackgroundFilePath}" />
-                                        <TextBlock
-                                            Margin="5,0,0,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                            Text="Video Background (30s,HD)" />
-                                    </StackPanel>
-                                    <Grid Margin="0,10,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <!--<Image
-                                            Height="150"
-                                            Margin="0,0,0,0"
-                                            VerticalAlignment="Center" />-->
-                                        <ui:Button
-                                            x:Name="ButtonVideoBackground"
-                                            Grid.Column="0"
-                                            Margin="0,0,0,0"
-                                            HorizontalAlignment="Stretch"
-                                            VerticalAlignment="Center"
-                                            Appearance="Primary"
-                                            Click="ButtonVideoBackground_Click"
-                                            Content="Select Background Video" />
-                                        <ui:Button
-                                            Name="ButtonRemoveVideoBackground"
-                                            Grid.Column="1"
-                                            Margin="10,0,0,0"
-                                            Appearance="Secondary"
-                                            Click="ButtonRemoveVideoBackground_Click"
-                                            Content="x"
-                                            Visibility="{Binding VideoBackgroundFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
-                                    </Grid>
-                                    <!--  start rotation  -->
-                                    <ComboBox
-                                        Margin="0,30,0,0"
-                                        ItemsSource="{Binding Source={StaticResource RotationValues}}"
-                                        SelectedItem="{Binding VideoBackgroundRotation}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <!--  end rotation  -->
 
-
+                                    <ui:CardControl Grid.Column="1" Margin="10,0,0,0">
+                                        <ui:CardControl.Header>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                    Text="Show Panel Overlay" />
+                                            </StackPanel>
+                                        </ui:CardControl.Header>
+                                        <StackPanel>
+                                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowFps}" />
+                                        </StackPanel>
+                                    </ui:CardControl>
                                 </StackPanel>
                             </Grid>
 
@@ -575,7 +466,6 @@
                                         <Grid Margin="0,0,0,0" IsEnabled="{Binding Active}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
                                             <ui:CardControl Margin="0,0,0,0">
                                                 <ui:CardControl.Header>
@@ -583,28 +473,11 @@
                                                         <TextBlock
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Direct2D Acceleration" />
+                                                            Text="Direct2D Acceleration (GPU)" />
                                                     </StackPanel>
                                                 </ui:CardControl.Header>
                                                 <StackPanel>
                                                     <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DMode}" />
-                                                </StackPanel>
-                                            </ui:CardControl>
-
-                                            <ui:CardControl
-                                                Grid.Column="1"
-                                                Margin="10,0,0,0"
-                                                IsEnabled="{Binding Direct2DMode}">
-                                                <ui:CardControl.Header>
-                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                        <TextBlock
-                                                            FontSize="12"
-                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Panel FPS" />
-                                                    </StackPanel>
-                                                </ui:CardControl.Header>
-                                                <StackPanel>
-                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DModeFps}" />
                                                 </StackPanel>
                                             </ui:CardControl>
                                         </Grid>

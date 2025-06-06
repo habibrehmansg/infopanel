@@ -3,6 +3,7 @@ using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using LibreHardwareMonitor.Hardware;
 using Microsoft.Extensions.Caching.Memory;
+using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -340,12 +341,10 @@ namespace InfoPanel.Drawing
                                 }
                             }
 
-                            //var value = Math.Max(tempValues.LastOrDefault(0.0) - minValue, 0);
-
                             var value = 0.0;
                             var sensorReading = barDisplayItem.GetValue();
 
-                            if(sensorReading.HasValue)
+                            if (sensorReading.HasValue)
                             {
                                 value = sensorReading.Value.ValueNow;
                             }
@@ -356,36 +355,59 @@ namespace InfoPanel.Drawing
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : SharedModel.Instance.CurrentFrameRate * 3);
+                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
-                            var usageRect = new Rectangle(frameRect.X, frameRect.Y, (int)value, frameRect.Height);
+                            // Create SKPath for usage rectangle
+                            using SKPath usagePath = new();
                             if (frameRect.Height > frameRect.Width)
                             {
-                                //top draw
-                                //usageRect = new Rectangle(frameRect.X, frameRect.Y, frameRect.Width, (int)value);
-                                //bottom draw
-                                usageRect = new Rectangle(frameRect.X, (int)(frameRect.Y + frameRect.Height - value), frameRect.Width, (int)value);
+                                // Vertical bar - bottom draw
+                                usagePath.AddRoundRect(new SKRoundRect(new SKRect(
+                                    frameRect.X,
+                                    frameRect.Y + frameRect.Height - (float)value,
+                                    frameRect.X + frameRect.Width,
+                                    frameRect.Y + frameRect.Height
+                                ), barDisplayItem.CornerRadius));
+                            }
+                            else
+                            {
+                                // Horizontal bar
+                                usagePath.AddRoundRect(new SKRoundRect(new SKRect(
+                                    frameRect.X,
+                                    frameRect.Y,
+                                    frameRect.X + (float)value,
+                                    frameRect.Y + frameRect.Height
+                                ), barDisplayItem.CornerRadius));
                             }
 
-                            //g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height);
-
-                            if (chartDisplayItem.Background)
+                            // Draw background if enabled
+                            if (chartDisplayItem.Background && SKColor.TryParse(barDisplayItem.BackgroundColor, out var backgroundColor))
                             {
-                                g.FillRectangle(barDisplayItem.BackgroundColor, frameRect.X, frameRect.Y, frameRect.Width, frameRect.Height);
+                                using var bgPath = new SKPath();
+                                bgPath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.X, frameRect.Y, frameRect.X + frameRect.Width, frameRect.Y + frameRect.Height), barDisplayItem.CornerRadius));
+                                g.FillPath(bgPath, backgroundColor);
                             }
 
-                            if (usageRect.Width > 0 && usageRect.Height > 0)
+                            // Draw the bar if it has size
+                            if (value > 0 && SKColor.TryParse(barDisplayItem.Color, out var color))
                             {
-                                if (barDisplayItem.Gradient)
+                                if (barDisplayItem.Gradient && SKColor.TryParse(barDisplayItem.GradientColor, out var gradientColor))
                                 {
-                                    g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height, barDisplayItem.GradientColor, frameRect.Width >= frameRect.Height);
-
+                                    g.FillPath(usagePath, color, color, gradientColor);
                                 }
                                 else
                                 {
-                                    g.FillRectangle(barDisplayItem.Color, usageRect.X, usageRect.Y, usageRect.Width, usageRect.Height);
+                                    g.FillPath(usagePath, color);
                                 }
+                            }
+
+                            if (barDisplayItem.Frame && SKColor.TryParse(barDisplayItem.FrameColor, out var frameColor))
+                            {
+                                using var framePath = new SKPath();
+                                framePath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.X, frameRect.Y, frameRect.X + frameRect.Width, frameRect.Y + frameRect.Height), barDisplayItem.CornerRadius));
+
+                                g.DrawPath(framePath, frameColor, 1);
                             }
 
                             break;
@@ -407,7 +429,7 @@ namespace InfoPanel.Drawing
                             value = value * 100;
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 60 : SharedModel.Instance.CurrentFrameRate);
+                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var offset = 1;
@@ -420,16 +442,9 @@ namespace InfoPanel.Drawing
                         }
                 }
 
-                if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem.Frame)
+                if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem is not BarDisplayItem && chartDisplayItem.Frame)
                 {
-                    if (g is CompatGraphics)
-                    {
-                        g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width - 1, chartDisplayItem.Height - 1);
-                    }
-                    else
-                    {
-                        g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
-                    }
+                    g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
                 }
             }
         }

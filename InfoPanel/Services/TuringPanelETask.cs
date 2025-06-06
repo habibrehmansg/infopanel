@@ -1,15 +1,13 @@
 ﻿using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
+using SkiaSharp;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Media.Imaging;
 using TuringSmartScreenLib;
+using TuringSmartScreenLib.Helpers.SkiaSharp;
 
 namespace InfoPanel
 {
@@ -24,21 +22,16 @@ namespace InfoPanel
         private TuringPanelETask()
         { }
 
-        public Bitmap? GenerateLcdBitmap()
+        public SKBitmap? GenerateLcdBitmap()
         {
             var profileGuid = ConfigModel.Instance.Settings.TuringPanelEProfile;
 
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
-                var bitmap = PanelDrawTask.Render(profile, false, videoBackgroundFallback: true, overrideDpi: true);
                 var rotation = ConfigModel.Instance.Settings.TuringPanelERotation;
-                if (rotation != ViewModels.LCD_ROTATION.RotateNone)
-                {
-                    var rotateFlipType = (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), rotation);
-                    bitmap.RotateFlip(rotateFlipType);
-                }
+                var bitmap = PanelDrawTask.RenderSK(profile, false);
 
-                var ensuredBitmap = BitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight);
+                var ensuredBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
                 if (!ReferenceEquals(bitmap, ensuredBitmap))
                 {
@@ -72,15 +65,14 @@ namespace InfoPanel
                 var brightness = ConfigModel.Instance.Settings.TuringPanelEBrightness;
                 screen.SetBrightness((byte)brightness);
 
-
-                Bitmap? sentBitmap = null;
+                SKBitmap? sentBitmap = null;
 
                 try
                 {
                     var fpsCounter = new FpsCounter();
                     var stopwatch = new Stopwatch(); 
                     var canDisplayPartialBitmap = true;
-
+                      
                     while (!token.IsCancellationRequested)
                     {
                         stopwatch.Restart();
@@ -98,24 +90,25 @@ namespace InfoPanel
                             if (sentBitmap == null || !canDisplayPartialBitmap)
                             {
                                 sentBitmap = bitmap;
+
                                 canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
                                 //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                             }
                             else
                             {
-                                var sectors = BitmapExtensions.GetChangedSectors(sentBitmap, bitmap, 20, 20, 160, 100);
+                                var sectors = SKBitmapComparison.GetChangedSectors(sentBitmap, bitmap, 32, 32, 128, 96);
                                 //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
 
-                                if (sectors.Count > 46)
+                                if (sectors.Count > 38)
                                 {
-                                    //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                                     canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                                    //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                                 }
                                 else
                                 {
                                     foreach (var sector in sectors)
                                     {
-                                        canDisplayPartialBitmap = screen.DisplayBuffer(sector.X, sector.Y, screen.CreateBufferFrom(bitmap, sector.X, sector.Y, sector.Width, sector.Height));
+                                        canDisplayPartialBitmap = screen.DisplayBuffer(sector.Left, sector.Top, screen.CreateBufferFrom(bitmap, sector.Left, sector.Top, sector.Width, sector.Height));
                                     }
 
                                     //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
@@ -149,20 +142,7 @@ namespace InfoPanel
                 finally
                 {
                     sentBitmap?.Dispose();
-                    Trace.WriteLine("Resetting screen");
-
-                    if (_shutdown)
-                    {
-                        screen.Clear();
-                        screen.SetBrightness(0);
-                    }
-                    else
-                    {
-                        using var bitmap = PanelDrawTask.RenderSplash(screen.Width, screen.Height,
-                            rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.TuringPanelERotation));
-                        screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
-                    }
-                    //screen.Reset();
+                    screen.ScreenOff();
                 }
             }
             catch (Exception e)

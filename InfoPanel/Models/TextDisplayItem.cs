@@ -1,15 +1,16 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
+using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Linq;
-using System.Windows;
 
 namespace InfoPanel.Models
 {
     [Serializable]
     public partial class TextDisplayItem : DisplayItem
     {
-        private string _font = System.Windows.Media.Fonts.SystemFontFamilies.First().ToString();
+        private string _font = SKFontManager.Default.GetFontFamilies().First();
         public string Font
         {
             get { return _font; }
@@ -21,6 +22,9 @@ namespace InfoPanel.Models
                 }
             }
         }
+
+        [ObservableProperty]
+        private string _fontStyle;
 
         private int _fontSize = 20;
         public int FontSize
@@ -152,33 +156,28 @@ namespace InfoPanel.Models
             return (Name, Color);
         }
 
-        public override SizeF EvaluateSize()
+        public override SKSize EvaluateSize()
         {
-            using Bitmap bitmap = new(1, 1);
-            using Graphics g = Graphics.FromImage(bitmap);
-            using Font font = new(Font, FontSize);
+            var typeface = SkiaGraphics.CreateTypeface(Font, FontStyle, Bold, Italic);
+            using var font = new SKFont(typeface, size: FontSize * 1.33f);
+
             var text = EvaluateText();
-            var sizeF = g.MeasureString(text, font, 0, StringFormat.GenericTypographic);
+            font.MeasureText(text, out var bounds);
 
-            if(Width != 0)
-            {
-                sizeF.Width = Width;
-            }
+            var metrics = font.Metrics;
 
-            return sizeF;
+            float width = bounds.Width;
+            float height = metrics.Descent - metrics.Ascent;
+
+            return new SKSize(Width == 0 ? width : Width, height);
         }
 
-        public override Rect EvaluateBounds()
+        public override SKRect EvaluateBounds()
         {
             var size = EvaluateSize();
-            if (RightAlign && Width == 0)
-            {
-                return new Rect(X - size.Width, Y, size.Width, size.Height);
-            }
-            else
-            {
-                return new Rect(X, Y, size.Width, size.Height);
-            }
+            int rectX = Width == 0 && RightAlign ? (int)(X - size.Width) : X;
+
+            return new SKRect(rectX, Y, rectX + size.Width, Y + size.Height);
         }
 
         public override void SetProfileGuid(Guid profileGuid)

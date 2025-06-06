@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:InfoPanel"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
     xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="SettingsPage"
@@ -92,6 +93,123 @@
                     </ui:CardControl>
                 </StackPanel>
 
+                <!--  Begin General Panel Settings  -->
+                <StackPanel Margin="0,40,0,0">
+                    <Label
+                        Margin="0,0,0,10"
+                        Content="Panel"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <ui:CardControl Icon="SelectAllOff20">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        FontSize="13"
+                                        FontWeight="Medium"
+                                        Text="Selected item color" />
+                                    <TextBlock
+                                        Margin="0,5,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="Select an item via the Design Page or middle click on the panel itself when Design Page is active." />
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardControl.Header>
+                        <metro:ColorPicker
+                            Grid.Row="7"
+                            Height="35"
+                            MinWidth="200"
+                            metro:TextBoxHelper.UseFloatingWatermark="False"
+                            Background="Transparent"
+                            SelectedColor="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.SelectedItemColor}" />
+                    </ui:CardControl>
+
+                    <ui:CardControl Margin="0,10,0,0" Icon="Grid20">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        FontSize="13"
+                                        FontWeight="Medium"
+                                        Text="Show grid lines" />
+                                    <TextBlock
+                                        Margin="0,5,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="Display grid lines when an item is selected." />
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardControl.Header>
+                        <ui:ToggleSwitch Margin="10,0,0,0" IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ShowGridLines}" />
+                    </ui:CardControl>
+
+                    <ui:CardControl
+                        Margin="0,10,0,0"
+                        Icon="SubGrid20"
+                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ShowGridLines, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        FontSize="13"
+                                        FontWeight="Medium"
+                                        Text="Grid lines settings" />
+                                    <TextBlock
+                                        Margin="0,5,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="Customise the grid lines to your preferences." />
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardControl.Header>
+                        <StackPanel>
+                            <metro:ColorPicker
+                                Grid.Row="7"
+                                Height="35"
+                                MinWidth="200"
+                                metro:TextBoxHelper.UseFloatingWatermark="False"
+                                Background="Transparent"
+                                SelectedColor="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.GridLinesColor}" />
+                            <StackPanel
+                                Grid.Column="0"
+                                Margin="0,10,0,0"
+                                HorizontalAlignment="Right">
+                                <ui:NumberBox
+                                    Width="150"
+                                    Margin="0,0,0,0"
+                                    FontSize="14"
+                                    LargeChange="10"
+                                    MaxDecimalPlaces="0"
+                                    Minimum="5"
+                                    SmallChange="5"
+                                    Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.GridLinesSpacing}"
+                                    Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.GridLinesSpacing}" />
+                                <TextBlock
+                                    Margin="5,0,0,0"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                    Text="Grid spacing in px" />
+                            </StackPanel>
+                        </StackPanel>
+
+                    </ui:CardControl>
+                </StackPanel>
+                <!--  End General Panel Settings  -->
+
                 <StackPanel Margin="0,40,0,0">
                     <Label
                         Margin="0,0,0,10"
@@ -122,7 +240,10 @@
                         <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitor}" />
                     </ui:CardControl>
 
-                    <ui:CardControl Margin="0,10,0,0" Icon="HardDrive20">
+                    <ui:CardControl
+                        Margin="0,10,0,0"
+                        Icon="HardDrive20"
+                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitor, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -171,25 +292,12 @@
                                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                         Text="The rate at which panels (including LCD) are rendered (excluding Direct2D acceleration)." />
                                 </StackPanel>
-
-                                <StackPanel Grid.Column="1" Margin="0,0,0,0">
-                                    <TextBlock
-                                        Margin="5,0,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                        Text="Benchmark" />
-                                    <TextBlock
-                                        Margin="5,0,0,0"
-                                        FontSize="14"
-                                        FontWeight="Medium"
-                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                        Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=PerformanceRating, Mode=OneWay}" />
-                                </StackPanel>
                             </Grid>
                         </ui:CardExpander.Header>
 
                         <Grid>
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
@@ -223,8 +331,13 @@
                                             Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TargetFrameRate}" />
                                     </Grid>
                                 </StackPanel>
+                            </StackPanel>
 
-                                <StackPanel Margin="0,20,0,0">
+                            <Grid Grid.Column="1" Margin="10,0,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Margin="0,0,0,0">
                                     <Slider
                                         Grid.Column="1"
                                         Margin="0,0,10,0"
@@ -252,56 +365,6 @@
                                             Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TargetGraphUpdateRate}" />
                                     </Grid>
                                 </StackPanel>
-                            </StackPanel>
-
-                            <Grid Grid.Column="1" Margin="10,4,0,0">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="auto" />
-                                    <RowDefinition Height="auto" />
-                                </Grid.RowDefinitions>
-
-                                <StackPanel>
-                                    <ProgressBar
-                                        Maximum="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TargetFrameRate}"
-                                        Minimum="0"
-                                        Value="{Binding Source={x:Static local:SharedModel.Instance}, Path=CurrentFrameRate}" />
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="2*" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock
-                                            Margin="5,4,0,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                            Text="Current non-lcd panels framerate" />
-                                        <TextBlock
-                                            Grid.Column="1"
-                                            Margin="0,4,0,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}">
-                                            <TextBlock.Text>
-                                                <MultiBinding StringFormat="{}{0}ms">
-                                                    <Binding Path="CurrentFrameTime" Source="{x:Static local:SharedModel.Instance}" />
-                                                </MultiBinding>
-                                            </TextBlock.Text>
-                                        </TextBlock>
-                                        <TextBlock
-                                            Grid.Column="2"
-                                            Margin="0,4,0,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}">
-                                            <TextBlock.Text>
-                                                <MultiBinding StringFormat="{}{0} / {1}">
-                                                    <Binding Path="CurrentFrameRate" Source="{x:Static local:SharedModel.Instance}" />
-                                                    <Binding Path="Settings.TargetFrameRate" Source="{x:Static local:ConfigModel.Instance}" />
-                                                </MultiBinding>
-                                            </TextBlock.Text>
-                                        </TextBlock>
-                                    </Grid>
-                                </StackPanel>
-                                <!--<ui:ToggleSwitch Grid.Row="2" />-->
                             </Grid>
 
 

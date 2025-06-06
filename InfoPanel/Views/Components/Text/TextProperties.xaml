@@ -28,12 +28,6 @@
                 Margin="0,-2,0,0"
                 HorizontalAlignment="Right"
                 Orientation="Horizontal">
-                <ToggleButton Margin="0,0,0,0" IsChecked="{Binding Bold}">
-                    <ui:SymbolIcon Symbol="TextBold20" ToolTip="Bold" />
-                </ToggleButton>
-                <ToggleButton Margin="5,0,0,0" IsChecked="{Binding Italic}">
-                    <ui:SymbolIcon Symbol="TextItalic20" ToolTip="Italic" />
-                </ToggleButton>
                 <ToggleButton Margin="5,0,0,0" IsChecked="{Binding Underline}">
                     <ui:SymbolIcon Symbol="TextUnderline20" ToolTip="Underline" />
                 </ToggleButton>
@@ -63,24 +57,49 @@
                     Text="Color" />
             </StackPanel>
 
-            <StackPanel Grid.Column="1" Margin="0,10,0,0">
-                <ComboBox
-                    Grid.Column="1"
-                    ItemsSource="{Binding InstalledFonts, RelativeSource={RelativeSource AncestorType=local:TextProperties}}"
-                    ScrollViewer.VerticalScrollBarVisibility="Visible"
-                    SelectedValue="{Binding Font}">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock FontFamily="{Binding Converter={StaticResource FontFamilyConverter}}" Text="{Binding}" />
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-                <TextBlock
-                    Margin="5,0,0,0"
-                    FontSize="12"
-                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                    Text="Font Family" />
-            </StackPanel>
+            <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,5,0">
+                    <ComboBox
+                        Grid.Column="1"
+                        ItemsSource="{Binding InstalledFonts, RelativeSource={RelativeSource AncestorType=local:TextProperties}}"
+                        ScrollViewer.VerticalScrollBarVisibility="Visible"
+                        SelectedValue="{Binding Font}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock FontFamily="{Binding Converter={StaticResource FontFamilyConverter}}" Text="{Binding}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Font Family" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                    <ComboBox
+                        Grid.Column="1"
+                        ItemsSource="{Binding FontStyles, RelativeSource={RelativeSource AncestorType=local:TextProperties}}"
+                        ScrollViewer.VerticalScrollBarVisibility="Visible"
+                        SelectedValue="{Binding FontStyle}">
+                        <!--<ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock FontFamily="{Binding Converter={StaticResource FontFamilyConverter}}" Text="{Binding}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>-->
+                    </ComboBox>
+                    <TextBlock
+                        Margin="5,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Text="Font Style" />
+                </StackPanel>
+            </Grid>
+
 
             <Grid Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
@@ -115,6 +134,7 @@
                             Margin="0,0,0,0"
                             FontSize="14"
                             MaxDecimalPlaces="0"
+                            Minimum="0"
                             SmallChange="1"
                             Text="{Binding Width}"
                             Value="{Binding Width}" />

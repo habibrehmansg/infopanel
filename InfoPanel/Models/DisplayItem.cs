@@ -1,9 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
+using SkiaSharp;
 using System;
-using System.ComponentModel;
-using System.Drawing;
-using System.Windows;
 using System.Xml.Serialization;
 
 namespace InfoPanel.Models;
@@ -74,6 +71,8 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
                     return "Gauge";
                 case DonutDisplayItem:
                     return "Donut";
+                case ShapeDisplayItem:
+                    return "Shape";
                 default:
                     return "";
             }
@@ -128,6 +127,9 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
         }
     }
 
+    [ObservableProperty]
+    private int _rotation = 0;
+
     public abstract void SetProfileGuid(Guid profileGuid);
 
     public abstract string EvaluateText();
@@ -136,12 +138,36 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
 
     public abstract (string, string) EvaluateTextAndColor();
 
-    public abstract SizeF EvaluateSize();
+    public abstract SKSize EvaluateSize();
 
-    public abstract Rect EvaluateBounds();
+    public abstract SKRect EvaluateBounds();
 
     public abstract object Clone();
-    
+
+    public bool ContainsPoint(System.Windows.Point worldPoint)
+    {
+        var bounds = EvaluateBounds();
+        double centerX = bounds.MidX;
+        double centerY = bounds.MidY;
+
+        // Transform world point to local coordinates (inverse rotation)
+        double rotationRadians = -Rotation * Math.PI / 180.0; // Negative for inverse
+        double cos = Math.Cos(rotationRadians);
+        double sin = Math.Sin(rotationRadians);
+
+        // Translate to origin
+        double translatedX = worldPoint.X - centerX;
+        double translatedY = worldPoint.Y - centerY;
+
+        // Rotate
+        double localX = translatedX * cos - translatedY * sin;
+        double localY = translatedX * sin + translatedY * cos;
+
+        // Check against unrotated bounds (relative to center)
+        return localX >= -bounds.Width / 2.0 && localX <= bounds.Width / 2.0 &&
+               localY >= -bounds.Height / 2.0 && localY <= bounds.Height / 2.0;
+    }
+
 }
 
 

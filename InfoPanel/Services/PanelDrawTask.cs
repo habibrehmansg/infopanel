@@ -1,6 +1,7 @@
 ﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.Utils;
+using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -15,107 +16,27 @@ using System.Windows.Threading;
 
 namespace InfoPanel
 {
-    public sealed class PanelDrawTask : BackgroundTask
+    public sealed class PanelDrawTask
     {
-        private static readonly Lazy<PanelDrawTask> _instance = new(() => new PanelDrawTask());
-        public static PanelDrawTask Instance => _instance.Value;
-        private PanelDrawTask() { }
-
-        protected override async Task DoWorkAsync(CancellationToken token)
+        public static SKBitmap RenderSK(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul)
         {
-            await Task.Delay(300, token);
-
-            var watch = new Stopwatch();
-            watch.Start();
-
-            try
-            {
-                var fpsCounter = new FpsCounter();
-                var stopwatch = new Stopwatch();
-
-                while (!token.IsCancellationRequested)
-                {
-                    try
-                    {
-                        stopwatch.Restart();
-
-                        var profiles = ConfigModel.Instance.GetProfilesCopy().Where(profile =>
-                        (profile.Active && !profile.Direct2DMode)).ToList();
-
-                        try
-                        {
-                            var options = new ParallelOptions
-                            {
-                                CancellationToken = token
-                            };
-                            Parallel.ForEach(profiles, options, profile =>
-                            {
-                                try
-                                {
-                                    using var bitmap = Render(profile);
-                                    SharedModel.Instance.SetPanelBitmap(profile, bitmap);
-                                }catch(Exception e) { Trace.WriteLine($"Exception during parallel execution: {e.Message}"); }
-                            });
-                        }
-                        catch (Exception e)
-                        {
-                            Trace.WriteLine($"Exception during parallel execution: {e.Message}");
-                        }
-
-                        var frameTime = stopwatch.ElapsedMilliseconds;
-                        //Trace.WriteLine($"Frametime: {frameTime}");
-
-                        fpsCounter.Update();
-                        SharedModel.Instance.CurrentFrameRate = fpsCounter.FramesPerSecond;
-                        SharedModel.Instance.CurrentFrameTime = frameTime;
-
-                        var targetFrameTime = 1000.0 / (ConfigModel.Instance.Settings.TargetFrameRate * 1.03);
-                        if (frameTime < targetFrameTime)
-                        {
-                            var sleep = (int)(targetFrameTime - frameTime);
-                            //Trace.WriteLine($"Sleep {sleep}ms");
-                            await Task.Delay(sleep, token);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Trace.WriteLine($"Exception during task execution: {ex.Message}");
-                    }
-                }
-            }
-            catch (TaskCanceledException)
-            {
-                Trace.WriteLine("Task cancelled");
-            }
-        }
-
-        public static Bitmap Render(Profile profile, bool drawSelected = true, double scale = 1, bool cache = true, bool videoBackgroundFallback = false, PixelFormat pixelFormat = PixelFormat.Format32bppArgb, bool overrideDpi = false)
-        {
-            var bitmap = new Bitmap(profile.Width, profile.Height, pixelFormat);
-
-            if (profile.OverrideDpi || overrideDpi)
-            {
-                bitmap.SetResolution(96, 96);
-            }
-
-            using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
-            PanelDraw.Run(profile, g, drawSelected, scale, cache, videoBackgroundFallback);
+            var bitmap = new SKBitmap(profile.Width, profile.Height, colorType, alphaType);
+            
+            using var g = SkiaGraphics.FromBitmap(bitmap) as MyGraphics;
+            PanelDraw.Run(profile, g, drawSelected, scale, cache, $"DISPLAY-{profile.Guid}");
 
             return bitmap;
         }
 
-        public static Bitmap RenderSplash(int width, int height, PixelFormat pixelFormat = PixelFormat.Format32bppArgb, RotateFlipType rotateFlipType = RotateFlipType.RotateNoneFlipNone)
+        public static SKBitmap RenderSplashSK(int width, int height, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul, RotateFlipType rotateFlipType = RotateFlipType.RotateNoneFlipNone)
         {
-            var bitmap = new Bitmap(width, height, pixelFormat);
-            using var g = CompatGraphics.FromBitmap(bitmap) as MyGraphics;
-            g.Clear(Color.Black);
-
-            using var logo = LoadBitmapFromResource("logo.png");
-            logo.RotateFlip(rotateFlipType);
-
+            var bitmap = new SKBitmap(width, height, colorType, alphaType);
+            using var g = SkiaGraphics.FromBitmap(bitmap) as MyGraphics;
+            //g.Clear(SKColors.Black);
+            //using var logo = LoadBitmapFromResource("logo.png");
+            //logo.RotateFlip(rotateFlipType);
             var size = Math.Min(width, height) / 3;
-            g.DrawBitmap(logo, width / 2 - size / 2, height / 2 - size / 2, size, size);
-            
+            //g.DrawBitmap(logo, width / 2 - size / 2, height / 2 - size / 2, size, size);
             return bitmap;
         }
 

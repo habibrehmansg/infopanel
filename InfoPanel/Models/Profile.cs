@@ -1,10 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using InfoPanel.Enums;
+using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Xml.Serialization;
 
 namespace InfoPanel.Models
@@ -24,18 +23,21 @@ namespace InfoPanel.Models
             }
         }
 
+        public string? DeviceName { get; set; }
+
         public TargetWindow() { }
 
-        public TargetWindow(int x, int y, int width, int height)
+        public TargetWindow(int x, int y, int width, int height, string deviceName)
         {
             X = x;
             Y = y;
             Width = width;
             Height = height;
+            DeviceName = deviceName;
         }
     }
 
-    public sealed class Profile : ObservableObject, ICloneable
+    public partial class Profile : ObservableObject, ICloneable
     {
         private Guid _guid = Guid.NewGuid();
         public Guid Guid
@@ -50,31 +52,13 @@ namespace InfoPanel.Models
         private string _name = "Profile";
 
         [XmlIgnore]
-        private WriteableBitmap? _bitmapImage;
+        public SKBitmap? PreviewBitmap;
 
         [XmlIgnore]
-        public WriteableBitmap? BitmapImage
-        {
-            get { return _bitmapImage; }
-            set { SetProperty(ref _bitmapImage, value); }
-        }
+        [ObservableProperty]
+        private bool _isSelected;
 
         public void NotifyBitmapUpdate()
-        {
-            OnPropertyChanged(nameof(Bitmap));
-        }
-
-        [XmlIgnore]
-        private WriteableBitmap? _bitmapImagePreview;
-
-        [XmlIgnore]
-        public WriteableBitmap? BitmapImagePreview
-        {
-            get { return _bitmapImagePreview; }
-            set { SetProperty(ref _bitmapImagePreview, value); }
-        }
-
-        public void NotifyBitmapPreviewUpdate()
         {
             OnPropertyChanged(nameof(Bitmap));
         }
@@ -117,15 +101,8 @@ namespace InfoPanel.Models
             }
         }
 
-        private bool _overrideDpi = true;
-        public bool OverrideDpi
-        {
-            get => _overrideDpi;
-            set
-            {
-                SetProperty(ref _overrideDpi, value);
-            }
-        }
+        [ObservableProperty]
+        private bool _showFps = false;
 
         private bool _drag = true;
         public bool Drag
@@ -134,26 +111,6 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _drag, value);
-            }
-        }
-
-        private string? _videoBackgroundFilePath;
-        public string? VideoBackgroundFilePath
-        {
-            get { return _videoBackgroundFilePath; }
-            set
-            {
-                SetProperty(ref _videoBackgroundFilePath, value);
-            }
-        }
-
-        private Enums.Rotation _videoBackgroundRotation = 0;
-        public Enums.Rotation VideoBackgroundRotation
-        {
-            get { return _videoBackgroundRotation; }
-            set
-            {
-                SetProperty(ref _videoBackgroundRotation, value);
             }
         }
 
@@ -200,16 +157,6 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _direct2DMode, value);
-            }
-        }
-
-        private bool _direct2DModeFps = false;
-        public bool Direct2DModeFps
-        {
-            get { return _direct2DModeFps; }
-            set
-            {
-                SetProperty(ref _direct2DModeFps, value);
             }
         }
 

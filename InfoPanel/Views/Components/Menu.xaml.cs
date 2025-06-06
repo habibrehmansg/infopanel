@@ -21,7 +21,6 @@ namespace InfoPanel.Views.Components
 
         private async void MenuItemExit_Click(object sender, RoutedEventArgs e)
         {
-            await PanelDrawTask.Instance.StopAsync();
             await BeadaPanelTask.Instance.StopAsync();
 
             Environment.Exit(0);

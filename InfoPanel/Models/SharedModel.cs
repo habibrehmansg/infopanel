@@ -1,26 +1,19 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using HidSharp.Reports.Units;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
-using InfoPanel.Views.Common;
-using InfoPanel.Views.Components;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Xml;
@@ -221,56 +214,6 @@ namespace InfoPanel
             set
             {
                 SetProperty(ref _webserverFrameTime, value);
-            }
-        }
-
-        private int _currentFrameRate = 0;
-        public int CurrentFrameRate
-        {
-            get { return _currentFrameRate; }
-            set
-            {
-                SetProperty(ref _currentFrameRate, value);
-            }
-        }
-
-        private long _currentFrameTime = 0;
-        public long CurrentFrameTime
-        {
-            get { return _currentFrameTime; }
-            set
-            {
-                SetProperty(ref _currentFrameTime, value);
-                OnPropertyChanged(nameof(PerformanceRating));
-            }
-        }
-
-
-        public string PerformanceRating
-        {
-            get
-            {
-                if (_currentFrameTime <= 33)
-                {
-                    return "Excellent";
-                }
-
-                if (_currentFrameTime <= 42)
-                {
-                    return "Very Good";
-                }
-
-                if (_currentFrameTime <= 67)
-                {
-                    return "Good";
-                }
-
-                if (_currentFrameTime <= 100)
-                {
-                    return "Average";
-                }
-
-                return "Poor";
             }
         }
 
@@ -735,48 +678,48 @@ namespace InfoPanel
 
         public void UpdatePanel(Profile profile, Bitmap bitmap)
         {
-            if (Application.Current is App app)
-            {
-                var window = app.GetDisplayWindow(profile);
+            //if (Application.Current is App app)
+            //{
+            //    var window = app.GetDisplayWindow(profile);
 
-                if (window is DisplayWindow displayWindow && !window.Direct2DMode)
-                {
-                    var writeableBitmap = displayWindow?.WriteableBitmap;
+            //    if (window is DisplayWindow displayWindow && !window.Direct2DMode)
+            //    {
+            //        var writeableBitmap = displayWindow?.WriteableBitmap;
 
-                    if (writeableBitmap != null)
-                    {
-                        IntPtr backBuffer = IntPtr.Zero;
+            //        if (writeableBitmap != null)
+            //        {
+            //            IntPtr backBuffer = IntPtr.Zero;
 
-                        writeableBitmap.Dispatcher.Invoke(() =>
-                         {
-                             if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
-                             {
-                                 writeableBitmap.Lock();
-                                 backBuffer = writeableBitmap.BackBuffer;
-                             }
-                         });
+            //            writeableBitmap.Dispatcher.Invoke(() =>
+            //             {
+            //                 if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
+            //                 {
+            //                     writeableBitmap.Lock();
+            //                     backBuffer = writeableBitmap.BackBuffer;
+            //                 }
+            //             });
 
-                        if (backBuffer == IntPtr.Zero)
-                        {
-                            return;
-                        }
+            //            if (backBuffer == IntPtr.Zero)
+            //            {
+            //                return;
+            //            }
 
-                        // copy the pixel data from the bitmap to the back buffer
-                        BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                        int stride = bitmapData.Stride;
-                        byte[] pixels = new byte[stride * bitmap.Height];
-                        Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-                        Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-                        bitmap.UnlockBits(bitmapData);
+            //            // copy the pixel data from the bitmap to the back buffer
+            //            BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            //            int stride = bitmapData.Stride;
+            //            byte[] pixels = new byte[stride * bitmap.Height];
+            //            Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
+            //            Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
+            //            bitmap.UnlockBits(bitmapData);
 
-                        writeableBitmap.Dispatcher.Invoke(() =>
-                        {
-                            writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
-                            writeableBitmap.Unlock();
-                        });
-                    }
-                }
-            }
+            //            writeableBitmap.Dispatcher.Invoke(() =>
+            //            {
+            //                writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
+            //                writeableBitmap.Unlock();
+            //            });
+            //        }
+            //    }
+            //}
         }
 
         public void SetPanelBitmap(Profile profile, Bitmap bitmap)
@@ -796,7 +739,7 @@ namespace InfoPanel
             }
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
 
-            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
+            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
 
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
             using var wr = XmlWriter.Create(fileName, settings);
@@ -837,15 +780,12 @@ namespace InfoPanel
                     //add profile settings
                     var exportProfile = new Profile(SelectedProfile.Name, SelectedProfile.Width, SelectedProfile.Height)
                     {
+                        ShowFps = SelectedProfile.ShowFps,
                         BackgroundColor = SelectedProfile.BackgroundColor,
                         Font = SelectedProfile.Font,
                         FontSize = SelectedProfile.FontSize,
                         Color = SelectedProfile.Color,
-                        OverrideDpi = SelectedProfile.OverrideDpi,
-                        VideoBackgroundFilePath = SelectedProfile.VideoBackgroundFilePath,
-                        VideoBackgroundRotation = SelectedProfile.VideoBackgroundRotation,
                         Direct2DMode = SelectedProfile.Direct2DMode,
-                        Direct2DModeFps = SelectedProfile.Direct2DModeFps,
                         Direct2DFontScale = SelectedProfile.Direct2DFontScale,
                         Direct2DTextXOffset = SelectedProfile.Direct2DTextXOffset,
                         Direct2DTextYOffset = SelectedProfile.Direct2DTextYOffset,
@@ -1670,7 +1610,7 @@ namespace InfoPanel
             if (File.Exists(fileName))
             {
                 XmlSerializer xs = new(typeof(List<DisplayItem>),
-                    [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem)]);
+                    [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
 
                 using var rd = XmlReader.Create(fileName);
                 try

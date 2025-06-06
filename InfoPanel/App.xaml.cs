@@ -4,7 +4,9 @@ using InfoPanel.Plugins.Loader;
 using InfoPanel.Services;
 using InfoPanel.Utils;
 using InfoPanel.ViewModels;
+using InfoPanel.Views;
 using InfoPanel.Views.Common;
+using InfoPanel.Views.Components;
 using InfoPanel.Views.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -159,6 +161,8 @@ namespace InfoPanel
 
             _host.Start();
 
+            ConfigModel.Instance.Initialize();
+
             if (ConfigModel.Instance.Profiles.Count == 0)
             {
                 var profile = new Profile()
@@ -202,6 +206,9 @@ namespace InfoPanel
             Exit += App_Exit;
 
             await StartPanels();
+
+            //var window = new SkiaDisplayWindow();
+            //window.Show();
         }
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)
@@ -237,8 +244,6 @@ namespace InfoPanel
 
         private static async Task StartPanels()
         {
-            await PanelDrawTask.Instance.StartAsync();
-
             if (ConfigModel.Instance.Settings.BeadaPanel)
             {
                 await BeadaPanelTask.Instance.StartAsync();
@@ -273,7 +278,6 @@ namespace InfoPanel
 
         private static async Task StopPanels()
         {
-            await PanelDrawTask.Instance.StopAsync();
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelTask.Instance.StopAsync();
             await TuringPanelATask.Instance.StopAsync();
@@ -288,6 +292,7 @@ namespace InfoPanel
 
         public static async Task CleanShutDown()
         {
+            _displayManager.CloseAll();
             await StopPanels();
             await LibreMonitor.Instance.StopAsync();
             await PluginMonitor.Instance.StopAsync();
@@ -307,43 +312,53 @@ namespace InfoPanel
             window?.Navigate(typeof(Views.Pages.DesignPage));
         }
 
+
+        private static readonly DisplayWindowManager _displayManager = new();
+
         public DisplayWindow? GetDisplayWindow(Profile profile)
         {
-            DisplayWindows.TryGetValue(profile.Guid, out var displayWindow);
-            return displayWindow;
+            //DisplayWindows.TryGetValue(profile.Guid, out var displayWindow);
+            //return displayWindow;
+            //return _displayManager.GetDisplayThread(profile.Guid)?.Window;
+
+            return null;
         }
 
         public void MaximiseDisplayWindow(Profile profile)
         {
-            var window = GetDisplayWindow(profile);
-            window?.Fullscreen();
+            //var window = GetDisplayWindow(profile);
+            //window?.Fullscreen();
+            //_displayManager.GetDisplayThread(profile.Guid)?.Window?.Fullscreen();
+
 
         }
 
         public void ShowDisplayWindow(Profile profile)
         {
-            var window = GetDisplayWindow(profile);
+            _displayManager.ShowDisplayWindow(profile);
+            //var window = GetDisplayWindow(profile);
 
-            if(window != null && window.Direct2DMode != profile.Direct2DMode)
-            {
-                window.Close();
-                window = null;
-            }
+            //if (window != null && window.Direct2DMode != profile.Direct2DMode)
+            //{
+            //    window.Close();
+            //    window = null;
+            //}
 
-            if (window == null)
-            {
-                    window = new DisplayWindow(profile);
-                    DisplayWindows[profile.Guid] = window;
-                    window.Closed += DisplayWindow_Closed;
-            }
+            //if (window == null)
+            //{
+            //    window = new DisplayWindow(profile);
+            //    DisplayWindows[profile.Guid] = window;
+            //    window.Closed += DisplayWindow_Closed;
+            //}
 
-            window?.Show();
+            //window?.Show();
         }
 
         public void CloseDisplayWindow(Profile profile)
         {
-            var window = GetDisplayWindow(profile);
-            window?.Close();
+            _displayManager.CloseDisplayWindow(profile.Guid);
+            //var window = GetDisplayWindow(profile);
+            //window?.Close();
         }
 
         private void DisplayWindow_Closed(object? sender, EventArgs e)

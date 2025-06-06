@@ -35,7 +35,7 @@ namespace InfoPanel.Views.Components
             InitializeComponent();
             Unloaded += CustomProperties_Unloaded;
 
-            UpdateTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
+            UpdateTimer = new(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(100) };
             UpdateTimer.Tick += Timer_Tick;
             UpdateTimer.Start();
         }

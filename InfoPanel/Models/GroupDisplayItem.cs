@@ -1,15 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SkiaSharp;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Xml.Serialization;
 
 namespace InfoPanel.Models
 {
@@ -62,29 +56,29 @@ namespace InfoPanel.Models
             return clone;
         }
 
-        public override Rect EvaluateBounds()
+        public override SKRect EvaluateBounds()
         {
-            throw new NotImplementedException();
+            return new SKRect(0, 0, 0, 0);
         }
 
         public override string EvaluateColor()
         {
-            throw new NotImplementedException();
+            return "#FFFFFFFF";
         }
 
-        public override SizeF EvaluateSize()
+        public override SKSize EvaluateSize()
         {
-            throw new NotImplementedException();
+            return new SKSize(0, 0);
         }
 
         public override string EvaluateText()
         {
-            throw new NotImplementedException();
+            return "";
         }
 
         public override (string, string) EvaluateTextAndColor()
         {
-            throw new NotImplementedException();
+            return (EvaluateText(), EvaluateColor());
         }
 
         public override void SetProfileGuid(Guid profileGuid)

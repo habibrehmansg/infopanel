@@ -1,10 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Enums;
+using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
-using System.Drawing;
 using System.Linq;
-using System.Windows;
 
 namespace InfoPanel.Models
 {
@@ -294,28 +293,24 @@ namespace InfoPanel.Models
             return interpolatedValue;
         }
 
-        public override Rect EvaluateBounds()
+        public override SKRect EvaluateBounds()
         {
             var size = EvaluateSize();
-            return new Rect(X, Y, size.Width, size.Height);
+            return new SKRect(X, Y, X + size.Width, Y + size.Height);
         }
 
-        public override SizeF EvaluateSize()
+        public override SKSize EvaluateSize()
         {
             if(Width != 0 && Height != 0)
             {
-                return new SizeF(Width, Height);
+                return new SKSize(Width, Height);
             }
 
-            var result = new SizeF(0, 0);
+            var result = new SKSize(0, 0);
 
             if(CurrentImage != null)
             {
-                Cache.GetLocalImage(CurrentImage)?.Access(image =>
-                {
-                    result.Width = (int)(image.Width * Scale / 100.0f);
-                    result.Height = (int)(image.Height * Scale / 100.0f);
-                });
+                return CurrentImage.EvaluateSize();
             }
 
             return result;

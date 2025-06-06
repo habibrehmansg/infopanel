@@ -1,9 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using InfoPanel.Extensions;
+using SkiaSharp;
 using System;
-using System.Drawing;
 using System.IO;
-using System.Windows;
 
 namespace InfoPanel.Models
 {
@@ -80,16 +78,6 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _height = 0;
 
-        private int _rotation = 0;
-        public int Rotation
-        {
-            get { return _rotation; }
-            set
-            {
-                SetProperty(ref _rotation, value);
-            }
-        }
-
         private bool _layer = false;
         public bool Layer
         {
@@ -111,14 +99,14 @@ namespace InfoPanel.Models
                     return;
                 }
 
-                if (!value.StartsWith("#"))
+                if (!value.StartsWith('#'))
                 {
                     value = "#" + value;
                 }
 
                 try
                 {
-                    ColorTranslator.FromHtml(value);
+                    SKColor.Parse(value);
                     SetProperty(ref _layerColor, value);
                 }
                 catch
@@ -157,21 +145,21 @@ namespace InfoPanel.Models
             return (Name, "#000000");
         }
 
-        public override SizeF EvaluateSize()
+        public override SKSize EvaluateSize()
         {
-            var result = new SizeF(Width, Height);
+            var result = new SKSize(Width, Height);
 
             if (CalculatedPath != null)
             {
-                var cachedImage = InfoPanel.Cache.GetLocalImage(CalculatedPath);
+                var cachedImage = InfoPanel.Cache.GetLocalImage(this);
                 if (cachedImage != null)
                 {
-                    if (result.Width == 0)
+                    if(result.Width == 0)
                     {
                         result.Width = cachedImage.Width;
                     }
 
-                    if(result.Height == 0)
+                    if (result.Height == 0)
                     {
                         result.Height = cachedImage.Height;
                     }
@@ -191,10 +179,10 @@ namespace InfoPanel.Models
             return result;
         }
 
-        public override Rect EvaluateBounds()
+        public override SKRect EvaluateBounds()
         {
             var size = EvaluateSize();
-            return new Rect(X, Y, size.Width, size.Height);
+            return new SKRect(X, Y, X + size.Width, Y + size.Height);
         }
 
         public override object Clone()

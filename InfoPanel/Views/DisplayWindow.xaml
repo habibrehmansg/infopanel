@@ -1,13 +1,15 @@
-﻿<local:D2DWindow
+﻿<Window
     x:Class="InfoPanel.Views.Common.DisplayWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:app="clr-namespace:InfoPanel"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:InfoPanel.Views.Common"
-    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
     Title="DisplayWindow"
+    Width="{Binding Profile.Width, Mode=OneWay}"
+    Height="{Binding Profile.Height, Mode=OneWay}"
     Background="Transparent"
     DataContext="{Binding RelativeSource={RelativeSource self}}"
     KeyUp="Window_KeyUp"
@@ -16,6 +18,7 @@
     MouseUp="Window_MouseUp"
     ResizeMode="CanResize"
     ShowInTaskbar="False"
+    Topmost="{Binding Profile.Topmost}"
     WindowStyle="None"
     mc:Ignorable="d">
     <WindowChrome.WindowChrome>
@@ -25,43 +28,22 @@
             GlassFrameThickness="0"
             ResizeBorderThickness="10" />
     </WindowChrome.WindowChrome>
-    <Canvas Background="{Binding Path=Profile.BackgroundColor}">
-        <MediaElement
-            Name="VideoBackground"
-            LoadedBehavior="Manual"
-            Stretch="None"
-            UnloadedBehavior="Manual">
-            <MediaElement.Effect>
-                <app:DeeperColorEffect />
-            </MediaElement.Effect>
-            <!--<MediaElement.RenderTransform>
-                <RotateTransform Angle="270" CenterX="425" CenterY="425" />
-            </MediaElement.RenderTransform>-->
-        </MediaElement>
-        <Image
-            x:Name="Image"
+    <Canvas x:Name="SkiaContainer">
+        <!--<skia:SKElement
+            x:Name="skElement"
+            Width="{Binding Profile.Width, Mode=OneWay}"
+            Height="{Binding Profile.Height, Mode=OneWay}"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Stretch="None">
-            <Image.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="Quick settings">
-                        <CheckBox Content="Show panel" IsChecked="{Binding Path=Profile.Active}" />
-                        <CheckBox Content="Always on top" IsChecked="{Binding Path=Profile.Topmost}" />
-                        <CheckBox Content="Draggable" IsChecked="{Binding Path=Profile.Drag}" />
-                        <CheckBox Content="Resizeable" IsChecked="{Binding Path=Profile.Resize}" />
-                    </MenuItem>
-                    <Separator />
-                    <MenuItem
-                        Name="MenuItemConfig"
-                        Click="MenuItemConfig_Click"
-                        Header="Open design window" />
-                    <MenuItem
-                        Name="MenuItemSavePosition"
-                        Click="MenuItemSavePosition_Click"
-                        Header="Save position and settings" />
-                </ContextMenu>
-            </Image.ContextMenu>
-        </Image>
+            PaintSurface="OnPaintSurface" />
+
+        <skia:SKGLElement
+            x:Name="skGlElement"
+            Width="{Binding Profile.Width, Mode=OneWay}"
+            Height="{Binding Profile.Height, Mode=OneWay}"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            PaintSurface="skGlElement_PaintSurface"
+            Visibility="Hidden" />-->
     </Canvas>
-</local:D2DWindow>
+</Window>

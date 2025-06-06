@@ -2,12 +2,10 @@
 using InfoPanel.Models;
 using InfoPanel.TuringPanel;
 using InfoPanel.Utils;
+using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,14 +15,15 @@ namespace InfoPanel
     {
         private static readonly Lazy<TuringPanelTask> _instance = new(() => new TuringPanelTask());
 
-        private volatile int _panelWidth = 480;
-        private volatile int _panelHeight = 1920;
+        private readonly int _panelWidth = 480;
+        private readonly int _panelHeight = 1920;
 
         public static TuringPanelTask Instance => _instance.Value;
 
         private TuringPanelTask() { }
 
         private static int _maxSize = 1024 * 1024; // 1MB
+        private DateTime _downgradeRenderingUntil = DateTime.MinValue;
 
         public byte[]? GenerateLcdBuffer()
         {
@@ -32,33 +31,71 @@ namespace InfoPanel
 
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
-                using var bitmap = PanelDrawTask.Render(profile, false, videoBackgroundFallback: true, pixelFormat: PixelFormat.Format16bppRgb565, overrideDpi: true);
                 var rotation = ConfigModel.Instance.Settings.TuringPanelRotation;
-                if (rotation != ViewModels.LCD_ROTATION.RotateNone)
+                using var bitmap = PanelDrawTask.RenderSK(profile, false,
+                    colorType: DateTime.Now > _downgradeRenderingUntil ? SKColorType.Rgba8888 : SKColorType.Argb4444);
+
+                using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
+
+                var options = new SKPngEncoderOptions(
+                        filterFlags: SKPngEncoderFilterFlags.NoFilters,
+                        zLibLevel: 3
+                        );
+
+                using var pixmap = resizedBitmap.PeekPixels();
+                using var data = pixmap.Encode(options);
+
+                if (data == null || data.IsEmpty)
                 {
-                    var rotateFlipType = (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), rotation);
-                    bitmap.RotateFlip(rotateFlipType);
+                    Trace.WriteLine("Failed to encode bitmap to PNG");
+                    return null;
                 }
 
-                using var resizedBitmap = (_panelWidth == 0 || _panelHeight == 0)
-                   ? BitmapExtensions.EnsureBitmapSize(bitmap, bitmap.Width, bitmap.Height)
-                   : BitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight);
+                //using var data = resizedBitmap.Encode(SKEncodedImageFormat.Png, 100);
+                var result = data.ToArray();
 
-                return BlackOutEdgesUntilUnderSize(resizedBitmap, _maxSize);
+                if (resizedBitmap.ColorType != SKColorType.Argb4444 && result.Length > _maxSize)
+                {
+                    Trace.WriteLine("Downgrading rendering to ARGB4444");
+                    DateTime now = DateTime.Now;
+                    DateTime targetTime = now.AddSeconds(10);
+                    _downgradeRenderingUntil = targetTime;
+                    return null;
+                }
+                else if (result.Length > _maxSize)
+                {
+                    result = DownscaleUpscaleAndEncode(resizedBitmap);
+                }
 
+                //Trace.WriteLine($"Size: {result.Length / 1024}kb");
+                return result;
             }
 
             return null;
         }
 
-        public static byte[] BitmapToPngBytes(Bitmap bitmap)
+        private static byte[]? DownscaleUpscaleAndEncode(SKBitmap original, float scale = 0.5f)
         {
-            //var sw = new Stopwatch();
-            //sw.Start();
-            using var ms = new MemoryStream();
-            bitmap.Save(ms, ImageFormat.Png);
-            //Trace.WriteLine($"BitmapToPngBytes: {sw.ElapsedMilliseconds}ms");
-            return ms.ToArray();
+            int downWidth = (int)(original.Width * scale);
+            int downHeight = (int)(original.Height * scale);
+
+            using var downscaled = original.Resize(new SKImageInfo(downWidth, downHeight), SKSamplingOptions.Default);
+            using var upscaled = downscaled.Resize(new SKImageInfo(original.Width, original.Height), SKSamplingOptions.Default);
+
+            var options = new SKPngEncoderOptions(
+                      filterFlags: SKPngEncoderFilterFlags.NoFilters,
+                      zLibLevel: 3
+                      );
+
+            using var pixmap = upscaled.PeekPixels();
+            using var data = pixmap.Encode(options);
+
+            if (data == null || data.IsEmpty)
+            {
+                Trace.WriteLine("Failed to encode bitmap to PNG");
+                return null;
+            }
+            return data.ToArray();
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
@@ -87,41 +124,51 @@ namespace InfoPanel
 
                     device.DelaySync();
 
-                    var fpsCounter = new FpsCounter();
-                    var stopwatch = new Stopwatch();
+                    FpsCounter fpsCounter = new(60);
+                    byte[]? _latestFrame = null;
+                    AutoResetEvent _frameAvailable = new(false);
 
-                    var queue = new ConcurrentQueue<byte[]>();
+                    var frameBufferPool = new ConcurrentBag<byte[]>();
 
                     var renderTask = Task.Run(async () =>
                     {
                         var stopwatch1 = new Stopwatch();
+
                         while (!token.IsCancellationRequested)
                         {
                             stopwatch1.Restart();
                             var frame = GenerateLcdBuffer();
-                            //Trace.WriteLine($"GenerateBuffer {stopwatch1.ElapsedMilliseconds}ms");
-                            if (frame != null)
-                                queue.Enqueue(frame);
 
-                            // Remove oldest if over capacity
-                            while (queue.Count > 2)
+                            if (frame != null)
                             {
-                                queue.TryDequeue(out _);
+                                var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
+                                _frameAvailable.Set();
                             }
 
-                            var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
-                            if (stopwatch1.ElapsedMilliseconds < targetFrameTime)
+                            var targetFrameTime = 1000 / ConfigModel.Instance.Settings.TargetFrameRate;
+                            var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
+                            var adaptiveFrameTime = 0;
+
+                            var elapsedMs = (int)stopwatch1.ElapsedMilliseconds;
+
+                            //Trace.WriteLine($"elapsed={elapsedMs}ms");
+
+                            if (elapsedMs < desiredFrameTime)
                             {
-                                var sleep = (int)(targetFrameTime - stopwatch1.ElapsedMilliseconds);
-                                //Trace.WriteLine($"Sleep {sleep}ms");
-                                await Task.Delay(sleep, token);
+                                adaptiveFrameTime = desiredFrameTime - elapsedMs;
+                            }
+
+                            if (adaptiveFrameTime > 0)
+                            {
+                                await Task.Delay(adaptiveFrameTime, token);
                             }
                         }
                     }, token);
 
-                    var sendTask = Task.Run(async () =>
+                    var sendTask = Task.Run(() =>
                     {
                         var stopwatch2 = new Stopwatch();
+
                         while (!token.IsCancellationRequested)
                         {
                             if (brightness != ConfigModel.Instance.Settings.TuringPanelBrightness)
@@ -131,30 +178,19 @@ namespace InfoPanel
                                 device.DelaySync();
                             }
 
-                            if (queue.TryDequeue(out var frame))
+                            if (_frameAvailable.WaitOne(100))
                             {
-                                stopwatch2.Restart();
-                                SendPngBytes(device, frame);
-                                //Trace.WriteLine($"Post render: {stopwatch2.ElapsedMilliseconds}ms.");
-                                device.ReadFlush();
-                                fpsCounter.Update();
-
-                                //Trace.WriteLine($"FPS: {fpsCounter.FramesPerSecond}");
-
-                                SharedModel.Instance.TuringPanelFrameRate = fpsCounter.FramesPerSecond;
-                                SharedModel.Instance.TuringPanelFrameTime = stopwatch2.ElapsedMilliseconds;
-
-                                var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
-                                if (stopwatch2.ElapsedMilliseconds < targetFrameTime)
+                                var frame = Interlocked.Exchange(ref _latestFrame, null);
+                                if (frame != null)
                                 {
-                                    var sleep = (int)(targetFrameTime - stopwatch2.ElapsedMilliseconds);
-                                    //Trace.WriteLine($"Sleep {sleep}ms");
-                                    await Task.Delay(sleep, token);
+                                    stopwatch2.Restart();
+                                    SendPngBytes(device, frame);
+                                    device.ReadFlush();
+
+                                    fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
+                                    SharedModel.Instance.TuringPanelFrameRate = fpsCounter.FramesPerSecond;
+                                    SharedModel.Instance.TuringPanelFrameTime = fpsCounter.FrameTime;
                                 }
-                            }
-                            else
-                            {
-                                await Task.Delay(10);
                             }
                         }
                     }, token);
@@ -172,26 +208,7 @@ namespace InfoPanel
                 }
                 finally
                 {
-                    try
-                    {
-                        if (_shutdown)
-                        {
-                            device.SendBrightnessCommand(0);
-                        }
-                        else
-                        {
-                            //draw splash
-                            using var bitmap = PanelDrawTask.RenderSplash(_panelWidth, _panelHeight, pixelFormat: PixelFormat.Format16bppRgb565,
-                            rotateFlipType: (RotateFlipType)Enum.ToObject(typeof(RotateFlipType), ConfigModel.Instance.Settings.TuringPanelRotation));
-                            SendPngBytes(device, BitmapToPngBytes(bitmap));
-                            device.ReadFlush();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Trace.WriteLine($"Exception when sending ResetTag: {ex.Message}");
-                    }
-
+                    device.SendBrightnessCommand(0);
                 }
             }
             catch (Exception e)
@@ -203,88 +220,6 @@ namespace InfoPanel
                 SharedModel.Instance.TuringPanelRunning = false;
             }
         }
-
-        public static byte[] BlackOutEdgesUntilUnderSize(Bitmap original, int maxSizeBytes)
-        {
-            byte[] pngBytes = BitmapToPngBytes(original);
-
-            if (pngBytes.Length <= maxSizeBytes)
-            {
-                return pngBytes;
-            }
-
-            int width = original.Width;
-            int height = original.Height;
-
-            int border = 10;
-            int passCount = 0;
-            int totalBorder = 0;
-
-            using Graphics g = Graphics.FromImage(original);
-
-            int previousSize = pngBytes.Length;
-
-            while (true)
-            {
-                passCount++;
-                totalBorder += border;
-
-                if (totalBorder * 2 >= width || totalBorder * 2 >= height)
-                    throw new Exception("Cannot reduce image size under limit by blacking out edges.");
-
-                ApplyBlackBorder(g, width, height, totalBorder);
-                pngBytes = BitmapToPngBytes(original);
-                int newSize = pngBytes.Length;
-                int sizeDiff = previousSize - newSize;
-
-                Trace.WriteLine($"Pass {passCount}: PNG size = {newSize} bytes, reduced by {sizeDiff} bytes");
-
-                if (newSize <= maxSizeBytes)
-                {
-                    Trace.WriteLine($"Image reduced under size limit in {passCount} passes.");
-                    return pngBytes;
-                }
-
-                if (sizeDiff <= 0)
-                    throw new Exception("Blackout no longer reducing size. Cannot proceed.");
-
-                // Re-estimate how much more needs to be reduced
-                int bytesToReduce = newSize - maxSizeBytes;
-
-                // Estimate how many more passes needed at current effectiveness
-                int estimatedPasses = (int)Math.Ceiling((double)bytesToReduce / sizeDiff);
-
-                // Estimate next border increment
-                int baseBorder = Math.Max(10, (int)Math.Ceiling((double)(width + height) / 200));
-
-                // Cap estimated passes to avoid over-aggressive blackout
-                estimatedPasses = Math.Min(estimatedPasses, 3);
-
-                // Grow border more gradually
-                border = baseBorder + (estimatedPasses - 1) * (baseBorder / 2);
-
-                // Clamp to avoid over-blackout
-                int maxBorder = Math.Min(width, height) / 2 - totalBorder - 1;
-                border = Math.Min(border, maxBorder);
-
-                previousSize = newSize;
-            }
-
-        }
-
-        private static void ApplyBlackBorder(Graphics g, int width, int height, int border)
-        {
-            // Fill top
-            g.FillRectangle(Brushes.Black, 0, 0, width, border);
-            // Fill bottom
-            g.FillRectangle(Brushes.Black, 0, height - border, width, border);
-            // Fill left
-            g.FillRectangle(Brushes.Black, 0, border, border, height - 2 * border);
-            // Fill right
-            g.FillRectangle(Brushes.Black, width - border, border, border, height - 2 * border);
-        }
-
-
 
         private static bool SendPngBytes(TuringDevice device, byte[] pngData)
         {

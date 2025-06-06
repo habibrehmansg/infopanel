@@ -1,7 +1,7 @@
-﻿using InfoPanel.Enums;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Enums;
+using SkiaSharp;
 using System;
-using System.Drawing;
-using System.Windows;
 
 namespace InfoPanel.Models
 {
@@ -179,14 +179,14 @@ namespace InfoPanel.Models
                     return;
                 }
 
-                if (!value.StartsWith("#"))
+                if (!value.StartsWith('#'))
                 {
                     value = "#" + value;
                 }
 
                 try
                 {
-                    ColorTranslator.FromHtml(value);
+                    SKColor.Parse(value);
                     SetProperty(ref _frameColor, value);
                 }
                 catch
@@ -215,14 +215,14 @@ namespace InfoPanel.Models
                     return;
                 }
 
-                if (!value.StartsWith("#"))
+                if (!value.StartsWith('#'))
                 {
                     value = "#" + value;
                 }
 
                 try
                 {
-                    ColorTranslator.FromHtml(value);
+                    SKColor.Parse(value);
                     SetProperty(ref _backgroundColor, value);
                 }
                 catch
@@ -241,14 +241,14 @@ namespace InfoPanel.Models
                     return;
                 }
 
-                if (!value.StartsWith("#"))
+                if (!value.StartsWith('#'))
                 {
                     value = "#" + value;
                 }
 
                 try
                 {
-                    ColorTranslator.FromHtml(value);
+                    SKColor.Parse(value);
                     SetProperty(ref _color, value);
                 }
                 catch
@@ -309,14 +309,14 @@ namespace InfoPanel.Models
             return (Name, Color);
         }
 
-        public override SizeF EvaluateSize()
+        public override SKSize EvaluateSize()
         {
-            return new SizeF(Width, Height);
+            return new SKSize(Width, Height);
         }
-        public override Rect EvaluateBounds()
+        public override SKRect EvaluateBounds()
         {
             var size = EvaluateSize();
-            return new Rect(X, Y, size.Width, size.Height);
+            return new SKRect(X, Y, X + size.Width, Y + size.Height);
         }
 
         public override void SetProfileGuid(Guid profileGuid)
@@ -391,14 +391,14 @@ namespace InfoPanel.Models
                     return;
                 }
 
-                if (!value.StartsWith("#"))
+                if (!value.StartsWith('#'))
                 {
                     value = "#" + value;
                 }
 
                 try
                 {
-                    ColorTranslator.FromHtml(value);
+                    SKColor.Parse(value);
                     SetProperty(ref _fillColor, value);
                 }
                 catch
@@ -434,8 +434,11 @@ namespace InfoPanel.Models
         }
     }
 
-    public class BarDisplayItem : ChartDisplayItem
+    public partial class BarDisplayItem : ChartDisplayItem
     {
+
+        [ObservableProperty]
+        private int _cornerRadius = 0;
 
         private bool _gradient = true;
         public bool Gradient
@@ -458,14 +461,14 @@ namespace InfoPanel.Models
                     return;
                 }
 
-                if (!value.StartsWith("#"))
+                if (!value.StartsWith('#'))
                 {
                     value = "#" + value;
                 }
 
                 try
                 {
-                    ColorTranslator.FromHtml(value);
+                    SKColor.Parse(value);
                     SetProperty(ref _gradientColor, value);
                 }
                 catch

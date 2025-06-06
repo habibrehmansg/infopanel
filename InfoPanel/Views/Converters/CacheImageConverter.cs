@@ -1,17 +1,11 @@
-﻿using InfoPanel.Models;
+﻿using InfoPanel.Extensions;
+using InfoPanel.Models;
+using SkiaSharp;
+using SkiaSharp.Views.WPF;
 using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 
 namespace InfoPanel
 {
@@ -31,18 +25,29 @@ namespace InfoPanel
                 if (lockedImage != null)
                 {
                     BitmapImage? bitmapImage = null;
-                    lockedImage.Access(bitmap =>
+
+                    if (lockedImage.IsSvg)
                     {
-                        if(bitmap != null)
+                        lockedImage.AccessSVG(picture =>
                         {
-                            bitmapImage = new BitmapImage();
-                            bitmapImage.BeginInit();
-                            bitmapImage.StreamSource = bitmap.ToStream(ImageFormat.Png);
-                            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                            bitmapImage.EndInit();
-                            bitmapImage.Freeze();
-                        }
-                    });
+                            var bounds = picture.CullRect;
+                            var writeableBitmap = picture.ToWriteableBitmap(new SKSizeI((int)bounds.Width, (int)bounds.Height));
+                            writeableBitmap.Freeze();
+                            bitmapImage = writeableBitmap.ToBitmapImage();
+                        });
+                    }
+                    else
+                    {
+                        lockedImage.AccessSK(lockedImage.Width, lockedImage.Height, bitmap =>
+                        {
+                            if (bitmap != null)
+                            {
+                                var writeableBitmap = bitmap.ToWriteableBitmap();
+                                writeableBitmap.Freeze();
+                                bitmapImage = writeableBitmap.ToBitmapImage();
+                            }
+                        }, true, "ImageConverter");
+                    }
 
                     return bitmapImage;
                 }

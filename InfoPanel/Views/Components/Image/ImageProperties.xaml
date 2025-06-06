@@ -63,7 +63,7 @@
                     VerticalAlignment="Top"
                     Appearance="Primary"
                     Click="ButtonSelect_Click"
-                    Content="Select Image"
+                    Content="Select Media"
                     Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
             </Grid>
 
@@ -78,6 +78,7 @@
                         Margin="0,0,0,0"
                         FontSize="14"
                         MaxDecimalPlaces="0"
+                        Minimum="0"
                         SmallChange="1"
                         Text="{Binding Width}"
                         Value="{Binding Width}" />
@@ -93,6 +94,7 @@
                         Margin="0,0,0,0"
                         FontSize="14"
                         MaxDecimalPlaces="0"
+                        Minimum="0"
                         SmallChange="1"
                         Text="{Binding Height}"
                         Value="{Binding Height}" />

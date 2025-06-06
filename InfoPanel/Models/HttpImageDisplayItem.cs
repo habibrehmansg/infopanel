@@ -1,7 +1,7 @@
 ﻿using InfoPanel.Enums;
 using InfoPanel.Extensions;
+using SkiaSharp;
 using System;
-using System.Drawing;
 
 namespace InfoPanel.Models
 {
@@ -127,7 +127,7 @@ namespace InfoPanel.Models
             };
         }
 
-        public override SizeF EvaluateSize()
+        public override SKSize EvaluateSize()
         {
             var result = base.EvaluateSize();
 
@@ -137,7 +137,7 @@ namespace InfoPanel.Models
 
                 if (sensorReading.HasValue && sensorReading.Value.ValueText != null && sensorReading.Value.ValueText.IsUrl())
                 {
-                    var cachedImage = InfoPanel.Cache.GetLocalImage(sensorReading.Value.ValueText);
+                    var cachedImage = InfoPanel.Cache.GetLocalImage(this);
                     if (cachedImage != null)
                     {
                         if (result.Width == 0)
