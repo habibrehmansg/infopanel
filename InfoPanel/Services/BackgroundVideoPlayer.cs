@@ -235,6 +235,8 @@ public unsafe class BackgroundVideoPlayer : IDisposable
                 Thread.Sleep(1000); // Wait before retrying
             }
         }
+
+        _cancellationToken.Dispose();
     }
 
     private void DecodeVideoLoop()
@@ -463,7 +465,6 @@ public unsafe class BackgroundVideoPlayer : IDisposable
         var frame = Interlocked.Exchange(ref _currentFrame, null);
         frame?.Release();
 
-        _cancellationToken?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

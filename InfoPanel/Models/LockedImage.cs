@@ -50,83 +50,91 @@ namespace InfoPanel.Models
 
         private readonly Stopwatch Stopwatch = new();
 
+        public bool Loaded { get; private set; } = false;
+
         public LockedImage(string imagePath)
         {
             ImagePath = imagePath;
-
-            if (ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
-                    || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase)
-                    || ImagePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
-                    || ImagePath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase)
-                    || ImagePath.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
-                    || ImagePath.EndsWith(".avi", StringComparison.OrdinalIgnoreCase)
-                    || ImagePath.EndsWith(".mov", StringComparison.OrdinalIgnoreCase))
+        
+            try
             {
-                if (!ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
-                    && !ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
+                var uri = new UriBuilder(imagePath) { Query = "" };
+                var strippedUrl = uri.Uri.ToString();
+                if (strippedUrl.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
+                        || strippedUrl.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase)
+                        || strippedUrl.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                        || strippedUrl.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase)
+                        || strippedUrl.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
+                        || strippedUrl.EndsWith(".avi", StringComparison.OrdinalIgnoreCase)
+                        || strippedUrl.EndsWith(".mov", StringComparison.OrdinalIgnoreCase)
+                        || strippedUrl.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!File.Exists(ImagePath))
+                    if (!ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
+                        && !ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
                     {
-                        throw new ArgumentException("Video file does not exist.", nameof(imagePath));
+                        if (!ImagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) 
+                            && !ImagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                            && !File.Exists(ImagePath))
+                        {
+                            throw new ArgumentException("Video file does not exist.", nameof(imagePath));
+                        }
+                    }
+
+                    try
+                    {
+                        Type = ImageType.FFMPEG;
+                        _backgroundVideoPlayer = new BackgroundVideoPlayer(ImagePath);
+                        Width = _backgroundVideoPlayer.Width;
+                        Height = _backgroundVideoPlayer.Height;
+                        Frames = _backgroundVideoPlayer.TotalFrames;
+                        TotalFrameTime = (long)_backgroundVideoPlayer.Duration.TotalMilliseconds;
+                        Loaded = true;
+                        return;
+                    }
+                    catch (Exception e)
+                    {
+                        throw new ArgumentException($"Error initializing video player: {e.Message}");
+                    }
+                }
+                else if (ImagePath.IsUrl())
+                {
+                    using HttpClient client = new();
+                    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3");
+
+                    try
+                    {
+                        var data = client.GetByteArrayAsync(ImagePath).GetAwaiter().GetResult();
+                        _stream = new MemoryStream(data);
+                    }
+                    catch (Exception e)
+                    {
+                        Trace.WriteLine(e.Message);
+                    }
+                }
+                else if (File.Exists(ImagePath))
+                {
+                    try
+                    {
+                        var fileStream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                        _stream = new MemoryStream();
+                        fileStream.CopyTo(_stream);
+                        fileStream.Dispose();
+                        _stream.Position = 0;
+
+                        Trace.WriteLine($"Image loaded from file: {ImagePath}");
+                    }
+                    catch (Exception e)
+                    {
+                        Trace.WriteLine(e.Message);
                     }
                 }
 
-                try
-                {
-                    Type = ImageType.FFMPEG;
-                    _backgroundVideoPlayer = new BackgroundVideoPlayer(ImagePath);
-                    Width = _backgroundVideoPlayer.Width;
-                    Height = _backgroundVideoPlayer.Height;
-                    Frames = _backgroundVideoPlayer.TotalFrames;
-                    TotalFrameTime = (long)_backgroundVideoPlayer.Duration.TotalMilliseconds;
-                    return;
-                }
-                catch (Exception e)
-                {
-                    throw new ArgumentException($"Error initializing video player: {e.Message}");
-                }
-            }
-            else if (ImagePath.IsUrl())
-            {
-                using HttpClient client = new();
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3");
 
-                try
+                if (_stream == null)
                 {
-                    var data = client.GetByteArrayAsync(ImagePath).GetAwaiter().GetResult();
-                    _stream = new MemoryStream(data);
+                    throw new ArgumentException("Image path is invalid or file does not exist.", nameof(imagePath));
                 }
-                catch (Exception e)
-                {
-                    Trace.WriteLine(e.Message);
-                }
-            }
-            else if (File.Exists(ImagePath))
-            {
-                try
-                {
-                    var fileStream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                    _stream = new MemoryStream();
-                    fileStream.CopyTo(_stream);
-                    fileStream.Dispose();
-                    _stream.Position = 0;
 
-                    Trace.WriteLine($"Image loaded from file: {ImagePath}");
-                }
-                catch (Exception e)
-                {
-                    Trace.WriteLine(e.Message);
-                }
-            }
-
-
-            if (_stream == null)
-            {
-                throw new ArgumentException("Image path is invalid or file does not exist.", nameof(imagePath));
-            }
-
-            try
-            {
                 if (IsSvgContent(_stream))
                 {
                     Type = ImageType.SVG;
@@ -146,43 +154,51 @@ namespace InfoPanel.Models
                     _codec?.Dispose();
                     _codec = SKCodec.Create(_stream);
 
-                    if (_codec != null)
+                    if (_codec == null)
                     {
-                        Width = _codec.Info.Width;
-                        Height = _codec.Info.Height;
+                        Trace.WriteLine($"Failed to create SKCodec for {ImagePath}");
+                        throw new ArgumentException("Unsupported image format or codec creation failed.", nameof(imagePath));
+                    }
 
-                        Frames = _codec.FrameCount;
+                    Width = _codec.Info.Width;
+                    Height = _codec.Info.Height;
 
-                        //ensure at least 1 frame
-                        if (Frames == 0)
+                    Frames = _codec.FrameCount;
+
+                    //ensure at least 1 frame
+                    if (Frames == 0)
+                    {
+                        Frames = 1;
+                    }
+
+                    _cumulativeFrameTimes = new long[Frames];
+
+                    if (Frames > 1)
+                    {
+                        for (int i = 0; i < Frames; i++)
                         {
-                            Frames = 1;
-                        }
+                            var frameDelay = _codec.FrameInfo[i].Duration;
 
-                        _cumulativeFrameTimes = new long[Frames];
-
-                        if (Frames > 1)
-                        {
-                            for (int i = 0; i < Frames; i++)
+                            if (frameDelay == 0)
                             {
-                                var frameDelay = _codec.FrameInfo[i].Duration;
-
-                                if (frameDelay == 0)
-                                {
-                                    frameDelay = 100;
-                                }
-
-                                TotalFrameTime += frameDelay;
-                                _cumulativeFrameTimes[i] = TotalFrameTime;
+                                frameDelay = 100;
                             }
 
-                            //start the stopwatch
-                            Stopwatch.Start();
+                            TotalFrameTime += frameDelay;
+                            _cumulativeFrameTimes[i] = TotalFrameTime;
                         }
+
+                        //start the stopwatch
+                        Stopwatch.Start();
                     }
                 }
+
+                Loaded = true;
             }
-            catch { }
+            catch (Exception e)
+            {
+                Trace.WriteLine($"Error initializing LockedImage: {e.Message}");
+            }
         }
 
         private static bool IsSvgContent(Stream stream)
@@ -324,6 +340,11 @@ namespace InfoPanel.Models
                 throw new ObjectDisposedException("LockedImage");
             }
 
+            if (!Loaded)
+            {
+                return;
+            }
+
             lock (Lock)
             {
                 if (SKSvg?.Picture is SKPicture picture)
@@ -397,6 +418,11 @@ namespace InfoPanel.Models
         public void AccessSK(int targetWidth, int targetHeight, Action<SKImage> access, bool cache = true, string cacheHint = "default", GRContext? grContext = null)
         {
             ObjectDisposedException.ThrowIf(IsDisposed, this);
+
+            if (!Loaded)
+            {
+                return;
+            }
 
             if (targetWidth <= 0 || targetHeight <= 0)
                 return;

@@ -10,7 +10,7 @@ namespace InfoPanel.Models
     {
         public enum ImageType
         {
-            FILE, RTSP
+            FILE, URL, RTSP
         }
 
         private ImageType _type = ImageType.FILE;
@@ -27,6 +27,7 @@ namespace InfoPanel.Models
         public bool ReadOnly
         {
             get { return false; }
+            set { /* Do nothing, as this is always writable */ }
         }
 
         private string? _filePath;
@@ -59,8 +60,30 @@ namespace InfoPanel.Models
             get { return _rtspUrl; }
             set
             {
-                SetProperty(ref _rtspUrl, value);
-                OnPropertyChanged(nameof(CalculatedPath));
+                if(string.IsNullOrEmpty(value) 
+                    || value.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) 
+                    || value.StartsWith("rtsps://"))
+                {
+                    SetProperty(ref _rtspUrl, value);
+                    OnPropertyChanged(nameof(CalculatedPath));
+                }
+            }
+        }
+
+        private string? _httpUrl;
+
+        public string? HttpUrl
+        {
+            get { return _httpUrl; }
+            set
+            {
+                if (string.IsNullOrEmpty(value)
+                     || value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                     || value.StartsWith("https://"))
+                {
+                    SetProperty(ref _httpUrl, value);
+                    OnPropertyChanged(nameof(CalculatedPath));
+                }
             }
         }
 
@@ -71,6 +94,11 @@ namespace InfoPanel.Models
                 if (Type == ImageType.RTSP)
                 {
                     return RtspUrl;
+                }
+
+                if (Type == ImageType.URL)
+                {
+                    return HttpUrl;
                 }
 
                 if (RelativePath)

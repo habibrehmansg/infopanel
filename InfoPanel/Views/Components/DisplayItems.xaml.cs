@@ -219,6 +219,7 @@ namespace InfoPanel.Views.Components
 
         private void ButtonSave_Click(object sender, RoutedEventArgs e)
         {
+            ConfigModel.Instance.SaveProfiles();
             SharedModel.Instance.SaveDisplayItems();
         }
 

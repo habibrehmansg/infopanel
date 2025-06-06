@@ -89,9 +89,21 @@ namespace InfoPanel.Models
             }
         }
 
+        public new ImageType Type
+        {
+            get { return ImageType.URL; }
+            set { /* Do nothing, as this is always URL */  }
+        }
+
         public new bool ReadOnly
         {
             get { return true; }
+        }
+
+        public new string? HttpUrl
+        {
+            get { return CalculatedPath; }
+            set { }
         }
 
         public new string? CalculatedPath
