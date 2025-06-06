@@ -57,6 +57,7 @@
             <local:BitmapToImageConverter x:Key="BitmapToImageConverter" />
             <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter" />
             <local:FontFamilyConverter x:Key="FontFamilyConverter" />
+            <local:EnumEqualsConverter x:Key="EnumEqualsConverter" />
 
             <BitmapImage x:Key="HwinfoIcon" UriSource="Resources/Images/hwinfo_icon.ico" />
             <BitmapImage x:Key="LibreIcon" UriSource="Resources/Images/libre_icon.ico" />

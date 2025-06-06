@@ -52,7 +52,7 @@ namespace InfoPanel
             {
                 var sensorReading = httpImageDisplayItem.GetValue();
 
-                if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText))
+                if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText) && sensorReading.Value.ValueText.IsUrl())
                 {
                     return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
                 }
@@ -75,17 +75,43 @@ namespace InfoPanel
                 return null;
             }
 
-            if (ImageCache.TryGetValue(path, out LockedImage? cachedImage) || !initialiseIfMissing)
+            // Check cache first
+            if (ImageCache.TryGetValue(path, out LockedImage? cachedImage))
             {
                 return cachedImage;
             }
 
-            var semaphore = _locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
-            semaphore.Wait();
+            if (!initialiseIfMissing)
+            {
+                return null;
+            }
 
+            var semaphore = _locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+
+            // Try to acquire lock WITHOUT waiting (0ms timeout)
+            if (!semaphore.Wait(0))
+            {
+                // Another thread is initializing - return null immediately
+                return null;
+            }
+
+            // Start async initialization without blocking
+            Task.Run(() => InitializeImage(path, semaphore));
+
+            return null; // Return null immediately while initializing
+        }
+
+        private static void InitializeImage(string path, SemaphoreSlim semaphore)
+        {
             try
             {
-                cachedImage = new LockedImage(path);
+                // Double-check cache after we start (but we already hold the lock)
+                if (ImageCache.TryGetValue(path, out _))
+                {
+                    return; // Already cached somehow
+                }
+
+                var cachedImage = new LockedImage(path);
 
                 if (cachedImage != null)
                 {
@@ -93,32 +119,38 @@ namespace InfoPanel
                     {
                         SlidingExpiration = TimeSpan.FromSeconds(10),
                         PostEvictionCallbacks = {
-                            new PostEvictionCallbackRegistration
+                    new PostEvictionCallbackRegistration
+                    {
+                        EvictionCallback = (key, value, reason, state) =>
+                        {
+                            Trace.WriteLine($"Cache entry '{key}' evicted due to {reason}.");
+                            if (value is LockedImage lockedImage)
                             {
-                                EvictionCallback = (key, value, reason, state) =>
-                                {
-                                     Trace.WriteLine($"Cache entry '{key}' evicted due to {reason}.");
-                                    if (value is LockedImage lockedImage)
-                                    {
-                                        lockedImage.Dispose();
-                                    }
-                                }
+                                lockedImage.Dispose();
                             }
                         }
+                    }
+                }
                     });
+
+                    Trace.WriteLine($"Image '{path}' loaded successfully");
                 }
             }
             catch (Exception e)
             {
-                Trace.WriteLine(e.ToString());
+                Trace.WriteLine($"Failed to load image '{path}': {e}");
             }
             finally
             {
+                // NOW release the semaphore
                 semaphore.Release();
-                _locks.TryRemove(path, out _);
-            }
 
-            return cachedImage;
+                // Clean up semaphore if no one else is waiting
+                if (semaphore.CurrentCount == 1)
+                {
+                    _locks.TryRemove(path, out _);
+                }
+            }
         }
 
 

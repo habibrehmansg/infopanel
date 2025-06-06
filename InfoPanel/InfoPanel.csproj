@@ -94,6 +94,7 @@
 		<None Remove="index.html" />
 		<None Remove="Logo.png" />
 		<None Remove="logo_white.png" />
+		<None Remove="Resources\Binaries\ffmpeg.exe" />
 		<None Remove="Resources\Images\home.jpg" />
 		<None Remove="Resources\Images\hwinfo_icon.ico" />
 		<None Remove="Resources\Images\hwinfo_logo_white.png" />
@@ -191,6 +192,7 @@
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+		<PackageReference Include="FFmpeg.AutoGen" Version="7.1.1" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="HidSharp" Version="2.1.0" />
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
@@ -264,6 +266,38 @@
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 			<TargetPath>d2dlib64.dll</TargetPath>
 		</None>
+		<None Update="Lib\FFmpeg\avcodec-61.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>avcodec-61.dll</Link>
+		</None>
+		<None Update="Lib\FFmpeg\avdevice-61.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>avdevice-61.dll</Link>
+		</None>
+		<None Update="Lib\FFmpeg\avfilter-10.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>avfilter-10.dll</Link>
+		</None>
+		<None Update="Lib\FFmpeg\avformat-61.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>avformat-61.dll</Link>
+		</None>
+		<None Update="Lib\FFmpeg\avutil-59.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>avutil-59.dll</Link>
+		</None>
+		<None Update="Lib\FFmpeg\postproc-58.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>postproc-58.dll</Link>
+		</None>
+		<None Update="Lib\FFmpeg\swresample-5.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>swresample-5.dll</Link>
+		</None>
+		<None Update="Lib\FFmpeg\swscale-8.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>swscale-8.dll</Link>
+		</None>
 		<None Update="NunitoSans_7pt_Condensed-BlackItalic.ttf">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
@@ -288,10 +322,6 @@
 		<None Update="NunitoSans_7pt_Condensed-SemiBoldItalic.ttf">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="Resources\Binaries\ffmpeg.exe">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>ffmpeg.exe</Link>
-		</None>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -308,6 +338,10 @@
 			<XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
 			<SubType>Designer</SubType>
 		</Page>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Resources\Binaries\" />
 	</ItemGroup>
 
 	<!--<ItemGroup>

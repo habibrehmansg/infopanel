@@ -26,7 +26,7 @@ namespace InfoPanel
                 {
                     BitmapImage? bitmapImage = null;
 
-                    if (lockedImage.IsSvg)
+                    if (lockedImage.Type == LockedImage.ImageType.SVG)
                     {
                         lockedImage.AccessSVG(picture =>
                         {

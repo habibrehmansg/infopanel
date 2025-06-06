@@ -1,4 +1,5 @@
-﻿using InfoPanel.Models;
+﻿using InfoPanel.Extensions;
+using InfoPanel.Models;
 using InfoPanel.Plugins;
 using InfoPanel.Utils;
 using SkiaSharp;
@@ -32,7 +33,10 @@ namespace InfoPanel.Drawing
 
             List<SelectedRectangle> selectedRectangles = [];
 
-            g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
+            if(SKColor.TryParse(profile.BackgroundColor, out var backgroundColor))
+            {
+                g.Clear(backgroundColor);
+            }
 
             foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))
             {
@@ -109,11 +113,10 @@ namespace InfoPanel.Drawing
                 var rect = new SKRect(0, 0, profile.Width, 15);
 
                 g.FillRectangle("#84000000", (int)rect.Left, (int)rect.Top, (int)rect.Width, (int)rect.Height);
-                g.DrawString(profile.Name, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left + 1, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height);
-                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00",(int)rect.Left, (int)rect.Top, width: (int)rect.Width - 1, height: (int)rect.Height, rightAlign: true);
+                g.DrawString(profile.Name, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left + 5, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height);
+                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00",(int)rect.Left, (int)rect.Top, width: (int)rect.Width - 5, height: (int)rect.Height, rightAlign: true);
             }
         }
-
 
         public static SKPath? RectToPath(SKRect rect, int rotation, float maxWidth, float maxHeight, float penWidth = 2)
         {
@@ -276,6 +279,12 @@ namespace InfoPanel.Drawing
                         var scaledWidth = (int)size.Width;
                         var scaledHeight = (int)size.Height;
 
+                        if (scaledWidth <= 0 || scaledHeight <= 0)
+                        {
+                            return;
+                        }
+
+
                         scaledWidth = (int)Math.Ceiling(scaledWidth * scale);
                         scaledHeight = (int)Math.Ceiling(scaledHeight * scale);
 
@@ -287,8 +296,16 @@ namespace InfoPanel.Drawing
                             {
                                 g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight, rotation: imageDisplayItem.Rotation);
                             }
+                        } else
+                        {
+                            using var image = SKBitmapExtensions.CreateMaterialNoImageBitmap(scaledWidth, scaledHeight);
+
+                            if (image != null)
+                            {
+                                g.DrawBitmap(image, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation);
+                            }
                         }
-                        break;
+                            break;
                     }
                 case GaugeDisplayItem gaugeDisplayItem:
                     {
@@ -322,48 +339,6 @@ namespace InfoPanel.Drawing
                         break;
                     }
                 case ChartDisplayItem chartDisplayItem:
-                    //if (g is CompatGraphics)
-                    //{
-                    //    var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
-                    //    var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
-                    //    using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
-                    //    using var g1 = CompatGraphics.FromBitmap(graphBitmap);
-                    //    GraphDraw.Run(chartDisplayItem, g1);
-
-                    //    if (chartDisplayItem.FlipX)
-                    //    {
-                    //        graphBitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
-                    //    }
-
-                    //    g.DrawBitmap(graphBitmap, x, y, width, height);
-                    //}
-                    //else
-                    if (g is AcceleratedGraphics acceleratedGraphics)
-                    {
-                        using var d2dGraphics = acceleratedGraphics.D2DDevice
-                            .CreateBitmapGraphics(chartDisplayItem.Width, chartDisplayItem.Height);
-
-                        if (d2dGraphics != null)
-                        {
-                            //d2dGraphics.SetDPI(96, 96);
-                            d2dGraphics.Antialias = true;
-
-                            if (chartDisplayItem.FlipX)
-                            {
-                                var flipMatrix = Matrix3x2.CreateScale(-1.0f, 1.0f) *
-                                     Matrix3x2.CreateTranslation(chartDisplayItem.Width, 0);
-                                d2dGraphics.SetTransform(flipMatrix);
-                            }
-
-                            using var g1 = AcceleratedGraphics.FromD2DGraphics(d2dGraphics, acceleratedGraphics);
-                            d2dGraphics.BeginRender();
-                            GraphDraw.Run(chartDisplayItem, g1);
-                            d2dGraphics.EndRender();
-
-                            g.DrawBitmap(d2dGraphics, chartDisplayItem.X, chartDisplayItem.Y, chartDisplayItem.Width, chartDisplayItem.Height);
-                        }
-                    }
-                    else if (g is SkiaGraphics)
                     {
                         var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
                         var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
@@ -382,9 +357,10 @@ namespace InfoPanel.Drawing
                         {
                             g.DrawBitmap(graphBitmap, x, y, width, height);
                         }
+
+                        break;
                     }
 
-                    break;
                 case ShapeDisplayItem shapeDisplayItem:
                     {
                         var width = scale == 1 ? (int)shapeDisplayItem.Width : (int)Math.Ceiling(shapeDisplayItem.Width * scale);

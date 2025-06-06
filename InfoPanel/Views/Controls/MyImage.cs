@@ -90,7 +90,7 @@ namespace InfoPanel.Views.Controls
 
                 if (image != null)
                 {
-                    if (image.IsSvg)
+                    if (image.Type == LockedImage.ImageType.SVG)
                     {
                         image.AccessSVG(picture =>
                         {

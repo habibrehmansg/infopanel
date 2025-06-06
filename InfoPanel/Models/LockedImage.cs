@@ -8,14 +8,17 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using unvell.D2DLib;
 
 namespace InfoPanel.Models
 {
     public partial class LockedImage : IDisposable
     {
+        public enum ImageType
+        {
+            SK, SVG, FFMPEG
+        }
+
         public readonly string ImagePath;
 
         private readonly TypedMemoryCache<SKImageFrameSlot[]> SKImageMemoryCache = new(new MemoryCacheOptions()
@@ -28,10 +31,12 @@ namespace InfoPanel.Models
         public int Width { get; private set; } = 0;
         public int Height { get; private set; } = 0;
 
-        public bool IsSvg { get; private set; } = false;
-        private readonly SKSvg? SKSvg;
+        public readonly ImageType Type;
 
-        public readonly int Frames;
+        private readonly SKSvg? SKSvg;
+        private readonly BackgroundVideoPlayer? _backgroundVideoPlayer;
+
+        public readonly long Frames;
         public readonly long TotalFrameTime;
 
         private readonly SKCodec? _codec;
@@ -48,7 +53,40 @@ namespace InfoPanel.Models
         public LockedImage(string imagePath)
         {
             ImagePath = imagePath;
-            if (ImagePath.IsUrl())
+
+            if (ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
+                    || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase)
+                    || ImagePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                    || ImagePath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase)
+                    || ImagePath.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
+                    || ImagePath.EndsWith(".avi", StringComparison.OrdinalIgnoreCase)
+                    || ImagePath.EndsWith(".mov", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
+                    && !ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!File.Exists(ImagePath))
+                    {
+                        throw new ArgumentException("Video file does not exist.", nameof(imagePath));
+                    }
+                }
+
+                try
+                {
+                    Type = ImageType.FFMPEG;
+                    _backgroundVideoPlayer = new BackgroundVideoPlayer(ImagePath);
+                    Width = _backgroundVideoPlayer.Width;
+                    Height = _backgroundVideoPlayer.Height;
+                    Frames = _backgroundVideoPlayer.TotalFrames;
+                    TotalFrameTime = (long)_backgroundVideoPlayer.Duration.TotalMilliseconds;
+                    return;
+                }
+                catch (Exception e)
+                {
+                    throw new ArgumentException($"Error initializing video player: {e.Message}");
+                }
+            }
+            else if (ImagePath.IsUrl())
             {
                 using HttpClient client = new();
                 client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3");
@@ -81,78 +119,70 @@ namespace InfoPanel.Models
                 }
             }
 
+
             if (_stream == null)
             {
                 throw new ArgumentException("Image path is invalid or file does not exist.", nameof(imagePath));
             }
 
-            lock (Lock)
+            try
             {
-                try
+                if (IsSvgContent(_stream))
                 {
-                    IsSvg = IsSvgContent(_stream);
+                    Type = ImageType.SVG;
 
-                    if (IsSvg)
+                    SKSvg = new SKSvg();
+                    SKSvg.Load(_stream);
+
+                    if (SKSvg.Picture is SKPicture picture)
                     {
-                        SKSvg = new SKSvg();
-                        SKSvg.Load(_stream);
-
-                        if (SKSvg.Picture is SKPicture picture)
-                        {
-                            Width = (int)picture.CullRect.Width;
-                            Height = (int)picture.CullRect.Height;
-                            Frames = 1;
-
-                            DisposeD2DAssets();
-                        }
+                        Width = (int)picture.CullRect.Width;
+                        Height = (int)picture.CullRect.Height;
+                        Frames = 1;
                     }
-                    else
+                }
+                else
+                {
+                    _codec?.Dispose();
+                    _codec = SKCodec.Create(_stream);
+
+                    if (_codec != null)
                     {
-                        _codec?.Dispose();
-                        _codec = SKCodec.Create(_stream);
+                        Width = _codec.Info.Width;
+                        Height = _codec.Info.Height;
 
-                        if (_codec != null)
+                        Frames = _codec.FrameCount;
+
+                        //ensure at least 1 frame
+                        if (Frames == 0)
                         {
-                            Width = _codec.Info.Width;
-                            Height = _codec.Info.Height;
+                            Frames = 1;
+                        }
 
-                            Frames = _codec.FrameCount;
+                        _cumulativeFrameTimes = new long[Frames];
 
-                            //ensure at least 1 frame
-                            if (Frames == 0)
+                        if (Frames > 1)
+                        {
+                            for (int i = 0; i < Frames; i++)
                             {
-                                Frames = 1;
-                            }
+                                var frameDelay = _codec.FrameInfo[i].Duration;
 
-                            DisposeD2DAssets();
-
-                            DisposeSKAssets();
-
-                            _cumulativeFrameTimes = new long[Frames];
-
-                            if (Frames > 1)
-                            {
-                                for (int i = 0; i < Frames; i++)
+                                if (frameDelay == 0)
                                 {
-                                    var frameDelay = _codec.FrameInfo[i].Duration;
-
-                                    if (frameDelay == 0)
-                                    {
-                                        frameDelay = 100;
-                                    }
-
-                                    TotalFrameTime += frameDelay;
-                                    _cumulativeFrameTimes[i] = TotalFrameTime;
+                                    frameDelay = 100;
                                 }
 
-                                //start the stopwatch
-                                Stopwatch.Start();
+                                TotalFrameTime += frameDelay;
+                                _cumulativeFrameTimes[i] = TotalFrameTime;
                             }
+
+                            //start the stopwatch
+                            Stopwatch.Start();
                         }
                     }
                 }
-                catch { }
             }
+            catch { }
         }
 
         private static bool IsSvgContent(Stream stream)
@@ -316,7 +346,10 @@ namespace InfoPanel.Models
                         cacheValue[i] = new SKImageFrameSlot();
                     }
 
-                    SKImageMemoryCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5), PostEvictionCallbacks = {
+                    SKImageMemoryCache.Set(cacheHint, cacheValue, new MemoryCacheEntryOptions
+                    {
+                        SlidingExpiration = TimeSpan.FromSeconds(5),
+                        PostEvictionCallbacks = {
                             new PostEvictionCallbackRegistration
                             {
                                 EvictionCallback = (key, value, reason, state) =>
@@ -331,7 +364,8 @@ namespace InfoPanel.Models
                                     }
                                 }
                             }
-                        } });
+                        }
+                    });
                 }
 
                 return cacheValue;
@@ -358,15 +392,29 @@ namespace InfoPanel.Models
             }
         }
 
+
+
         public void AccessSK(int targetWidth, int targetHeight, Action<SKImage> access, bool cache = true, string cacheHint = "default", GRContext? grContext = null)
         {
             ObjectDisposedException.ThrowIf(IsDisposed, this);
 
             if (targetWidth <= 0 || targetHeight <= 0)
-                throw new ArgumentException("Target dimensions must be positive");
+                return;
 
             lock (Lock)
             {
+                if (Type == ImageType.FFMPEG)
+                {
+                    using var image = _backgroundVideoPlayer?.GetLatestFrame(targetWidth, targetHeight);
+
+                    if (image != null)
+                    {
+                        access(image);
+                    }
+
+                    return;
+                }
+
                 var SKBitmapCache = grContext != null ? GetD2DBitmapFrameCache(cacheHint) : GetSKBitmapFrameCache(cacheHint);
 
                 var frame = GetCurrentFrameCount();
@@ -378,7 +426,7 @@ namespace InfoPanel.Models
                     bitmapFrame.Invalidate();
                 }
 
-                if(bitmapFrame.Image != null && grContext != null && !bitmapFrame.Image.IsValid(grContext))
+                if (bitmapFrame.Image != null && grContext != null && !bitmapFrame.Image.IsValid(grContext))
                 {
                     bitmapFrame.Invalidate();
                 }
@@ -418,84 +466,6 @@ namespace InfoPanel.Models
             }
         }
 
-        public void AccessD2D(D2DDevice device, IntPtr handle, int targetWidth, int targetHeight, Action<D2DBitmap> access, bool cache = true, string cacheHint = "default")
-        {
-            //ObjectDisposedException.ThrowIf(IsDisposed, this);
-            //ArgumentNullException.ThrowIfNull(access);
-
-            //if (targetWidth <= 0 || targetHeight <= 0)
-            //    throw new ArgumentException("Target dimensions must be positive");
-
-            //lock (Lock)
-            //{
-
-            //    if (D2DHandle == null)
-            //    {
-            //        D2DHandle = handle;
-            //    }
-            //    else if (D2DHandle != handle)
-            //    {
-            //        Trace.WriteLine("D2DDevice changed, disposing assets");
-            //        DisposeD2DAssets();
-            //        D2DHandle = handle;
-            //    }
-
-            //    var D2DBitmapCache = GetD2DBitmapFrameCache(cacheHint);
-
-            //    var frame = GetCurrentFrameCount();
-            //    var d2dbitmapFrame = D2DBitmapCache[frame];
-
-            //    if (d2dbitmapFrame.Width != targetWidth || d2dbitmapFrame.Height != targetHeight)
-            //    {
-            //        d2dbitmapFrame.Invalidate();
-            //    }
-
-            //    if (d2dbitmapFrame.Bitmap == null)
-            //    {
-            //        SKBitmap? bitmap = null;
-
-            //        if (IsSvg && SKSvg?.Picture is SKPicture picture)
-            //        {
-            //            var bounds = picture.CullRect;
-
-            //            float scaleX = targetWidth / bounds.Width;
-            //            float scaleY = targetHeight / bounds.Height;
-
-            //            bitmap = picture.ToBitmap(
-            //               background: SKColors.Transparent,
-            //               scaleX,
-            //               scaleY,
-            //               skColorType: SKColorType.Bgra8888,
-            //               skAlphaType: SKAlphaType.Premul,
-            //               skColorSpace: SKColorSpace.CreateSrgb()
-            //            );
-            //        }
-            //        else if (_codec != null)
-            //        {
-            //            var b = GetSKBitmapFromSK(frame);
-            //            bitmap = b?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
-            //            b?.Dispose();
-            //        }
-
-            //        if (bitmap != null)
-            //        {
-            //            uint width = (uint)bitmap.Width;
-            //            uint height = (uint)bitmap.Height;
-            //            uint stride = (uint)bitmap.RowBytes;
-            //            IntPtr pixelPtr = bitmap.GetPixels();
-            //            uint length = stride * height;
-
-            //            d2dbitmapFrame.Bitmap = device.CreateBitmapFromMemory(width, height, stride, pixelPtr, 0, length);
-            //        }
-            //    }
-
-            //    if (d2dbitmapFrame.Bitmap != null)
-            //    {
-            //        access(d2dbitmapFrame.Bitmap);
-            //    }
-            //}
-        }
-
         public void DisposeSKAssets()
         {
             lock (Lock)
@@ -533,6 +503,8 @@ namespace InfoPanel.Models
                     SKGLImageMemoryCache.Dispose();
 
                     SKSvg?.Dispose();
+                    _backgroundVideoPlayer?.Dispose();
+
 
                     _codec?.Dispose();
                     _stream?.Dispose();

@@ -1,4 +1,5 @@
-﻿using InfoPanel.Enums;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Enums;
 using InfoPanel.Extensions;
 using SkiaSharp;
 using System;
@@ -8,11 +9,6 @@ namespace InfoPanel.Models
     [Serializable]
     public class HttpImageDisplayItem : ImageDisplayItem, ISensorItem
     {
-        public bool ReadOnlyFile
-        {
-            get { return true; }
-        }
-
         private string _sensorName = string.Empty;
         public string SensorName
         {
@@ -90,6 +86,26 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _valueType, value);
+            }
+        }
+
+        public new bool ReadOnly
+        {
+            get { return true; }
+        }
+
+        public new string? CalculatedPath
+        {
+            get
+            {
+                var sensorReading = GetValue();
+
+                if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
+                {
+                    return sensorReading.Value.ValueText;
+                }
+
+                return null;
             }
         }
 
