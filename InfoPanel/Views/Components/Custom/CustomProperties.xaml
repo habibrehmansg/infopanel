@@ -297,13 +297,13 @@
             <Slider Name="SliderFScale" Grid.Column="1" Value="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedItem.Scale}" Minimum="5" Maximum="200" Margin="10,0,0,0" />
         </Grid>-->
 
-        <controls:MyImage
+        <!--<controls:MyImage
             x:Name="ImagePreview"
             Grid.Column="2"
             Width="150"
             Height="150"
             Margin="10,0,0,0"
-            ImagePath="{Binding DisplayImage, Mode=OneWay}" />
+            ImagePath="{Binding DisplayImage, Mode=OneWay}" />-->
 
     </Grid>
 </UserControl>

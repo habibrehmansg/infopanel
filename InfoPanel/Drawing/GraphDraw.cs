@@ -142,7 +142,7 @@ namespace InfoPanel.Drawing
             }
 
             {
-                g.Clear(Color.Transparent);
+                g.Clear(SKColors.Transparent);
 
                 var frameRect = new Rectangle(0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
 
@@ -355,7 +355,7 @@ namespace InfoPanel.Drawing
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : ConfigModel.Instance.Settings.TargetFrameRate * 3);
+                            value = InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             // Create SKPath for usage rectangle
@@ -429,7 +429,7 @@ namespace InfoPanel.Drawing
                             value = value * 100;
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = InterpolateWithCycles(lastValue, value, (g is AcceleratedGraphics) ? 180 : ConfigModel.Instance.Settings.TargetFrameRate * 3);
+                            value = InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var offset = 1;

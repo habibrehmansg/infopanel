@@ -8,6 +8,41 @@ namespace InfoPanel.Models
     [Serializable]
     public partial class ImageDisplayItem : DisplayItem
     {
+        public enum ImageType
+        {
+            FILE, URL, RTSP
+        }
+
+        private ImageType _type = ImageType.FILE;
+        public ImageType Type
+        {
+            get { return _type; }
+            set
+            {
+                SetProperty(ref _type, value);
+                OnPropertyChanged(nameof(CalculatedPath));
+            }
+        }
+
+        public bool ReadOnly
+        {
+            get { return false; }
+            set { /* Do nothing, as this is always writable */ }
+        }
+
+        public new bool Hidden
+        {
+            get => base.Hidden;
+            set
+            {
+                base.Hidden = value;
+                UpdateVolume();
+            }
+        }
+
+        [ObservableProperty]
+        private bool _showPanel = false;
+
         private string? _filePath;
         public string? FilePath
         {
@@ -31,18 +66,92 @@ namespace InfoPanel.Models
             }
         }
 
+        private int _volume = 0;
+
+        public int Volume
+        {
+            get { return _volume; }
+            set
+            {
+                SetProperty(ref _volume, value);
+                //UpdateVolume();
+            }
+        }
+
+        private void UpdateVolume()
+        {
+            var lockedImage = InfoPanel.Cache.GetLocalImage(this, false);
+
+            if (lockedImage != null)
+            {
+                if (Volume <= 0 || Hidden)
+                {
+                    lockedImage.Volume = 0;
+                }
+                else
+                {
+                    lockedImage.Volume = Volume / 100.0f;
+                }
+            }
+        }
+
+        private string? _rtspUrl;
+
+        public string? RtspUrl
+        {
+            get { return _rtspUrl; }
+            set
+            {
+                if(string.IsNullOrEmpty(value) 
+                    || value.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) 
+                    || value.StartsWith("rtsps://"))
+                {
+                    SetProperty(ref _rtspUrl, value);
+                    OnPropertyChanged(nameof(CalculatedPath));
+                }
+            }
+        }
+
+        private string? _httpUrl;
+
+        public string? HttpUrl
+        {
+            get { return _httpUrl; }
+            set
+            {
+                if (string.IsNullOrEmpty(value)
+                     || value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                     || value.StartsWith("https://"))
+                {
+                    SetProperty(ref _httpUrl, value);
+                    OnPropertyChanged(nameof(CalculatedPath));
+                }
+            }
+        }
+
         public string? CalculatedPath
         {
             get
             {
-                if(RelativePath)
+                if (Type == ImageType.RTSP)
+                {
+                    return RtspUrl;
+                }
+
+                if (Type == ImageType.URL)
+                {
+                    return HttpUrl;
+                }
+
+                if (RelativePath)
                 {
                     if (FilePath != null)
                     {
                         return Path.Combine(
                             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                             "InfoPanel", "assets", ProfileGuid.ToString(), FilePath);
-                    } else
+                    }
+                    else
                     {
                         return null;
                     }
@@ -118,10 +227,10 @@ namespace InfoPanel.Models
         public ImageDisplayItem()
         { }
 
-        public ImageDisplayItem(string name, Guid profileGuid): base()
+        public ImageDisplayItem(string name, Guid profileGuid) : base()
         {
             this.Name = name;
-            this.ProfileGuid= profileGuid;
+            this.ProfileGuid = profileGuid;
         }
 
         public ImageDisplayItem(string name, Guid profileGuid, string filePath, bool relativePath) : base(name, profileGuid)
@@ -151,10 +260,10 @@ namespace InfoPanel.Models
 
             if (CalculatedPath != null)
             {
-                var cachedImage = InfoPanel.Cache.GetLocalImage(this);
+                var cachedImage = InfoPanel.Cache.GetLocalImage(this, false);
                 if (cachedImage != null)
                 {
-                    if(result.Width == 0)
+                    if (result.Width == 0)
                     {
                         result.Width = cachedImage.Width;
                     }
@@ -166,12 +275,12 @@ namespace InfoPanel.Models
                 }
             }
 
-            if(result.Width != 0)
+            if (result.Width != 0)
             {
                 result.Width *= Scale / 100.0f;
             }
 
-            if(result.Height != 0)
+            if (result.Height != 0)
             {
                 result.Height *= Scale / 100.0f;
             }

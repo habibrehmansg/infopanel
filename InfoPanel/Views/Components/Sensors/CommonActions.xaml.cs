@@ -29,11 +29,7 @@ namespace InfoPanel.Views.Components
         {
             if (SharedModel.Instance.SelectedProfile != null)
             {
-                var item = new ImageDisplayItem("Image", SharedModel.Instance.SelectedProfile.Guid)
-                {
-                    Width = 100,
-                    Height = 100
-                };
+                var item = new ImageDisplayItem("Image", SharedModel.Instance.SelectedProfile.Guid);
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
