@@ -36,6 +36,27 @@ namespace InfoPanel.Models
         private readonly SKSvg? SKSvg;
         private readonly BackgroundVideoPlayer? _backgroundVideoPlayer;
 
+        public TimeSpan? CurrentTime => _backgroundVideoPlayer?.GetCurrentTime();
+        public TimeSpan? Duration => _backgroundVideoPlayer?.Duration;
+        public double? FrameRate => _backgroundVideoPlayer?.FrameRate;
+
+        public bool HasAudio => _backgroundVideoPlayer?.HasAudio ?? false;
+
+        public float Volume
+        {
+            get { return _backgroundVideoPlayer?.Volume * 100 ?? 0; }
+            set
+            {
+                if (value >= 0 && _backgroundVideoPlayer != null)
+                {
+                    if (_backgroundVideoPlayer.Volume != value)
+                    {
+                        _backgroundVideoPlayer.Volume = value;
+                    }
+                }
+            }
+        }
+
         public readonly long Frames;
         public readonly long TotalFrameTime;
 
@@ -55,7 +76,7 @@ namespace InfoPanel.Models
         public LockedImage(string imagePath)
         {
             ImagePath = imagePath;
-        
+
             try
             {
                 var uri = new UriBuilder(imagePath) { Query = "" };
@@ -72,7 +93,7 @@ namespace InfoPanel.Models
                     if (!ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
                         && !ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!ImagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) 
+                        if (!ImagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
                             && !ImagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
                             && !File.Exists(ImagePath))
                         {

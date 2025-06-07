@@ -16,7 +16,7 @@ namespace InfoPanel.Drawing
 {
     internal partial class SkiaGraphics(SKCanvas canvas, float fontScale = 1.33f) : MyGraphics
     {
-        private readonly SKCanvas Canvas = canvas;
+        public readonly SKCanvas Canvas = canvas;
         private readonly GRContext? GRContext = canvas.Context as GRContext;
         private readonly float FontScale = fontScale;
 

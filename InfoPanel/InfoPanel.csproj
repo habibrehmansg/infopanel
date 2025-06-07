@@ -200,6 +200,7 @@
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
+		<PackageReference Include="NAudio" Version="2.2.1" />
 		<PackageReference Include="SecureStore" Version="1.2.2" />
 		<PackageReference Include="Sentry" Version="5.3.0" />
 		<PackageReference Include="SkiaSharp" Version="3.119.0" />

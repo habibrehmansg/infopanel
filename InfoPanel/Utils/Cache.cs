@@ -37,7 +37,6 @@ namespace InfoPanel
             _ = ImageCache.Get("__dummy_key_for_expiration__");
         }
 
-
         public static Stream ToStream(this Image image, ImageFormat format)
         {
             var stream = new MemoryStream();
@@ -48,27 +47,40 @@ namespace InfoPanel
 
         public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)
         {
+            LockedImage? result = null;
             if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
             {
                 var sensorReading = httpImageDisplayItem.GetValue();
 
                 if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText) && sensorReading.Value.ValueText.IsUrl())
                 {
-                    return GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
+                    result = GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
                 }
             }
             else
             {
                 if (!string.IsNullOrEmpty(imageDisplayItem.CalculatedPath))
                 {
-                    return GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
+                    result = GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
                 }
             }
 
-            return null;
+            if (result != null)
+            {
+                if (imageDisplayItem.Hidden)
+                {
+                    result.Volume = 0; // Set volume to 0 if the image is hidden
+                }
+                else
+                {
+                    result.Volume = imageDisplayItem.Volume / 100.0f;
+                }
+            }
+
+            return result;
         }
 
-        public static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
+        private static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
         {
             if (string.IsNullOrEmpty(path) || path.Equals("NO_IMAGE"))
             {

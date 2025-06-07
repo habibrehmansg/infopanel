@@ -30,6 +30,19 @@ namespace InfoPanel.Models
             set { /* Do nothing, as this is always writable */ }
         }
 
+        public new bool Hidden
+        {
+            get => base.Hidden;
+            set
+            {
+                base.Hidden = value;
+                UpdateVolume();
+            }
+        }
+
+        [ObservableProperty]
+        private bool _showPanel = false;
+
         private string? _filePath;
         public string? FilePath
         {
@@ -50,6 +63,35 @@ namespace InfoPanel.Models
             {
                 SetProperty(ref _relativePath, value);
                 OnPropertyChanged(nameof(CalculatedPath));
+            }
+        }
+
+        private int _volume = 0;
+
+        public int Volume
+        {
+            get { return _volume; }
+            set
+            {
+                SetProperty(ref _volume, value);
+                //UpdateVolume();
+            }
+        }
+
+        private void UpdateVolume()
+        {
+            var lockedImage = InfoPanel.Cache.GetLocalImage(this, false);
+
+            if (lockedImage != null)
+            {
+                if (Volume <= 0 || Hidden)
+                {
+                    lockedImage.Volume = 0;
+                }
+                else
+                {
+                    lockedImage.Volume = Volume / 100.0f;
+                }
             }
         }
 

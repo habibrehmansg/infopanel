@@ -7,8 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
-using System.Drawing;
-using System.Numerics;
+using System.Windows.Controls;
 
 namespace InfoPanel.Drawing
 {
@@ -33,7 +32,7 @@ namespace InfoPanel.Drawing
 
             List<SelectedRectangle> selectedRectangles = [];
 
-            if(SKColor.TryParse(profile.BackgroundColor, out var backgroundColor))
+            if (SKColor.TryParse(profile.BackgroundColor, out var backgroundColor))
             {
                 g.Clear(backgroundColor);
             }
@@ -88,7 +87,8 @@ namespace InfoPanel.Drawing
                             }
                         }
                     }
-                }else
+                }
+                else
                 {
                     Trace.WriteLine("Fail to parse color");
                 }
@@ -100,7 +100,7 @@ namespace InfoPanel.Drawing
             {
                 var renderingEngine = "CPU";
 
-                if(g is SkiaGraphics skiaGraphics && skiaGraphics.OpenGL)
+                if (g is SkiaGraphics skiaGraphics && skiaGraphics.OpenGL)
                 {
                     renderingEngine = "OpenGL";
                 }
@@ -114,7 +114,7 @@ namespace InfoPanel.Drawing
 
                 g.FillRectangle("#84000000", (int)rect.Left, (int)rect.Top, (int)rect.Width, (int)rect.Height);
                 g.DrawString(profile.Name, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left + 5, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height);
-                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00",(int)rect.Left, (int)rect.Top, width: (int)rect.Width - 5, height: (int)rect.Height, rightAlign: true);
+                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left, (int)rect.Top, width: (int)rect.Width - 5, height: (int)rect.Height, rightAlign: true);
             }
         }
 
@@ -296,7 +296,79 @@ namespace InfoPanel.Drawing
                             {
                                 g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight, rotation: imageDisplayItem.Rotation);
                             }
-                        } else
+
+                            if (imageDisplayItem.ShowPanel && cachedImage.CurrentTime != null && cachedImage.FrameRate != null && cachedImage.Duration != null)
+                            {
+                                if (g is SkiaGraphics skiaGraphics)
+                                {
+                                    var canvas = skiaGraphics.Canvas;
+
+                                    // Calculate progress
+                                    var progress = cachedImage.Duration.Value.TotalMilliseconds > 0
+                                        ? cachedImage.CurrentTime.Value.TotalMilliseconds / cachedImage.Duration.Value.TotalMilliseconds
+                                        : 0;
+
+                                    // Rotation is already -180 to 180
+                                    var rotation = imageDisplayItem.Rotation;
+
+                                    // Round to nearest 90° to find which edge is at bottom
+                                    var nearestQuadrant = (int)Math.Round(rotation / 90f) * 90;
+
+                                    // Determine overlay width based on which edge is at bottom
+                                    var overlayWidth = (nearestQuadrant == 90 || nearestQuadrant == -90) ? scaledHeight : scaledWidth;
+
+                                    // Create overlay bitmap
+                                    using var overlayBitmap = CreateVideoOverlay(
+                                        overlayWidth,
+                                        progress,
+                                        cachedImage.CurrentTime.Value,
+                                        cachedImage.Duration.Value,
+                                        cachedImage.FrameRate.Value,
+                                        cachedImage.HasAudio
+                                    );
+
+                                    // Draw overlay with rotation
+                                    canvas.Save();
+                                    try
+                                    {
+                                        var imageCenterX = x + scaledWidth / 2f;
+                                        var imageCenterY = y + scaledHeight / 2f;
+
+                                        // Apply image rotation
+                                        canvas.Translate(imageCenterX, imageCenterY);
+                                        canvas.RotateDegrees(rotation);
+
+                                        // Position overlay at bottom based on quadrant
+                                        var (overlayX, overlayY) = nearestQuadrant switch
+                                        {
+                                            0 => (-scaledWidth / 2f, scaledHeight / 2f - 40),          // Original bottom
+                                            90 => (-scaledHeight / 2f, scaledWidth / 2f - 40),         // Left edge is bottom
+                                            180 or -180 => (-scaledWidth / 2f, -scaledHeight / 2f),    // Top edge is bottom  
+                                            -90 => (-scaledHeight / 2f, scaledWidth / 2f - 40),        // Right edge is bottom (same Y as 90!)
+                                            _ => (-scaledWidth / 2f, scaledHeight / 2f - 40)
+                                        };
+
+                                        // Apply additional rotation to make overlay horizontal
+                                        canvas.RotateDegrees(-nearestQuadrant);
+
+                                        // Draw the overlay bitmap
+                                        using var overlayPaint = new SKPaint { IsAntialias = true };
+                                        var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Nearest);
+
+                                        using var image = SKImage.FromBitmap(overlayBitmap);
+
+                                        canvas.DrawImage(image, SKRect.Create(overlayX, overlayY, image.Width, image.Height), sampling, overlayPaint);
+
+                                    }
+                                    finally
+                                    {
+                                        canvas.Restore();
+                                    }
+                                }
+                            }
+
+                        }
+                        else
                         {
                             using var image = SKBitmapExtensions.CreateMaterialNoImageBitmap(scaledWidth, scaledHeight);
 
@@ -305,7 +377,7 @@ namespace InfoPanel.Drawing
                                 g.DrawBitmap(image, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation);
                             }
                         }
-                            break;
+                        break;
                     }
                 case GaugeDisplayItem gaugeDisplayItem:
                     {
@@ -609,6 +681,74 @@ namespace InfoPanel.Drawing
             }
         }
 
+
+        private static SKBitmap CreateVideoOverlay(float imageWidth, double progress, TimeSpan currentTime, TimeSpan duration, double frameRate, bool hasAudio)
+        {
+            const int overlayHeight = 40;
+            var overlayBitmap = new SKBitmap((int)imageWidth, overlayHeight);
+            using var overlayCanvas = new SKCanvas(overlayBitmap);
+
+            // Draw gradient
+            var gradientRect = SKRect.Create(0, 0, imageWidth, overlayHeight);
+            using var gradientPaint = new SKPaint();
+            gradientPaint.Shader = SKShader.CreateLinearGradient(
+                new SKPoint(0, 0), new SKPoint(0, overlayHeight),
+                [SKColor.Parse("#00000000"), SKColor.Parse("#40000000"), SKColor.Parse("#90000000")],
+                [0.0f, 0.6f, 1.0f],
+                SKShaderTileMode.Clamp
+            );
+            overlayCanvas.DrawRect(gradientRect, gradientPaint);
+
+            // Progress bar dimensions
+            var progressBarHeight = 3f;
+            var progressBarY = overlayHeight - 28f;
+            var progressBarLeft = 12f;
+            var progressBarWidth = imageWidth - 24f;
+
+            // Draw background progress bar
+            using var backgroundPaint = new SKPaint { Color = SKColor.Parse("#4DFFFFFF"), IsAntialias = true };
+            var backgroundRect = SKRect.Create(progressBarLeft, progressBarY, progressBarWidth, progressBarHeight);
+            overlayCanvas.DrawRoundRect(backgroundRect, 1.5f, 1.5f, backgroundPaint);
+
+            // Draw progress
+            if (progress > 0)
+            {
+                using var progressPaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
+                var progressWidth = (float)(progressBarWidth * Math.Min(progress, 1.0));
+                var progressRect = SKRect.Create(progressBarLeft, progressBarY, progressWidth, progressBarHeight);
+                overlayCanvas.DrawRoundRect(progressRect, 1.5f, 1.5f, progressPaint);
+
+                // Draw progress circle
+                if (progress <= 1.0)
+                {
+                    var circleX = progressBarLeft + progressWidth;
+                    var circleY = progressBarY + (progressBarHeight / 2f);
+
+                    using var circlePaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
+                    overlayCanvas.DrawCircle(circleX, circleY, 5f, circlePaint);
+
+                    using var circleBorderPaint = new SKPaint { Color = SKColors.White, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f };
+                    overlayCanvas.DrawCircle(circleX, circleY, 5f, circleBorderPaint);
+                }
+            }
+
+            // Draw text elements
+            var timeDisplay = $"{currentTime:hh\\:mm\\:ss\\.fff} / {duration:hh\\:mm\\:ss\\.fff}";
+            var volumeIcon = hasAudio ? "STEREO" : "MUTE";
+            var frameRateText = $"{frameRate:F0}fps";
+            var rightDisplayText = $"{frameRateText} | {volumeIcon}";
+
+            using var timeFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 12f);
+            using var timePaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
+            overlayCanvas.DrawText(timeDisplay, progressBarLeft, overlayHeight - 8f, timeFont, timePaint);
+
+            using var rightFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 11f);
+            using var rightPaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
+            var rightTextWidth = rightFont.MeasureText(rightDisplayText);
+            overlayCanvas.DrawText(rightDisplayText, progressBarLeft + progressBarWidth - rightTextWidth, overlayHeight - 8f, rightFont, rightPaint);
+
+            return overlayBitmap;
+        }
 
     }
 }
