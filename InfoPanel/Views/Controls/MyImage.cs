@@ -26,7 +26,7 @@ namespace InfoPanel.Views.Controls
             set => SetValue(ImageDisplayItemProperty, value);  // Add setter
         }
 
-        private readonly Timer Timer = new(TimeSpan.FromMilliseconds(33));
+        private readonly Timer Timer = new(TimeSpan.FromMilliseconds(41));
 
         public MyImage()
         {
@@ -38,22 +38,9 @@ namespace InfoPanel.Views.Controls
         {
             if (d is MyImage myImage)
             {
-                var imageDisplayItem = e.NewValue as ImageDisplayItem;
-
-                if (imageDisplayItem != null)
+                if (e.NewValue is ImageDisplayItem imageDisplayItem)
                 {
-                    if (Cache.GetLocalImage(imageDisplayItem) is LockedImage lockedImage)
-                    {
-                        if (lockedImage.Frames > 1)
-                        {
-                            myImage.Timer.Start();
-                        }
-                        else
-                        {
-                            myImage.Timer.Stop();
-                            myImage.Timer_Tick(null, null);
-                        }
-                    }
+                    myImage.Timer.Start();
                 }
                 else
                 {
@@ -132,6 +119,11 @@ namespace InfoPanel.Views.Controls
                             writeableBitmap.Freeze();
                         }
                     }, true, "MyImage");
+                }
+
+                if(image.Frames <= 1 && sender is Timer timer)
+                {
+                    timer.Stop();
                 }
             }
 

@@ -142,7 +142,7 @@ namespace InfoPanel.Models
         private bool forward = true;
         private int counter = 0;
 
-        public string? DisplayImage
+        public ImageDisplayItem? DisplayImage
         {
             get
             {
@@ -165,7 +165,7 @@ namespace InfoPanel.Models
                     forward = true;
                 }
 
-                var result = _images.ElementAt(counter).CalculatedPath;
+                var result = _images.ElementAt(counter);
                 if (forward)
                 {
                     counter++;
