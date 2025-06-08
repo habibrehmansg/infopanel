@@ -102,7 +102,7 @@ namespace InfoPanel.Views.Components
                     var canvasWidth = skElement.CanvasSize.Width;
                     var canvasHeight = skElement.CanvasSize.Height;
 
-                    var scale = 1.0;
+                    var scale = 1.0f;
 
                     if (profile.Height > canvasHeight)
                     {
@@ -128,7 +128,7 @@ namespace InfoPanel.Views.Components
                     await Task.Run(() =>
                     {
                         using var g = SkiaGraphics.FromBitmap(profile.PreviewBitmap);
-                        PanelDraw.Run(profile, g, false, scale, true, $"PREVIEW-{profile.Guid}");
+                        PanelDraw.Run(profile, g, true, scale, true, $"PREVIEW-{profile.Guid}");
                     }, cancellationToken);
 
                     _paintCompletionSource = new TaskCompletionSource<bool>();

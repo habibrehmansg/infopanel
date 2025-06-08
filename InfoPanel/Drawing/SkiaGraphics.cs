@@ -111,7 +111,7 @@ namespace InfoPanel.Drawing
             Canvas.DrawLine(x1, y1, x2, y2, paint);
         }
 
-        public override void DrawPath(SKPath path, SKColor color, int strokeWidth, SKColor? gradientColor = null, SKColor? gradientColor2 = null, float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
+        public override void DrawPath(SKPath path, SKColor color, float strokeWidth, SKColor? gradientColor = null, SKColor? gradientColor2 = null, float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
         {
             using var paint = new SKPaint
             {

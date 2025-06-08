@@ -26,7 +26,7 @@ namespace InfoPanel.Drawing
             _selectionStopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
+        public static void Run(Profile profile, MyGraphics g, bool preview = false, float scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -40,10 +40,10 @@ namespace InfoPanel.Drawing
             foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))
             {
                 if (displayItem.Hidden) continue;
-                Draw(g, scale, cache, cacheHint, displayItem, selectedRectangles);
+                Draw(g, preview, scale, cache, cacheHint, displayItem, selectedRectangles);
             }
 
-            if (drawSelected && SharedModel.Instance.SelectedProfile == profile && selectedRectangles.Count != 0)
+            if (!preview && SharedModel.Instance.SelectedProfile == profile && selectedRectangles.Count != 0)
             {
                 if (ConfigModel.Instance.Settings.ShowGridLines)
                 {
@@ -177,10 +177,10 @@ namespace InfoPanel.Drawing
             return null;
         }
 
-        private static void Draw(MyGraphics g, double scale, bool cache, string cacheHint, DisplayItem displayItem, List<SelectedRectangle> selectedRectangles)
+        private static void Draw(MyGraphics g, bool preview, float scale, bool cache, string cacheHint, DisplayItem displayItem, List<SelectedRectangle> selectedRectangles)
         {
-            var x = (int)Math.Ceiling(displayItem.X * scale);
-            var y = (int)Math.Ceiling(displayItem.Y * scale);
+            var x = (int)Math.Floor(displayItem.X * scale);
+            var y = (int)Math.Floor(displayItem.Y * scale);
 
             switch (displayItem)
             {
@@ -189,14 +189,14 @@ namespace InfoPanel.Drawing
                         foreach (var item in groupDisplayItem.DisplayItems)
                         {
                             if (item.Hidden) continue;
-                            Draw(g, scale, cache, cacheHint, item, selectedRectangles);
+                            Draw(g, preview, scale, cache, cacheHint, item, selectedRectangles);
                         }
                         break;
                     }
                 case TextDisplayItem textDisplayItem:
                     {
 
-                        var fontSize = (int)Math.Ceiling(textDisplayItem.FontSize * scale);
+                        var fontSize = (int)Math.Floor(textDisplayItem.FontSize * scale);
                         (var text, var color) = textDisplayItem.EvaluateTextAndColor();
 
                         if (textDisplayItem is TableSensorDisplayItem tableSensorDisplayItem
@@ -279,8 +279,8 @@ namespace InfoPanel.Drawing
                         var scaledWidth = (int)size.Width;
                         var scaledHeight = (int)size.Height;
 
-                        scaledWidth = (int)Math.Ceiling(scaledWidth * scale);
-                        scaledHeight = (int)Math.Ceiling(scaledHeight * scale);
+                        scaledWidth = (int)Math.Floor(scaledWidth * scale);
+                        scaledHeight = (int)Math.Floor(scaledHeight * scale);
 
                         if (scaledWidth <= 0 || scaledHeight <= 0)
                         {
@@ -296,7 +296,7 @@ namespace InfoPanel.Drawing
                                 g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight, rotation: imageDisplayItem.Rotation);
                             }
 
-                            if (imageDisplayItem.ShowPanel && cachedImage.CurrentTime != null && cachedImage.FrameRate != null && cachedImage.Duration != null && cachedImage.VideoPlayerStatus != null)
+                            if (!preview && imageDisplayItem.ShowPanel && cachedImage.CurrentTime != null && cachedImage.FrameRate != null && cachedImage.Duration != null && cachedImage.VideoPlayerStatus != null)
                             {
                                 if (g is SkiaGraphics skiaGraphics)
                                 {
@@ -402,8 +402,8 @@ namespace InfoPanel.Drawing
                                     scaledHeight = cachedImage.Height;
                                 }
 
-                                scaledWidth = (int)Math.Ceiling(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
-                                scaledHeight = (int)Math.Ceiling(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
+                                scaledWidth = (int)Math.Floor(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
+                                scaledHeight = (int)Math.Floor(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
 
                                 g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint);
                             }
@@ -412,10 +412,10 @@ namespace InfoPanel.Drawing
                     }
                 case ChartDisplayItem chartDisplayItem:
                     {
-                        var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
-                        var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
+                        var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Floor(chartDisplayItem.Width * scale);
+                        var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Floor(chartDisplayItem.Height * scale);
 
-                        using var graphBitmap = new SKBitmap(width, height);
+                        using var graphBitmap = new SKBitmap(chartDisplayItem.Width, chartDisplayItem.Height);
                         using var canvas = new SKCanvas(graphBitmap);
 
                         using var g1 = new SkiaGraphics(canvas);
@@ -435,8 +435,8 @@ namespace InfoPanel.Drawing
 
                 case ShapeDisplayItem shapeDisplayItem:
                     {
-                        var width = scale == 1 ? (int)shapeDisplayItem.Width : (int)Math.Ceiling(shapeDisplayItem.Width * scale);
-                        var height = scale == 1 ? (int)shapeDisplayItem.Height : (int)Math.Ceiling(shapeDisplayItem.Height * scale);
+                        var width = scale == 1 ? (int)shapeDisplayItem.Width : (int)Math.Floor(shapeDisplayItem.Width * scale);
+                        var height = scale == 1 ? (int)shapeDisplayItem.Height : (int)Math.Floor(shapeDisplayItem.Height * scale);
 
                         var centerX = x + width / 2;
                         var centerY = y + height / 2;
@@ -662,11 +662,11 @@ namespace InfoPanel.Drawing
                             {
                                 if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor) && SKColor.TryParse(shapeDisplayItem.GradientColor2, out var gradientColor2))
                                 {
-                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
+                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness * scale, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
                                 }
                                 else
                                 {
-                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness);
+                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness * scale);
                                 }
                             }
                         }
@@ -675,7 +675,7 @@ namespace InfoPanel.Drawing
                     }
             }
 
-            if (displayItem.Selected && displayItem is not GroupDisplayItem)
+            if (!preview && displayItem.Selected && displayItem is not GroupDisplayItem)
             {
                 selectedRectangles.Add(new SelectedRectangle(displayItem.EvaluateBounds(), displayItem.Rotation));
             }
