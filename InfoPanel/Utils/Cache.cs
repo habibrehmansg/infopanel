@@ -54,33 +54,23 @@ namespace InfoPanel
 
                 if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText) && sensorReading.Value.ValueText.IsUrl())
                 {
-                    result = GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing);
+                    result = GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing, imageDisplayItem);
                 }
             }
             else
             {
                 if (!string.IsNullOrEmpty(imageDisplayItem.CalculatedPath))
                 {
-                    result = GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing);
+                    result = GetLocalImage(imageDisplayItem.CalculatedPath, initialiseIfMissing, imageDisplayItem);
                 }
             }
 
-            if (result != null)
-            {
-                if (imageDisplayItem.Hidden)
-                {
-                    result.Volume = 0; // Set volume to 0 if the image is hidden
-                }
-                else
-                {
-                    result.Volume = imageDisplayItem.Volume / 100.0f;
-                }
-            }
+            result?.AddImageDisplayItem(imageDisplayItem);
 
             return result;
         }
 
-        private static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true)
+        private static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true, ImageDisplayItem? imageDisplayItem = null)
         {
             if (string.IsNullOrEmpty(path) || path.Equals("NO_IMAGE"))
             {
@@ -108,16 +98,16 @@ namespace InfoPanel
             }
 
             // Start async initialization without blocking
-            _ = Task.Run(() => InitializeImageSafe(path, semaphore));
+            _ = Task.Run(() => InitializeImageSafe(path, imageDisplayItem, semaphore));
 
             return null; // Return null immediately while initializing
         }
 
-        private static void InitializeImageSafe(string path, SemaphoreSlim semaphore)
+        private static void InitializeImageSafe(string path, ImageDisplayItem? imageDisplayItem, SemaphoreSlim semaphore)
         {
             try
             {
-                InitializeImage(path);
+                InitializeImage(path, imageDisplayItem);
             }
             catch (Exception e)
             {
@@ -126,10 +116,10 @@ namespace InfoPanel
             finally
             {
                 semaphore.Release();
-                
+
                 // Safely clean up semaphore - check if we can remove it atomically
-                if (_locks.TryGetValue(path, out var currentSemaphore) && 
-                    ReferenceEquals(currentSemaphore, semaphore) && 
+                if (_locks.TryGetValue(path, out var currentSemaphore) &&
+                    ReferenceEquals(currentSemaphore, semaphore) &&
                     semaphore.CurrentCount == 1)
                 {
                     _locks.TryRemove(path, out _);
@@ -137,7 +127,7 @@ namespace InfoPanel
             }
         }
 
-        private static void InitializeImage(string path)
+        private static void InitializeImage(string path, ImageDisplayItem? imageDisplayItem)
         {
             // Double-check cache after acquiring lock - another thread may have loaded it
             if (ImageCache.TryGetValue(path, out _))
@@ -166,6 +156,29 @@ namespace InfoPanel
             });
 
             Trace.WriteLine($"Image '{path}' loaded successfully");
+        }
+
+        public static void InvalidateImage(ImageDisplayItem imageDisplayItem)
+        {
+            var path = imageDisplayItem.CalculatedPath;
+            if (!string.IsNullOrEmpty(path))
+            {
+                var semaphore = _locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+
+                try
+                {
+                    semaphore.Wait();
+                    ImageCache.Remove(path);
+                }
+                catch (Exception e)
+                {
+                    Trace.WriteLine($"Failed to acquire lock for invalidating image '{path}': {e}");
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }
         }
     }
 }

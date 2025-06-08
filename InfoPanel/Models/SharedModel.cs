@@ -1045,7 +1045,7 @@ namespace InfoPanel
                                 }
 
                                 var libreSensorId = SensorMapping.FindMatchingIdentifier(key) ?? "unknown";
-                                GraphDisplayItem graphDisplayItem = new(LBL, graphType.Value, libreSensorId)
+                                GraphDisplayItem graphDisplayItem = new(LBL, profile, graphType.Value, libreSensorId)
                                 {
                                     SensorName = key,
                                     Width = WID,
@@ -1082,7 +1082,7 @@ namespace InfoPanel
                         {
                             //var libreSensorId = SensorMapping.SensorPanel.GetStringValue(key, "unknown");
                             var libreSensorId = SensorMapping.FindMatchingIdentifier(key) ?? "unknown";
-                            GaugeDisplayItem gaugeDisplayItem = new(LBL, libreSensorId)
+                            GaugeDisplayItem gaugeDisplayItem = new(LBL, profile, libreSensorId)
                             {
                                 SensorName = key,
                                 MinValue = MINVAL,
@@ -1096,7 +1096,7 @@ namespace InfoPanel
 
                             foreach (var image in STAFLS.Split('|'))
                             {
-                                ImageDisplayItem imageDisplayItem = new(image, profile.Guid, image, true);
+                                ImageDisplayItem imageDisplayItem = new(image, profile, image, true);
                                 gaugeDisplayItem.Images.Add(imageDisplayItem);
                             }
 
@@ -1129,7 +1129,7 @@ namespace InfoPanel
                             var result = await FileUtil.SaveAsset(profile, IMGFIL, data);
                             if (result)
                             {
-                                ImageDisplayItem imageDisplayItem = new(IMGFIL, profile.Guid, IMGFIL, true)
+                                ImageDisplayItem imageDisplayItem = new(IMGFIL, profile, IMGFIL, true)
                                 {
                                     X = ITMX,
                                     Y = ITMY,
@@ -1149,7 +1149,7 @@ namespace InfoPanel
                                 //do nothing
                                 break;
                             case "LBL":
-                                TextDisplayItem textDisplayItem = new(LBL)
+                                TextDisplayItem textDisplayItem = new(LBL, profile)
                                 {
                                     Font = FNTNAM,
                                     FontSize = TXTSIZ,
@@ -1164,7 +1164,7 @@ namespace InfoPanel
                                 break;
                             case "SDATE":
                                 {
-                                    CalendarDisplayItem calendarDisplayItem = new(LBL)
+                                    CalendarDisplayItem calendarDisplayItem = new(LBL, profile)
                                     {
                                         Font = FNTNAM,
                                         FontSize = TXTSIZ,
@@ -1183,7 +1183,7 @@ namespace InfoPanel
                             case "STIME":
                             case "STIMENS":
                                 {
-                                    ClockDisplayItem clockDisplayItem = new(LBL)
+                                    ClockDisplayItem clockDisplayItem = new(LBL, profile)
                                     {
                                         Font = FNTNAM,
                                         FontSize = TXTSIZ,
@@ -1220,7 +1220,7 @@ namespace InfoPanel
                                             }
                                         }
 
-                                        TextDisplayItem label = new TextDisplayItem(LBL)
+                                        TextDisplayItem label = new TextDisplayItem(LBL, profile)
                                         {
                                             Font = FNTNAM,
                                             FontSize = TXTSIZ,
@@ -1254,7 +1254,7 @@ namespace InfoPanel
                                             }
                                         }
 
-                                        SensorDisplayItem sensorDisplayItem = new(LBL, libreSensorId)
+                                        SensorDisplayItem sensorDisplayItem = new(LBL, profile, libreSensorId)
                                         {
                                             SensorName = key,
                                             Font = FNTNAM,
@@ -1332,7 +1332,7 @@ namespace InfoPanel
                                             }
                                         }
 
-                                        BarDisplayItem barDisplayItem = new(LBL, libreSensorId)
+                                        BarDisplayItem barDisplayItem = new(LBL, profile, libreSensorId)
                                         {
                                             SensorName = key,
                                             Width = BARWID,
@@ -1592,6 +1592,14 @@ namespace InfoPanel
 
             lock (_displayItemsLock)
             {
+                foreach(var displayItem in displayItems)
+                {
+                   if(displayItem is ImageDisplayItem imageDisplayItem)
+                    {
+                        Cache.InvalidateImage(imageDisplayItem);
+                    }
+                }
+
                 displayItems.Clear();
 
                 if (LoadDisplayItemsFromFile(profile) is List<DisplayItem> items)
@@ -1619,7 +1627,7 @@ namespace InfoPanel
                     {
                         foreach (var displayItem in displayItems)
                         {
-                            displayItem.SetProfileGuid(profile.Guid);
+                            displayItem.SetProfile(profile);
                         }
 
                         return displayItems;

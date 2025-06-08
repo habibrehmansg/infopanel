@@ -189,19 +189,19 @@ namespace InfoPanel.Models
             Name = "Gauge";
         }
 
-        public GaugeDisplayItem(string name) : base(name)
+        public GaugeDisplayItem(string name, Profile profile) : base(name, profile)
         {
             SensorName = name;
         }
 
-        public GaugeDisplayItem(string name, string libreSensorId) : base(name)
+        public GaugeDisplayItem(string name, Profile profile, string libreSensorId) : base(name, profile)
         {
             SensorName = name;
             SensorType = SensorType.Libre;
             LibreSensorId = libreSensorId;
         }
 
-        public GaugeDisplayItem(string name, UInt32 id, UInt32 instance, UInt32 entryId) : base(name)
+        public GaugeDisplayItem(string name, Profile profile, UInt32 id, UInt32 instance, UInt32 entryId) : base(name, profile)
         {
             SensorName = name;
             SensorType = SensorType.HwInfo;
@@ -331,13 +331,13 @@ namespace InfoPanel.Models
             return (Name, "#000000");
         }
 
-        public override void SetProfileGuid(Guid profileGuid)
+        public override void SetProfile(Profile profile)
         {
-            ProfileGuid = profileGuid;
+            base.SetProfile(profile);
 
             foreach (var imageDisplayItem in Images)
             {
-                imageDisplayItem.SetProfileGuid(profileGuid);
+                imageDisplayItem.SetProfile(profile);
             }
         }
 

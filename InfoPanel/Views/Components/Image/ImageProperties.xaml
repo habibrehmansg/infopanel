@@ -236,11 +236,12 @@
 
                 <StackPanel Grid.Column="2" Margin="10,0,0,0">
                     <Slider
+                        x:Name="VolumeSlider"
                         Margin="0,0,0,0"
                         IsSnapToTickEnabled="True"
                         Maximum="100"
                         TickFrequency="1"
-                        Value="{Binding Volume}" />
+                        Value="{Binding Volume, Delay=300}" />
 
                     <Grid Margin="5,0,5,0">
                         <Grid.ColumnDefinitions>
@@ -258,7 +259,7 @@
                             Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                            Text="{Binding Volume, Mode=OneWay}" />
+                            Text="{Binding Value, ElementName=VolumeSlider, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
             </Grid>

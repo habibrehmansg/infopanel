@@ -4,11 +4,12 @@ using Microsoft.Extensions.Caching.Memory;
 using SkiaSharp;
 using Svg.Skia;
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
-using unvell.D2DLib;
 
 namespace InfoPanel.Models
 {
@@ -20,6 +21,7 @@ namespace InfoPanel.Models
         }
 
         public readonly string ImagePath;
+        private readonly ConcurrentDictionary<Guid, ImageDisplayItem> imageDisplayItems = [];
 
         private readonly TypedMemoryCache<SKImageFrameSlot[]> SKImageMemoryCache = new(new MemoryCacheOptions()
         {
@@ -109,6 +111,7 @@ namespace InfoPanel.Models
                         Height = _backgroundVideoPlayer.Height;
                         Frames = _backgroundVideoPlayer.TotalFrames;
                         TotalFrameTime = (long)_backgroundVideoPlayer.Duration.TotalMilliseconds;
+
                         Loaded = true;
                         return;
                     }
@@ -220,6 +223,64 @@ namespace InfoPanel.Models
             {
                 Trace.WriteLine($"Error initializing LockedImage: {e.Message}");
             }
+        }
+
+        public void AddImageDisplayItem(ImageDisplayItem item)
+        {
+            if (imageDisplayItems.TryAdd(item.Guid, item))
+            {
+
+                item.Profile.PropertyChanged += Profile_PropertyChanged;
+                item.PropertyChanged += ImageDisplayItem_PropertyChanged;
+
+                UpdateVolume();
+            }
+        }
+
+        public void RemoveImageDisplayItem(ImageDisplayItem item)
+        {
+          if(imageDisplayItems.TryRemove(item.Guid, out _))
+            {
+                item.Profile.PropertyChanged -= Profile_PropertyChanged;
+                item.PropertyChanged -= ImageDisplayItem_PropertyChanged;
+
+                UpdateVolume();
+            }
+        }
+
+        private void Profile_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(Profile.Active):
+                    UpdateVolume();
+                    break;
+            }
+        }
+
+        private void ImageDisplayItem_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(ImageDisplayItem.Volume):
+                case nameof(ImageDisplayItem.Hidden):
+                    UpdateVolume();
+                    break;
+            }
+        }
+
+        private void UpdateVolume()
+        {
+            int volume = 0;
+            foreach (var item in imageDisplayItems.Values)
+            {
+                if(item.Profile.Active && !item.Hidden && item.Volume > volume)
+                {
+                   volume = item.Volume;
+                }
+            }
+
+            Volume = volume / 100f;
         }
 
         private static bool IsSvgContent(Stream stream)
@@ -558,6 +619,15 @@ namespace InfoPanel.Models
                     _compositeBitmap?.Dispose();
 
                     Stopwatch.Stop();
+
+                    foreach (var item in imageDisplayItems.Values)
+                    {
+                        item.Profile.PropertyChanged -= Profile_PropertyChanged;
+                        item.PropertyChanged -= ImageDisplayItem_PropertyChanged;
+                    }
+
+                    imageDisplayItems.Clear();
+
                     IsDisposed = true;
                     Trace.WriteLine($"LockedImage {ImagePath} disposed.");
                 }

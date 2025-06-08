@@ -26,7 +26,7 @@ namespace InfoPanel.Drawing
             _selectionStopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null, GRContext? grContext = null)
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -279,14 +279,13 @@ namespace InfoPanel.Drawing
                         var scaledWidth = (int)size.Width;
                         var scaledHeight = (int)size.Height;
 
+                        scaledWidth = (int)Math.Ceiling(scaledWidth * scale);
+                        scaledHeight = (int)Math.Ceiling(scaledHeight * scale);
+
                         if (scaledWidth <= 0 || scaledHeight <= 0)
                         {
                             return;
                         }
-
-
-                        scaledWidth = (int)Math.Ceiling(scaledWidth * scale);
-                        scaledHeight = (int)Math.Ceiling(scaledHeight * scale);
 
                         if (cachedImage != null)
                         {

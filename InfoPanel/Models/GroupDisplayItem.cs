@@ -81,12 +81,13 @@ namespace InfoPanel.Models
             return (EvaluateText(), EvaluateColor());
         }
 
-        public override void SetProfileGuid(Guid profileGuid)
+        public override void SetProfile(Profile profile)
         {
-            ProfileGuid = profileGuid;
+            base.SetProfile(profile);
+            ;
             foreach (var displayItem in DisplayItems)
             {
-                displayItem.SetProfileGuid(profileGuid);
+                displayItem.SetProfile(profile);
             }
         }
     }

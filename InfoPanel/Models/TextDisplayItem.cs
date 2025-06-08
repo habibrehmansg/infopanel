@@ -138,7 +138,7 @@ namespace InfoPanel.Models
         {
         }
 
-        public TextDisplayItem(string name) : base(name) { }
+        public TextDisplayItem(string name, Profile profile) : base(name, profile) { }
 
 
         public override string EvaluateText()
@@ -179,12 +179,6 @@ namespace InfoPanel.Models
 
             return new SKRect(rectX, Y, rectX + size.Width, Y + size.Height);
         }
-
-        public override void SetProfileGuid(Guid profileGuid)
-        {
-            ProfileGuid = profileGuid;
-        }
-
         public override object Clone()
         {
             var clone = (DisplayItem)MemberwiseClone();
@@ -215,7 +209,7 @@ namespace InfoPanel.Models
         {
         }
 
-        public ClockDisplayItem(string name) : base(name) { }
+        public ClockDisplayItem(string name, Profile profile) : base(name, profile) { }
 
 
         public override string EvaluateText()
@@ -253,7 +247,7 @@ namespace InfoPanel.Models
         {
         }
 
-        public CalendarDisplayItem(string name) : base(name) { }
+        public CalendarDisplayItem(string name, Profile profile) : base(name, profile) { }
 
         public override string EvaluateText()
         {

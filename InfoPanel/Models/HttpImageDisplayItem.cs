@@ -124,11 +124,11 @@ namespace InfoPanel.Models
         public HttpImageDisplayItem(): base()
         { }
 
-        public HttpImageDisplayItem(string name, Guid profileGuid) : base(name, profileGuid)
+        public HttpImageDisplayItem(string name, Profile profile) : base(name, profile)
         {
             SensorName = name;
         }
-        public HttpImageDisplayItem(string name, Guid profileGuid, uint id, uint instance, uint entryId) : base(name, profileGuid)
+        public HttpImageDisplayItem(string name, Profile profile, uint id, uint instance, uint entryId) : base(name, profile)
         {
             SensorName = name;
             SensorType = SensorType.HwInfo;
@@ -137,7 +137,7 @@ namespace InfoPanel.Models
             EntryId = entryId;
         }
 
-        public HttpImageDisplayItem(string name, Guid profileGuid, string libreSensorId) : base(name, profileGuid)
+        public HttpImageDisplayItem(string name, Profile profile, string libreSensorId) : base(name, profile)
         {
             SensorName = name;
             SensorType = SensorType.Libre;

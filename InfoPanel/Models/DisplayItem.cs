@@ -12,7 +12,10 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
     public Guid Guid { get; set; } = Guid.NewGuid();
 
     [XmlIgnore]
-    public Guid ProfileGuid { get; set; }
+    public Profile Profile { get; private set; }
+
+    [XmlIgnore]
+    public Guid ProfileGuid => Profile.Guid;
 
     private bool _selected;
 
@@ -97,15 +100,10 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
         _name = "DisplayItem";
     }
 
-    protected DisplayItem(string name)
+    protected DisplayItem(string name, Profile profile)
     {
         _name = name;
-    }
-
-    protected DisplayItem(string name, Guid profileGuid)
-    {
-        _name = name;
-        ProfileGuid = profileGuid;
+        Profile = profile;
     }
 
     private int _x = 100;
@@ -130,7 +128,10 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
     [ObservableProperty]
     private int _rotation = 0;
 
-    public abstract void SetProfileGuid(Guid profileGuid);
+    public virtual void SetProfile(Profile profile)
+    {
+        Profile = profile;
+    }
 
     public abstract string EvaluateText();
 

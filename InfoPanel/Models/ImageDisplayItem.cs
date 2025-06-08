@@ -30,16 +30,6 @@ namespace InfoPanel.Models
             set { /* Do nothing, as this is always writable */ }
         }
 
-        public new bool Hidden
-        {
-            get => base.Hidden;
-            set
-            {
-                base.Hidden = value;
-                UpdateVolume();
-            }
-        }
-
         [ObservableProperty]
         private bool _showPanel = false;
 
@@ -66,34 +56,8 @@ namespace InfoPanel.Models
             }
         }
 
+        [ObservableProperty]
         private int _volume = 0;
-
-        public int Volume
-        {
-            get { return _volume; }
-            set
-            {
-                SetProperty(ref _volume, value);
-                //UpdateVolume();
-            }
-        }
-
-        private void UpdateVolume()
-        {
-            var lockedImage = InfoPanel.Cache.GetLocalImage(this, false);
-
-            if (lockedImage != null)
-            {
-                if (Volume <= 0 || Hidden)
-                {
-                    lockedImage.Volume = 0;
-                }
-                else
-                {
-                    lockedImage.Volume = Volume / 100.0f;
-                }
-            }
-        }
 
         private string? _rtspUrl;
 
@@ -227,13 +191,11 @@ namespace InfoPanel.Models
         public ImageDisplayItem()
         { }
 
-        public ImageDisplayItem(string name, Guid profileGuid) : base()
+        public ImageDisplayItem(string name, Profile profile) : base(name, profile)
         {
-            this.Name = name;
-            this.ProfileGuid = profileGuid;
         }
 
-        public ImageDisplayItem(string name, Guid profileGuid, string filePath, bool relativePath) : base(name, profileGuid)
+        public ImageDisplayItem(string name, Profile profile, string filePath, bool relativePath) : base(name, profile)
         {
             this.FilePath = filePath;
             this.RelativePath = relativePath;
@@ -299,10 +261,6 @@ namespace InfoPanel.Models
             var clone = (DisplayItem)MemberwiseClone();
             clone.Guid = Guid.NewGuid();
             return clone;
-        }
-        public override void SetProfileGuid(Guid profileGuid)
-        {
-            ProfileGuid = profileGuid;
         }
     }
 }
