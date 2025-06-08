@@ -92,7 +92,7 @@ namespace InfoPanel.Extras
             }
             catch
             {
-                Trace.WriteLine("IpifyPlugin: Failed to get IPv6");
+                //Trace.WriteLine("IpifyPlugin: Failed to get IPv6");
             }
 
             try
@@ -102,7 +102,7 @@ namespace InfoPanel.Extras
             }
             catch
             {
-                Trace.WriteLine("IpifyPlugin: Failed to get IPv6");
+                //Trace.WriteLine("IpifyPlugin: Failed to get IPv6");
             }
         }
 
