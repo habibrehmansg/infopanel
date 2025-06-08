@@ -108,29 +108,49 @@ namespace InfoPanel
             }
 
             // Start async initialization without blocking
-            Task.Run(() => InitializeImage(path, semaphore));
+            _ = Task.Run(() => InitializeImageSafe(path, semaphore));
 
             return null; // Return null immediately while initializing
         }
 
-        private static void InitializeImage(string path, SemaphoreSlim semaphore)
+        private static void InitializeImageSafe(string path, SemaphoreSlim semaphore)
         {
             try
             {
-                // Double-check cache after we start (but we already hold the lock)
-                if (ImageCache.TryGetValue(path, out _))
+                InitializeImage(path);
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLine($"Failed to load image '{path}': {e}");
+            }
+            finally
+            {
+                semaphore.Release();
+                
+                // Safely clean up semaphore - check if we can remove it atomically
+                if (_locks.TryGetValue(path, out var currentSemaphore) && 
+                    ReferenceEquals(currentSemaphore, semaphore) && 
+                    semaphore.CurrentCount == 1)
                 {
-                    return; // Already cached somehow
+                    _locks.TryRemove(path, out _);
                 }
+            }
+        }
 
-                var cachedImage = new LockedImage(path);
+        private static void InitializeImage(string path)
+        {
+            // Double-check cache after acquiring lock - another thread may have loaded it
+            if (ImageCache.TryGetValue(path, out _))
+            {
+                return; // Already cached by another thread
+            }
 
-                if (cachedImage != null)
-                {
-                    ImageCache.Set(path, cachedImage, new MemoryCacheEntryOptions
-                    {
-                        SlidingExpiration = TimeSpan.FromSeconds(10),
-                        PostEvictionCallbacks = {
+            var cachedImage = new LockedImage(path);
+
+            ImageCache.Set(path, cachedImage, new MemoryCacheEntryOptions
+            {
+                SlidingExpiration = TimeSpan.FromSeconds(10),
+                PostEvictionCallbacks = {
                     new PostEvictionCallbackRegistration
                     {
                         EvictionCallback = (key, value, reason, state) =>
@@ -143,30 +163,9 @@ namespace InfoPanel
                         }
                     }
                 }
-                    });
+            });
 
-                    Trace.WriteLine($"Image '{path}' loaded successfully");
-                }
-            }
-            catch (Exception e)
-            {
-                Trace.WriteLine($"Failed to load image '{path}': {e}");
-            }
-            finally
-            {
-                // NOW release the semaphore
-                semaphore.Release();
-
-                // Clean up semaphore if no one else is waiting
-                if (semaphore.CurrentCount == 1)
-                {
-                    _locks.TryRemove(path, out _);
-                }
-            }
+            Trace.WriteLine($"Image '{path}' loaded successfully");
         }
-
-
     }
-
-
 }
