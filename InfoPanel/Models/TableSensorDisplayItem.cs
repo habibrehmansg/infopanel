@@ -34,12 +34,12 @@ namespace InfoPanel.Models
             SensorName = string.Empty;
         }
 
-        public TableSensorDisplayItem(string name) : base(name)
+        public TableSensorDisplayItem(string name, Profile profile) : base(name, profile)
         {
             SensorName = name;
         }
 
-        public TableSensorDisplayItem(string name, string pluginSensorId) : base(name)
+        public TableSensorDisplayItem(string name, Profile profile, string pluginSensorId) : base(name, profile)
         {
             SensorName = name;
             SensorType = Enums.SensorType.Plugin;

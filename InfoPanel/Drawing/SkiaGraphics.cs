@@ -16,7 +16,7 @@ namespace InfoPanel.Drawing
 {
     internal partial class SkiaGraphics(SKCanvas canvas, float fontScale = 1.33f) : MyGraphics
     {
-        private readonly SKCanvas Canvas = canvas;
+        public readonly SKCanvas Canvas = canvas;
         private readonly GRContext? GRContext = canvas.Context as GRContext;
         private readonly float FontScale = fontScale;
 
@@ -28,34 +28,14 @@ namespace InfoPanel.Drawing
             return new SkiaGraphics(canvas);
         }
 
-        public override void Clear(Color color)
+        public override void Clear(SKColor color)
         {
-            this.Canvas.Clear(new SKColor(color.R, color.G, color.B, color.A));
+            this.Canvas.Clear(color);
         }
 
         public override void Dispose()
         {
             this.Canvas.Dispose();
-        }
-
-        public override void DrawBitmap(Bitmap bitmap, int x, int y)
-        {
-        }
-
-        public override void DrawBitmap(Bitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
-        {
-        }
-
-        public override void DrawBitmap(D2DBitmap bitmap, int x, int y)
-        {
-        }
-
-        public override void DrawBitmap(D2DBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
-        {
-        }
-
-        public override void DrawBitmap(D2DBitmapGraphics bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
-        {
         }
 
         public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
@@ -100,7 +80,7 @@ namespace InfoPanel.Drawing
 
         public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default")
         {
-            if (lockedImage.IsSvg)
+            if (lockedImage.Type == LockedImage.ImageType.SVG)
             {
                 lockedImage.AccessSVG(picture =>
                 {

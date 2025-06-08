@@ -98,7 +98,7 @@ namespace InfoPanel.Views.Components
                             {
                                 var fileName = Path.GetFileName(file);
                                 File.Copy(file, Path.Combine(imageFolder, fileName), true);
-                                var imageDisplayItem = new ImageDisplayItem(fileName, profile.Guid, fileName, true);
+                                var imageDisplayItem = new ImageDisplayItem(fileName, profile, fileName, true);
 
                                 customDisplayItem.Images.Add(imageDisplayItem);
                             }

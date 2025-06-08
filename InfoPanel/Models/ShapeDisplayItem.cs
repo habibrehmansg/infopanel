@@ -84,10 +84,9 @@ namespace InfoPanel.Models
         {
             // Default constructor
         }
-
-        public ShapeDisplayItem(string name) : base(name)
+        public ShapeDisplayItem(string name, Profile profile) : base(name, profile)
         {
-            Name = name;
+            // Constructor with parameters
         }
 
         public int GetGradientAnimationOffset()
@@ -147,11 +146,6 @@ namespace InfoPanel.Models
         public override (string, string) EvaluateTextAndColor()
         {
             return (EvaluateText(), EvaluateColor());
-        }
-
-        public override void SetProfileGuid(Guid profileGuid)
-        {
-            this.ProfileGuid = profileGuid;
         }
     }
 }

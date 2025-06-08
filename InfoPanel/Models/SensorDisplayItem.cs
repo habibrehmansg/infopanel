@@ -257,19 +257,19 @@ namespace InfoPanel.Models
             SensorName = string.Empty;
         }
 
-        public SensorDisplayItem(string name) : base(name)
+        public SensorDisplayItem(string name, Profile profile) : base(name, profile)
         {
             SensorName = name;
         }
 
-        public SensorDisplayItem(string name, string libreSensorId) : base(name)
+        public SensorDisplayItem(string name, Profile profile, string libreSensorId) : base(name, profile)
         {
             SensorName = name;
             SensorType = Enums.SensorType.Libre;
             LibreSensorId = libreSensorId;
         }
 
-        public SensorDisplayItem(string name, uint id, uint instance, uint entryId) : base(name)
+        public SensorDisplayItem(string name, Profile profile, uint id, uint instance, uint entryId) : base(name, profile)
         {
             SensorName = name;
             SensorType = Enums.SensorType.HwInfo;

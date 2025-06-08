@@ -1,4 +1,5 @@
-﻿using InfoPanel.Models;
+﻿using InfoPanel.Extensions;
+using InfoPanel.Models;
 using InfoPanel.Plugins;
 using InfoPanel.Utils;
 using SkiaSharp;
@@ -6,8 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
-using System.Drawing;
-using System.Numerics;
+using System.Windows.Controls;
 
 namespace InfoPanel.Drawing
 {
@@ -26,13 +26,16 @@ namespace InfoPanel.Drawing
             _selectionStopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null, GRContext? grContext = null)
+        public static void Run(Profile profile, MyGraphics g, bool drawSelected = true, double scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
         {
             var stopwatch = Stopwatch.StartNew();
 
             List<SelectedRectangle> selectedRectangles = [];
 
-            g.Clear(ColorTranslator.FromHtml(profile.BackgroundColor));
+            if (SKColor.TryParse(profile.BackgroundColor, out var backgroundColor))
+            {
+                g.Clear(backgroundColor);
+            }
 
             foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))
             {
@@ -84,7 +87,8 @@ namespace InfoPanel.Drawing
                             }
                         }
                     }
-                }else
+                }
+                else
                 {
                     Trace.WriteLine("Fail to parse color");
                 }
@@ -96,7 +100,7 @@ namespace InfoPanel.Drawing
             {
                 var renderingEngine = "CPU";
 
-                if(g is SkiaGraphics skiaGraphics && skiaGraphics.OpenGL)
+                if (g is SkiaGraphics skiaGraphics && skiaGraphics.OpenGL)
                 {
                     renderingEngine = "OpenGL";
                 }
@@ -109,11 +113,10 @@ namespace InfoPanel.Drawing
                 var rect = new SKRect(0, 0, profile.Width, 15);
 
                 g.FillRectangle("#84000000", (int)rect.Left, (int)rect.Top, (int)rect.Width, (int)rect.Height);
-                g.DrawString(profile.Name, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left + 1, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height);
-                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00",(int)rect.Left, (int)rect.Top, width: (int)rect.Width - 1, height: (int)rect.Height, rightAlign: true);
+                g.DrawString(profile.Name, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left + 5, (int)rect.Top, width: (int)rect.Width, height: (int)rect.Height);
+                g.DrawString(text, font, fontStyle, fontSize, "#FF00FF00", (int)rect.Left, (int)rect.Top, width: (int)rect.Width - 5, height: (int)rect.Height, rightAlign: true);
             }
         }
-
 
         public static SKPath? RectToPath(SKRect rect, int rotation, float maxWidth, float maxHeight, float penWidth = 2)
         {
@@ -279,6 +282,11 @@ namespace InfoPanel.Drawing
                         scaledWidth = (int)Math.Ceiling(scaledWidth * scale);
                         scaledHeight = (int)Math.Ceiling(scaledHeight * scale);
 
+                        if (scaledWidth <= 0 || scaledHeight <= 0)
+                        {
+                            return;
+                        }
+
                         if (cachedImage != null)
                         {
                             g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, cache: imageDisplayItem.Cache && cache, cacheHint: cacheHint);
@@ -286,6 +294,87 @@ namespace InfoPanel.Drawing
                             if (imageDisplayItem.Layer)
                             {
                                 g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight, rotation: imageDisplayItem.Rotation);
+                            }
+
+                            if (imageDisplayItem.ShowPanel && cachedImage.CurrentTime != null && cachedImage.FrameRate != null && cachedImage.Duration != null && cachedImage.VideoPlayerStatus != null)
+                            {
+                                if (g is SkiaGraphics skiaGraphics)
+                                {
+                                    var canvas = skiaGraphics.Canvas;
+
+                                    // Calculate progress
+                                    var progress = cachedImage.Duration.Value.TotalMilliseconds > 0
+                                        ? cachedImage.CurrentTime.Value.TotalMilliseconds / cachedImage.Duration.Value.TotalMilliseconds
+                                        : 0;
+
+                                    // Rotation is already -180 to 180
+                                    var rotation = imageDisplayItem.Rotation;
+
+                                    // Round to nearest 90° to find which edge is at bottom
+                                    var nearestQuadrant = (int)Math.Round(rotation / 90f) * 90;
+
+                                    // Determine overlay width based on which edge is at bottom
+                                    var overlayWidth = (nearestQuadrant == 90 || nearestQuadrant == -90) ? scaledHeight : scaledWidth;
+
+                                    // Create overlay bitmap
+                                    using var overlayBitmap = CreateVideoOverlay(
+                                        overlayWidth,
+                                        progress,
+                                        cachedImage.CurrentTime.Value,
+                                        cachedImage.Duration.Value,
+                                        cachedImage.FrameRate.Value,
+                                        cachedImage.HasAudio,
+                                        cachedImage.VideoPlayerStatus.Value
+                                    );
+
+                                    // Draw overlay with rotation
+                                    canvas.Save();
+                                    try
+                                    {
+                                        var imageCenterX = x + scaledWidth / 2f;
+                                        var imageCenterY = y + scaledHeight / 2f;
+
+                                        // Apply image rotation
+                                        canvas.Translate(imageCenterX, imageCenterY);
+                                        canvas.RotateDegrees(rotation);
+
+                                        // Position overlay at bottom based on quadrant
+                                        var (overlayX, overlayY) = nearestQuadrant switch
+                                        {
+                                            0 => (-scaledWidth / 2f, scaledHeight / 2f - 40),          // Original bottom
+                                            90 => (-scaledHeight / 2f, scaledWidth / 2f - 40),         // Left edge is bottom
+                                            180 or -180 => (-scaledWidth / 2f, -scaledHeight / 2f),    // Top edge is bottom  
+                                            -90 => (-scaledHeight / 2f, scaledWidth / 2f - 40),        // Right edge is bottom (same Y as 90!)
+                                            _ => (-scaledWidth / 2f, scaledHeight / 2f - 40)
+                                        };
+
+                                        // Apply additional rotation to make overlay horizontal
+                                        canvas.RotateDegrees(-nearestQuadrant);
+
+                                        // Draw the overlay bitmap
+                                        using var overlayPaint = new SKPaint { IsAntialias = true };
+                                        var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Nearest);
+
+                                        using var image = SKImage.FromBitmap(overlayBitmap);
+
+                                        canvas.DrawImage(image, SKRect.Create(overlayX, overlayY, image.Width, image.Height), sampling, overlayPaint);
+
+                                    }
+                                    finally
+                                    {
+                                        canvas.Restore();
+                                    }
+                                }
+                            }
+
+                        }
+                        else
+                        {
+                            using var image = SKBitmapExtensions.CreateMaterialNoImageBitmap(scaledWidth, scaledHeight);
+
+                            if (image != null)
+                            {
+                                g.DrawBitmap(image, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation);
                             }
                         }
                         break;
@@ -322,48 +411,6 @@ namespace InfoPanel.Drawing
                         break;
                     }
                 case ChartDisplayItem chartDisplayItem:
-                    //if (g is CompatGraphics)
-                    //{
-                    //    var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
-                    //    var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
-                    //    using var graphBitmap = new Bitmap(chartDisplayItem.Width, chartDisplayItem.Height);
-                    //    using var g1 = CompatGraphics.FromBitmap(graphBitmap);
-                    //    GraphDraw.Run(chartDisplayItem, g1);
-
-                    //    if (chartDisplayItem.FlipX)
-                    //    {
-                    //        graphBitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
-                    //    }
-
-                    //    g.DrawBitmap(graphBitmap, x, y, width, height);
-                    //}
-                    //else
-                    if (g is AcceleratedGraphics acceleratedGraphics)
-                    {
-                        using var d2dGraphics = acceleratedGraphics.D2DDevice
-                            .CreateBitmapGraphics(chartDisplayItem.Width, chartDisplayItem.Height);
-
-                        if (d2dGraphics != null)
-                        {
-                            //d2dGraphics.SetDPI(96, 96);
-                            d2dGraphics.Antialias = true;
-
-                            if (chartDisplayItem.FlipX)
-                            {
-                                var flipMatrix = Matrix3x2.CreateScale(-1.0f, 1.0f) *
-                                     Matrix3x2.CreateTranslation(chartDisplayItem.Width, 0);
-                                d2dGraphics.SetTransform(flipMatrix);
-                            }
-
-                            using var g1 = AcceleratedGraphics.FromD2DGraphics(d2dGraphics, acceleratedGraphics);
-                            d2dGraphics.BeginRender();
-                            GraphDraw.Run(chartDisplayItem, g1);
-                            d2dGraphics.EndRender();
-
-                            g.DrawBitmap(d2dGraphics, chartDisplayItem.X, chartDisplayItem.Y, chartDisplayItem.Width, chartDisplayItem.Height);
-                        }
-                    }
-                    else if (g is SkiaGraphics)
                     {
                         var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Ceiling(chartDisplayItem.Width * scale);
                         var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Ceiling(chartDisplayItem.Height * scale);
@@ -382,9 +429,10 @@ namespace InfoPanel.Drawing
                         {
                             g.DrawBitmap(graphBitmap, x, y, width, height);
                         }
+
+                        break;
                     }
 
-                    break;
                 case ShapeDisplayItem shapeDisplayItem:
                     {
                         var width = scale == 1 ? (int)shapeDisplayItem.Width : (int)Math.Ceiling(shapeDisplayItem.Width * scale);
@@ -631,6 +679,87 @@ namespace InfoPanel.Drawing
             {
                 selectedRectangles.Add(new SelectedRectangle(displayItem.EvaluateBounds(), displayItem.Rotation));
             }
+        }
+
+        private static SKBitmap CreateVideoOverlay(float imageWidth, double progress, TimeSpan currentTime, TimeSpan duration, double frameRate, bool hasAudio, PlayerStatus playerStatus)
+        {
+            const int overlayHeight = 40;
+            var overlayBitmap = new SKBitmap((int)imageWidth, overlayHeight);
+            using var overlayCanvas = new SKCanvas(overlayBitmap);
+
+            // Draw gradient
+            var gradientRect = SKRect.Create(0, 0, imageWidth, overlayHeight);
+            using var gradientPaint = new SKPaint();
+            gradientPaint.Shader = SKShader.CreateLinearGradient(
+                new SKPoint(0, 0), new SKPoint(0, overlayHeight),
+                [SKColor.Parse("#00000000"), SKColor.Parse("#40000000"), SKColor.Parse("#90000000")],
+                [0.0f, 0.6f, 1.0f],
+                SKShaderTileMode.Clamp
+            );
+            overlayCanvas.DrawRect(gradientRect, gradientPaint);
+
+            // Progress bar dimensions
+            var progressBarHeight = 3f;
+            var progressBarY = overlayHeight - 28f;
+            var progressBarLeft = 12f;
+            var progressBarWidth = imageWidth - 24f;
+
+            var isLive = duration == TimeSpan.MaxValue;
+
+            // Draw background progress bar
+            using var backgroundPaint = new SKPaint { Color = SKColor.Parse("#4DFFFFFF"), IsAntialias = true };
+            var backgroundRect = SKRect.Create(progressBarLeft, progressBarY, progressBarWidth, progressBarHeight);
+            overlayCanvas.DrawRoundRect(backgroundRect, 1.5f, 1.5f, backgroundPaint);
+
+            // Draw progress
+            if (isLive || progress > 0)
+            {
+                using var progressPaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
+                var progressWidth = isLive ? progressBarWidth : (float)(progressBarWidth * Math.Min(progress, 1.0));
+                var progressRect = SKRect.Create(progressBarLeft, progressBarY, progressWidth, progressBarHeight);
+                overlayCanvas.DrawRoundRect(progressRect, 1.5f, 1.5f, progressPaint);
+
+                // Draw progress circle (only for non-live content)
+                if (!isLive && progress <= 1.0)
+                {
+                    var circleX = progressBarLeft + progressWidth;
+                    var circleY = progressBarY + (progressBarHeight / 2f);
+
+                    using var circlePaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
+                    overlayCanvas.DrawCircle(circleX, circleY, 5f, circlePaint);
+
+                    using var circleBorderPaint = new SKPaint { Color = SKColors.White, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f };
+                    overlayCanvas.DrawCircle(circleX, circleY, 5f, circleBorderPaint);
+                }
+            }
+
+           if (isLive)
+            {
+                // Draw LIVE indicator
+                using var liveFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 12f);
+                using var livePaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
+                overlayCanvas.DrawText(playerStatus == PlayerStatus.Playing ? "LIVE" : "CONNECTING..", progressBarLeft, overlayHeight - 8f, liveFont, livePaint);
+            }
+            else
+            {
+                // Draw time display for non-live content
+                var timeDisplay = $"{currentTime:hh\\:mm\\:ss\\.fff} / {duration:hh\\:mm\\:ss\\.fff}";
+                using var timeFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 12f);
+                using var timePaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
+                overlayCanvas.DrawText(timeDisplay, progressBarLeft, overlayHeight - 8f, timeFont, timePaint);
+            }
+
+            // Draw right side display (framerate and audio status)
+            var volumeIcon = hasAudio ? "STEREO" : "MUTE";
+            var frameRateText = $"{frameRate:F0}fps";
+            var rightDisplayText = $"{frameRateText} | {volumeIcon}";
+
+            using var rightFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 11f);
+            using var rightPaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
+            var rightTextWidth = rightFont.MeasureText(rightDisplayText);
+            overlayCanvas.DrawText(rightDisplayText, progressBarLeft + progressBarWidth - rightTextWidth, overlayHeight - 8f, rightFont, rightPaint);
+
+            return overlayBitmap;
         }
 
 

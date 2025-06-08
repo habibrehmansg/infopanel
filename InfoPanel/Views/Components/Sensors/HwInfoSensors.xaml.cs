@@ -120,9 +120,9 @@ namespace InfoPanel.Views.Components
 
         private void ButtonSelect_Click(object sender, RoutedEventArgs e)
         {
-            if(ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
+            if(ViewModel.SelectedItem is HwInfoSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new SensorDisplayItem(sensorItem.Name, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId)
+                var item = new SensorDisplayItem(sensorItem.Name, selectedProfile, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId)
                 {
                     Font = SharedModel.Instance.SelectedProfile!.Font,
                     FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
@@ -179,36 +179,36 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddGraph_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new GraphDisplayItem(sensorItem.Name, GraphDisplayItem.GraphType.LINE, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
+                var item = new GraphDisplayItem(sensorItem.Name, selectedProfile, GraphDisplayItem.GraphType.LINE, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
 
         private void ButtonAddBar_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new BarDisplayItem(sensorItem.Name, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
+                var item = new BarDisplayItem(sensorItem.Name, selectedProfile, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
 
         private void ButtonAddDonut_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new DonutDisplayItem(sensorItem.Name, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
+                var item = new DonutDisplayItem(sensorItem.Name, selectedProfile, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
 
         private void ButtonAddCustom_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem)
+            if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new GaugeDisplayItem(sensorItem.Name, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
+                var item = new GaugeDisplayItem(sensorItem.Name, selectedProfile, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId);
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
@@ -217,7 +217,7 @@ namespace InfoPanel.Views.Components
         {
             if (ViewModel.SelectedItem is HwInfoSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile.Guid, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId)
+                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile, sensorItem.ParentId, sensorItem.ParentInstance, sensorItem.SensorId)
                 {
                     Width = 100,
                     Height = 100,

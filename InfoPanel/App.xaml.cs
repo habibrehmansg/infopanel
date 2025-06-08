@@ -175,7 +175,7 @@ namespace InfoPanel
                 SharedModel.Instance.SelectedProfile = profile;
                 ConfigModel.Instance.SaveProfiles();
 
-                var textDisplayItem = new TextDisplayItem("Go to Design tab to start your journey.");
+                var textDisplayItem = new TextDisplayItem("Go to Design tab to start your journey.", profile);
                 textDisplayItem.X = 50;
                 textDisplayItem.Y = 100;
                 textDisplayItem.Font = "Arial";
@@ -183,7 +183,7 @@ namespace InfoPanel
 
                 SharedModel.Instance.AddDisplayItem(textDisplayItem);
 
-                textDisplayItem = new TextDisplayItem("Drag this panel to reposition.");
+                textDisplayItem = new TextDisplayItem("Drag this panel to reposition.", profile);
                 textDisplayItem.X = 50;
                 textDisplayItem.Y = 150;
                 textDisplayItem.Font = "Arial";

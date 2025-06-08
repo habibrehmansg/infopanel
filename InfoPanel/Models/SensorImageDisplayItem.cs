@@ -109,11 +109,11 @@ namespace InfoPanel.Models
         public SensorImageDisplayItem(): base()
         { }
 
-        public SensorImageDisplayItem(string name, Guid profileGuid) : base(name, profileGuid)
+        public SensorImageDisplayItem(string name, Profile profile) : base(name, profile)
         {
             SensorName = name;
         }
-        public SensorImageDisplayItem(string name, Guid profileGuid, uint id, uint instance, uint entryId) : base(name, profileGuid)
+        public SensorImageDisplayItem(string name, Profile profile, uint id, uint instance, uint entryId) : base(name, profile)
         {
             SensorName = name;
             SensorType = SensorType.HwInfo;
@@ -122,7 +122,7 @@ namespace InfoPanel.Models
             EntryId = entryId;
         }
 
-        public SensorImageDisplayItem(string name, Guid profileGuid, string libreSensorId) : base(name, profileGuid)
+        public SensorImageDisplayItem(string name, Profile profile, string libreSensorId) : base(name, profile)
         {
             SensorName = name;
             SensorType = SensorType.Libre;

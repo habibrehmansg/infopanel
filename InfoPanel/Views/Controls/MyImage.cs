@@ -13,20 +13,20 @@ namespace InfoPanel.Views.Controls
 {
     public class MyImage : Image
     {
-        public static readonly DependencyProperty ImagePathProperty =
-            DependencyProperty.Register(
-                "ImagePath",
-                typeof(string),
-                typeof(MyImage),
-                new PropertyMetadata(string.Empty, OnImagePathChanged));
+        public static readonly DependencyProperty ImageDisplayItemProperty =
+    DependencyProperty.Register(
+        nameof(ImageDisplayItem),  // Property name
+        typeof(ImageDisplayItem),   // Change to ImageDisplayItem type
+        typeof(MyImage),
+        new PropertyMetadata(null, OnImageDisplayItemChanged));
 
-        public string ImagePath
+        public ImageDisplayItem ImageDisplayItem
         {
-            get => (string)GetValue(ImagePathProperty);
-            set => SetValue(ImagePathProperty, value);
+            get => (ImageDisplayItem)GetValue(ImageDisplayItemProperty);
+            set => SetValue(ImageDisplayItemProperty, value);  // Add setter
         }
 
-        private readonly Timer Timer = new(TimeSpan.FromMilliseconds(33));
+        private readonly Timer Timer = new(TimeSpan.FromMilliseconds(41));
 
         public MyImage()
         {
@@ -34,26 +34,13 @@ namespace InfoPanel.Views.Controls
             Unloaded += MyImage_Unloaded;
         }
 
-        private static void OnImagePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnImageDisplayItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            if(d is MyImage myImage)
+            if (d is MyImage myImage)
             {
-                string newImagePath = (string)e.NewValue;
-
-                if (!string.IsNullOrEmpty(newImagePath))
+                if (e.NewValue is ImageDisplayItem imageDisplayItem)
                 {
-                    if (Cache.GetLocalImage(newImagePath) is LockedImage lockedImage)
-                    {
-                        if (lockedImage.Frames > 1)
-                        {
-                            myImage.Timer.Start();
-                        }
-                        else
-                        {
-                            myImage.Timer.Stop();
-                            myImage.Timer_Tick(null, null);
-                        }
-                    }
+                    myImage.Timer.Start();
                 }
                 else
                 {
@@ -77,66 +64,73 @@ namespace InfoPanel.Views.Controls
 
         private void Timer_Tick(object? sender, EventArgs? e)
         {
-            (string currentImagePath, int width, int height, ImageSource source) = Dispatcher.Invoke(() =>
+            (ImageDisplayItem imageDisplayItem, int width, int height, ImageSource source) = Dispatcher.Invoke(() =>
             {
-                return (ImagePath, (int)Width, (int)Height, Source);
+                return (ImageDisplayItem, (int)Width, (int)Height, Source);
             });
 
-            if (!string.IsNullOrEmpty(currentImagePath))
+            if(imageDisplayItem == null)
             {
-                var image = Cache.GetLocalImage(currentImagePath);
+                return;
+            }
 
-                WriteableBitmap? writeableBitmap = null;
+            var image = Cache.GetLocalImage(imageDisplayItem);
 
-                if (image != null)
+            WriteableBitmap? writeableBitmap = null;
+
+            if (image != null)
+            {
+                if (image.Type == LockedImage.ImageType.SVG)
                 {
-                    if (image.IsSvg)
+                    image.AccessSVG(picture =>
                     {
-                        image.AccessSVG(picture =>
-                        {
-                            var bounds = picture.CullRect;
-                            writeableBitmap = picture.ToWriteableBitmap(new SKSizeI((int)bounds.Width, (int)bounds.Height));
-                            writeableBitmap.Freeze();
-                        });
+                        var bounds = picture.CullRect;
+                        writeableBitmap = picture.ToWriteableBitmap(new SKSizeI((int)bounds.Width, (int)bounds.Height));
+                        writeableBitmap.Freeze();
+                    });
+                }
+                else
+                {
+                    double imageAspectRatio = (double)image.Width / image.Height;
+                    double containerAspectRatio = (double)width / height;
+
+                    int targetWidth, targetHeight;
+
+                    if (imageAspectRatio > containerAspectRatio)
+                    {
+                        // Image is wider relative to its height than the container
+                        // Fit to width, adjust height
+                        targetWidth = width;
+                        targetHeight = (int)Math.Ceiling(width / imageAspectRatio);
                     }
                     else
                     {
-                        double imageAspectRatio = (double)image.Width / image.Height;
-                        double containerAspectRatio = (double)width / height;
-
-                        int targetWidth, targetHeight;
-
-                        if (imageAspectRatio > containerAspectRatio)
-                        {
-                            // Image is wider relative to its height than the container
-                            // Fit to width, adjust height
-                            targetWidth = width;
-                            targetHeight = (int)Math.Ceiling(width / imageAspectRatio);
-                        }
-                        else
-                        {
-                            // Image is taller relative to its width than the container
-                            // Fit to height, adjust width
-                            targetWidth = (int)Math.Ceiling(height * imageAspectRatio);
-                            targetHeight = height;
-                        }
-
-                        image.AccessSK(targetWidth, targetHeight, bitmap =>
-                        {
-                            if (bitmap != null)
-                            {
-                                writeableBitmap = bitmap.ToWriteableBitmap();
-                                writeableBitmap.Freeze();
-                            }
-                        }, true, "MyImage");
+                        // Image is taller relative to its width than the container
+                        // Fit to height, adjust width
+                        targetWidth = (int)Math.Ceiling(height * imageAspectRatio);
+                        targetHeight = height;
                     }
+
+                    image.AccessSK(targetWidth, targetHeight, bitmap =>
+                    {
+                        if (bitmap != null)
+                        {
+                            writeableBitmap = bitmap.ToWriteableBitmap();
+                            writeableBitmap.Freeze();
+                        }
+                    }, true, "MyImage");
                 }
 
-                this.Dispatcher.Invoke(() =>
+                if(image.Frames <= 1 && sender is Timer timer)
                 {
-                    this.Source = writeableBitmap;
-                });
+                    timer.Stop();
+                }
             }
+
+            this.Dispatcher.Invoke(() =>
+            {
+                this.Source = writeableBitmap;
+            });
         }
 
 

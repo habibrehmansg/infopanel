@@ -127,5 +127,68 @@ namespace InfoPanel.Extensions
 
             return result;
         }
+
+        public static SKBitmap CreateMaterialNoImageBitmap(int width, int height)
+        {
+            var bitmap = new SKBitmap(width, height);
+            using var canvas = new SKCanvas(bitmap);
+
+            // Material background color
+            canvas.Clear(new SKColor(250, 250, 250));
+
+            using var borderPaint = new SKPaint()
+            {
+                Color = new SKColor(158, 158, 158),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 1,
+            };
+
+            canvas.DrawRect(SKRect.Create(width - 1, height - 1), borderPaint);
+
+            var centerX = width / 2f;
+            var centerY = height / 2f;
+            var minDimension = Math.Min(width, height);
+
+            // Draw material icon background circle
+            var circleRadius = minDimension * 0.15f;
+            using (var circlePaint = new SKPaint())
+            {
+                circlePaint.IsAntialias = true;
+                circlePaint.Color = new SKColor(224, 224, 224);
+                canvas.DrawCircle(centerX, centerY, circleRadius, circlePaint);
+            }
+
+            // Draw image icon
+            using (var iconPaint = new SKPaint())
+            {
+                iconPaint.IsAntialias = true;
+                iconPaint.Color = new SKColor(158, 158, 158);
+                iconPaint.StrokeWidth = 2;
+                iconPaint.Style = SKPaintStyle.Stroke;
+
+                var iconSize = circleRadius * 0.6f;
+                var iconLeft = centerX - iconSize / 2;
+                var iconTop = centerY - iconSize / 2;
+
+                // Draw image frame
+                canvas.DrawRect(iconLeft, iconTop, iconSize, iconSize, iconPaint);
+
+                // Draw mountain peaks
+                var path = new SKPath();
+                path.MoveTo(iconLeft + iconSize * 0.2f, iconTop + iconSize * 0.8f);
+                path.LineTo(iconLeft + iconSize * 0.4f, iconTop + iconSize * 0.5f);
+                path.LineTo(iconLeft + iconSize * 0.6f, iconTop + iconSize * 0.7f);
+                path.LineTo(iconLeft + iconSize * 0.8f, iconTop + iconSize * 0.4f);
+
+                iconPaint.Style = SKPaintStyle.Stroke;
+                canvas.DrawPath(path, iconPaint);
+
+                // Draw sun
+                iconPaint.Style = SKPaintStyle.Fill;
+                canvas.DrawCircle(iconLeft + iconSize * 0.75f, iconTop + iconSize * 0.25f, iconSize * 0.08f, iconPaint);
+            }
+
+            return bitmap;
+        }
     }
 }

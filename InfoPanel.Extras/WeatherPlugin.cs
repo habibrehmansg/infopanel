@@ -106,34 +106,37 @@ namespace InfoPanel.Extras
                 return;
             }
 
-            var result = await _current.GetWeatherDataByCityNameAsync(_city);
-
-            if (result != null)
+            try
             {
-                _name.Value = result.Name;
-                _weather.Value = result.Weathers[0].Main;
-                _weatherDesc.Value = result.Weathers[0].Description;
-                _weatherIcon.Value = result.Weathers[0].Icon;
-                _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weathers[0].Icon}@2x.png";
+                var result = await _current.GetWeatherDataByCityNameAsync(_city);
 
-                _temp.Value = result.WeatherDayInfo.Temperature;
-                _maxTemp.Value = result.WeatherDayInfo.MaximumTemperature;
-                _minTemp.Value = result.WeatherDayInfo.MinimumTemperature;
-                _pressure.Value = result.WeatherDayInfo.Pressure;
-                _seaLevel.Value = result.WeatherDayInfo.SeaLevel;
-                _groundLevel.Value = result.WeatherDayInfo.GroundLevel;
-                _feelsLike.Value = result.WeatherDayInfo.FeelsLike;
-                _humidity.Value = result.WeatherDayInfo.Humidity;
+                if (result != null)
+                {
+                    _name.Value = result.Name;
+                    _weather.Value = result.Weathers[0].Main;
+                    _weatherDesc.Value = result.Weathers[0].Description;
+                    _weatherIcon.Value = result.Weathers[0].Icon;
+                    _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weathers[0].Icon}@2x.png";
 
-                _windSpeed.Value = result.Wind.Speed;
-                _windDeg.Value = result.Wind.Degree;
-                _windGust.Value = result.Wind.Gust;
+                    _temp.Value = result.WeatherDayInfo.Temperature;
+                    _maxTemp.Value = result.WeatherDayInfo.MaximumTemperature;
+                    _minTemp.Value = result.WeatherDayInfo.MinimumTemperature;
+                    _pressure.Value = result.WeatherDayInfo.Pressure;
+                    _seaLevel.Value = result.WeatherDayInfo.SeaLevel;
+                    _groundLevel.Value = result.WeatherDayInfo.GroundLevel;
+                    _feelsLike.Value = result.WeatherDayInfo.FeelsLike;
+                    _humidity.Value = result.WeatherDayInfo.Humidity;
 
-                _clouds.Value = result.Clouds.All;
+                    _windSpeed.Value = result.Wind.Speed;
+                    _windDeg.Value = result.Wind.Degree;
+                    _windGust.Value = result.Wind.Gust;
 
-                _rain.Value = result.Rain.LastHour;
-                _snow.Value = result.Snow.LastHour;
-            }
+                    _clouds.Value = result.Clouds.All;
+
+                    _rain.Value = result.Rain.LastHour;
+                    _snow.Value = result.Snow.LastHour;
+                }
+            }catch(Exception e) { }
         }
     }
 }

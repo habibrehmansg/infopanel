@@ -189,10 +189,10 @@
                                 </Grid.ColumnDefinitions>
 
                                 <Label Grid.Column="0" HorizontalAlignment="Left">
-                                    <Image
+                                    <controls:MyImage
                                         Width="35"
                                         Height="35"
-                                        Source="{Binding CalculatedPath, Converter={StaticResource CacheImageConverter}, Mode=OneWay}" />
+                                        ImageDisplayItem="{Binding}" />
                                 </Label>
 
                                 <TextBlock
@@ -303,7 +303,7 @@
             Width="150"
             Height="150"
             Margin="10,0,0,0"
-            ImagePath="{Binding DisplayImage, Mode=OneWay}" />
+            ImageDisplayItem="{Binding DisplayImage, Mode=OneWay}" />
 
     </Grid>
 </UserControl>

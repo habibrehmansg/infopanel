@@ -42,30 +42,95 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Margin="0,0,0,0">
-                    <TextBox x:Name="TextBoxName" Text="{Binding Name}" />
-                    <TextBlock
-                        Margin="5,0,0,0"
-                        FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                        Text="Name" />
-                </StackPanel>
-                <ui:Button
-                    x:Name="ButtonSelect"
-                    Grid.Column="1"
-                    Margin="10,0,0,0"
-                    HorizontalAlignment="Stretch"
-                    VerticalAlignment="Top"
-                    Appearance="Primary"
-                    Click="ButtonSelect_Click"
-                    Content="Select Media"
-                    Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-            </Grid>
+            <ContentControl Grid.Row="0" Content="{Binding}">
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <!--  Default template for FILE type  -->
+                        <Setter Property="ContentTemplate">
+                            <Setter.Value>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                                            <TextBox IsReadOnly="True" Text="{Binding CalculatedPath, Mode=OneWay}" />
+                                            <TextBlock
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="Path" />
+                                        </StackPanel>
+                                        <ui:Button
+                                            x:Name="ButtonSelect"
+                                            Grid.Column="1"
+                                            Width="150"
+                                            Margin="10,0,0,0"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Top"
+                                            Appearance="Primary"
+                                            Click="ButtonSelect_Click"
+                                            Content="Select Media"
+                                            Visibility="{Binding ReadOnly, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </Setter.Value>
+                        </Setter>
+
+                        <!--  Trigger for RTSP type  -->
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Type}" Value="RTSP">
+                                <Setter Property="ContentTemplate">
+                                    <Setter.Value>
+                                        <DataTemplate>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                                                    <TextBox Text="{Binding RtspUrl}" />
+                                                    <TextBlock
+                                                        Margin="5,0,0,0"
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                        Text="RTSP Stream URL (tab to apply)" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+
+                            <DataTrigger Binding="{Binding Type}" Value="URL">
+                                <Setter Property="ContentTemplate">
+                                    <Setter.Value>
+                                        <DataTemplate>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                                                    <TextBox IsReadOnly="{Binding ReadOnly}" Text="{Binding HttpUrl}" />
+                                                    <TextBlock
+                                                        Margin="5,0,0,0"
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                        Text="HTTP/HTTPS URL (tab to apply)" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+
+
+                        </Style.Triggers>
+
+                    </Style>
+                </ContentControl.Style>
+            </ContentControl>
 
             <Grid Grid.Row="1" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
@@ -108,6 +173,7 @@
 
             <Grid Grid.Row="2" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
@@ -168,9 +234,35 @@
                     </Grid>
                 </StackPanel>
 
+                <StackPanel Grid.Column="2" Margin="10,0,0,0">
+                    <Slider
+                        x:Name="VolumeSlider"
+                        Margin="0,0,0,0"
+                        IsSnapToTickEnabled="True"
+                        Maximum="100"
+                        TickFrequency="1"
+                        Value="{Binding Volume, Delay=300}" />
 
+                    <Grid Margin="5,0,5,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="Volume" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Margin="0,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="{Binding Value, ElementName=VolumeSlider, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
             </Grid>
-
 
             <Grid Grid.Row="3" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
@@ -196,161 +288,213 @@
                 <controls:MyImage
                     Grid.Column="1"
                     Width="200"
-                    Height="75"
+                    Height="110"
                     Margin="10,0,0,0"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    ImagePath="{Binding CalculatedPath, Mode=OneWay}" />
+                    ImageDisplayItem="{Binding}" />
             </Grid>
-
-            <StackPanel
-                Grid.Row="4"
-                Margin="0,0,0,0"
-                Visibility="{Binding ReadOnlyFile, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
-                <CheckBox
-                    x:Name="CheckBoxCache"
-                    Margin="0,10,0,0"
-                    Content="Cache the image - Lower CPU usage but higher RAM."
-                    IsChecked="{Binding Cache}"
-                    Unchecked="CheckBoxCache_Unchecked" />
-            </StackPanel>
 
         </Grid>
 
         <Grid Grid.Column="1" Margin="10,0,0,0">
-            <ContentControl Content="{Binding}">
-                <ContentControl.Resources>
-                    <DataTemplate DataType="{x:Type models:HttpImageDisplayItem}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                        <TextBox x:Name="TextBoxName" Text="{Binding Name}" />
+                        <TextBlock
+                            Margin="5,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="Name" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="1"
+                        Margin="10,0,0,0"
+                        IsEnabled="{Binding ReadOnly, Converter={StaticResource InverseBooleanConverter}}">
+                        <ComboBox
+                            Name="ComboBoxType"
+                            Grid.Column="1"
+                            SelectedValue="{Binding Type}" />
+                        <TextBlock
+                            Margin="5,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Text="Type" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ui:CardControl
+                        Grid.Column="0"
+                        Margin="0,0,0,0"
+                        Visibility="{Binding Type, Converter={StaticResource EnumEqualsConverter}, ConverterParameter='FILE'}">
+                        <ui:CardControl.Header>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock FontSize="12" Text="Use Caching" />
+                            </StackPanel>
+                        </ui:CardControl.Header>
                         <StackPanel>
-                            <Grid Grid.Row="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBox
-                                        Margin="0,0,0,0"
-                                        IsReadOnly="True"
-                                        Text="{Binding SensorName}" />
-                                    <TextBlock
-                                        Margin="5,0,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                        Text="Sensor" />
-                                </StackPanel>
-                            </Grid>
+                            <ui:ToggleSwitch
+                                Margin="0,-5,0,-5"
+                                IsChecked="{Binding Cache}"
+                                Unchecked="CheckBoxCache_Unchecked" />
                         </StackPanel>
-                    </DataTemplate>
-                    <DataTemplate DataType="{x:Type models:SensorImageDisplayItem}">
+                    </ui:CardControl>
+                    <ui:CardControl Grid.Column="1" Margin="10,0,0,0">
+                        <ui:CardControl.Header>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock FontSize="12" Text="Show Panel" />
+                            </StackPanel>
+                        </ui:CardControl.Header>
                         <StackPanel>
+                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowPanel}" />
+                        </StackPanel>
+                    </ui:CardControl>
+                </Grid>
 
-                            <Grid Grid.Row="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBox
-                                        Margin="0,0,0,0"
-                                        IsReadOnly="True"
-                                        Text="{Binding SensorName}" />
-                                    <TextBlock
-                                        Margin="5,0,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                        Text="Sensor" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                                    <ComboBox
-                                        x:Name="ComboBoxValueType"
-                                        ItemsSource="{Binding Source={StaticResource EnumValues}}"
-                                        SelectedValue="{Binding ValueType}" />
-                                    <TextBlock
-                                        Margin="5,0,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                        Text="Reading" />
-                                </StackPanel>
-                            </Grid>
-
-
-
-                            <Grid Margin="0,15,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-
-                                <Grid Margin="0,0,0,0">
+                <ContentControl Margin="0,10,0,0" Content="{Binding}">
+                    <ContentControl.Resources>
+                        <DataTemplate DataType="{x:Type models:HttpImageDisplayItem}">
+                            <StackPanel>
+                                <Grid Grid.Row="1">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="auto" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel>
-                                        <ui:NumberBox
-                                            Name="NumberBoxThreshold1"
-                                            Margin="0,0,0,0"
-                                            FontSize="14"
-                                            MaxDecimalPlaces="3"
-                                            Minimum="0"
-                                            SmallChange="1"
-                                            Text="{Binding Threshold1}"
-                                            Value="{Binding Threshold1}" />
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="Show when ≥ Threshold #1" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="AND" />
-                                        </Grid>
-
-                                    </StackPanel>
-                                </Grid>
-
-
-                                <Grid Grid.Column="1" Margin="10,0,0,0">
-                                    <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="auto" />
                                     </Grid.ColumnDefinitions>
-
                                     <StackPanel>
-                                        <ui:NumberBox
-                                            Name="NumberBoxThreshold2"
+                                        <TextBox
                                             Margin="0,0,0,0"
-                                            FontSize="14"
-                                            MaxDecimalPlaces="3"
-                                            Minimum="0"
-                                            SmallChange="1"
-                                            Text="{Binding Threshold2}"
-                                            Value="{Binding Threshold2}" />
+                                            IsReadOnly="True"
+                                            Text="{Binding SensorName}" />
                                         <TextBlock
                                             Margin="5,0,0,0"
                                             FontSize="12"
                                             Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                            Text="Hide when &gt; Threshold #2" />
+                                            Text="Sensor" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type models:SensorImageDisplayItem}">
+                            <StackPanel>
+
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBox
+                                            Margin="0,0,0,0"
+                                            IsReadOnly="True"
+                                            Text="{Binding SensorName}" />
+                                        <TextBlock
+                                            Margin="5,0,0,0"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Text="Sensor" />
                                     </StackPanel>
 
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                        <ComboBox
+                                            x:Name="ComboBoxValueType"
+                                            ItemsSource="{Binding Source={StaticResource EnumValues}}"
+                                            SelectedValue="{Binding ValueType}" />
+                                        <TextBlock
+                                            Margin="5,0,0,0"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Text="Reading" />
+                                    </StackPanel>
                                 </Grid>
-                            </Grid>
-                        </StackPanel>
-                    </DataTemplate>
-                    <DataTemplate DataType="{x:Type models:ImageDisplayItem}" />
-                </ContentControl.Resources>
-            </ContentControl>
 
+
+
+                                <Grid Margin="0,15,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid Margin="0,0,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel>
+                                            <ui:NumberBox
+                                                Name="NumberBoxThreshold1"
+                                                Margin="0,0,0,0"
+                                                FontSize="14"
+                                                MaxDecimalPlaces="3"
+                                                Minimum="0"
+                                                SmallChange="1"
+                                                Text="{Binding Threshold1}"
+                                                Value="{Binding Threshold1}" />
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock
+                                                    Margin="5,0,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Text="Show when ≥ Threshold #1" />
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    Margin="5,0,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Text="AND" />
+                                            </Grid>
+
+                                        </StackPanel>
+                                    </Grid>
+
+
+                                    <Grid Grid.Column="1" Margin="10,0,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel>
+                                            <ui:NumberBox
+                                                Name="NumberBoxThreshold2"
+                                                Margin="0,0,0,0"
+                                                FontSize="14"
+                                                MaxDecimalPlaces="3"
+                                                Minimum="0"
+                                                SmallChange="1"
+                                                Text="{Binding Threshold2}"
+                                                Value="{Binding Threshold2}" />
+                                            <TextBlock
+                                                Margin="5,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="Hide when &gt; Threshold #2" />
+                                        </StackPanel>
+
+                                    </Grid>
+                                </Grid>
+                            </StackPanel>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type models:ImageDisplayItem}" />
+                    </ContentControl.Resources>
+                </ContentControl>
+
+            </StackPanel>
         </Grid>
 
     </Grid>

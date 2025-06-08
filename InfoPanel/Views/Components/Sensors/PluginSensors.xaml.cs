@@ -144,9 +144,9 @@ namespace InfoPanel.Views.Components
 
         private void ButtonSelect_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new SensorDisplayItem(sensorItem.Name)
+                var item = new SensorDisplayItem(sensorItem.Name, selectedProfile)
                 {
                     SensorType = Enums.SensorType.Plugin,
                     PluginSensorId = sensorItem.SensorId,
@@ -216,9 +216,9 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddGraph_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new GraphDisplayItem(sensorItem.Name, GraphDisplayItem.GraphType.LINE);
+                var item = new GraphDisplayItem(sensorItem.Name, selectedProfile, GraphDisplayItem.GraphType.LINE);
                 item.PluginSensorId = sensorItem.SensorId;
                 item.SensorType = Enums.SensorType.Plugin;
                 SharedModel.Instance.AddDisplayItem(item);
@@ -227,33 +227,39 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddBar_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new BarDisplayItem(sensorItem.Name);
-                item.PluginSensorId = sensorItem.SensorId;
-                item.SensorType = Enums.SensorType.Plugin;
+                var item = new BarDisplayItem(sensorItem.Name, selectedProfile)
+                {
+                    PluginSensorId = sensorItem.SensorId,
+                    SensorType = Enums.SensorType.Plugin
+                };
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
 
         private void ButtonAddDonut_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new DonutDisplayItem(sensorItem.Name);
-                item.PluginSensorId = sensorItem.SensorId;
-                item.SensorType = Enums.SensorType.Plugin;
+                var item = new DonutDisplayItem(sensorItem.Name, selectedProfile)
+                {
+                    PluginSensorId = sensorItem.SensorId,
+                    SensorType = Enums.SensorType.Plugin
+                };
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
 
         private void ButtonAddCustom_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new GaugeDisplayItem(sensorItem.Name);
-                item.PluginSensorId = sensorItem.SensorId;
-                item.SensorType = Enums.SensorType.Plugin;
+                var item = new GaugeDisplayItem(sensorItem.Name, selectedProfile)
+                {
+                    PluginSensorId = sensorItem.SensorId,
+                    SensorType = Enums.SensorType.Plugin
+                };
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
@@ -262,7 +268,7 @@ namespace InfoPanel.Views.Components
         {
             if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile.Guid)
+                var item = new SensorImageDisplayItem(sensorItem.Name, selectedProfile)
                 {
                     Width = 100,
                     Height = 100,
@@ -277,7 +283,7 @@ namespace InfoPanel.Views.Components
         {
             if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new HttpImageDisplayItem(sensorItem.Name, selectedProfile.Guid)
+                var item = new HttpImageDisplayItem(sensorItem.Name, selectedProfile)
                 {
                     Width = 100,
                     Height = 100,
@@ -290,9 +296,9 @@ namespace InfoPanel.Views.Components
 
         private void ButtonAddTableSensor_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.SelectedItem is PluginSensorItem sensorItem)
+            if (ViewModel.SelectedItem is PluginSensorItem sensorItem && SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
-                var item = new TableSensorDisplayItem(sensorItem.Name, sensorItem.SensorId);
+                var item = new TableSensorDisplayItem(sensorItem.Name, selectedProfile, sensorItem.SensorId);
                 if(SensorReader.ReadPluginSensor(sensorItem.SensorId) is SensorReading sensorReading && sensorReading.ValueTableFormat is string format){
                     item.TableFormat = format;
                 }
