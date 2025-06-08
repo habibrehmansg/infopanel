@@ -296,7 +296,7 @@ namespace InfoPanel.Drawing
                                 g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight, rotation: imageDisplayItem.Rotation);
                             }
 
-                            if (imageDisplayItem.ShowPanel && cachedImage.CurrentTime != null && cachedImage.FrameRate != null && cachedImage.Duration != null)
+                            if (imageDisplayItem.ShowPanel && cachedImage.CurrentTime != null && cachedImage.FrameRate != null && cachedImage.Duration != null && cachedImage.VideoPlayerStatus != null)
                             {
                                 if (g is SkiaGraphics skiaGraphics)
                                 {
@@ -323,7 +323,8 @@ namespace InfoPanel.Drawing
                                         cachedImage.CurrentTime.Value,
                                         cachedImage.Duration.Value,
                                         cachedImage.FrameRate.Value,
-                                        cachedImage.HasAudio
+                                        cachedImage.HasAudio,
+                                        cachedImage.VideoPlayerStatus.Value
                                     );
 
                                     // Draw overlay with rotation
@@ -680,8 +681,7 @@ namespace InfoPanel.Drawing
             }
         }
 
-
-        private static SKBitmap CreateVideoOverlay(float imageWidth, double progress, TimeSpan currentTime, TimeSpan duration, double frameRate, bool hasAudio)
+        private static SKBitmap CreateVideoOverlay(float imageWidth, double progress, TimeSpan currentTime, TimeSpan duration, double frameRate, bool hasAudio, PlayerStatus playerStatus)
         {
             const int overlayHeight = 40;
             var overlayBitmap = new SKBitmap((int)imageWidth, overlayHeight);
@@ -704,21 +704,23 @@ namespace InfoPanel.Drawing
             var progressBarLeft = 12f;
             var progressBarWidth = imageWidth - 24f;
 
+            var isLive = duration == TimeSpan.MaxValue;
+
             // Draw background progress bar
             using var backgroundPaint = new SKPaint { Color = SKColor.Parse("#4DFFFFFF"), IsAntialias = true };
             var backgroundRect = SKRect.Create(progressBarLeft, progressBarY, progressBarWidth, progressBarHeight);
             overlayCanvas.DrawRoundRect(backgroundRect, 1.5f, 1.5f, backgroundPaint);
 
             // Draw progress
-            if (progress > 0)
+            if (isLive || progress > 0)
             {
                 using var progressPaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
-                var progressWidth = (float)(progressBarWidth * Math.Min(progress, 1.0));
+                var progressWidth = isLive ? progressBarWidth : (float)(progressBarWidth * Math.Min(progress, 1.0));
                 var progressRect = SKRect.Create(progressBarLeft, progressBarY, progressWidth, progressBarHeight);
                 overlayCanvas.DrawRoundRect(progressRect, 1.5f, 1.5f, progressPaint);
 
-                // Draw progress circle
-                if (progress <= 1.0)
+                // Draw progress circle (only for non-live content)
+                if (!isLive && progress <= 1.0)
                 {
                     var circleX = progressBarLeft + progressWidth;
                     var circleY = progressBarY + (progressBarHeight / 2f);
@@ -731,15 +733,26 @@ namespace InfoPanel.Drawing
                 }
             }
 
-            // Draw text elements
-            var timeDisplay = $"{currentTime:hh\\:mm\\:ss\\.fff} / {duration:hh\\:mm\\:ss\\.fff}";
+           if (isLive)
+            {
+                // Draw LIVE indicator
+                using var liveFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 12f);
+                using var livePaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
+                overlayCanvas.DrawText(playerStatus == PlayerStatus.Playing ? "LIVE" : "CONNECTING..", progressBarLeft, overlayHeight - 8f, liveFont, livePaint);
+            }
+            else
+            {
+                // Draw time display for non-live content
+                var timeDisplay = $"{currentTime:hh\\:mm\\:ss\\.fff} / {duration:hh\\:mm\\:ss\\.fff}";
+                using var timeFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 12f);
+                using var timePaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
+                overlayCanvas.DrawText(timeDisplay, progressBarLeft, overlayHeight - 8f, timeFont, timePaint);
+            }
+
+            // Draw right side display (framerate and audio status)
             var volumeIcon = hasAudio ? "STEREO" : "MUTE";
             var frameRateText = $"{frameRate:F0}fps";
             var rightDisplayText = $"{frameRateText} | {volumeIcon}";
-
-            using var timeFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 12f);
-            using var timePaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
-            overlayCanvas.DrawText(timeDisplay, progressBarLeft, overlayHeight - 8f, timeFont, timePaint);
 
             using var rightFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 11f);
             using var rightPaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
@@ -748,6 +761,7 @@ namespace InfoPanel.Drawing
 
             return overlayBitmap;
         }
+
 
     }
 }

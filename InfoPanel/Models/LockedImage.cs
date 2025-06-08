@@ -7,7 +7,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Text;
 
@@ -43,6 +42,8 @@ namespace InfoPanel.Models
         public double? FrameRate => _backgroundVideoPlayer?.FrameRate;
 
         public bool HasAudio => _backgroundVideoPlayer?.HasAudio ?? false;
+
+        public PlayerStatus? VideoPlayerStatus => _backgroundVideoPlayer?.Status;
 
         public float Volume
         {

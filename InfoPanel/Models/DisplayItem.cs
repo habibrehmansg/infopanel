@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using SkiaSharp;
 using System;
+using System.Linq;
 using System.Xml.Serialization;
 
 namespace InfoPanel.Models;
@@ -142,6 +143,20 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
     public abstract SKSize EvaluateSize();
 
     public abstract SKRect EvaluateBounds();
+
+    public DisplayItem[] Flatten()
+    {
+        if (this is GroupDisplayItem groupItem)
+        {
+            return [.. groupItem.DisplayItems.SelectMany(item => item.Flatten())];
+        }
+        else if (this is GaugeDisplayItem gaugeDisplayItem)
+        {
+            return [.. gaugeDisplayItem.Images];
+        }
+
+        return [this];
+    }
 
     public abstract object Clone();
 

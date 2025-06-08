@@ -11,12 +11,33 @@ using System.Collections.Concurrent;
 
 namespace InfoPanel;
 
+public enum PlayerStatus
+{
+    Loading,        // Initial connection + property initialization
+    Playing,        // Successfully playing frames
+    Reconnecting,   // Connection lost, attempting to reconnect
+    Error,          // Failed state (connection failed, etc.)
+    Disposed        // Player disposed
+}
+
 public unsafe class BackgroundVideoPlayer : IDisposable
 {
     private readonly string _filePath;
     private readonly Thread _decodingThread;
     private readonly CancellationTokenSource _cancellationToken = new();
     private volatile bool _disposed = false;
+    private volatile bool _propertiesInitialized = false;
+
+    // Status tracking
+    private volatile PlayerStatus _status = PlayerStatus.Loading;
+    public PlayerStatus Status => _status;
+    public event EventHandler<PlayerStatus>? StatusChanged;
+
+    // Stored connection context for reuse
+    private AVFormatContext* _formatContext = null;
+    private int _videoStreamIndex = -1;
+    private int _audioStreamIndex = -1;
+    private readonly object _contextLock = new();
     // Immutable frame data with reference counting for thread-safe sharing
     private class ImmutableFrame
     {
@@ -122,6 +143,8 @@ public unsafe class BackgroundVideoPlayer : IDisposable
     // Connection health monitoring
     private DateTime _lastFrameTime = DateTime.Now;
     private readonly TimeSpan _connectionTimeout = TimeSpan.FromSeconds(5);
+    private DateTime _lastReconnectionTime = DateTime.MinValue;
+    private readonly TimeSpan _stabilityPeriod = TimeSpan.FromSeconds(2); // Must be stable for 2 seconds before considering connection recovered
 
     // Performance optimizations - SWS context caching
     private SwsContext* _cachedSwsContext = null;
@@ -147,137 +170,131 @@ public unsafe class BackgroundVideoPlayer : IDisposable
     // Sync tolerance (40ms is typical for A/V sync)
     private readonly TimeSpan _syncTolerance = TimeSpan.FromMilliseconds(40);
 
-    static BackgroundVideoPlayer()
+    /// <summary>
+    /// Determines if the given path is a network stream (URL) rather than a local file
+    /// </summary>
+    private static bool IsNetworkStream(string path)
     {
-        InitializeFFmpeg();
+        if (string.IsNullOrEmpty(path)) return false;
+
+        return path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("rtmps://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("udp://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("tcp://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("ftp://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("ftps://", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void InitializeFFmpeg()
+    /// <summary>
+    /// Creates and configures FFmpeg options dictionary with network stream optimizations
+    /// </summary>
+    private AVDictionary* CreateFFmpegOptions()
     {
-        try
-        {
-            var currentDir = AppDomain.CurrentDomain.BaseDirectory;
-            var ffmpegPath = currentDir;
+        AVDictionary* options = null;
+        ffmpeg.av_dict_set(&options, "fflags", "discardcorrupt", 0);  // Discard corrupted frames
+        ffmpeg.av_dict_set(&options, "flags", "low_delay", 0);        // Minimize latency
+        ffmpeg.av_dict_set(&options, "threads", "auto", 0);           // Auto-detect thread count
 
-            if (!File.Exists(Path.Combine(ffmpegPath, "avformat-61.dll")))
+        // Network stream options for better reliability
+        if (IsNetworkStream(_filePath))
+        {
+            ffmpeg.av_dict_set(&options, "timeout", "5000000", 0);        // 5 second timeout
+            ffmpeg.av_dict_set(&options, "fflags", "nobuffer", 0);        // Reduce buffering for live streams
+
+            // RTSP/RTSPS-specific optimizations
+            if (_filePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) ||
+                _filePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
             {
-                var projectRoot = Directory.GetParent(currentDir)?.Parent?.Parent?.Parent?.FullName;
-                ffmpegPath = Path.Combine(projectRoot ?? currentDir, "bin", "x64");
-
-                if (!Directory.Exists(ffmpegPath))
-                {
-                    ffmpegPath = Path.Combine(Directory.GetCurrentDirectory(), "bin", "x64");
-                }
+                ffmpeg.av_dict_set(&options, "rtsp_transport", "tcp", 0);   // Use TCP for RTSP/RTSPS
+                ffmpeg.av_dict_set(&options, "stimeout", "5000000", 0);     // RTSP-specific timeout
             }
-
-            if (Directory.Exists(ffmpegPath) && File.Exists(Path.Combine(ffmpegPath, "avformat-61.dll")))
-            {
-                ffmpeg.RootPath = ffmpegPath;
-            }
-
-            ffmpeg.avformat_network_init();
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to initialize FFmpeg: {ex.Message}", ex);
-        }
-    }
-    public BackgroundVideoPlayer(string filePath)
-    {
-        _filePath = filePath;
-
-        InitializeVideoProperties();
-
-        // Initialize audio if available
-        if (HasAudio)
-        {
-            InitializeAudio();
         }
 
-        _decodingThread = new Thread(() =>
-        {
-            try
-            {
-                DecodingLoop();
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"Decoding thread error: {ex.Message}");
-            }
-        })
-        {
-            IsBackground = true,
-            Name = "VideoDecoder"
-        };
-
-        // Start background decoding thread
-        _decodingThread.Start();
-        IsOpen = true;
+        return options;
     }
 
-    private void InitializeVideoProperties()
+    /// <summary>
+    /// Creates format context and opens the input file with proper options
+    /// </summary>
+    private AVFormatContext* CreateFormatContext()
     {
-        AVFormatContext* formatContext = null;
-        AVCodecContext* codecContext = null;
+        AVFormatContext* formatContext = ffmpeg.avformat_alloc_context();
+        if (formatContext == null)
+            throw new Exception("Failed to allocate format context");
+
+        AVDictionary* options = CreateFFmpegOptions();
 
         try
         {
-            // Allocate format context
-            formatContext = ffmpeg.avformat_alloc_context();
-            if (formatContext == null)
-                throw new Exception("Failed to allocate format context");
-
-            // Setup optimized FFmpeg options for better performance and reliability
-            AVDictionary* options = null;
-            ffmpeg.av_dict_set(&options, "fflags", "discardcorrupt", 0);  // Discard corrupted frames
-            ffmpeg.av_dict_set(&options, "flags", "low_delay", 0);        // Minimize latency
-            ffmpeg.av_dict_set(&options, "threads", "auto", 0);           // Auto-detect thread count
-
-            // Open input file with optimized options
             if (ffmpeg.avformat_open_input(&formatContext, _filePath, null, &options) < 0)
             {
-                ffmpeg.av_dict_free(&options);
                 throw new Exception($"Failed to open input file: {_filePath}");
             }
 
-            ffmpeg.av_dict_free(&options); // Clean up options dictionary
-
-            // Find stream info
             if (ffmpeg.avformat_find_stream_info(formatContext, null) < 0)
                 throw new Exception("Failed to find stream info");
 
-            // Find video stream
-            int videoStreamIndex = -1;
-            int audioStreamIndex = -1;
+            return formatContext;
+        }
+        finally
+        {
+            ffmpeg.av_dict_free(&options);
+        }
+    }
 
-            for (int i = 0; i < formatContext->nb_streams; i++)
+    /// <summary>
+    /// Finds video and audio stream indexes in the format context
+    /// </summary>
+    private (int videoStreamIndex, int audioStreamIndex) FindStreams(AVFormatContext* formatContext)
+    {
+        int videoStreamIndex = -1;
+        int audioStreamIndex = -1;
+
+        for (int i = 0; i < formatContext->nb_streams; i++)
+        {
+            if (formatContext->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO)
             {
-                if (formatContext->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO)
-                {
-                    videoStreamIndex = i;
-                }
-                else if (formatContext->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO)
-                {
-                    audioStreamIndex = i;
-                }
+                videoStreamIndex = i;
             }
+            else if (formatContext->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO)
+            {
+                audioStreamIndex = i;
+            }
+        }
 
-            if (videoStreamIndex == -1)
-                throw new Exception("No video stream found");
+        if (videoStreamIndex == -1)
+            throw new Exception("No video stream found");
 
-            var videoStream = formatContext->streams[videoStreamIndex];
-            var codecParameters = videoStream->codecpar;
+        return (videoStreamIndex, audioStreamIndex);
+    }
 
-            // Find decoder
-            var codec = ffmpeg.avcodec_find_decoder(codecParameters->codec_id);
-            if (codec == null)
-                throw new Exception("Decoder not found");
+    /// <summary>
+    /// Initializes video and audio properties from format context and stream info
+    /// This should only be called once on the first successful connection
+    /// </summary>
+    private void InitializePropertiesFromContext(AVFormatContext* formatContext, int videoStreamIndex, int audioStreamIndex)
+    {
+        if (_propertiesInitialized) return;
 
-            // Allocate codec context
-            codecContext = ffmpeg.avcodec_alloc_context3(codec);
-            if (codecContext == null)
-                throw new Exception("Failed to allocate codec context");
+        var videoStream = formatContext->streams[videoStreamIndex];
+        var codecParameters = videoStream->codecpar;
 
+        // Find decoder to get video properties
+        var codec = ffmpeg.avcodec_find_decoder(codecParameters->codec_id);
+        if (codec == null)
+            throw new Exception("Decoder not found");
+
+        // Allocate codec context temporarily to get dimensions
+        AVCodecContext* codecContext = ffmpeg.avcodec_alloc_context3(codec);
+        if (codecContext == null)
+            throw new Exception("Failed to allocate codec context");
+
+        try
+        {
             // Copy codec parameters to context
             if (ffmpeg.avcodec_parameters_to_context(codecContext, codecParameters) < 0)
                 throw new Exception("Failed to copy codec parameters");
@@ -331,21 +348,150 @@ public unsafe class BackgroundVideoPlayer : IDisposable
                 TotalFrames = (long)(Duration.TotalSeconds * FrameRate);
             }
 
+            _propertiesInitialized = true;
+            Trace.WriteLine($"Properties initialized: {Width}x{Height}, {FrameRate} fps, Audio: {HasAudio}");
         }
         finally
         {
-            // Clean up temporary resources
-            if (codecContext != null)
-            {
-                ffmpeg.avcodec_free_context(&codecContext);
-            }
+            ffmpeg.avcodec_free_context(&codecContext);
+        }
+    }
 
-            if (formatContext != null)
+    /// <summary>
+    /// Initializes properties and establishes connection synchronously for immediate property access
+    /// </summary>
+    private void InitializePropertiesAndConnection()
+    {
+        lock (_contextLock)
+        {
+            if (_propertiesInitialized) return;
+
+            try
             {
-                ffmpeg.avformat_close_input(&formatContext);
+                // Create format context and open input - this will block until connected
+                _formatContext = CreateFormatContext();
+
+                // Find stream indexes
+                (_videoStreamIndex, _audioStreamIndex) = FindStreams(_formatContext);
+
+                // Initialize all properties from the opened context
+                InitializePropertiesFromContext(_formatContext, _videoStreamIndex, _audioStreamIndex);
+
+                Trace.WriteLine($"Successfully initialized with single connection: {Width}x{Height}, Audio: {HasAudio}");
+            }
+            catch (Exception ex)
+            {
+                // Clean up on failure
+                if (_formatContext != null)
+                {
+                    var formatPtr = _formatContext;
+                    ffmpeg.avformat_close_input(&formatPtr);
+                    _formatContext = null;
+                }
+                throw new InvalidOperationException($"Failed to initialize video player: {ex.Message}", ex);
             }
         }
     }
+
+    static BackgroundVideoPlayer()
+    {
+        InitializeFFmpeg();
+    }
+
+    private static void InitializeFFmpeg()
+    {
+        try
+        {
+            var currentDir = AppDomain.CurrentDomain.BaseDirectory;
+            var ffmpegPath = currentDir;
+
+            if (!File.Exists(Path.Combine(ffmpegPath, "avformat-61.dll")))
+            {
+                var projectRoot = Directory.GetParent(currentDir)?.Parent?.Parent?.Parent?.FullName;
+                ffmpegPath = Path.Combine(projectRoot ?? currentDir, "bin", "x64");
+
+                if (!Directory.Exists(ffmpegPath))
+                {
+                    ffmpegPath = Path.Combine(Directory.GetCurrentDirectory(), "bin", "x64");
+                }
+            }
+
+            if (Directory.Exists(ffmpegPath) && File.Exists(Path.Combine(ffmpegPath, "avformat-61.dll")))
+            {
+                ffmpeg.RootPath = ffmpegPath;
+            }
+
+            ffmpeg.avformat_network_init();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to initialize FFmpeg: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Updates the player status and fires status change event
+    /// </summary>
+    private void UpdateStatus(PlayerStatus newStatus)
+    {
+        if (_status != newStatus)
+        {
+            var oldStatus = _status;
+            _status = newStatus;
+
+            // Track when we started reconnecting to prevent quick transitions back to Playing
+            if (newStatus == PlayerStatus.Reconnecting)
+            {
+                _lastReconnectionTime = DateTime.Now;
+            }
+
+            StatusChanged?.Invoke(this, newStatus);
+            Trace.WriteLine($"Status changed: {oldStatus} -> {newStatus}");
+        }
+    }
+    public BackgroundVideoPlayer(string filePath)
+    {
+        _filePath = filePath;
+
+        try
+        {
+            // Initialize properties and establish connection synchronously (blocks until complete)
+            InitializePropertiesAndConnection();
+
+            // Initialize audio now that we know if audio is available
+            if (HasAudio)
+            {
+                InitializeAudio();
+            }
+
+            _decodingThread = new Thread(() =>
+            {
+                try
+                {
+                    DecodingLoop();
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"Decoding thread error: {ex.Message}");
+                    UpdateStatus(PlayerStatus.Error);
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "VideoDecoder"
+            };
+
+            // Start background decoding thread with existing connection
+            _decodingThread.Start();
+            IsOpen = true;
+        }
+        catch (Exception)
+        {
+            UpdateStatus(PlayerStatus.Error);
+            throw;
+        }
+    }
+
     private void InitializeAudio()
     {
         if (!HasAudio) return;
@@ -405,8 +551,13 @@ public unsafe class BackgroundVideoPlayer : IDisposable
                 // Check for connection timeout before starting new loop
                 if (DateTime.Now - _lastFrameTime > _connectionTimeout && DecodedFrameCount > 0)
                 {
-                    Trace.WriteLine($"Connection timeout detected ({_connectionTimeout.TotalSeconds}s), restarting decode loop");
+                    var streamType = IsNetworkStream(_filePath) ? "network stream" : "file";
+                    Trace.WriteLine($"Connection timeout detected for {streamType} ({_connectionTimeout.TotalSeconds}s), forcing reconnection");
                     _lastFrameTime = DateTime.Now; // Reset timeout counter
+
+                    // Update status to indicate reconnection
+                    UpdateStatus(PlayerStatus.Reconnecting);
+                    // Force restart by breaking from current loop - this will trigger complete reconnection
                 }
 
                 // On restart, keep current frame to prevent flickering
@@ -430,9 +581,16 @@ public unsafe class BackgroundVideoPlayer : IDisposable
             catch (Exception ex)
             {
                 Trace.WriteLine($"Decoding error: {ex.Message}");
+                UpdateStatus(PlayerStatus.Error);
                 if (_cancellationToken.Token.IsCancellationRequested)
                     break;
                 Thread.Sleep(1000); // Wait before retrying
+
+                // Try to recover by updating status to reconnecting if it's a network stream
+                if (IsNetworkStream(_filePath))
+                {
+                    UpdateStatus(PlayerStatus.Reconnecting);
+                }
             }
         }
 
@@ -460,46 +618,36 @@ public unsafe class BackgroundVideoPlayer : IDisposable
 
         try
         {
-            // Initialize FFmpeg components
-            formatContext = ffmpeg.avformat_alloc_context();
-            if (formatContext == null)
-                throw new Exception("Failed to allocate format context");
+            // Try to reuse existing format context first, fallback to creating new one
+            int videoStreamIndex, audioStreamIndex;
 
-            // Setup optimized FFmpeg options for decoding loop
-            AVDictionary* options = null;
-            ffmpeg.av_dict_set(&options, "fflags", "discardcorrupt", 0);  // Discard corrupted frames
-            ffmpeg.av_dict_set(&options, "flags", "low_delay", 0);        // Minimize latency
-
-            var formatContextPtr = formatContext;
-            if (ffmpeg.avformat_open_input(&formatContextPtr, _filePath, null, &options) < 0)
+            lock (_contextLock)
             {
-                ffmpeg.av_dict_free(&options);
-                throw new Exception($"Failed to open input file: {_filePath}");
+                if (_formatContext != null && _propertiesInitialized)
+                {
+                    // Reuse existing connection
+                    formatContext = _formatContext;
+                    videoStreamIndex = _videoStreamIndex;
+                    audioStreamIndex = _audioStreamIndex;
+                    _formatContext = null; // Transfer ownership to this method
+                    Trace.WriteLine("Reusing existing format context for decoding");
+                }
+                else
+                {
+                    // Create new connection (for reconnection scenarios)
+                    formatContext = CreateFormatContext();
+                    (videoStreamIndex, audioStreamIndex) = FindStreams(formatContext);
+
+                    // Initialize properties if not already done
+                    InitializePropertiesFromContext(formatContext, videoStreamIndex, audioStreamIndex);
+                    Trace.WriteLine("Created new format context for decoding");
+                }
             }
 
-            ffmpeg.av_dict_free(&options); // Clean up options dictionary
-
-            if (formatContextPtr == null)
-                throw new Exception("Format context became null after opening input");
-            formatContext = formatContextPtr;
-
-            if (ffmpeg.avformat_find_stream_info(formatContext, null) < 0)
-                throw new Exception("Failed to find stream info");
-
-            // Find video and audio streams
-            int videoStreamIndex = -1;
-            int audioStreamIndex = -1;
-
-            for (int i = 0; i < formatContext->nb_streams; i++)
+            // Initialize audio if we have audio and it's not already initialized
+            if (HasAudio && _waveProvider == null)
             {
-                if (formatContext->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO)
-                {
-                    videoStreamIndex = i;
-                }
-                else if (formatContext->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO && HasAudio)
-                {
-                    audioStreamIndex = i;
-                }
+                InitializeAudio();
             }
 
             // Setup video decoder
@@ -527,7 +675,7 @@ public unsafe class BackgroundVideoPlayer : IDisposable
                 throw new Exception("Failed to open video codec");
 
             // Setup audio decoder if audio is present
-            if (audioStreamIndex >= 0 && HasAudio)
+            if (audioStreamIndex >= 0)
             {
                 var audioStream = formatContext->streams[audioStreamIndex];
                 var audioCodecParameters = audioStream->codecpar;
@@ -596,9 +744,27 @@ public unsafe class BackgroundVideoPlayer : IDisposable
                 int error = ffmpeg.av_read_frame(formatContext, packet);
 
                 if (error == ffmpeg.AVERROR_EOF)
+                {
+                    // For network streams, EOF often means connection lost - force reconnection
+                    if (IsNetworkStream(_filePath))
+                    {
+                        Trace.WriteLine($"Network stream connection lost (EOF), forcing reconnection");
+                        UpdateStatus(PlayerStatus.Reconnecting);
+                    }
+
                     return; // End of file, will trigger loop restart
+                }
                 if (error < 0)
+                {
+                    // For network streams, any read error likely means connection issues
+                    if (IsNetworkStream(_filePath))
+                    {
+                        Trace.WriteLine($"Network stream read error ({error}), forcing reconnection");
+                        UpdateStatus(PlayerStatus.Reconnecting);
+                    }
+
                     return;
+                }
 
                 // Check for packet corruption (from sample project)
                 if (packet->flags == ffmpeg.AV_PKT_FLAG_CORRUPT)
@@ -653,6 +819,8 @@ public unsafe class BackgroundVideoPlayer : IDisposable
 
                         // Update last frame time for connection monitoring
                         _lastFrameTime = DateTime.Now;
+
+                        UpdateStatus(PlayerStatus.Playing);
 
                         // Synchronization-aware timing control
                         if (currentTime != TimeSpan.Zero)
@@ -814,6 +982,12 @@ public unsafe class BackgroundVideoPlayer : IDisposable
                 ffmpeg.av_packet_free(&packetPtr);
             }
 
+            if (formatContext != null)
+            {
+                var formatPtr = formatContext;
+                ffmpeg.avformat_close_input(&formatPtr);
+            }
+
             if (videoCodecContext != null)
             {
                 var codecPtr = videoCodecContext;
@@ -824,12 +998,6 @@ public unsafe class BackgroundVideoPlayer : IDisposable
             {
                 var codecPtr = audioCodecContext;
                 ffmpeg.avcodec_free_context(&codecPtr);
-            }
-
-            if (formatContext != null)
-            {
-                var formatPtr = formatContext;
-                ffmpeg.avformat_close_input(&formatPtr);
             }
         }
     }
@@ -1120,6 +1288,9 @@ public unsafe class BackgroundVideoPlayer : IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        // Update status to disposed
+        UpdateStatus(PlayerStatus.Disposed);
+
         // Cancel operations first
         try
         {
@@ -1164,6 +1335,24 @@ public unsafe class BackgroundVideoPlayer : IDisposable
         catch (Exception ex)
         {
             Trace.WriteLine($"Error releasing current frame: {ex.Message}");
+        }
+
+        // Clean up stored format context
+        try
+        {
+            lock (_contextLock)
+            {
+                if (_formatContext != null)
+                {
+                    var formatPtr = _formatContext;
+                    ffmpeg.avformat_close_input(&formatPtr);
+                    _formatContext = null;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"Error disposing stored format context: {ex.Message}");
         }
 
         // Clean up performance optimization resources

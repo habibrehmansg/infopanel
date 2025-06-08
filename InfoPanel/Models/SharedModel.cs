@@ -1592,13 +1592,13 @@ namespace InfoPanel
 
             lock (_displayItemsLock)
             {
-                foreach(var displayItem in displayItems)
+                displayItems.SelectMany(item => item.Flatten()).ToList().ForEach(item =>
                 {
-                   if(displayItem is ImageDisplayItem imageDisplayItem)
+                    if (item is ImageDisplayItem imageDisplayItem)
                     {
                         Cache.InvalidateImage(imageDisplayItem);
                     }
-                }
+                });
 
                 displayItems.Clear();
 
