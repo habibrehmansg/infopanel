@@ -188,7 +188,7 @@ namespace InfoPanel.Drawing
                             {
                                 case GraphDisplayItem.GraphType.LINE:
                                     {
-                                        var size = (int)frameRect.Width / graphDisplayItem.Step;
+                                        var size = (int)frameRect.Width / Math.Max(graphDisplayItem.Step, 1);
 
                                         if (size * graphDisplayItem.Step != (int)frameRect.Width)
                                         {
@@ -264,7 +264,7 @@ namespace InfoPanel.Drawing
                                 case GraphDisplayItem.GraphType.HISTOGRAM:
                                     {
                                         var penSize = 1;
-                                        var size = (int)frameRect.Width / (graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2);
+                                        var size = (int)frameRect.Width / (graphDisplayItem.Thickness + Math.Max(graphDisplayItem.Step, 1) + penSize * 2);
 
                                         if (size * graphDisplayItem.Step != (int)frameRect.Width)
                                         {
@@ -296,13 +296,14 @@ namespace InfoPanel.Drawing
                                             frameRect.Right - penSize * 2,
                                             frameRect.Bottom - penSize * 2);
 
-                                        var maxHeight = frameRect.Height - 3; // Precalculate the drawable height range
-                                        var offset = graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2; // Precalculate horizontal offset
+                                        var maxHeight = Math.Max(frameRect.Height - 3, 1); // Precalculate the drawable height range
+                                        var offset = graphDisplayItem.Thickness + Math.Max(graphDisplayItem.Step, 1) + penSize * 2; // Precalculate horizontal offset
 
                                         for (int i = 0; i < size; i++)
                                         {
                                             // Normalize and scale the value
-                                            var value = Math.Clamp(values[i] - minValue, 0, maxValue) / (maxValue - minValue) * maxHeight;
+                                            var scale = maxValue - minValue;
+                                            var value = scale <= 0 ? 0 : Math.Clamp(values[i] - minValue, 0, maxValue) / scale * maxHeight;
                                             var normalizedHeight = (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
                                             // Update refRect properties for the current rectangle
@@ -355,7 +356,8 @@ namespace InfoPanel.Drawing
                                 value = sensorReading.Value.ValueNow;
                             }
 
-                            value = (value - minValue) / (maxValue - minValue);
+                            var scale = maxValue - minValue;
+                            value = scale <= 0 ? 0 : (value - minValue) / scale;
                             value = Math.Clamp(value, 0, 1);
                             value = value * Math.Max(frameRect.Width, frameRect.Height);
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
@@ -430,7 +432,8 @@ namespace InfoPanel.Drawing
                             }
 
                             var value = tempValues.LastOrDefault(0.0);
-                            value = (value - minValue) / (maxValue - minValue);
+                            var scale = maxValue - minValue;
+                            value = scale <= 0 ? 0 : (value - minValue) / scale;
                             value = Math.Clamp(value, 0, 1);
                             value = value * 100;
 
@@ -465,8 +468,13 @@ namespace InfoPanel.Drawing
 
         public static double InterpolateWithCycles(double A, double B, int cycles)
         {
+            if (cycles <= 0) return B;
+            
             double tolerance = 0.001;
             double initialDifference = Math.Abs(B - A);
+            
+            if (initialDifference <= tolerance) return B;
+            
             double decayFactor = Math.Pow(tolerance / initialDifference, 1.0 / cycles);
             double t = 1 - decayFactor;
 
