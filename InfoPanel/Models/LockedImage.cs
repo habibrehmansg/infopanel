@@ -126,7 +126,12 @@ namespace InfoPanel.Models
 
                         _config = new Config();
                         _config.Player.AutoPlay = true;
-                       
+
+                        if(ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _config.Player.MaxLatency = TimeSpan.FromMilliseconds(100).Ticks; //100ms latency
+                        }
+
                         // Inform the lib to refresh stats
                         _config.Player.Stats = true;
 
