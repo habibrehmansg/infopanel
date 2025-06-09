@@ -194,8 +194,12 @@ namespace InfoPanel.Views.Pages
                 var discoveredDevices = await BeadaPanelTask.Instance.DiscoverDevicesAsync();
                 var settings = ConfigModel.Instance.Settings;
 
+                Trace.WriteLine($"Discovery found {discoveredDevices.Count} devices, current collection has {settings.BeadaPanelDevices.Count} devices");
+                
                 foreach (var discoveredDevice in discoveredDevices)
                 {
+                    Trace.WriteLine($"Processing discovered device: {discoveredDevice.Name} with hardware serial: {discoveredDevice.HardwareSerialNumber}");
+                    
                     var existingDevice = FindMatchingDevice(settings.BeadaPanelDevices, discoveredDevice);
 
                     if (existingDevice == null)
@@ -258,13 +262,22 @@ namespace InfoPanel.Views.Pages
                     if (result == MessageBoxResult.Yes)
                     {
                         var settings = ConfigModel.Instance.Settings;
-                        settings.BeadaPanelDevices.Remove(device);
+                        
+                        Trace.WriteLine($"Before removal - Collection count: {settings.BeadaPanelDevices.Count}");
+                        Trace.WriteLine($"Removing device: {device.Name} (ID: {device.Id}) with hardware serial: {device.HardwareSerialNumber}");
+                        
+                        bool removed = settings.BeadaPanelDevices.Remove(device);
+                        
+                        Trace.WriteLine($"Device removal result: {removed}, After removal - Collection count: {settings.BeadaPanelDevices.Count}");
                         
                         if (BeadaPanelTask.Instance.IsDeviceRunning(device.Id))
                         {
                             _ = BeadaPanelTask.Instance.StopDevice(device.Id);
                         }
 
+                        // Force save settings to ensure removal is persisted
+                        ConfigModel.Instance.SaveSettings();
+                        
                         Trace.WriteLine($"Removed BeadaPanel device: {device.Name}");
                     }
                 }
