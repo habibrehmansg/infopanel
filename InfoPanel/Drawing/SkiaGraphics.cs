@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -130,36 +129,11 @@ namespace InfoPanel.Drawing
             Canvas.DrawPath(path, paint);
         }
 
-        public override void DrawRectangle(string color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
+        public override void DrawRectangle(SKColor color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             using var paint = new SKPaint
             {
-                Color = SKColor.Parse(color),
-                StrokeWidth = strokeWidth,
-                IsAntialias = true,
-                Style = SKPaintStyle.Stroke
-            };
-
-            Canvas.Save();
-
-            if (rotation != 0)
-            {
-                // Default to rectangle center if no rotation center specified
-                int centerX = rotationCenterX == 0 ? x + width / 2 : rotationCenterX;
-                int centerY = rotationCenterY == 0 ? y + height / 2 : rotationCenterY;
-                Canvas.RotateDegrees(rotation, centerX, centerY);
-            }
-
-            Canvas.DrawRect(x, y, width, height, paint);
-
-            Canvas.Restore();
-        }
-
-        public override void DrawRectangle(Color color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
-        {
-            using var paint = new SKPaint
-            {
-                Color = new SKColor(color.R, color.G, color.B, color.A),
+                Color = color,
                 StrokeWidth = strokeWidth,
                 IsAntialias = true,
                 Style = SKPaintStyle.Stroke // or Fill

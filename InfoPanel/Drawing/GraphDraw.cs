@@ -178,161 +178,164 @@ namespace InfoPanel.Drawing
                 switch (chartDisplayItem)
                 {
                     case GraphDisplayItem graphDisplayItem:
-
-                        if (chartDisplayItem.Background)
                         {
-                            g.FillRectangle(chartDisplayItem.BackgroundColor, (int)frameRect.Left, (int)frameRect.Top, (int)frameRect.Width, (int)frameRect.Height);
-                        }
+                            if (chartDisplayItem.Background)
+                            {
+                                g.FillRectangle(chartDisplayItem.BackgroundColor, (int)frameRect.Left, (int)frameRect.Top, (int)frameRect.Width, (int)frameRect.Height);
+                            }
 
-                        switch (graphDisplayItem.Type)
-                        {
-                            case GraphDisplayItem.GraphType.LINE:
-                                {
-                                    var size = (int)frameRect.Width / graphDisplayItem.Step;
-
-                                    if (size * graphDisplayItem.Step != (int)frameRect.Width)
+                            switch (graphDisplayItem.Type)
+                            {
+                                case GraphDisplayItem.GraphType.LINE:
                                     {
-                                        size += 2;
-                                    }
-                                    else
-                                    {
-                                        size += 1;
-                                    }
+                                        var size = (int)frameRect.Width / graphDisplayItem.Step;
 
-                                    size = Math.Min(size, tempValues.Length);
-
-                                    if (size == 0)
-                                    {
-                                        break;
-                                    }
-
-                                    var values = tempValues[(tempValues.Length - size)..];
-
-                                    if (chartDisplayItem.AutoValue)
-                                    {
-                                        if (values.Length > 1 && values.Min() != values.Max())
+                                        if (size * graphDisplayItem.Step != (int)frameRect.Width)
                                         {
-                                            minValue = values.Min();
-                                            maxValue = values.Max();
-                                        }
-                                    }
-
-                                    using var path = new SKPath();
-                                    
-                                    // Start point for fill area
-                                    path.MoveTo((int)frameRect.Left + graphDisplayItem.Width + graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
-
-                                    float lastX = 0;
-                                    float lastY = 0;
-
-                                    for (int i = 0; i < size; i++)
-                                    {
-                                        var value = Math.Max(values[i] - minValue, 0);
-                                        value = Math.Min(value, maxValue);
-
-                                        var scale = maxValue - minValue;
-                                        if (scale <= 0)
-                                        {
-                                            value = 0;
+                                            size += 2;
                                         }
                                         else
                                         {
-                                            value = value / (maxValue - minValue);
+                                            size += 1;
                                         }
 
-                                        value = value * (frameRect.Height - graphDisplayItem.Thickness);
-                                        value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
+                                        size = Math.Min(size, tempValues.Length);
 
-                                        lastX = (int)frameRect.Left + (int)frameRect.Width - (i * graphDisplayItem.Step);
-                                        lastY = (int)frameRect.Top + (int)(frameRect.Height - (value + (graphDisplayItem.Thickness / 2.0)));
-
-                                        path.LineTo(lastX, lastY);
-                                    }
-
-                                    // End point for fill area
-                                    path.LineTo(lastX - graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
-
-                                    if (graphDisplayItem.Fill)
-                                    {
-                                        g.FillPath(path, SKColor.Parse(graphDisplayItem.FillColor));
-                                    }
-
-                                    g.DrawPath(path, SKColor.Parse(graphDisplayItem.Color), graphDisplayItem.Thickness);
-
-                                    break;
-                                }
-                            case GraphDisplayItem.GraphType.HISTOGRAM:
-                                {
-                                    var penSize = 1;
-                                    var size = (int)frameRect.Width / (graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2);
-
-                                    if (size * graphDisplayItem.Step != (int)frameRect.Width)
-                                    {
-                                        size += 1;
-                                    }
-
-                                    size = Math.Min(size, tempValues.Length);
-
-                                    if (size == 0)
-                                    {
-                                        break;
-                                    }
-
-                                    var values = tempValues[(tempValues.Length - size)..];
-
-                                    if (chartDisplayItem.AutoValue)
-                                    {
-                                        if (values.Length > 1 && values.Min() != values.Max())
+                                        if (size == 0)
                                         {
-                                            minValue = values.Min();
-                                            maxValue = values.Max();
+                                            break;
                                         }
-                                    }
 
-                                    // Initialize refRect to start at the right edge of frameRect
-                                    var refRect = new SKRect(
-                                        frameRect.Right - graphDisplayItem.Thickness - penSize * 2,
-                                        frameRect.Bottom - penSize * 2,
-                                        frameRect.Right - penSize * 2,
-                                        frameRect.Bottom - penSize * 2);
+                                        var values = tempValues[(tempValues.Length - size)..];
 
-                                    var maxHeight = frameRect.Height - 3; // Precalculate the drawable height range
-                                    var offset = graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2; // Precalculate horizontal offset
+                                        if (chartDisplayItem.AutoValue)
+                                        {
+                                            if (values.Length > 1 && values.Min() != values.Max())
+                                            {
+                                                minValue = values.Min();
+                                                maxValue = values.Max();
+                                            }
+                                        }
 
-                                    for (int i = 0; i < size; i++)
-                                    {
-                                        // Normalize and scale the value
-                                        var value = Math.Clamp(values[i] - minValue, 0, maxValue) / (maxValue - minValue) * maxHeight;
-                                        var normalizedHeight = (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
+                                        using var path = new SKPath();
 
-                                        // Update refRect properties for the current rectangle
-                                        refRect = new SKRect(
-                                            refRect.Left,
-                                            frameRect.Bottom - normalizedHeight - penSize * 2,
-                                            refRect.Right,
-                                            frameRect.Bottom - penSize * 2 + normalizedHeight + penSize);
+                                        // Start point for fill area
+                                        path.MoveTo((int)frameRect.Left + graphDisplayItem.Width + graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
 
-                                        // Draw the rectangle (filled and outlined)
+                                        float lastX = 0;
+                                        float lastY = 0;
+
+                                        for (int i = 0; i < size; i++)
+                                        {
+                                            var value = Math.Max(values[i] - minValue, 0);
+                                            value = Math.Min(value, maxValue);
+
+                                            var scale = maxValue - minValue;
+                                            if (scale <= 0)
+                                            {
+                                                value = 0;
+                                            }
+                                            else
+                                            {
+                                                value = value / (maxValue - minValue);
+                                            }
+
+                                            value = value * (frameRect.Height - graphDisplayItem.Thickness);
+                                            value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
+
+                                            lastX = (int)frameRect.Left + (int)frameRect.Width - (i * graphDisplayItem.Step);
+                                            lastY = (int)frameRect.Top + (int)(frameRect.Height - (value + (graphDisplayItem.Thickness / 2.0)));
+
+                                            path.LineTo(lastX, lastY);
+                                        }
+
+                                        // End point for fill area
+                                        path.LineTo(lastX - graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
+
                                         if (graphDisplayItem.Fill)
                                         {
-                                            g.FillRectangle(graphDisplayItem.FillColor, (int)refRect.Left, (int)refRect.Top, (int)refRect.Width, (int)refRect.Height);
+                                            g.FillPath(path, SKColor.Parse(graphDisplayItem.FillColor));
                                         }
 
-                                        g.DrawRectangle(graphDisplayItem.Color, penSize, (int)refRect.Left, (int)refRect.Top, (int)refRect.Width, (int)refRect.Height);
+                                        g.DrawPath(path, SKColor.Parse(graphDisplayItem.Color), graphDisplayItem.Thickness);
 
-                                        // Move refRect horizontally for the next rectangle
-                                        refRect = new SKRect(
-                                            refRect.Left - offset,
-                                            refRect.Top,
-                                            refRect.Right - offset,
-                                            refRect.Bottom);
+                                        break;
                                     }
+                                case GraphDisplayItem.GraphType.HISTOGRAM:
+                                    {
+                                        var penSize = 1;
+                                        var size = (int)frameRect.Width / (graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2);
 
-                                    break;
-                                }
+                                        if (size * graphDisplayItem.Step != (int)frameRect.Width)
+                                        {
+                                            size += 1;
+                                        }
+
+                                        size = Math.Min(size, tempValues.Length);
+
+                                        if (size == 0)
+                                        {
+                                            break;
+                                        }
+
+                                        var values = tempValues[(tempValues.Length - size)..];
+
+                                        if (chartDisplayItem.AutoValue)
+                                        {
+                                            if (values.Length > 1 && values.Min() != values.Max())
+                                            {
+                                                minValue = values.Min();
+                                                maxValue = values.Max();
+                                            }
+                                        }
+
+                                        // Initialize refRect to start at the right edge of frameRect
+                                        var refRect = new SKRect(
+                                            frameRect.Right - graphDisplayItem.Thickness - penSize * 2,
+                                            frameRect.Bottom - penSize * 2,
+                                            frameRect.Right - penSize * 2,
+                                            frameRect.Bottom - penSize * 2);
+
+                                        var maxHeight = frameRect.Height - 3; // Precalculate the drawable height range
+                                        var offset = graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2; // Precalculate horizontal offset
+
+                                        for (int i = 0; i < size; i++)
+                                        {
+                                            // Normalize and scale the value
+                                            var value = Math.Clamp(values[i] - minValue, 0, maxValue) / (maxValue - minValue) * maxHeight;
+                                            var normalizedHeight = (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
+
+                                            // Update refRect properties for the current rectangle
+                                            refRect = new SKRect(
+                                                refRect.Left,
+                                                frameRect.Bottom - normalizedHeight - penSize * 2,
+                                                refRect.Right,
+                                                frameRect.Bottom - penSize * 2 + normalizedHeight + penSize);
+
+                                            // Draw the rectangle (filled and outlined)
+                                            if (graphDisplayItem.Fill)
+                                            {
+                                                g.FillRectangle(graphDisplayItem.FillColor, (int)refRect.Left, (int)refRect.Top, (int)refRect.Width, (int)refRect.Height);
+                                            }
+
+                                            if (SKColor.TryParse(graphDisplayItem.Color, out var color))
+                                            {
+                                                g.DrawRectangle(color, penSize, (int)refRect.Left, (int)refRect.Top, (int)refRect.Width, (int)refRect.Height);
+                                            }
+
+                                            // Move refRect horizontally for the next rectangle
+                                            refRect = new SKRect(
+                                                refRect.Left - offset,
+                                                refRect.Top,
+                                                refRect.Right - offset,
+                                                refRect.Bottom);
+                                        }
+
+                                        break;
+                                    }
+                            }
+                            break;
                         }
-                        break;
-
                     case BarDisplayItem barDisplayItem:
                         {
                             if (chartDisplayItem.AutoValue)
@@ -393,24 +396,24 @@ namespace InfoPanel.Drawing
                             }
 
                             // Draw the bar if it has size
-                            if (value > 0 && SKColor.TryParse(barDisplayItem.Color, out var color))
+                            if (value > 0 && SKColor.TryParse(barDisplayItem.Color, out var barColor))
                             {
                                 if (barDisplayItem.Gradient && SKColor.TryParse(barDisplayItem.GradientColor, out var gradientColor))
                                 {
-                                    g.FillPath(usagePath, color, color, gradientColor);
+                                    g.FillPath(usagePath, barColor, barColor, gradientColor);
                                 }
                                 else
                                 {
-                                    g.FillPath(usagePath, color);
+                                    g.FillPath(usagePath, barColor);
                                 }
                             }
 
-                            if (barDisplayItem.Frame && SKColor.TryParse(barDisplayItem.FrameColor, out var frameColor))
+                            if (barDisplayItem.Frame && SKColor.TryParse(barDisplayItem.FrameColor, out var color))
                             {
                                 using var framePath = new SKPath();
                                 framePath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.Left, frameRect.Top, frameRect.Left + frameRect.Width, frameRect.Top + frameRect.Height), barDisplayItem.CornerRadius));
 
-                                g.DrawPath(framePath, frameColor, 1);
+                                g.DrawPath(framePath, color, 1);
                             }
 
                             break;
@@ -445,9 +448,9 @@ namespace InfoPanel.Drawing
                         }
                 }
 
-                if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem is not BarDisplayItem && chartDisplayItem.Frame)
+                if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem is not BarDisplayItem && chartDisplayItem.Frame && SKColor.TryParse(chartDisplayItem.FrameColor, out var frameColor))
                 {
-                    g.DrawRectangle(chartDisplayItem.FrameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
+                    g.DrawRectangle(frameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
                 }
             }
         }
