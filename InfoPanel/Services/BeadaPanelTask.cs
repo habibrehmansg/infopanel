@@ -66,19 +66,15 @@ namespace InfoPanel
                             {
                                 device.UpdateFromStatusLink(panelInfo);
                                 Trace.WriteLine($"StatusLink Query Success: {device.Name} - Hardware Serial: {device.HardwareSerialNumber}, Model: {device.ModelName}");
+                                
+                                discoveredDevices.Add(device);
+                                Trace.WriteLine($"Discovered BeadaPanel device: {device.Name} (ID Method: {device.IdentificationMethod}) at {device.UsbPath}");
                             }
                             else
                             {
-                                // Fallback naming when StatusLink is not available
-                                var deviceName = !string.IsNullOrEmpty(deviceReg.FullName) && deviceReg.FullName.Trim() != ""
-                                    ? $"BeadaPanel {deviceReg.FullName} #{deviceIndex}"
-                                    : $"BeadaPanel Device {deviceIndex}";
-                                device.Name = deviceName;
-                                Trace.WriteLine($"StatusLink Query Failed: Using USB-based identification for {device.Name}");
+                                // Skip devices that can't be queried - they are likely already running
+                                Trace.WriteLine($"Skipping device {deviceReg.DevicePath} - StatusLink unavailable (likely already running)");
                             }
-
-                            discoveredDevices.Add(device);
-                            Trace.WriteLine($"Discovered BeadaPanel device: {device.Name} (ID Method: {device.IdentificationMethod}) at {device.UsbPath}");
                             
                             deviceIndex++;
                         }
