@@ -1,12 +1,10 @@
-﻿using System;
+﻿using SkiaSharp;
+using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Forms;
 using System.Windows.Interop;
-using Point = System.Drawing.Point;
 
 namespace InfoPanel.Utils
 {
@@ -58,11 +56,11 @@ namespace InfoPanel.Utils
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
-        public static Point GetWindowPositionPhysical(Window window)
+        public static SKPoint GetWindowPositionPhysical(Window window)
         {
             var hWnd = new WindowInteropHelper(window).Handle;
             GetWindowRect(hWnd, out var rect);
-            return new Point(rect.Left, rect.Top);
+            return new SKPoint(rect.Left, rect.Top);
         }
 
         public static MonitorInfo? GetWindowScreen(Window window)
@@ -71,7 +69,7 @@ namespace InfoPanel.Utils
             if (!GetWindowRect(hwnd, out var rect))
                 return null;
 
-            var windowPos = new Point(rect.Left, rect.Top);
+            var windowPos = new SKPoint(rect.Left, rect.Top);
             var monitors = GetAllMonitors();
 
             // Find the monitor whose bounds contain the window position
@@ -89,19 +87,19 @@ namespace InfoPanel.Utils
                 .FirstOrDefault();
         }
 
-        private static double DistanceSquared(Point point, Rectangle rect)
+        private static double DistanceSquared(SKPoint point, SKRect rect)
         {
-            int centerX = rect.Left + rect.Width / 2;
-            int centerY = rect.Top + rect.Height / 2;
+            int centerX = (int)(rect.Left + rect.Width / 2);
+            int centerY = (int)(rect.Top + rect.Height / 2);
             int dx = (int)(centerX - point.X);
             int dy = (int)(centerY - point.Y);
             return dx * dx + dy * dy;
         }
 
-        public static Point GetWindowRelativePosition(MonitorInfo screen, Point absolutePosition)
+        public static Point GetWindowRelativePosition(MonitorInfo screen, SKPoint absolutePosition)
         {
-            var relativeX = absolutePosition.X - screen.Bounds.X;
-            var relativeY = absolutePosition.Y - screen.Bounds.Y;
+            var relativeX = absolutePosition.X - (int) screen.Bounds.Left;
+            var relativeY = absolutePosition.Y - (int) screen.Bounds.Top;
 
             return new Point(relativeX, relativeY);
         }
@@ -121,10 +119,10 @@ namespace InfoPanel.Utils
                     monitors.Add(new MonitorInfo
                     {
                         DeviceName = info.szDevice,
-                        Bounds = new Rectangle(info.rcMonitor.Left, info.rcMonitor.Top,
+                        Bounds = SKRect.Create(info.rcMonitor.Left, info.rcMonitor.Top,
                             info.rcMonitor.Right - info.rcMonitor.Left,
                             info.rcMonitor.Bottom - info.rcMonitor.Top),
-                        WorkingArea = new Rectangle(info.rcWork.Left, info.rcWork.Top,
+                        WorkingArea = SKRect.Create(info.rcWork.Left, info.rcWork.Top,
                             info.rcWork.Right - info.rcWork.Left,
                             info.rcWork.Bottom - info.rcWork.Top),
                         IsPrimary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0
@@ -140,8 +138,8 @@ namespace InfoPanel.Utils
     public class MonitorInfo
     {
         public string? DeviceName { get; set; }
-        public Rectangle Bounds { get; set; }
-        public Rectangle WorkingArea { get; set; }
+        public SKRect Bounds { get; set; }
+        public SKRect WorkingArea { get; set; }
         public bool IsPrimary { get; set; }
 
         public override string ToString()

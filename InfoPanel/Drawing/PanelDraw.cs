@@ -211,7 +211,7 @@ namespace InfoPanel.Drawing
 
                             if (formatParts.Length > 0)
                             {
-                                (float fWidth, float fHeight) = g.MeasureString("A", textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, textDisplayItem.Bold,
+                                (float fWidth, float fHeight) = SkiaGraphics.MeasureString("A", textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, textDisplayItem.Bold,
                                               textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
 
                                 var tWidth = 0;

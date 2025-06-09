@@ -47,14 +47,12 @@
             <local:IsSensorConverter x:Key="IsSensorConverter" />
             <local:IsPluginTableConverter x:Key="IsPluginTableConverter" />
             <local:CustomStepIndexConverter x:Key="CustomStepIndexConverter" />
-            <!--<local:CacheImageConverter x:Key="CacheImageConverter" />-->
             <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <local:NullToBooleanConverter x:Key="NullToBooleanConverter" />
             <local:IntToBooleanConverter x:Key="IntToBooleanConverter" />
             <local:SelectedItemTextConverter x:Key="SelectedItemTextConverter" />
             <local:IntStringValueConverter x:Key="IntStringValueConverter" />
             <local:IntDoubleValueConverter x:Key="IntDoubleValueConverter" />
-            <local:BitmapToImageConverter x:Key="BitmapToImageConverter" />
             <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter" />
             <local:FontFamilyConverter x:Key="FontFamilyConverter" />
             <local:EnumEqualsConverter x:Key="EnumEqualsConverter" />

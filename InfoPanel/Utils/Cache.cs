@@ -1,14 +1,10 @@
-﻿using FlyleafLib;
-using InfoPanel.Extensions;
+﻿using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,14 +32,6 @@ namespace InfoPanel
         private static void ForceExpirationScan()
         {
             _ = ImageCache.Get("__dummy_key_for_expiration__");
-        }
-
-        public static Stream ToStream(this Image image, ImageFormat format)
-        {
-            var stream = new MemoryStream();
-            image.Save(stream, format);
-            stream.Position = 0;
-            return stream;
         }
 
         public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)

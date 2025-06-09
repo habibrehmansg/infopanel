@@ -1,7 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using SkiaSharp;
 using System;
-using System.Drawing;
 using System.Linq;
 using System.Windows.Media;
 using System.Xml.Serialization;
@@ -27,7 +26,7 @@ namespace InfoPanel.Models
 
         public TargetWindow() { }
 
-        public TargetWindow(int x, int y, int width, int height, string deviceName)
+        public TargetWindow(int x, int y, int width, int height, string? deviceName)
         {
             X = x;
             Y = y;
@@ -57,11 +56,6 @@ namespace InfoPanel.Models
         [XmlIgnore]
         [ObservableProperty]
         private bool _isSelected;
-
-        public void NotifyBitmapUpdate()
-        {
-            OnPropertyChanged(nameof(Bitmap));
-        }
 
         public string Name
         {
@@ -130,13 +124,7 @@ namespace InfoPanel.Models
                     value = "#" + value;
                 }
 
-                try
-                {
-                    ColorTranslator.FromHtml(value);
-                    SetProperty(ref _backgroundColor, value);
-                }
-                catch
-                { }
+                SetProperty(ref _backgroundColor, value);
             }
         }
 
@@ -245,13 +233,7 @@ namespace InfoPanel.Models
                     value = "#" + value;
                 }
 
-                try
-                {
-                    ColorTranslator.FromHtml(value);
-                    SetProperty(ref _color, value);
-                }
-                catch
-                { }
+                SetProperty(ref _color, value);
             }
         }
 

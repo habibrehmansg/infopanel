@@ -7,8 +7,6 @@ namespace InfoPanel.Drawing
     internal abstract class MyGraphics: IDisposable
     {
         public abstract void Clear(SKColor color);
-        public abstract (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, 
-            bool bold = false, bool italic = false, bool underline = false, bool strikeout = false);
         public abstract void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false,
             bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0);
         public abstract void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default");    

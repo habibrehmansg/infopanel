@@ -10,11 +10,11 @@ using System.Text.RegularExpressions;
 
 namespace InfoPanel.Drawing
 {
-    internal partial class SkiaGraphics(SKCanvas canvas, float fontScale = 1.33f) : MyGraphics
+    internal partial class SkiaGraphics(SKCanvas canvas) : MyGraphics
     {
         public readonly SKCanvas Canvas = canvas;
         private readonly GRContext? GRContext = canvas.Context as GRContext;
-        private readonly float FontScale = fontScale;
+        private static readonly float FontScale = 1.33f; //always scale fonts by 1.33x to match System.Drawing behavior
 
         public bool OpenGL => GRContext != null;
 
@@ -798,7 +798,7 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public override (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        public static (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
         {
             var typeface = CreateTypeface(fontName, fontStyle, bold, italic);
             using var font = new SKFont(typeface, size: fontSize * FontScale);

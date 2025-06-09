@@ -1,6 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using System;
-using System.Drawing;
 
 namespace InfoPanel.Models
 {
@@ -113,13 +112,7 @@ namespace InfoPanel.Models
                     value = "#" + value;
                 }
 
-                try
-                {
-                    ColorTranslator.FromHtml(value);
-                    SetProperty(ref _threshold1Color, value);
-                }
-                catch
-                { }
+                SetProperty(ref _threshold1Color, value);
             }
         }
 
@@ -149,13 +142,7 @@ namespace InfoPanel.Models
                     value = "#" + value;
                 }
 
-                try
-                {
-                    ColorTranslator.FromHtml(value);
-                    SetProperty(ref _threshold2Color, value);
-                }
-                catch
-                { }
+                SetProperty(ref _threshold2Color, value);
             }
         }
 

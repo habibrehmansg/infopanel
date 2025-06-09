@@ -1,11 +1,8 @@
 ﻿using InfoPanel.Views.Components.WebServer;
 using System;
 using System.Diagnostics;
-using System.Drawing;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace InfoPanel.Views.Components
 {

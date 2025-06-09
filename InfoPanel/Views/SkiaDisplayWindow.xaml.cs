@@ -1,27 +1,13 @@
-﻿using SkiaSharp.Views.Desktop;
+﻿using InfoPanel.Drawing;
+using InfoPanel.Models;
+using InfoPanel.Utils;
 using SkiaSharp;
+using SkiaSharp.Views.Desktop;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Timers;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-using InfoPanel.Utils;
-using InfoPanel.Models;
-using System.Drawing;
-using System.Windows.Media.Media3D;
-using static System.Net.Mime.MediaTypeNames;
-using System.IO;
-using InfoPanel.Drawing;
 
 namespace InfoPanel.Views
 {
@@ -79,7 +65,7 @@ namespace InfoPanel.Views
         private void RenderProfile(SKCanvas canvas)
         {
             var profile = ConfigModel.Instance.Profiles.First();
-            SkiaGraphics skiaGraphics = new(canvas, 1.33f);
+            SkiaGraphics skiaGraphics = new(canvas);
             PanelDraw.Run(profile, skiaGraphics);
 
         }

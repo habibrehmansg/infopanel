@@ -3,7 +3,6 @@ using InfoPanel.Models;
 using SkiaSharp;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Drawing.Text;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;

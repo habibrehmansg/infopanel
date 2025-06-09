@@ -2,7 +2,6 @@
 using InfoPanel.Drawing;
 using SkiaSharp;
 using System;
-using System.Drawing;
 using System.Linq;
 
 namespace InfoPanel.Models
@@ -101,13 +100,7 @@ namespace InfoPanel.Models
                     value = "#" + value;
                 }
 
-                try
-                {
-                    ColorTranslator.FromHtml(value);
-                    SetProperty(ref _color, value);
-                }
-                catch
-                { }
+                SetProperty(ref _color, value);
             }
         }
 

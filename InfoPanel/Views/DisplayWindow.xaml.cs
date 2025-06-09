@@ -325,7 +325,7 @@ namespace InfoPanel.Views.Common
 
             canvas.Clear();
 
-            SkiaGraphics skiaGraphics = new(canvas, 1.33f);
+            SkiaGraphics skiaGraphics = new(canvas);
             PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
         }
 
@@ -347,8 +347,8 @@ namespace InfoPanel.Views.Common
                 {
                     Profile.WindowX = 0;
                     Profile.WindowY = 0;
-                    Profile.Width = screen.Bounds.Width;
-                    Profile.Height = screen.Bounds.Height;
+                    Profile.Width = (int)screen.Bounds.Width;
+                    Profile.Height = (int)screen.Bounds.Height;
                 }
             });
         }
@@ -464,7 +464,7 @@ namespace InfoPanel.Views.Common
 
                 Trace.WriteLine($"SetWindowPositionRelativeToScreen targetScreen={targetScreen}");
                 Trace.WriteLine($"SetWindowPositionRelativeToScreen targetScreen={targetScreen.DeviceName} x={x} y={y}");
-                ScreenHelper.MoveWindowPhysical(this, x, y);
+                ScreenHelper.MoveWindowPhysical(this, (int)x, (int)y);
             }
             else if (this.IsVisible)
             {
@@ -520,7 +520,7 @@ namespace InfoPanel.Views.Common
 
                             try
                             {
-                                Profile.TargetWindow = new TargetWindow(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height, screen.DeviceName);
+                                Profile.TargetWindow = new TargetWindow((int)screen.Bounds.Left, (int)screen.Bounds.Top, (int)screen.Bounds.Width, (int)screen.Bounds.Height, screen.DeviceName);
                                 Profile.WindowX = (int)relativePosition.X;
                                 Profile.WindowY = (int)relativePosition.Y;
                             }

@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
@@ -7,7 +8,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -674,61 +674,6 @@ namespace InfoPanel
             }
         }
 
-        public BitmapSource BitmapSource { get; set; }
-
-        public void UpdatePanel(Profile profile, Bitmap bitmap)
-        {
-            //if (Application.Current is App app)
-            //{
-            //    var window = app.GetDisplayWindow(profile);
-
-            //    if (window is DisplayWindow displayWindow && !window.Direct2DMode)
-            //    {
-            //        var writeableBitmap = displayWindow?.WriteableBitmap;
-
-            //        if (writeableBitmap != null)
-            //        {
-            //            IntPtr backBuffer = IntPtr.Zero;
-
-            //            writeableBitmap.Dispatcher.Invoke(() =>
-            //             {
-            //                 if (writeableBitmap.Width == bitmap.Width && writeableBitmap.Height == bitmap.Height)
-            //                 {
-            //                     writeableBitmap.Lock();
-            //                     backBuffer = writeableBitmap.BackBuffer;
-            //                 }
-            //             });
-
-            //            if (backBuffer == IntPtr.Zero)
-            //            {
-            //                return;
-            //            }
-
-            //            // copy the pixel data from the bitmap to the back buffer
-            //            BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            //            int stride = bitmapData.Stride;
-            //            byte[] pixels = new byte[stride * bitmap.Height];
-            //            Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-            //            Marshal.Copy(pixels, 0, backBuffer, pixels.Length);
-            //            bitmap.UnlockBits(bitmapData);
-
-            //            writeableBitmap.Dispatcher.Invoke(() =>
-            //            {
-            //                writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, writeableBitmap.PixelWidth, writeableBitmap.PixelHeight));
-            //                writeableBitmap.Unlock();
-            //            });
-            //        }
-            //    }
-            //}
-        }
-
-        public void SetPanelBitmap(Profile profile, Bitmap bitmap)
-        {
-            if (profile.Active)
-            {
-                UpdatePanel(profile, bitmap);
-            }
-        }
 
         private static void SaveDisplayItems(Profile profile, List<DisplayItem> displayItems)
         {
@@ -1299,18 +1244,11 @@ namespace InfoPanel
 
                                         if (BARPLC == "SEP" && SHWVAL == 1)
                                         {
-                                            using Bitmap bitmap2 = new(1, 1);
-                                            using Graphics g2 = Graphics.FromImage(bitmap2);
-                                            using Font font2 = new(FNTNAM, TXTSIZ);
-                                            var size2 = g2.MeasureString("HELLO WORLD", font2, 0, StringFormat.GenericTypographic);
-
-                                            offset = (int)size2.Height;
+                                            var size2 = SkiaGraphics.MeasureString("HELLO WORLD", FNTNAM, "", TXTSIZ);
+                                            offset = (int)size2.height;
                                         }
 
-                                        using Bitmap bitmap = new(1, 1);
-                                        using Graphics g = Graphics.FromImage(bitmap);
-                                        using Font font = new(FNTNAM, TXTSIZ);
-                                        var size = g.MeasureString(UNT, font, 0, StringFormat.GenericTypographic);
+                                        var size = SkiaGraphics.MeasureString(UNT, FNTNAM, "", TXTSIZ);
 
                                         var frame = false;
                                         var gradient = false;
