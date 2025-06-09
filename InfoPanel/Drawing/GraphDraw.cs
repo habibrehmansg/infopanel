@@ -8,7 +8,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.Linq;
 
 namespace InfoPanel.Drawing
@@ -144,7 +143,7 @@ namespace InfoPanel.Drawing
             {
                 g.Clear(SKColors.Transparent);
 
-                var frameRect = new Rectangle(0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
+                var frameRect = new SKRect(0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
 
                 Queue<double> queue;
 
@@ -182,16 +181,16 @@ namespace InfoPanel.Drawing
 
                         if (chartDisplayItem.Background)
                         {
-                            g.FillRectangle(chartDisplayItem.BackgroundColor, frameRect.X, frameRect.Y, frameRect.Width, frameRect.Height);
+                            g.FillRectangle(chartDisplayItem.BackgroundColor, (int)frameRect.Left, (int)frameRect.Top, (int)frameRect.Width, (int)frameRect.Height);
                         }
 
                         switch (graphDisplayItem.Type)
                         {
                             case GraphDisplayItem.GraphType.LINE:
                                 {
-                                    var size = frameRect.Width / graphDisplayItem.Step;
+                                    var size = (int)frameRect.Width / graphDisplayItem.Step;
 
-                                    if (size * graphDisplayItem.Step != frameRect.Width)
+                                    if (size * graphDisplayItem.Step != (int)frameRect.Width)
                                     {
                                         size += 2;
                                     }
@@ -219,7 +218,7 @@ namespace InfoPanel.Drawing
                                     }
 
                                     MyPoint[] points = new MyPoint[size + 2];
-                                    points[0] = new MyPoint(frameRect.X + graphDisplayItem.Width + graphDisplayItem.Thickness, frameRect.Y + graphDisplayItem.Height + graphDisplayItem.Thickness);
+                                    points[0] = new MyPoint((int)frameRect.Left + graphDisplayItem.Width + graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
 
                                     for (int i = 0; i < size; i++)
                                     {
@@ -239,12 +238,12 @@ namespace InfoPanel.Drawing
                                         value = value * (frameRect.Height - graphDisplayItem.Thickness);
                                         value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
-                                        var newPoint = new MyPoint(frameRect.X + frameRect.Width - (i * graphDisplayItem.Step), frameRect.Y + (int)(frameRect.Height - (value + (graphDisplayItem.Thickness / 2.0))));
+                                        var newPoint = new MyPoint((int)frameRect.Left + (int)frameRect.Width - (i * graphDisplayItem.Step), (int)frameRect.Top + (int)(frameRect.Height - (value + (graphDisplayItem.Thickness / 2.0))));
 
                                         points[i + 1] = newPoint;
                                     }
 
-                                    points[^1] = new MyPoint(points[^2].X - graphDisplayItem.Thickness, frameRect.Y + graphDisplayItem.Height + graphDisplayItem.Thickness);
+                                    points[^1] = new MyPoint(points[^2].X - graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
 
                                     if (graphDisplayItem.Fill)
                                     {
@@ -268,9 +267,9 @@ namespace InfoPanel.Drawing
                             case GraphDisplayItem.GraphType.HISTOGRAM:
                                 {
                                     var penSize = 1;
-                                    var size = frameRect.Width / (graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2);
+                                    var size = (int)frameRect.Width / (graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2);
 
-                                    if (size * graphDisplayItem.Step != frameRect.Width)
+                                    if (size * graphDisplayItem.Step != (int)frameRect.Width)
                                     {
                                         size += 1;
                                     }
@@ -294,11 +293,11 @@ namespace InfoPanel.Drawing
                                     }
 
                                     // Initialize refRect to start at the right edge of frameRect
-                                    var refRect = new Rectangle(
+                                    var refRect = new SKRect(
                                         frameRect.Right - graphDisplayItem.Thickness - penSize * 2,
                                         frameRect.Bottom - penSize * 2,
-                                        graphDisplayItem.Thickness,
-                                        0);
+                                        frameRect.Right - penSize * 2,
+                                        frameRect.Bottom - penSize * 2);
 
                                     var maxHeight = frameRect.Height - 3; // Precalculate the drawable height range
                                     var offset = graphDisplayItem.Thickness + graphDisplayItem.Step + penSize * 2; // Precalculate horizontal offset
@@ -310,19 +309,26 @@ namespace InfoPanel.Drawing
                                         var normalizedHeight = (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
                                         // Update refRect properties for the current rectangle
-                                        refRect.Y = frameRect.Bottom - normalizedHeight - penSize * 2;
-                                        refRect.Height = normalizedHeight + penSize;
+                                        refRect = new SKRect(
+                                            refRect.Left,
+                                            frameRect.Bottom - normalizedHeight - penSize * 2,
+                                            refRect.Right,
+                                            frameRect.Bottom - penSize * 2 + normalizedHeight + penSize);
 
                                         // Draw the rectangle (filled and outlined)
                                         if (graphDisplayItem.Fill)
                                         {
-                                            g.FillRectangle(graphDisplayItem.FillColor, refRect.X, refRect.Y, refRect.Width, refRect.Height);
+                                            g.FillRectangle(graphDisplayItem.FillColor, (int)refRect.Left, (int)refRect.Top, (int)refRect.Width, (int)refRect.Height);
                                         }
 
-                                        g.DrawRectangle(graphDisplayItem.Color, penSize, refRect.X, refRect.Y, refRect.Width, refRect.Height);
+                                        g.DrawRectangle(graphDisplayItem.Color, penSize, (int)refRect.Left, (int)refRect.Top, (int)refRect.Width, (int)refRect.Height);
 
                                         // Move refRect horizontally for the next rectangle
-                                        refRect.X -= offset;
+                                        refRect = new SKRect(
+                                            refRect.Left - offset,
+                                            refRect.Top,
+                                            refRect.Right - offset,
+                                            refRect.Bottom);
                                     }
 
                                     break;
@@ -364,20 +370,20 @@ namespace InfoPanel.Drawing
                             {
                                 // Vertical bar - bottom draw
                                 usagePath.AddRoundRect(new SKRoundRect(new SKRect(
-                                    frameRect.X,
-                                    frameRect.Y + frameRect.Height - (float)value,
-                                    frameRect.X + frameRect.Width,
-                                    frameRect.Y + frameRect.Height
+                                    frameRect.Left,
+                                    frameRect.Top + frameRect.Height - (float)value,
+                                    frameRect.Left + frameRect.Width,
+                                    frameRect.Top + frameRect.Height
                                 ), barDisplayItem.CornerRadius));
                             }
                             else
                             {
                                 // Horizontal bar
                                 usagePath.AddRoundRect(new SKRoundRect(new SKRect(
-                                    frameRect.X,
-                                    frameRect.Y,
-                                    frameRect.X + (float)value,
-                                    frameRect.Y + frameRect.Height
+                                    frameRect.Left,
+                                    frameRect.Top,
+                                    frameRect.Left + (float)value,
+                                    frameRect.Top + frameRect.Height
                                 ), barDisplayItem.CornerRadius));
                             }
 
@@ -385,7 +391,7 @@ namespace InfoPanel.Drawing
                             if (chartDisplayItem.Background && SKColor.TryParse(barDisplayItem.BackgroundColor, out var backgroundColor))
                             {
                                 using var bgPath = new SKPath();
-                                bgPath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.X, frameRect.Y, frameRect.X + frameRect.Width, frameRect.Y + frameRect.Height), barDisplayItem.CornerRadius));
+                                bgPath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.Left, frameRect.Top, frameRect.Left + frameRect.Width, frameRect.Top + frameRect.Height), barDisplayItem.CornerRadius));
                                 g.FillPath(bgPath, backgroundColor);
                             }
 
@@ -405,7 +411,7 @@ namespace InfoPanel.Drawing
                             if (barDisplayItem.Frame && SKColor.TryParse(barDisplayItem.FrameColor, out var frameColor))
                             {
                                 using var framePath = new SKPath();
-                                framePath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.X, frameRect.Y, frameRect.X + frameRect.Width, frameRect.Y + frameRect.Height), barDisplayItem.CornerRadius));
+                                framePath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.Left, frameRect.Top, frameRect.Left + frameRect.Width, frameRect.Top + frameRect.Height), barDisplayItem.CornerRadius));
 
                                 g.DrawPath(framePath, frameColor, 1);
                             }
@@ -433,7 +439,7 @@ namespace InfoPanel.Drawing
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var offset = 1;
-                            g.FillDonut(frameRect.X + offset, frameRect.Y + offset, (frameRect.Width / 2) - offset, donutDisplayItem.Thickness,
+                            g.FillDonut((int)frameRect.Left + offset, (int)frameRect.Top + offset, ((int)frameRect.Width / 2) - offset, donutDisplayItem.Thickness,
                                  donutDisplayItem.Rotation, (int)value, donutDisplayItem.Span, donutDisplayItem.Color,
                                 donutDisplayItem.Background ? donutDisplayItem.BackgroundColor : "#00000000",
                                 donutDisplayItem.Frame ? 1 : 0, donutDisplayItem.FrameColor);
