@@ -21,9 +21,6 @@ namespace InfoPanel
     public sealed class BeadaPanelTask : BackgroundTask
     {
         private static readonly Lazy<BeadaPanelTask> _instance = new(() => new BeadaPanelTask());
-
-        private volatile int _panelWidth = 0;
-        private volatile int _panelHeight = 0;
         
         private readonly ConcurrentDictionary<string, BeadaPanelDeviceTask> _deviceTasks = new();
 
