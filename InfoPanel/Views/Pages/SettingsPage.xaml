@@ -488,10 +488,11 @@
                                                 </TextBlock>
                                                 <!--  Panel status when enabled  -->
                                                 <StackPanel Visibility="{Binding Enabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <!--  Show when running  -->
                                                     <StackPanel
                                                         Margin="0,5,0,0"
                                                         Orientation="Horizontal"
-                                                        Visibility="{Binding DeviceStatus.IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        Visibility="{Binding DeviceStatus, Converter={StaticResource DeviceStatusRunningConverter}}">
                                                         <TextBlock
                                                             Margin="0,0,0,0"
                                                             FontSize="12"
@@ -508,12 +509,14 @@
                                                             Foreground="LawnGreen"
                                                             Text="{Binding DeviceStatus.FrameTime, StringFormat=' @ {0}ms'}" />
                                                     </StackPanel>
+
+                                                    <!--  Show when not running  -->
                                                     <TextBlock
                                                         Margin="0,5,0,0"
                                                         FontSize="12"
                                                         Foreground="Orange"
                                                         Text="Display is not running. Check your USB connection and try again."
-                                                        Visibility="{Binding DeviceStatus.IsRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                                        Visibility="{Binding DeviceStatus, Converter={StaticResource DeviceStatusNotRunningConverter}}" />
                                                 </StackPanel>
                                             </StackPanel>
                                         </Grid>
