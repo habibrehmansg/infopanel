@@ -74,7 +74,7 @@ namespace InfoPanel.Drawing
             return result;
         }
 
-        public static void Run(ChartDisplayItem chartDisplayItem, MyGraphics g)
+        public static void Run(ChartDisplayItem chartDisplayItem, MyGraphics g, bool preview = false)
         {
             var elapsedMilliseconds = Stopwatch.ElapsedMilliseconds;
 
@@ -355,7 +355,7 @@ namespace InfoPanel.Drawing
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
+                            value = preview ? value : InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             // Create SKPath for usage rectangle
@@ -429,7 +429,7 @@ namespace InfoPanel.Drawing
                             value = value * 100;
 
                             GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
+                            value = preview ? value : InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var offset = 1;

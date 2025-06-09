@@ -1,5 +1,4 @@
-﻿using ExCSS;
-using FlyleafLib.MediaPlayer;
+﻿using FlyleafLib.MediaPlayer;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Plugins;
@@ -9,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
-using System.Windows.Controls;
 
 namespace InfoPanel.Drawing
 {
@@ -421,7 +419,7 @@ namespace InfoPanel.Drawing
                         using var canvas = new SKCanvas(graphBitmap);
 
                         using var g1 = new SkiaGraphics(canvas);
-                        GraphDraw.Run(chartDisplayItem, g1);
+                        GraphDraw.Run(chartDisplayItem, g1, preview);
 
                         if (chartDisplayItem.FlipX)
                         {
