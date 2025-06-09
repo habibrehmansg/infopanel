@@ -1,4 +1,5 @@
-﻿using InfoPanel.ViewModels;
+﻿using InfoPanel.Models;
+using InfoPanel.ViewModels;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -180,6 +181,105 @@ namespace InfoPanel.Views.Pages
             if (ComboBoxTuringPanelEPort.SelectedValue is string value)
             {
                 ConfigModel.Instance.Settings.TuringPanelEPort = value;
+            }
+        }
+
+        private async void ButtonDiscoverBeadaPanelDevices_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var button = sender as Button;
+                if (button != null)
+                {
+                    button.IsEnabled = false;
+                    button.Content = "Discovering...";
+                }
+
+                var discoveredDevices = await BeadaPanelTask.Instance.DiscoverDevicesAsync();
+                var settings = ConfigModel.Instance.Settings;
+
+                foreach (var discoveredDevice in discoveredDevices)
+                {
+                    var existingDevice = settings.BeadaPanelDevices.FirstOrDefault(d => 
+                        d.SerialNumber == discoveredDevice.SerialNumber || 
+                        d.UsbPath == discoveredDevice.UsbPath);
+
+                    if (existingDevice == null)
+                    {
+                        discoveredDevice.ProfileGuid = settings.BeadaPanelDevices.Count > 0 
+                            ? settings.BeadaPanelDevices.First().ProfileGuid 
+                            : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
+
+                        settings.BeadaPanelDevices.Add(discoveredDevice);
+                        Trace.WriteLine($"Added new BeadaPanel device: {discoveredDevice.Name}");
+                    }
+                    else
+                    {
+                        existingDevice.UsbPath = discoveredDevice.UsbPath;
+                        existingDevice.SerialNumber = discoveredDevice.SerialNumber;
+                        Trace.WriteLine($"Updated existing BeadaPanel device: {existingDevice.Name}");
+                    }
+                }
+
+                if (button != null)
+                {
+                    button.Content = "Discover Devices";
+                    button.IsEnabled = true;
+                }
+
+                if (discoveredDevices.Count == 0)
+                {
+                    MessageBox.Show("No BeadaPanel devices found. Make sure your devices are connected and drivers are installed.", 
+                        "Device Discovery", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show($"Found {discoveredDevices.Count} BeadaPanel device(s). Check the device list below for configuration.", 
+                        "Device Discovery", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Error discovering BeadaPanel devices: {ex.Message}");
+                MessageBox.Show($"Error discovering devices: {ex.Message}", 
+                    "Discovery Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                
+                if (sender is Button button)
+                {
+                    button.Content = "Discover Devices";
+                    button.IsEnabled = true;
+                }
+            }
+        }
+
+        private void ButtonRemoveBeadaPanelDevice_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (sender is Button button && button.Tag is BeadaPanelDevice device)
+                {
+                    var result = MessageBox.Show($"Are you sure you want to remove the device '{device.Name}'?", 
+                        "Remove Device", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        var settings = ConfigModel.Instance.Settings;
+                        settings.BeadaPanelDevices.Remove(device);
+                        
+                        if (BeadaPanelTask.Instance.IsDeviceRunning(device.Id))
+                        {
+                            _ = BeadaPanelTask.Instance.StopDevice(device.Id);
+                        }
+
+                        Trace.WriteLine($"Removed BeadaPanel device: {device.Name}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Error removing BeadaPanel device: {ex.Message}");
+                MessageBox.Show($"Error removing device: {ex.Message}", 
+                    "Remove Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

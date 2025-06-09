@@ -70,6 +70,44 @@ namespace InfoPanel
             }
         }
 
+        private ObservableCollection<BeadaPanelDeviceStatus> _beadaPanelDeviceStatuses = new();
+        public ObservableCollection<BeadaPanelDeviceStatus> BeadaPanelDeviceStatuses
+        {
+            get { return _beadaPanelDeviceStatuses; }
+            set { SetProperty(ref _beadaPanelDeviceStatuses, value); }
+        }
+
+        public BeadaPanelDeviceStatus? GetBeadaPanelDeviceStatus(string deviceId)
+        {
+            return BeadaPanelDeviceStatuses.FirstOrDefault(s => s.DeviceId == deviceId);
+        }
+
+        public void UpdateBeadaPanelDeviceStatus(string deviceId, bool isRunning, bool isConnected, int frameRate = 0, long frameTime = 0, string errorMessage = "")
+        {
+            var status = GetBeadaPanelDeviceStatus(deviceId);
+            if (status == null)
+            {
+                status = new BeadaPanelDeviceStatus(deviceId);
+                BeadaPanelDeviceStatuses.Add(status);
+            }
+            
+            status.IsRunning = isRunning;
+            status.IsConnected = isConnected;
+            status.FrameRate = frameRate;
+            status.FrameTime = frameTime;
+            status.ErrorMessage = errorMessage;
+            status.LastUpdate = DateTime.Now;
+        }
+
+        public void RemoveBeadaPanelDeviceStatus(string deviceId)
+        {
+            var status = GetBeadaPanelDeviceStatus(deviceId);
+            if (status != null)
+            {
+                BeadaPanelDeviceStatuses.Remove(status);
+            }
+        }
+
 
         private bool _turingPanelRunning = false;
 

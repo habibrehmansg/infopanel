@@ -3,6 +3,7 @@ using InfoPanel.ViewModels;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -90,6 +91,27 @@ namespace InfoPanel.Models
             {
                 SetProperty(ref _beadaPanelBrightness, value);
             }
+        }
+
+        private ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = new();
+        public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices
+        {
+            get { return _beadaPanelDevices; }
+            set { SetProperty(ref _beadaPanelDevices, value); }
+        }
+
+        private string _selectedBeadaPanelDeviceId = string.Empty;
+        public string SelectedBeadaPanelDeviceId
+        {
+            get { return _selectedBeadaPanelDeviceId; }
+            set { SetProperty(ref _selectedBeadaPanelDeviceId, value); }
+        }
+
+        private bool _beadaPanelMultiDeviceMode = false;
+        public bool BeadaPanelMultiDeviceMode
+        {
+            get { return _beadaPanelMultiDeviceMode; }
+            set { SetProperty(ref _beadaPanelMultiDeviceMode, value); }
         }
 
         private bool _turingPanel = false;

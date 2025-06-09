@@ -497,6 +497,202 @@
                     </ui:CardControl>
                     <!--  end BeadaPanel settings  -->
 
+                    <!--  start BeadaPanel Multi-Device settings  -->
+                    <ui:CardControl Margin="0,10,0,0" Icon="WindowMultiple20">
+                        <ui:CardControl.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        FontSize="13"
+                                        FontWeight="Medium"
+                                        Text="Multi-Device BeadaPanel" />
+                                    <TextBlock
+                                        Margin="0,5,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="Support for multiple BeadaPanel devices simultaneously." />
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardControl.Header>
+                        <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode}" />
+                    </ui:CardControl>
+
+                    <!--  start BeadaPanel Device Management  -->
+                    <ui:CardExpander
+                        Margin="0,10,0,0"
+                        Icon="DeviceEq20"
+                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ui:CardExpander.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        FontSize="13"
+                                        FontWeight="Medium"
+                                        Text="Device Management" />
+                                    <TextBlock
+                                        Margin="0,5,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="Configure and manage individual BeadaPanel devices." />
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardExpander.Header>
+
+                        <StackPanel>
+                            <!--  Device Discovery Button  -->
+                            <ui:Button
+                                x:Name="ButtonDiscoverBeadaPanelDevices"
+                                Width="200"
+                                Margin="0,0,0,10"
+                                Click="ButtonDiscoverBeadaPanelDevices_Click"
+                                Content="Discover Devices"
+                                Icon="Search20" />
+
+                            <!--  Device List  -->
+                            <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelDevices}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <ui:CardControl Margin="0,5,0,5">
+                                                <ui:CardControl.Header>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                            <TextBlock
+                                                                FontSize="13"
+                                                                FontWeight="Medium"
+                                                                Text="{Binding Name}" />
+                                                            <TextBlock
+                                                                Margin="0,2,0,0"
+                                                                FontSize="11"
+                                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                Text="{Binding SerialNumber}" />
+
+                                                            <!--  Device Status Display  -->
+                                                            <StackPanel Margin="0,5,0,0" Orientation="Horizontal">
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    Foreground="LawnGreen"
+                                                                    Text="Connected" />
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </ui:CardControl.Header>
+
+                                                <StackPanel>
+                                                    <!--  Device Name  -->
+                                                    <Grid Margin="0,0,0,10">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="100" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock
+                                                            Grid.Column="0"
+                                                            VerticalAlignment="Center"
+                                                            Text="Name:" />
+                                                        <TextBox Grid.Column="1" Text="{Binding Name}" />
+                                                    </Grid>
+
+                                                    <!--  Profile Selection  -->
+                                                    <Grid Margin="0,0,0,10">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="100" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock
+                                                            Grid.Column="0"
+                                                            VerticalAlignment="Center"
+                                                            Text="Profile:" />
+                                                        <ComboBox
+                                                            Grid.Column="1"
+                                                            DisplayMemberPath="Name"
+                                                            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                                            SelectedValue="{Binding ProfileGuid}"
+                                                            SelectedValuePath="Guid" />
+                                                    </Grid>
+
+                                                    <!--  Rotation and Brightness  -->
+                                                    <Grid Margin="0,0,0,10">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="100" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock
+                                                            Grid.Column="0"
+                                                            VerticalAlignment="Center"
+                                                            Text="Rotation:" />
+                                                        <ComboBox
+                                                            Grid.Column="1"
+                                                            Margin="0,0,10,0"
+                                                            ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
+                                                            SelectedItem="{Binding Rotation}">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
+
+                                                        <StackPanel Grid.Column="2">
+                                                            <Slider
+                                                                Maximum="100"
+                                                                Minimum="0"
+                                                                TickFrequency="1"
+                                                                Value="{Binding Brightness}" />
+                                                            <TextBlock
+                                                                FontSize="11"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="{Binding Brightness, StringFormat=Brightness: {0}%}"
+                                                                TextAlignment="Center" />
+                                                        </StackPanel>
+                                                    </Grid>
+
+                                                    <!--  Enable/Remove Controls  -->
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <ui:ToggleSwitch
+                                                            Grid.Column="1"
+                                                            Margin="0,0,10,0"
+                                                            IsChecked="{Binding Enabled}" />
+                                                        <ui:Button
+                                                            Grid.Column="2"
+                                                            Width="32"
+                                                            Height="32"
+                                                            Padding="0"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Click="ButtonRemoveBeadaPanelDevice_Click"
+                                                            Tag="{Binding}"
+                                                            Icon="Delete20"
+                                                            ToolTip="Remove Device" />
+                                                    </Grid>
+                                                </StackPanel>
+                                            </ui:CardControl>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </ui:CardExpander>
+                    <!--  end BeadaPanel Device Management  -->
+
                     <!--  start TuringPanelUSB settings  -->
                     <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
                         <ui:CardControl.Header>
