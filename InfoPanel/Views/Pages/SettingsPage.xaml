@@ -422,7 +422,7 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="Multi-Device BeadaPanel" />
+                                        Text="BeadaPanel USB Displays" />
                                     <TextBlock
                                         Margin="0,5,0,0"
                                         FontSize="12"
@@ -434,293 +434,152 @@
                         <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode}" />
                     </ui:CardControl>
 
-                    <!--  start BeadaPanel Device Management  -->
-                    <ui:CardExpander
-                        Margin="0,10,0,0"
-                        Icon="DeviceEq20"
-                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <ui:CardExpander.Header>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock
-                                        FontSize="13"
-                                        FontWeight="Medium"
-                                        Text="Device Management" />
-                                    <TextBlock
-                                        Margin="0,5,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Configure and manage individual BeadaPanel devices." />
-                                </StackPanel>
-                            </Grid>
-                        </ui:CardExpander.Header>
+                    <!--  Device Discovery Button  -->
+                    <ui:Button
+                        x:Name="ButtonDiscoverBeadaPanelDevices"
+                        Width="200"
+                        Margin="0,10,0,10"
+                        HorizontalAlignment="Left"
+                        Click="ButtonDiscoverBeadaPanelDevices_Click"
+                        Content="Discover Devices"
+                        Icon="Search20"
+                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-                        <StackPanel>
-                            <!--  Device Discovery Button  -->
-                            <ui:Button
-                                x:Name="ButtonDiscoverBeadaPanelDevices"
-                                Width="200"
-                                Margin="0,0,0,10"
-                                Click="ButtonDiscoverBeadaPanelDevices_Click"
-                                Content="Discover Devices"
-                                Icon="Search20" />
-
-                            <!--  Device List  -->
-                            <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelDevices}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <ui:CardControl Margin="0,5,0,5">
-                                                <ui:CardControl.Header>
-                                                    <Grid>
+                    <!--  BeadaPanel Device List  -->
+                    <ItemsControl ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelDevices}"
+                                  Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <ui:CardControl Margin="0,0,0,10" Icon="Whiteboard24">
+                                    <ui:CardControl.Header>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock
+                                                    FontSize="13"
+                                                    FontWeight="Medium"
+                                                    Text="{Binding ModelName}" />
+                                                <TextBlock
+                                                    Margin="0,5,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                    <TextBlock.Text>
+                                                        <MultiBinding StringFormat="{}{0}×{1} • {2}">
+                                                            <Binding Path="NativeResolutionX" />
+                                                            <Binding Path="NativeResolutionY" />
+                                                            <Binding Path="HardwareSerialNumber" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                </TextBlock>
+                                                <!--  Panel status when enabled  -->
+                                                <StackPanel Visibility="{Binding Enabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <StackPanel
+                                                        Margin="0,5,0,0"
+                                                        Orientation="Horizontal"
+                                                        Visibility="{Binding DeviceStatus.IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock
+                                                            Margin="0,0,0,0"
+                                                            FontSize="12"
+                                                            Foreground="LawnGreen"
+                                                            Text="Panel is running:" />
+                                                        <TextBlock
+                                                            Margin="10,0,0,0"
+                                                            FontSize="12"
+                                                            Foreground="LawnGreen"
+                                                            Text="{Binding DeviceStatus.FrameRate, StringFormat='{}{0} FPS'}" />
+                                                        <TextBlock
+                                                            Margin="0,0,0,0"
+                                                            FontSize="12"
+                                                            Foreground="LawnGreen"
+                                                            Text="{Binding DeviceStatus.FrameTime, StringFormat=' @ {0}ms'}" />
+                                                    </StackPanel>
+                                                    <TextBlock
+                                                        Margin="0,5,0,0"
+                                                        FontSize="12"
+                                                        Foreground="Orange"
+                                                        Text="Display is not running. Check your USB connection and try again."
+                                                        Visibility="{Binding DeviceStatus.IsRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Grid>
+                                    </ui:CardControl.Header>
+                                    <StackPanel Orientation="Horizontal">
+                                        <StackPanel Margin="10,0,0,0">
+                                            <!--  Profile selection  -->
+                                            <ComboBox
+                                                Width="300"
+                                                Margin="0,0,0,0"
+                                                DisplayMemberPath="Name"
+                                                ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                                SelectedValue="{Binding ProfileGuid}"
+                                                SelectedValuePath="Guid" />
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <!--  Rotation  -->
+                                                <ComboBox
+                                                    Margin="0,0,10,0"
+                                                    ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
+                                                    SelectedItem="{Binding Rotation}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                                <!--  Brightness  -->
+                                                <StackPanel Grid.Column="1" Margin="0,0,0,0">
+                                                    <Slider
+                                                        Margin="0,0,0,0"
+                                                        IsSnapToTickEnabled="True"
+                                                        Maximum="100"
+                                                        Minimum="0"
+                                                        TickFrequency="1"
+                                                        Value="{Binding Brightness}" />
+                                                    <Grid Margin="0,0,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*" />
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
-                                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                            <TextBlock
-                                                                FontSize="13"
-                                                                FontWeight="Medium"
-                                                                Text="{Binding Name}" />
-
-                                                            <!--  Model Information  -->
-                                                            <TextBlock
-                                                                Margin="0,2,0,0"
-                                                                FontSize="11"
-                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="{Binding ModelName}"
-                                                                Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                                                            <!--  Hardware Specifications  -->
-                                                            <StackPanel
-                                                                Margin="0,2,0,0"
-                                                                Orientation="Horizontal"
-                                                                Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="{Binding NativeResolutionX}" />
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="×" />
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="{Binding NativeResolutionY}" />
-                                                                <TextBlock
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="•" />
-                                                                <TextBlock
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="{Binding WidthMm}" />
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="×" />
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="{Binding HeightMm}" />
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="mm" />
-                                                            </StackPanel>
-
-                                                            <!--  Serial Number (Legacy)  -->
-                                                            <TextBlock
-                                                                Margin="0,2,0,0"
-                                                                FontSize="11"
-                                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                Text="{Binding HardwareSerialNumber}"
-                                                                Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                                                            <!--  Fallback Serial for USB Path devices  -->
-                                                            <TextBlock
-                                                                Margin="0,2,0,0"
-                                                                FontSize="11"
-                                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                Text="{Binding SerialNumber}"
-                                                                Visibility="{Binding StatusLinkAvailable, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-
-                                                            <!--  Device Identification Status  -->
-                                                            <StackPanel Margin="0,3,0,0" Orientation="Horizontal">
-                                                                <!--  Hardware Serial (Green)  -->
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="LawnGreen"
-                                                                    Text="✓ Hardware Serial"
-                                                                    Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=HardwareSerial}" />
-
-                                                                <!--  Model Fingerprint (Orange)  -->
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="Orange"
-                                                                    Text="⚡ Model Fingerprint"
-                                                                    Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=ModelFingerprint}" />
-
-                                                                <!--  USB Path (Red)  -->
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="Tomato"
-                                                                    Text="⚠ USB Path (unstable)"
-                                                                    Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=UsbPath}" />
-
-                                                                <!--  Firmware Version  -->
-                                                                <TextBlock
-                                                                    Margin="10,0,0,0"
-                                                                    FontSize="10"
-                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                    Text="{Binding FirmwareVersion, StringFormat=FW: {0}}"
-                                                                    Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                            </StackPanel>
-
-                                                            <!--  Per-Panel Framerate Information  -->
-                                                            <StackPanel
-                                                                Margin="0,3,0,0"
-                                                                Orientation="Horizontal"
-                                                                Visibility="{Binding DeviceStatus.IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Foreground="LightBlue"
-                                                                    Text="{Binding DeviceStatus.FrameRate, StringFormat='{}{0} FPS'}" />
-
-                                                                <TextBlock
-                                                                    Margin="10,0,0,0"
-                                                                    FontSize="10"
-                                                                    Foreground="LightBlue"
-                                                                    Text="{Binding DeviceStatus.FrameTime, StringFormat='{}{0}ms'}" />
-
-                                                                <!--  Connection Status  -->
-                                                                <TextBlock
-                                                                    Margin="10,0,0,0"
-                                                                    FontSize="10"
-                                                                    Foreground="LawnGreen"
-                                                                    Text="🔗 Connected"
-                                                                    Visibility="{Binding DeviceStatus.IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                                                                <!--  Error Message  -->
-                                                                <TextBlock
-                                                                    Margin="10,0,0,0"
-                                                                    FontSize="10"
-                                                                    Foreground="Tomato"
-                                                                    Text="{Binding DeviceStatus.ErrorMessage}"
-                                                                    Visibility="{Binding DeviceStatus.ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}" />
-                                                            </StackPanel>
-                                                        </StackPanel>
-                                                    </Grid>
-                                                </ui:CardControl.Header>
-
-                                                <StackPanel>
-                                                    <!--  Device Name  -->
-                                                    <Grid Margin="0,0,0,10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="100" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
                                                         <TextBlock
-                                                            Grid.Column="0"
-                                                            VerticalAlignment="Center"
-                                                            Text="Name:" />
-                                                        <TextBox Grid.Column="1" Text="{Binding Name}" />
-                                                    </Grid>
-
-                                                    <!--  Profile Selection  -->
-                                                    <Grid Margin="0,0,0,10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="100" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
+                                                            Margin="5,0,0,0"
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                            Text="Brightness" />
                                                         <TextBlock
-                                                            Grid.Column="0"
-                                                            VerticalAlignment="Center"
-                                                            Text="Profile:" />
-                                                        <ComboBox
                                                             Grid.Column="1"
-                                                            DisplayMemberPath="Name"
-                                                            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                                                            SelectedValue="{Binding ProfileGuid}"
-                                                            SelectedValuePath="Guid" />
-                                                    </Grid>
-
-                                                    <!--  Rotation and Brightness  -->
-                                                    <Grid Margin="0,0,0,10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="100" />
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock
-                                                            Grid.Column="0"
-                                                            VerticalAlignment="Center"
-                                                            Text="Rotation:" />
-                                                        <ComboBox
-                                                            Grid.Column="1"
-                                                            Margin="0,0,10,0"
-                                                            ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                                            SelectedItem="{Binding Rotation}">
-                                                            <ComboBox.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
-                                                                </DataTemplate>
-                                                            </ComboBox.ItemTemplate>
-                                                        </ComboBox>
-
-                                                        <StackPanel Grid.Column="2">
-                                                            <Slider
-                                                                Maximum="100"
-                                                                Minimum="0"
-                                                                TickFrequency="1"
-                                                                Value="{Binding Brightness}" />
-                                                            <TextBlock
-                                                                FontSize="11"
-                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="{Binding Brightness, StringFormat=Brightness: {0}%}"
-                                                                TextAlignment="Center" />
-                                                        </StackPanel>
-                                                    </Grid>
-
-                                                    <!--  Enable/Remove Controls  -->
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="Auto" />
-                                                            <ColumnDefinition Width="Auto" />
-                                                        </Grid.ColumnDefinitions>
-
-                                                        <ui:ToggleSwitch
-                                                            Grid.Column="1"
-                                                            Margin="0,0,10,0"
-                                                            IsChecked="{Binding Enabled}" />
-                                                        <ui:Button
-                                                            Grid.Column="2"
-                                                            Width="32"
-                                                            Height="32"
-                                                            Padding="0"
-                                                            Background="Transparent"
-                                                            BorderThickness="0"
-                                                            Click="ButtonRemoveBeadaPanelDevice_Click"
-                                                            Icon="Delete20"
-                                                            Tag="{Binding}"
-                                                            ToolTip="Remove Device" />
+                                                            Margin="5,0,0,0"
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                            Text="{Binding Brightness}" />
                                                     </Grid>
                                                 </StackPanel>
-                                            </ui:CardControl>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                        </StackPanel>
-                    </ui:CardExpander>
+                                            </Grid>
+                                        </StackPanel>
+                                        <!--  Enable toggle  -->
+                                        <ui:ToggleSwitch Margin="20,0,0,0" IsChecked="{Binding Enabled}" />
+                                        <!--  Remove button  -->
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Margin="10,0,0,0"
+                                            Padding="0"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Click="ButtonRemoveBeadaPanelDevice_Click"
+                                            Icon="Delete20"
+                                            Tag="{Binding}"
+                                            ToolTip="Remove Device" />
+                                    </StackPanel>
+                                </ui:CardControl>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <!--  end BeadaPanel Device Management  -->
 
                     <!--  start TuringPanelUSB settings  -->
