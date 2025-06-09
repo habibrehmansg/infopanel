@@ -6,11 +6,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Windows.Shapes;
-using unvell.D2DLib;
 
 namespace InfoPanel.Drawing
 {
@@ -129,30 +126,6 @@ namespace InfoPanel.Drawing
                     paint.Shader = shader;
                 }
             }
-
-            Canvas.DrawPath(path, paint);
-        }
-
-        public override void DrawPath(MyPoint[] points, string color, int strokeWidth)
-        {
-            if (points == null || points.Length < 2)
-                return;
-
-            using var path = new SKPath();
-            path.MoveTo(points[0].X, points[0].Y);
-
-            for (int i = 1; i < points.Length; i++)
-            {
-                path.LineTo(points[i].X, points[i].Y);
-            }
-
-            using var paint = new SKPaint
-            {
-                Color = SKColor.Parse(color),
-                StrokeWidth = strokeWidth,
-                IsAntialias = true,
-                Style = SKPaintStyle.Stroke
-            };
 
             Canvas.DrawPath(path, paint);
         }
@@ -802,31 +775,6 @@ namespace InfoPanel.Drawing
                     paint.Shader = shader;
                 }
             }
-
-            Canvas.DrawPath(path, paint);
-        }
-
-        public override void FillPath(MyPoint[] points, string color)
-        {
-            if (points == null || points.Length < 3)
-                return; // Need at least 3 points to fill a shape
-
-            using var path = new SKPath();
-            path.MoveTo(points[0].X, points[0].Y);
-
-            for (int i = 1; i < points.Length; i++)
-            {
-                path.LineTo(points[i].X, points[i].Y);
-            }
-
-            path.Close(); // Close the path to form a filled shape
-
-            using var paint = new SKPaint
-            {
-                Color = SKColor.Parse(color),
-                IsAntialias = true,
-                Style = SKPaintStyle.Fill
-            };
 
             Canvas.DrawPath(path, paint);
         }

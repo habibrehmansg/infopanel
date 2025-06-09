@@ -217,8 +217,13 @@ namespace InfoPanel.Drawing
                                         }
                                     }
 
-                                    MyPoint[] points = new MyPoint[size + 2];
-                                    points[0] = new MyPoint((int)frameRect.Left + graphDisplayItem.Width + graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
+                                    using var path = new SKPath();
+                                    
+                                    // Start point for fill area
+                                    path.MoveTo((int)frameRect.Left + graphDisplayItem.Width + graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
+
+                                    float lastX = 0;
+                                    float lastY = 0;
 
                                     for (int i = 0; i < size; i++)
                                     {
@@ -238,29 +243,21 @@ namespace InfoPanel.Drawing
                                         value = value * (frameRect.Height - graphDisplayItem.Thickness);
                                         value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
-                                        var newPoint = new MyPoint((int)frameRect.Left + (int)frameRect.Width - (i * graphDisplayItem.Step), (int)frameRect.Top + (int)(frameRect.Height - (value + (graphDisplayItem.Thickness / 2.0))));
+                                        lastX = (int)frameRect.Left + (int)frameRect.Width - (i * graphDisplayItem.Step);
+                                        lastY = (int)frameRect.Top + (int)(frameRect.Height - (value + (graphDisplayItem.Thickness / 2.0)));
 
-                                        points[i + 1] = newPoint;
+                                        path.LineTo(lastX, lastY);
                                     }
 
-                                    points[^1] = new MyPoint(points[^2].X - graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
+                                    // End point for fill area
+                                    path.LineTo(lastX - graphDisplayItem.Thickness, (int)frameRect.Top + graphDisplayItem.Height + graphDisplayItem.Thickness);
 
                                     if (graphDisplayItem.Fill)
                                     {
-                                        g.FillPath(points, graphDisplayItem.FillColor);
+                                        g.FillPath(path, SKColor.Parse(graphDisplayItem.FillColor));
                                     }
 
-                                    //for (int i = 0; i < frameRect.Height / 5; i++)
-                                    //{
-                                    //    g.DrawLine(0, i * 5, frameRect.Width, i * 5, graphDisplayItem.FrameColor, 0.5f);
-                                    //}
-
-                                    //for (int i = 0; i < frameRect.Width / 5; i++)
-                                    //{
-                                    //    g.DrawLine(i * 5, 0, i * 5, frameRect.Height, graphDisplayItem.FrameColor, 0.5f);
-                                    //}
-
-                                    g.DrawPath(points, graphDisplayItem.Color, graphDisplayItem.Thickness);
+                                    g.DrawPath(path, SKColor.Parse(graphDisplayItem.Color), graphDisplayItem.Thickness);
 
                                     break;
                                 }
