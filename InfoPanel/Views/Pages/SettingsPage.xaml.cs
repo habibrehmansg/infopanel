@@ -76,11 +76,6 @@ namespace InfoPanel.Views.Pages
 
             Loaded += (sender, args) =>
             {
-                if (ConfigModel.Instance.Settings.BeadaPanelProfile == Guid.Empty)
-                {
-                    ConfigModel.Instance.Settings.BeadaPanelProfile = ConfigModel.Instance.Profiles.First().Guid;
-                }
-
                 if (ConfigModel.Instance.Settings.TuringPanelAProfile == Guid.Empty)
                 {
                     ConfigModel.Instance.Settings.TuringPanelAProfile = ConfigModel.Instance.Profiles.First().Guid;

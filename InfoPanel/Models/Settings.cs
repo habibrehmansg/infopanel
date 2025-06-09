@@ -4,6 +4,8 @@ using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -59,45 +61,35 @@ namespace InfoPanel.Models
             set { SetProperty(ref _libreHardMonitorRing0, value); }
         }
 
-        private bool _beadaPanel = false;
-        public bool BeadaPanel
-        {
-            get { return _beadaPanel; }
-            set { SetProperty(ref _beadaPanel, value); }
-        }
-
-        private Guid _beadaPanelProfile = Guid.Empty;
-        public Guid BeadaPanelProfile
-        {
-            get { return _beadaPanelProfile; }
-            set { SetProperty(ref _beadaPanelProfile, value); }
-        }
-
-        private LCD_ROTATION _beadaPanelRotation = 0;
-        public LCD_ROTATION BeadaPanelRotation
-        {
-            get { return _beadaPanelRotation; }
-            set
-            {
-                SetProperty(ref _beadaPanelRotation, value);
-            }
-        }
-
-        private int _beadaPanelBrightness = 100;
-        public int BeadaPanelBrightness
-        {
-            get { return _beadaPanelBrightness; }
-            set
-            {
-                SetProperty(ref _beadaPanelBrightness, value);
-            }
-        }
 
         private ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = new();
         public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices
         {
             get { return _beadaPanelDevices; }
-            set { SetProperty(ref _beadaPanelDevices, value); }
+            set 
+            { 
+                if (_beadaPanelDevices != null)
+                {
+                    // Unsubscribe from old collection
+                    _beadaPanelDevices.CollectionChanged -= BeadaPanelDevices_CollectionChanged;
+                    foreach (var device in _beadaPanelDevices)
+                    {
+                        device.PropertyChanged -= BeadaPanelDevice_PropertyChanged;
+                    }
+                }
+                
+                SetProperty(ref _beadaPanelDevices, value);
+                
+                if (_beadaPanelDevices != null)
+                {
+                    // Subscribe to new collection
+                    _beadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
+                    foreach (var device in _beadaPanelDevices)
+                    {
+                        device.PropertyChanged += BeadaPanelDevice_PropertyChanged;
+                    }
+                }
+            }
         }
 
         private string _selectedBeadaPanelDeviceId = string.Empty;
@@ -318,6 +310,40 @@ namespace InfoPanel.Models
         {
             get { return _version; }
             set { SetProperty(ref _version, value); }
+        }
+
+        public Settings()
+        {
+            // Subscribe to initial collection changes
+            BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
+        }
+
+        private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.NewItems != null)
+            {
+                foreach (BeadaPanelDevice device in e.NewItems)
+                {
+                    device.PropertyChanged += BeadaPanelDevice_PropertyChanged;
+                }
+            }
+
+            if (e.OldItems != null)
+            {
+                foreach (BeadaPanelDevice device in e.OldItems)
+                {
+                    device.PropertyChanged -= BeadaPanelDevice_PropertyChanged;
+                }
+            }
+
+            // Trigger save when devices are added/removed
+            OnPropertyChanged(nameof(BeadaPanelDevices));
+        }
+
+        private void BeadaPanelDevice_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            // Trigger save when any device property changes
+            OnPropertyChanged(nameof(BeadaPanelDevices));
         }
     }
 }

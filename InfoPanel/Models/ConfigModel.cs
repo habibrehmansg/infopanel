@@ -161,17 +161,6 @@ namespace InfoPanel
                     await LibreMonitor.Instance.StartAsync();
                 }
             }
-            else if (e.PropertyName == nameof(Settings.BeadaPanel))
-            {
-                if (Settings.BeadaPanel)
-                {
-                    await BeadaPanelTask.Instance.StartAsync();
-                }
-                else
-                {
-                    await BeadaPanelTask.Instance.StopAsync();
-                }
-            }
             else if (e.PropertyName == nameof(Settings.TuringPanel))
             {
                 if (Settings.TuringPanel)
@@ -225,6 +214,17 @@ namespace InfoPanel
                 else
                 {
                    await WebServerTask.Instance.StopAsync();
+                }
+            }
+            else if (e.PropertyName == nameof(Settings.BeadaPanelMultiDeviceMode))
+            {
+                if (Settings.BeadaPanelMultiDeviceMode)
+                {
+                    await BeadaPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await BeadaPanelTask.Instance.StopAsync();
                 }
             }
 
@@ -295,10 +295,6 @@ namespace InfoPanel
                             Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
                             Settings.Version = settings.Version;
 
-                            Settings.BeadaPanel = settings.BeadaPanel;
-                            Settings.BeadaPanelProfile = settings.BeadaPanelProfile;
-                            Settings.BeadaPanelRotation = settings.BeadaPanelRotation;
-                            Settings.BeadaPanelBrightness = settings.BeadaPanelBrightness;
 
                             Settings.TuringPanel = settings.TuringPanel;
                             Settings.TuringPanelProfile = settings.TuringPanelProfile;
@@ -322,6 +318,17 @@ namespace InfoPanel
                             Settings.TuringPanelEPort = settings.TuringPanelEPort;
                             Settings.TuringPanelERotation = settings.TuringPanelERotation;
                             Settings.TuringPanelEBrightness = settings.TuringPanelEBrightness;
+
+                            // Load BeadaPanel multi-device settings
+                            Settings.BeadaPanelMultiDeviceMode = settings.BeadaPanelMultiDeviceMode;
+                            Settings.SelectedBeadaPanelDeviceId = settings.SelectedBeadaPanelDeviceId;
+                            
+                            // Clear existing devices and add loaded ones
+                            Settings.BeadaPanelDevices.Clear();
+                            foreach (var device in settings.BeadaPanelDevices)
+                            {
+                                Settings.BeadaPanelDevices.Add(device);
+                            }
                         }
 
                         ValidateStartup();

@@ -39,36 +39,6 @@ namespace InfoPanel
             }
         }
 
-        private bool _beadaPanelRunning = false;
-
-        public bool BeadaPanelRunning
-        {
-            get { return _beadaPanelRunning; }
-            set
-            {
-                SetProperty(ref _beadaPanelRunning, value);
-            }
-        }
-
-        private int _beadaPanelFrameRate = 0;
-        public int BeadaPanelFrameRate
-        {
-            get { return _beadaPanelFrameRate; }
-            set
-            {
-                SetProperty(ref _beadaPanelFrameRate, value);
-            }
-        }
-
-        private long _beadaPanelFrameTime = 0;
-        public long BeadaPanelFrameTime
-        {
-            get { return _beadaPanelFrameTime; }
-            set
-            {
-                SetProperty(ref _beadaPanelFrameTime, value);
-            }
-        }
 
         private ObservableCollection<BeadaPanelDeviceStatus> _beadaPanelDeviceStatuses = new();
         public ObservableCollection<BeadaPanelDeviceStatus> BeadaPanelDeviceStatuses
@@ -97,6 +67,10 @@ namespace InfoPanel
             status.FrameTime = frameTime;
             status.ErrorMessage = errorMessage;
             status.LastUpdate = DateTime.Now;
+            
+            // Notify the corresponding device that its status changed
+            var device = ConfigModel.Instance.Settings.BeadaPanelDevices.FirstOrDefault(d => d.Id == deviceId);
+            device?.NotifyDeviceStatusChanged();
         }
 
         public void RemoveBeadaPanelDeviceStatus(string deviceId)

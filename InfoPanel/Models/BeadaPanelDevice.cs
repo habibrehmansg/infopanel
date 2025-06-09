@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.ViewModels;
 using InfoPanel.BeadaPanel;
 using System;
+using System.Linq;
 
 namespace InfoPanel.Models
 {
@@ -10,14 +11,26 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private string _id = string.Empty;
 
-        [ObservableProperty]
         private string _name = string.Empty;
+        public string Name
+        {
+            get => _name;
+            set => SetProperty(ref _name, SanitizeString(value));
+        }
 
-        [ObservableProperty]
         private string _serialNumber = string.Empty;
+        public string SerialNumber
+        {
+            get => _serialNumber;
+            set => SetProperty(ref _serialNumber, SanitizeString(value));
+        }
 
-        [ObservableProperty]
         private string _usbPath = string.Empty;
+        public string UsbPath
+        {
+            get => _usbPath;
+            set => SetProperty(ref _usbPath, SanitizeString(value));
+        }
 
         [ObservableProperty]
         private bool _enabled = false;
@@ -31,14 +44,22 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _brightness = 100;
 
-        [ObservableProperty]
         private string _hardwareSerialNumber = string.Empty;
+        public string HardwareSerialNumber
+        {
+            get => _hardwareSerialNumber;
+            set => SetProperty(ref _hardwareSerialNumber, SanitizeString(value));
+        }
 
         [ObservableProperty]
         private BeadaPanelModel? _modelType = null;
 
-        [ObservableProperty]
         private string _modelName = string.Empty;
+        public string ModelName
+        {
+            get => _modelName;
+            set => SetProperty(ref _modelName, SanitizeString(value));
+        }
 
         [ObservableProperty]
         private ushort _firmwareVersion = 0;
@@ -66,6 +87,25 @@ namespace InfoPanel.Models
 
         [ObservableProperty]
         private bool _statusLinkAvailable = false;
+
+        public static string SanitizeString(string? input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+            
+            // Remove null characters and other invalid XML characters
+            // Also remove any non-printable characters
+            var sanitized = new System.Text.StringBuilder();
+            foreach (char c in input)
+            {
+                if (c != '\0' && !char.IsControl(c))
+                {
+                    sanitized.Append(c);
+                }
+            }
+            
+            return sanitized.ToString().Trim();
+        }
 
         public BeadaPanelDevice()
         {
@@ -135,6 +175,20 @@ namespace InfoPanel.Models
             };
         }
 
+        public BeadaPanelDeviceStatus? DeviceStatus
+        {
+            get
+            {
+                return SharedModel.Instance.BeadaPanelDeviceStatuses.FirstOrDefault(s => s.DeviceId == Id);
+            }
+        }
+        
+        // Method to notify when device status changes  
+        public void NotifyDeviceStatusChanged()
+        {
+            OnPropertyChanged(nameof(DeviceStatus));
+        }
+
         public override string ToString()
         {
             return Name;
@@ -158,8 +212,12 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private long _frameTime = 0;
 
-        [ObservableProperty]
         private string _errorMessage = string.Empty;
+        public string ErrorMessage
+        {
+            get => _errorMessage;
+            set => SetProperty(ref _errorMessage, BeadaPanelDevice.SanitizeString(value));
+        }
 
         [ObservableProperty]
         private DateTime _lastUpdate = DateTime.Now;

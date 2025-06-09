@@ -381,8 +381,8 @@
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
 
-                    <!--  start BeadaPanel settings  -->
-                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
+                    <!--  start Legacy BeadaPanel Notice  -->
+                    <ui:CardControl Margin="0,10,0,0" Icon="Warning20">
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -393,109 +393,22 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="BeadaPanel by NXElec" />
+                                        Text="Legacy BeadaPanel (Deprecated)" />
                                     <TextBlock
                                         Margin="0,5,0,0"
                                         FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Works with any model." />
-                                    <!--  start display status  -->
-                                    <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanel, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel
-                                            Margin="0,5,0,0"
-                                            Orientation="Horizontal"
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=BeadaPanelRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="Panel is running:" />
-                                            <TextBlock
-                                                Margin="10,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=BeadaPanelFrameRate, StringFormat={}{0} FPS}" />
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=BeadaPanelFrameTime, StringFormat={} @ {0}ms}" />
-                                        </StackPanel>
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Orange"
-                                            Text="Display is not running. Check your usb connection and try again."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=BeadaPanelRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-                                    </StackPanel>
-                                    <!--  end display status  -->
+                                        Foreground="Orange"
+                                        Text="Legacy single-device mode has been removed. Please use Multi-Device mode below for BeadaPanel support." />
                                 </StackPanel>
                             </Grid>
                         </ui:CardControl.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <StackPanel Margin="10,0,0,0">
-                                <!--  start profile  -->
-                                <ComboBox
-                                    Width="300"
-                                    Margin="0,0,0,0"
-                                    DisplayMemberPath="Name"
-                                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                                    SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelProfile}"
-                                    SelectedValuePath="Guid" />
-                                <!--  end profile  -->
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <!--  start rotation  -->
-                                    <ComboBox
-                                        Margin="0,0,10,0"
-                                        ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                        SelectedItem="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelRotation}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <!--  end rotation  -->
-                                    <!--  start brightness  -->
-                                    <StackPanel Grid.Column="1" Margin="0,0,0,0">
-                                        <Slider
-                                            Margin="0,0,0,0"
-                                            IsSnapToTickEnabled="True"
-                                            Maximum="100"
-                                            Minimum="0"
-                                            TickFrequency="1"
-                                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelBrightness}" />
-                                        <Grid Margin="0,0,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="Brightness" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelBrightness}" />
-                                        </Grid>
-                                    </StackPanel>
-                                    <!--  end brightness  -->
-                                </Grid>
-                            </StackPanel>
-                            <!--  start enable  -->
-                            <ui:ToggleSwitch Margin="20,0,0,0" IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanel}" />
-                            <!--  end enable  -->
-                        </StackPanel>
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="Enable 'Multi-Device BeadaPanel' below and use 'Discover Devices' to set up your panels."
+                            TextWrapping="Wrap" />
                     </ui:CardControl>
-                    <!--  end BeadaPanel settings  -->
+                    <!--  end Legacy BeadaPanel Notice  -->
 
                     <!--  start BeadaPanel Multi-Device settings  -->
                     <ui:CardControl Margin="0,10,0,0" Icon="WindowMultiple20">
@@ -573,18 +486,20 @@
                                                                 FontSize="13"
                                                                 FontWeight="Medium"
                                                                 Text="{Binding Name}" />
-                                                            
-                                                            <!-- Model Information -->
+
+                                                            <!--  Model Information  -->
                                                             <TextBlock
                                                                 Margin="0,2,0,0"
                                                                 FontSize="11"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                                 Text="{Binding ModelName}"
                                                                 Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                            
-                                                            <!-- Hardware Specifications -->
-                                                            <StackPanel Margin="0,2,0,0" Orientation="Horizontal"
-                                                                       Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+
+                                                            <!--  Hardware Specifications  -->
+                                                            <StackPanel
+                                                                Margin="0,2,0,0"
+                                                                Orientation="Horizontal"
+                                                                Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                                 <TextBlock
                                                                     FontSize="10"
                                                                     Foreground="{DynamicResource TextFillColorTertiaryBrush}"
@@ -620,16 +535,16 @@
                                                                     Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                                                     Text="mm" />
                                                             </StackPanel>
-                                                            
-                                                            <!-- Serial Number (Legacy) -->
+
+                                                            <!--  Serial Number (Legacy)  -->
                                                             <TextBlock
                                                                 Margin="0,2,0,0"
                                                                 FontSize="11"
                                                                 Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                                                 Text="{Binding HardwareSerialNumber}"
                                                                 Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                            
-                                                            <!-- Fallback Serial for USB Path devices -->
+
+                                                            <!--  Fallback Serial for USB Path devices  -->
                                                             <TextBlock
                                                                 Margin="0,2,0,0"
                                                                 FontSize="11"
@@ -639,34 +554,67 @@
 
                                                             <!--  Device Identification Status  -->
                                                             <StackPanel Margin="0,3,0,0" Orientation="Horizontal">
-                                                                <!-- Hardware Serial (Green) -->
+                                                                <!--  Hardware Serial (Green)  -->
                                                                 <TextBlock
                                                                     FontSize="10"
                                                                     Foreground="LawnGreen"
                                                                     Text="✓ Hardware Serial"
                                                                     Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=HardwareSerial}" />
-                                                                
-                                                                <!-- Model Fingerprint (Orange) -->
+
+                                                                <!--  Model Fingerprint (Orange)  -->
                                                                 <TextBlock
                                                                     FontSize="10"
                                                                     Foreground="Orange"
                                                                     Text="⚡ Model Fingerprint"
                                                                     Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=ModelFingerprint}" />
-                                                                
-                                                                <!-- USB Path (Red) -->
+
+                                                                <!--  USB Path (Red)  -->
                                                                 <TextBlock
                                                                     FontSize="10"
                                                                     Foreground="Tomato"
                                                                     Text="⚠ USB Path (unstable)"
                                                                     Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=UsbPath}" />
-                                                                
-                                                                <!-- Firmware Version -->
+
+                                                                <!--  Firmware Version  -->
                                                                 <TextBlock
                                                                     Margin="10,0,0,0"
                                                                     FontSize="10"
                                                                     Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                                                     Text="{Binding FirmwareVersion, StringFormat=FW: {0}}"
                                                                     Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                            </StackPanel>
+
+                                                            <!--  Per-Panel Framerate Information  -->
+                                                            <StackPanel
+                                                                Margin="0,3,0,0"
+                                                                Orientation="Horizontal"
+                                                                Visibility="{Binding DeviceStatus.IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="LightBlue"
+                                                                    Text="{Binding DeviceStatus.FrameRate, StringFormat='{}{0} FPS'}" />
+
+                                                                <TextBlock
+                                                                    Margin="10,0,0,0"
+                                                                    FontSize="10"
+                                                                    Foreground="LightBlue"
+                                                                    Text="{Binding DeviceStatus.FrameTime, StringFormat='{}{0}ms'}" />
+
+                                                                <!--  Connection Status  -->
+                                                                <TextBlock
+                                                                    Margin="10,0,0,0"
+                                                                    FontSize="10"
+                                                                    Foreground="LawnGreen"
+                                                                    Text="🔗 Connected"
+                                                                    Visibility="{Binding DeviceStatus.IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                                                <!--  Error Message  -->
+                                                                <TextBlock
+                                                                    Margin="10,0,0,0"
+                                                                    FontSize="10"
+                                                                    Foreground="Tomato"
+                                                                    Text="{Binding DeviceStatus.ErrorMessage}"
+                                                                    Visibility="{Binding DeviceStatus.ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}" />
                                                             </StackPanel>
                                                         </StackPanel>
                                                     </Grid>
@@ -761,8 +709,8 @@
                                                             Background="Transparent"
                                                             BorderThickness="0"
                                                             Click="ButtonRemoveBeadaPanelDevice_Click"
-                                                            Tag="{Binding}"
                                                             Icon="Delete20"
+                                                            Tag="{Binding}"
                                                             ToolTip="Remove Device" />
                                                     </Grid>
                                                 </StackPanel>
