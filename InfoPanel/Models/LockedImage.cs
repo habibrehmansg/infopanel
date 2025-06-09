@@ -91,7 +91,7 @@ namespace InfoPanel.Models
 
         public bool Loaded { get; private set; } = false;
 
-        public LockedImage(string imagePath)
+        public LockedImage(string imagePath, ImageDisplayItem? sourceImageDisplayItem)
         {
             ImagePath = imagePath;
 
@@ -126,7 +126,7 @@ namespace InfoPanel.Models
 
                         _config = new Config();
                         _config.Player.AutoPlay = true;
-
+                       
                         // Inform the lib to refresh stats
                         _config.Player.Stats = true;
 
@@ -135,6 +135,7 @@ namespace InfoPanel.Models
                             LoopPlayback = true,
                         };
 
+                        _backgroundVideoPlayer.Audio.Volume = 0; // Start muted
                         _backgroundVideoPlayer.Open(ImagePath);
 
                         Width = _backgroundVideoPlayer.Video.Width;
@@ -253,6 +254,11 @@ namespace InfoPanel.Models
                     }
                 }
 
+                if (sourceImageDisplayItem != null)
+                {
+                    AddImageDisplayItem(sourceImageDisplayItem);
+                }
+
                 Loaded = true;
             }
             catch (Exception e)
@@ -265,7 +271,6 @@ namespace InfoPanel.Models
         {
             if (imageDisplayItems.TryAdd(item.Guid, item))
             {
-
                 item.Profile.PropertyChanged += Profile_PropertyChanged;
                 item.PropertyChanged += ImageDisplayItem_PropertyChanged;
 

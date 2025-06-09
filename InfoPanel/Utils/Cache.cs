@@ -136,7 +136,7 @@ namespace InfoPanel
                 return; // Already cached by another thread
             }
 
-            var cachedImage = new LockedImage(path);
+            var cachedImage = new LockedImage(path, imageDisplayItem);
 
             ImageCache.Set(path, cachedImage, new MemoryCacheEntryOptions
             {
