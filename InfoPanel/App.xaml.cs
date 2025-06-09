@@ -358,7 +358,7 @@ namespace InfoPanel
 
         public static async Task CleanShutDown()
         {
-            _displayManager.CloseAll();
+            DisplayWindowManager.Instance.CloseAll();
             await StopPanels();
             await LibreMonitor.Instance.StopAsync();
             await PluginMonitor.Instance.StopAsync();
@@ -377,9 +377,6 @@ namespace InfoPanel
             window?.RestoreWindow();
             window?.Navigate(typeof(Views.Pages.DesignPage));
         }
-
-
-        private static readonly DisplayWindowManager _displayManager = new();
 
         public DisplayWindow? GetDisplayWindow(Profile profile)
         {
@@ -401,7 +398,7 @@ namespace InfoPanel
 
         public void ShowDisplayWindow(Profile profile)
         {
-            _displayManager.ShowDisplayWindow(profile);
+            DisplayWindowManager.Instance.ShowDisplayWindow(profile);
             //var window = GetDisplayWindow(profile);
 
             //if (window != null && window.Direct2DMode != profile.Direct2DMode)
@@ -422,7 +419,7 @@ namespace InfoPanel
 
         public void CloseDisplayWindow(Profile profile)
         {
-            _displayManager.CloseDisplayWindow(profile.Guid);
+            DisplayWindowManager.Instance.CloseDisplayWindow(profile.Guid);
             //var window = GetDisplayWindow(profile);
             //window?.Close();
         }

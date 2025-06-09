@@ -13,6 +13,8 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
+using System.Windows.Threading;
 
 namespace InfoPanel.Models
 {
@@ -139,7 +141,7 @@ namespace InfoPanel.Models
                         Height = _backgroundVideoPlayer.Video.Height;
                         Frames = _backgroundVideoPlayer.Video.FramesTotal;
 
-                        if(Frames == 0 && _backgroundVideoPlayer.IsLive)
+                        if (Frames == 0 && _backgroundVideoPlayer.IsLive)
                         {
                             Frames = long.MaxValue;
                         }
@@ -610,7 +612,7 @@ namespace InfoPanel.Models
                     using var bitmap = GetSKBitmapFromSK(frame);
                     using var resizedBitmap = bitmap?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
 
-                    if (grContext != null && resizedBitmap != null)
+                    if (grContext != null && cache && resizedBitmap != null)
                     {
                         using var image = SKImage.FromBitmap(resizedBitmap);
                         bitmapFrame.Image = image.ToTextureImage(grContext);
@@ -620,7 +622,7 @@ namespace InfoPanel.Models
                         bitmapFrame.Image = SKImage.FromBitmap(resizedBitmap);
                     }
 
-                    if (grContext == null && !cache)
+                    if (!cache)
                     {
                         shouldDispose = true;
                     }
@@ -650,7 +652,7 @@ namespace InfoPanel.Models
             }
         }
 
-        public void DisposeD2DAssets()
+        public void DisposeGLAssets()
         {
             lock (Lock)
             {
@@ -703,42 +705,72 @@ namespace InfoPanel.Models
 
         public class SKImageFrameSlot : IDisposable
         {
-            private SKImage? _bitmap;
+            private volatile SKImage? _bitmap;
+            private int _disposed = 0;
+
             public SKImage? Image
             {
                 get => _bitmap;
                 set
                 {
-                    Invalidate();
-                    _bitmap = value;
+                    if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 1)
+                        return; // Already disposed
+
+                    var oldBitmap = Interlocked.Exchange(ref _bitmap, value);
+                    DisposeImage(oldBitmap);
                 }
             }
 
             public int Width => _bitmap?.Width ?? 0;
             public int Height => _bitmap?.Height ?? 0;
 
-            public void Invalidate()
+            private static void DisposeImage(SKImage? image)
             {
-                if (_bitmap == null)
-                    return;
+                if (image == null) return;
 
                 try
                 {
-                    _bitmap?.Dispose();
+                    if (image.IsTextureBacked)
+                    {
+                        if(DisplayWindowManager.Instance.Dispatcher is Dispatcher dispatcher)
+                        {
+                            if(dispatcher.CheckAccess())
+                            {
+                                image.Dispose();
+                            }
+                            else
+                            {
+                                // If not on the UI thread, use BeginInvoke to dispose
+                                dispatcher.BeginInvoke(() => image.Dispose());
+                            }
+                        }
+                    }
+                    else
+                    {
+                        image.Dispose();
+                    }
                 }
                 catch (Exception e)
                 {
-                    Trace.WriteLine($"Error invalidating SKImageFrameSlot: {e.Message}");
+                    Trace.WriteLine($"Error disposing SKImage: {e.Message}");
                 }
+            }
 
-                _bitmap = null;
+            public void Invalidate()
+            {
+                Image = null; // Uses the setter logic
             }
 
             public void Dispose()
             {
-                Invalidate();
+                if (Interlocked.Exchange(ref _disposed, 1) == 1)
+                    return; // Already disposed
+
+                var oldBitmap = Interlocked.Exchange(ref _bitmap, null);
+                DisposeImage(oldBitmap);
                 GC.SuppressFinalize(this);
             }
         }
+
     }
 }

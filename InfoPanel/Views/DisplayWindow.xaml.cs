@@ -130,7 +130,7 @@ namespace InfoPanel.Views.Common
             }
             else if (displayItem is ImageDisplayItem image)
             {
-                Cache.GetLocalImage(image, false)?.DisposeD2DAssets();
+                Cache.GetLocalImage(image, false)?.DisposeGLAssets();
             }
         }
 

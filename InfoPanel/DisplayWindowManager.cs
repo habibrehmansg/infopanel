@@ -4,20 +4,22 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Windows;
 using System.Windows.Threading;
 
 namespace InfoPanel
 {
     public class DisplayWindowManager
     {
-        private readonly Dictionary<Guid, DisplayWindow> _windows = new();
+        private static readonly Lazy<DisplayWindowManager> _instance = new(() => new DisplayWindowManager());
+        public static DisplayWindowManager Instance => _instance.Value;
+
+        private readonly Dictionary<Guid, DisplayWindow> _windows = [];
         private Thread? _uiThread;
-        private Dispatcher? _dispatcher;
+        public Dispatcher? Dispatcher { get; private set; }
         private readonly ManualResetEventSlim _threadReady = new();
         private readonly object _lock = new();
 
-        public DisplayWindowManager()
+        private DisplayWindowManager()
         {
             StartUIThread();
         }
@@ -27,7 +29,7 @@ namespace InfoPanel
             _uiThread = new Thread(() =>
             {
                 // Create dispatcher for this thread
-                _dispatcher = Dispatcher.CurrentDispatcher;
+                Dispatcher = Dispatcher.CurrentDispatcher;
                 _threadReady.Set();
 
                 // Run the dispatcher
@@ -47,9 +49,9 @@ namespace InfoPanel
 
         public void ShowDisplayWindow(Profile profile)
         {
-            if (_dispatcher == null) return;
+            if (Dispatcher == null) return;
 
-            _dispatcher.BeginInvoke(() =>
+            Dispatcher.BeginInvoke(() =>
             {
                 lock (_lock)
                 {
@@ -90,7 +92,7 @@ namespace InfoPanel
                     // If no more windows, optionally shut down the thread
                     if (_windows.Count == 0 && AllowThreadShutdown)
                     {
-                        _dispatcher?.BeginInvokeShutdown(DispatcherPriority.Background);
+                        Dispatcher?.BeginInvokeShutdown(DispatcherPriority.Background);
                     }
                 }
             };
@@ -101,29 +103,15 @@ namespace InfoPanel
 
         public void CloseDisplayWindow(Guid profileGuid)
         {
-            _dispatcher?.BeginInvoke(() =>
+            Dispatcher?.BeginInvoke(() =>
             {
                 lock (_lock)
                 {
                     if (_windows.TryGetValue(profileGuid, out var window))
                     {
                         window.Close();
+                        window.Closed -= (s, e) => { }; // Unsubscribe to avoid memory leaks
                         _windows.Remove(profileGuid);
-                    }
-                }
-            });
-        }
-
-        public void UpdateProfile(Guid profileGuid, Profile profile)
-        {
-            _dispatcher?.BeginInvoke(() =>
-            {
-                lock (_lock)
-                {
-                    if (_windows.TryGetValue(profileGuid, out var window))
-                    {
-                        // Update the window's profile
-                        // window.UpdateProfile(profile);
                     }
                 }
             });
@@ -148,11 +136,11 @@ namespace InfoPanel
 
         public void CloseAll()
         {
-            _dispatcher?.BeginInvoke(() =>
+            Dispatcher?.BeginInvoke(() =>
             {
                 lock (_lock)
                 {
-                    foreach (var window in _windows.Values.ToList())
+                    foreach (var window in _windows.Values)
                     {
                         window.Close();
                     }
@@ -160,7 +148,7 @@ namespace InfoPanel
                 }
 
                 // Shutdown the dispatcher thread
-                _dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
+                Dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
             });
 
             // Wait for thread to finish

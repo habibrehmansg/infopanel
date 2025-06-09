@@ -75,7 +75,7 @@ namespace InfoPanel.Views.Components
                 && Cache.GetLocalImage(imageDisplayItem) is LockedImage lockedImage)
             {
                 lockedImage.DisposeSKAssets();
-                lockedImage.DisposeD2DAssets();
+                lockedImage.DisposeGLAssets();
             }
         }
     }
