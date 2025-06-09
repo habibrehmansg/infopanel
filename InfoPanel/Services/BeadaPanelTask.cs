@@ -70,25 +70,35 @@ namespace InfoPanel
                         
                         try
                         {
-                            // Use USB path as unique identifier since FullName can be identical for multiple devices
-                            var serialNumber = deviceReg.DevicePath ?? deviceReg.DeviceInterfaceGuids.ToString();
-                            
-                            // Create unique USB path identifier
+                            // Create initial device with USB path as fallback identifier
                             var usbPath = deviceReg.DevicePath ?? $"USB_{deviceReg.DeviceInterfaceGuids}_{deviceIndex}";
+                            var tempSerialNumber = deviceReg.DevicePath ?? deviceReg.DeviceInterfaceGuids.ToString();
                             
-                            // Create descriptive name with device index for uniqueness
-                            var deviceName = !string.IsNullOrEmpty(deviceReg.FullName) && deviceReg.FullName.Trim() != ""
-                                ? $"BeadaPanel {deviceReg.FullName} #{deviceIndex}"
-                                : $"BeadaPanel Device {deviceIndex}";
-
                             var device = new BeadaPanelDevice(
-                                serialNumber: serialNumber,
+                                serialNumber: tempSerialNumber,
                                 usbPath: usbPath,
-                                name: deviceName
+                                name: $"BeadaPanel Device {deviceIndex}"
                             );
 
+                            // Try to query StatusLink for detailed device information
+                            var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
+                            if (panelInfo != null)
+                            {
+                                device.UpdateFromStatusLink(panelInfo);
+                                Trace.WriteLine($"StatusLink Query Success: {device.Name} - Hardware Serial: {device.HardwareSerialNumber}, Model: {device.ModelName}");
+                            }
+                            else
+                            {
+                                // Fallback naming when StatusLink is not available
+                                var deviceName = !string.IsNullOrEmpty(deviceReg.FullName) && deviceReg.FullName.Trim() != ""
+                                    ? $"BeadaPanel {deviceReg.FullName} #{deviceIndex}"
+                                    : $"BeadaPanel Device {deviceIndex}";
+                                device.Name = deviceName;
+                                Trace.WriteLine($"StatusLink Query Failed: Using USB-based identification for {device.Name}");
+                            }
+
                             discoveredDevices.Add(device);
-                            Trace.WriteLine($"Discovered BeadaPanel device: {device.Name} (Serial: {device.SerialNumber}) at {device.UsbPath}");
+                            Trace.WriteLine($"Discovered BeadaPanel device: {device.Name} (ID Method: {device.IdentificationMethod}) at {device.UsbPath}");
                             
                             deviceIndex++;
                         }
@@ -106,6 +116,82 @@ namespace InfoPanel
 
             Trace.WriteLine($"BeadaPanel Discovery: Complete - Found {discoveredDevices.Count} devices total");
             return discoveredDevices;
+        }
+
+        private async Task<BeadaPanelInfo?> QueryDeviceStatusLinkAsync(UsbRegistry deviceReg)
+        {
+            UsbDevice? usbDevice = null;
+            try
+            {
+                // Try to open the specific device
+                usbDevice = deviceReg.Device;
+                if (usbDevice == null)
+                {
+                    Trace.WriteLine($"StatusLink Query: Could not open USB device {deviceReg.DevicePath}");
+                    return null;
+                }
+
+                if (usbDevice is IUsbDevice wholeUsbDevice)
+                {
+                    wholeUsbDevice.SetConfiguration(1);
+                    wholeUsbDevice.ClaimInterface(0);
+                }
+
+                // Send StatusLink GetPanelInfo request
+                var infoMessage = new StatusLinkMessage
+                {
+                    Type = StatusLinkMessageType.GetPanelInfo
+                };
+
+                using var writer = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep02);
+                var writeResult = writer.Write(infoMessage.ToBuffer(), 1000, out int _);
+                
+                if (writeResult != ErrorCode.None)
+                {
+                    Trace.WriteLine($"StatusLink Query: Write failed with error {writeResult}");
+                    return null;
+                }
+
+                // Read response
+                byte[] responseBuffer = new byte[100];
+                using var reader = usbDevice.OpenEndpointReader(ReadEndpointID.Ep02);
+                var readResult = reader.Read(responseBuffer, 1000, out int bytesRead);
+
+                if (readResult != ErrorCode.None || bytesRead == 0)
+                {
+                    Trace.WriteLine($"StatusLink Query: Read failed with error {readResult}, bytes read: {bytesRead}");
+                    return null;
+                }
+
+                // Parse panel info
+                var panelInfo = BeadaPanelParser.ParsePanelInfoResponse(responseBuffer);
+                if (panelInfo != null)
+                {
+                    Trace.WriteLine($"StatusLink Query: Successfully parsed panel info for serial {panelInfo.SerialNumber}");
+                }
+
+                return panelInfo;
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"StatusLink Query Exception: {ex.Message}");
+                return null;
+            }
+            finally
+            {
+                try
+                {
+                    if (usbDevice is IUsbDevice wholeUsbDevice)
+                    {
+                        wholeUsbDevice.ReleaseInterface(0);
+                    }
+                    usbDevice?.Close();
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"StatusLink Query Cleanup Exception: {ex.Message}");
+                }
+            }
         }
 
         public void StartDevice(BeadaPanelDevice device)

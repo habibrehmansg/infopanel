@@ -1,6 +1,7 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.ViewModels;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
@@ -200,9 +201,7 @@ namespace InfoPanel.Views.Pages
 
                 foreach (var discoveredDevice in discoveredDevices)
                 {
-                    var existingDevice = settings.BeadaPanelDevices.FirstOrDefault(d => 
-                        d.SerialNumber == discoveredDevice.SerialNumber || 
-                        d.UsbPath == discoveredDevice.UsbPath);
+                    var existingDevice = FindMatchingDevice(settings.BeadaPanelDevices, discoveredDevice);
 
                     if (existingDevice == null)
                     {
@@ -211,13 +210,13 @@ namespace InfoPanel.Views.Pages
                             : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
 
                         settings.BeadaPanelDevices.Add(discoveredDevice);
-                        Trace.WriteLine($"Added new BeadaPanel device: {discoveredDevice.Name}");
+                        Trace.WriteLine($"Added new BeadaPanel device: {discoveredDevice.Name} (ID: {discoveredDevice.IdentificationMethod})");
                     }
                     else
                     {
-                        existingDevice.UsbPath = discoveredDevice.UsbPath;
-                        existingDevice.SerialNumber = discoveredDevice.SerialNumber;
-                        Trace.WriteLine($"Updated existing BeadaPanel device: {existingDevice.Name}");
+                        // Update existing device with new information
+                        UpdateExistingDevice(existingDevice, discoveredDevice);
+                        Trace.WriteLine($"Updated existing BeadaPanel device: {existingDevice.Name} (ID: {existingDevice.IdentificationMethod})");
                     }
                 }
 
@@ -280,6 +279,94 @@ namespace InfoPanel.Views.Pages
                 Trace.WriteLine($"Error removing BeadaPanel device: {ex.Message}");
                 MessageBox.Show($"Error removing device: {ex.Message}", 
                     "Remove Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private BeadaPanelDevice? FindMatchingDevice(IEnumerable<BeadaPanelDevice> existingDevices, BeadaPanelDevice discoveredDevice)
+        {
+            // Priority 1: Match by hardware serial number (most reliable)
+            if (!string.IsNullOrEmpty(discoveredDevice.HardwareSerialNumber))
+            {
+                var serialMatch = existingDevices.FirstOrDefault(d => 
+                    !string.IsNullOrEmpty(d.HardwareSerialNumber) && 
+                    d.HardwareSerialNumber == discoveredDevice.HardwareSerialNumber);
+                if (serialMatch != null)
+                {
+                    Trace.WriteLine($"Device matched by hardware serial: {discoveredDevice.HardwareSerialNumber}");
+                    return serialMatch;
+                }
+            }
+
+            // Priority 2: Match by model fingerprint (model + firmware + resolution)
+            if (discoveredDevice.ModelType.HasValue && discoveredDevice.FirmwareVersion > 0)
+            {
+                var fingerprintMatch = existingDevices.FirstOrDefault(d => 
+                    d.ModelType == discoveredDevice.ModelType &&
+                    d.FirmwareVersion == discoveredDevice.FirmwareVersion &&
+                    d.NativeResolutionX == discoveredDevice.NativeResolutionX &&
+                    d.NativeResolutionY == discoveredDevice.NativeResolutionY);
+                if (fingerprintMatch != null)
+                {
+                    Trace.WriteLine($"Device matched by model fingerprint: {discoveredDevice.ModelType}_{discoveredDevice.FirmwareVersion}_{discoveredDevice.NativeResolutionX}x{discoveredDevice.NativeResolutionY}");
+                    return fingerprintMatch;
+                }
+            }
+
+            // Priority 3: Match by USB path (fallback, unreliable across reboots)
+            if (!string.IsNullOrEmpty(discoveredDevice.UsbPath))
+            {
+                var usbPathMatch = existingDevices.FirstOrDefault(d => d.UsbPath == discoveredDevice.UsbPath);
+                if (usbPathMatch != null)
+                {
+                    Trace.WriteLine($"Device matched by USB path: {discoveredDevice.UsbPath}");
+                    return usbPathMatch;
+                }
+            }
+
+            // Priority 4: Match by legacy serial number (backward compatibility)
+            if (!string.IsNullOrEmpty(discoveredDevice.SerialNumber))
+            {
+                var legacySerialMatch = existingDevices.FirstOrDefault(d => d.SerialNumber == discoveredDevice.SerialNumber);
+                if (legacySerialMatch != null)
+                {
+                    Trace.WriteLine($"Device matched by legacy serial: {discoveredDevice.SerialNumber}");
+                    return legacySerialMatch;
+                }
+            }
+
+            Trace.WriteLine($"No matching device found for {discoveredDevice.Name}");
+            return null;
+        }
+
+        private void UpdateExistingDevice(BeadaPanelDevice existingDevice, BeadaPanelDevice discoveredDevice)
+        {
+            // Always update USB path and connection info
+            existingDevice.UsbPath = discoveredDevice.UsbPath;
+            existingDevice.SerialNumber = discoveredDevice.SerialNumber;
+
+            // Update StatusLink information if available
+            if (discoveredDevice.StatusLinkAvailable)
+            {
+                existingDevice.HardwareSerialNumber = discoveredDevice.HardwareSerialNumber;
+                existingDevice.ModelType = discoveredDevice.ModelType;
+                existingDevice.ModelName = discoveredDevice.ModelName;
+                existingDevice.FirmwareVersion = discoveredDevice.FirmwareVersion;
+                existingDevice.Platform = discoveredDevice.Platform;
+                existingDevice.NativeResolutionX = discoveredDevice.NativeResolutionX;
+                existingDevice.NativeResolutionY = discoveredDevice.NativeResolutionY;
+                existingDevice.WidthMm = discoveredDevice.WidthMm;
+                existingDevice.HeightMm = discoveredDevice.HeightMm;
+                existingDevice.MaxBrightness = discoveredDevice.MaxBrightness;
+                existingDevice.StatusLinkAvailable = true;
+                existingDevice.IdentificationMethod = discoveredDevice.IdentificationMethod;
+
+                // Update device name if it was generic or if we now have better info
+                if (string.IsNullOrEmpty(existingDevice.Name) || 
+                    existingDevice.Name.StartsWith("BeadaPanel Device") ||
+                    existingDevice.Name.Contains("WinUsb Device"))
+                {
+                    existingDevice.Name = discoveredDevice.Name;
+                }
             }
         }
     }

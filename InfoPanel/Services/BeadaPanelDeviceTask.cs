@@ -9,7 +9,9 @@ using LibUsbDotNet.Main;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,6 +47,110 @@ namespace InfoPanel.Services
             return null;
         }
 
+        private async Task<UsbDevice?> FindTargetDeviceAsync(IEnumerable<UsbRegistry> allDevices, int vendorId, int productId)
+        {
+            foreach (UsbRegistry deviceReg in allDevices)
+            {
+                if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
+                {
+                    // Priority 1: Match by USB path (fastest, works if path hasn't changed)
+                    if (!string.IsNullOrEmpty(_device.UsbPath) && deviceReg.DevicePath == _device.UsbPath)
+                    {
+                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by USB path: {_device.UsbPath}");
+                        return deviceReg.Device;
+                    }
+
+                    // Priority 2: Match by hardware serial number (reliable across reboots)
+                    if (!string.IsNullOrEmpty(_device.HardwareSerialNumber))
+                    {
+                        var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
+                        if (panelInfo != null && panelInfo.SerialNumber == _device.HardwareSerialNumber)
+                        {
+                            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by hardware serial: {_device.HardwareSerialNumber}");
+                            // Update USB path for future fast reconnection
+                            _device.UsbPath = deviceReg.DevicePath ?? _device.UsbPath;
+                            return deviceReg.Device;
+                        }
+                    }
+
+                    // Priority 3: Match by model fingerprint (when serial isn't available)
+                    if (_device.ModelType.HasValue && _device.FirmwareVersion > 0)
+                    {
+                        var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
+                        if (panelInfo != null && 
+                            panelInfo.ModelId == _device.ModelType &&
+                            panelInfo.FirmwareVersion == _device.FirmwareVersion &&
+                            (panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX) == _device.NativeResolutionX &&
+                            (panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY) == _device.NativeResolutionY)
+                        {
+                            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by model fingerprint: {_device.ModelType}_{_device.FirmwareVersion}");
+                            // Update identification info for future use
+                            _device.UsbPath = deviceReg.DevicePath ?? _device.UsbPath;
+                            if (!string.IsNullOrEmpty(panelInfo.SerialNumber))
+                            {
+                                _device.HardwareSerialNumber = panelInfo.SerialNumber;
+                                _device.IdentificationMethod = DeviceIdentificationMethod.HardwareSerial;
+                            }
+                            return deviceReg.Device;
+                        }
+                    }
+
+                    // Priority 4: Match by legacy serial number (backward compatibility)
+                    if (!string.IsNullOrEmpty(_device.SerialNumber) && deviceReg.SymbolicName.Contains(_device.SerialNumber))
+                    {
+                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by legacy serial: {_device.SerialNumber}");
+                        return deviceReg.Device;
+                    }
+                }
+            }
+
+            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: No matching device found with any identification method");
+            return null;
+        }
+
+        private async Task<BeadaPanelInfo?> QueryDeviceStatusLinkAsync(UsbRegistry deviceReg)
+        {
+            UsbDevice? usbDevice = null;
+            try
+            {
+                usbDevice = deviceReg.Device;
+                if (usbDevice == null) return null;
+
+                if (usbDevice is IUsbDevice wholeUsbDevice)
+                {
+                    wholeUsbDevice.SetConfiguration(1);
+                    wholeUsbDevice.ClaimInterface(0);
+                }
+
+                var infoMessage = new StatusLinkMessage { Type = StatusLinkMessageType.GetPanelInfo };
+
+                using var writer = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep02);
+                var writeResult = writer.Write(infoMessage.ToBuffer(), 500, out int _);
+                if (writeResult != ErrorCode.None) return null;
+
+                byte[] responseBuffer = new byte[100];
+                using var reader = usbDevice.OpenEndpointReader(ReadEndpointID.Ep02);
+                var readResult = reader.Read(responseBuffer, 500, out int bytesRead);
+                if (readResult != ErrorCode.None || bytesRead == 0) return null;
+
+                return BeadaPanelParser.ParsePanelInfoResponse(responseBuffer);
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                try
+                {
+                    if (usbDevice is IUsbDevice wholeUsbDevice)
+                        wholeUsbDevice.ReleaseInterface(0);
+                    usbDevice?.Close();
+                }
+                catch { }
+            }
+        }
+
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
@@ -59,22 +165,8 @@ namespace InfoPanel.Services
                 var allDevices = UsbDevice.AllDevices;
                 UsbDevice? targetDevice = null;
 
-                foreach (UsbRegistry deviceReg in allDevices)
-                {
-                    if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
-                    {
-                        if (!string.IsNullOrEmpty(_device.UsbPath) && deviceReg.DevicePath == _device.UsbPath)
-                        {
-                            targetDevice = deviceReg.Device;
-                            break;
-                        }
-                        else if (!string.IsNullOrEmpty(_device.SerialNumber) && deviceReg.SymbolicName.Contains(_device.SerialNumber))
-                        {
-                            targetDevice = deviceReg.Device;
-                            break;
-                        }
-                    }
-                }
+                // Enhanced device reconnection logic using hardware characteristics
+                targetDevice = await FindTargetDeviceAsync(allDevices, vendorId, productId);
 
                 if (targetDevice == null)
                 {

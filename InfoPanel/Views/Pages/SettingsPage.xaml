@@ -573,18 +573,100 @@
                                                                 FontSize="13"
                                                                 FontWeight="Medium"
                                                                 Text="{Binding Name}" />
+                                                            
+                                                            <!-- Model Information -->
+                                                            <TextBlock
+                                                                Margin="0,2,0,0"
+                                                                FontSize="11"
+                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                Text="{Binding ModelName}"
+                                                                Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                            
+                                                            <!-- Hardware Specifications -->
+                                                            <StackPanel Margin="0,2,0,0" Orientation="Horizontal"
+                                                                       Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="{Binding NativeResolutionX}" />
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="×" />
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="{Binding NativeResolutionY}" />
+                                                                <TextBlock
+                                                                    Margin="5,0,0,0"
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="•" />
+                                                                <TextBlock
+                                                                    Margin="5,0,0,0"
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="{Binding WidthMm}" />
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="×" />
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="{Binding HeightMm}" />
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="mm" />
+                                                            </StackPanel>
+                                                            
+                                                            <!-- Serial Number (Legacy) -->
                                                             <TextBlock
                                                                 Margin="0,2,0,0"
                                                                 FontSize="11"
                                                                 Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                                Text="{Binding SerialNumber}" />
+                                                                Text="{Binding HardwareSerialNumber}"
+                                                                Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                            
+                                                            <!-- Fallback Serial for USB Path devices -->
+                                                            <TextBlock
+                                                                Margin="0,2,0,0"
+                                                                FontSize="11"
+                                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                Text="{Binding SerialNumber}"
+                                                                Visibility="{Binding StatusLinkAvailable, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
 
-                                                            <!--  Device Status Display  -->
-                                                            <StackPanel Margin="0,5,0,0" Orientation="Horizontal">
+                                                            <!--  Device Identification Status  -->
+                                                            <StackPanel Margin="0,3,0,0" Orientation="Horizontal">
+                                                                <!-- Hardware Serial (Green) -->
                                                                 <TextBlock
-                                                                    FontSize="11"
+                                                                    FontSize="10"
                                                                     Foreground="LawnGreen"
-                                                                    Text="Connected" />
+                                                                    Text="✓ Hardware Serial"
+                                                                    Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=HardwareSerial}" />
+                                                                
+                                                                <!-- Model Fingerprint (Orange) -->
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="Orange"
+                                                                    Text="⚡ Model Fingerprint"
+                                                                    Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=ModelFingerprint}" />
+                                                                
+                                                                <!-- USB Path (Red) -->
+                                                                <TextBlock
+                                                                    FontSize="10"
+                                                                    Foreground="Tomato"
+                                                                    Text="⚠ USB Path (unstable)"
+                                                                    Visibility="{Binding IdentificationMethod, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=UsbPath}" />
+                                                                
+                                                                <!-- Firmware Version -->
+                                                                <TextBlock
+                                                                    Margin="10,0,0,0"
+                                                                    FontSize="10"
+                                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                    Text="{Binding FirmwareVersion, StringFormat=FW: {0}}"
+                                                                    Visibility="{Binding StatusLinkAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                             </StackPanel>
                                                         </StackPanel>
                                                     </Grid>
