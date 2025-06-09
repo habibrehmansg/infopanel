@@ -54,12 +54,21 @@ namespace InfoPanel.Models
 
         public float Volume
         {
-            get { return _backgroundVideoPlayer?.Audio.Volume / 100.0f ?? 0; }
+            get
+            {
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
+                {
+                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Player.VolumeMax;
+                }
+                return 0f;
+            }
             set
             {
-                if(_backgroundVideoPlayer != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
                 {
-                    _backgroundVideoPlayer.Audio.Volume = (int)(value * 100);
+                    // Clamp value between 0 and 1
+                    value = Math.Clamp(value, 0f, 1f);
+                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Player.VolumeMax);
                 }
             }
         }
@@ -95,6 +104,7 @@ namespace InfoPanel.Models
                         || strippedUrl.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
                         || strippedUrl.EndsWith(".avi", StringComparison.OrdinalIgnoreCase)
                         || strippedUrl.EndsWith(".mov", StringComparison.OrdinalIgnoreCase)
+                        || strippedUrl.EndsWith(".m3u", StringComparison.OrdinalIgnoreCase)
                         || strippedUrl.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase))
                 {
                     if (!ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
@@ -113,7 +123,6 @@ namespace InfoPanel.Models
                         Type = ImageType.FFMPEG;
 
                         _config = new Config();
-                        _config.Player.VolumeMax = 100;
                         _config.Player.AutoPlay = true;
 
                         // Inform the lib to refresh stats
