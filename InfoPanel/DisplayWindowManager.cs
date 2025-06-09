@@ -83,11 +83,19 @@ namespace InfoPanel
         private void CreateAndShowWindow(Profile profile)
         {
             var window = new DisplayWindow(profile);
-            window.Closed += (s, e) =>
+            window.Closed += Window_Closed;
+            _windows[profile.Guid] = window;
+            window.Show();
+        }
+
+        private void Window_Closed(object? sender, EventArgs e)
+        {
+            if (sender is DisplayWindow displayWindow)
             {
                 lock (_lock)
                 {
-                    _windows.Remove(profile.Guid);
+                    _windows.Remove(displayWindow.Profile.Guid);
+                    displayWindow.Closed -= Window_Closed;
 
                     // If no more windows, optionally shut down the thread
                     if (_windows.Count == 0 && AllowThreadShutdown)
@@ -95,10 +103,7 @@ namespace InfoPanel
                         Dispatcher?.BeginInvokeShutdown(DispatcherPriority.Background);
                     }
                 }
-            };
-
-            _windows[profile.Guid] = window;
-            window.Show();
+            }
         }
 
         public void CloseDisplayWindow(Guid profileGuid)
@@ -110,7 +115,6 @@ namespace InfoPanel
                     if (_windows.TryGetValue(profileGuid, out var window))
                     {
                         window.Close();
-                        window.Closed -= (s, e) => { }; // Unsubscribe to avoid memory leaks
                         _windows.Remove(profileGuid);
                     }
                 }

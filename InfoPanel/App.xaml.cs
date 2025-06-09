@@ -378,43 +378,14 @@ namespace InfoPanel
             window?.Navigate(typeof(Views.Pages.DesignPage));
         }
 
-        public DisplayWindow? GetDisplayWindow(Profile profile)
-        {
-            //DisplayWindows.TryGetValue(profile.Guid, out var displayWindow);
-            //return displayWindow;
-            //return _displayManager.GetDisplayThread(profile.Guid)?.Window;
-
-            return null;
-        }
-
         public void MaximiseDisplayWindow(Profile profile)
         {
-            //var window = GetDisplayWindow(profile);
-            //window?.Fullscreen();
-            //_displayManager.GetDisplayThread(profile.Guid)?.Window?.Fullscreen();
-
-
+            DisplayWindowManager.Instance.GetWindow(profile.Guid)?.Fullscreen();
         }
 
         public void ShowDisplayWindow(Profile profile)
         {
             DisplayWindowManager.Instance.ShowDisplayWindow(profile);
-            //var window = GetDisplayWindow(profile);
-
-            //if (window != null && window.Direct2DMode != profile.Direct2DMode)
-            //{
-            //    window.Close();
-            //    window = null;
-            //}
-
-            //if (window == null)
-            //{
-            //    window = new DisplayWindow(profile);
-            //    DisplayWindows[profile.Guid] = window;
-            //    window.Closed += DisplayWindow_Closed;
-            //}
-
-            //window?.Show();
         }
 
         public void CloseDisplayWindow(Profile profile)

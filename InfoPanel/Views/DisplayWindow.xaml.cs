@@ -459,11 +459,6 @@ namespace InfoPanel.Views.Common
 
             if (targetScreen != null)
             {
-                if (!this.IsVisible)
-                {
-                    this.Show();
-                }
-
                 var x = targetScreen.Bounds.Left + Profile.WindowX;
                 var y = targetScreen.Bounds.Top + Profile.WindowY;
 
