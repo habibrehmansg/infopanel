@@ -308,9 +308,9 @@ namespace InfoPanel.Drawing
                                             // Update refRect properties for the current rectangle
                                             refRect = new SKRect(
                                                 refRect.Left,
-                                                frameRect.Bottom - normalizedHeight - penSize * 2,
+                                                frameRect.Bottom - normalizedHeight - penSize,
                                                 refRect.Right,
-                                                frameRect.Bottom - penSize * 2 + normalizedHeight + penSize);
+                                                frameRect.Bottom - penSize);
 
                                             // Draw the rectangle (filled and outlined)
                                             if (graphDisplayItem.Fill)
