@@ -1,4 +1,6 @@
-﻿using InfoPanel.Extensions;
+﻿using FlyleafLib;
+using FlyleafLib.MediaPlayer;
+using InfoPanel.Extensions;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using SkiaSharp;
@@ -6,6 +8,8 @@ using Svg.Skia;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Net.Http;
 using System.Text;
@@ -35,27 +39,27 @@ namespace InfoPanel.Models
         public readonly ImageType Type;
 
         private readonly SKSvg? SKSvg;
-        private readonly BackgroundVideoPlayer? _backgroundVideoPlayer;
 
-        public TimeSpan? CurrentTime => _backgroundVideoPlayer?.GetCurrentTime();
-        public TimeSpan? Duration => _backgroundVideoPlayer?.Duration;
-        public double? FrameRate => _backgroundVideoPlayer?.FrameRate;
+        private readonly Player? _backgroundVideoPlayer;
+        private readonly Config? _config;
 
-        public bool HasAudio => _backgroundVideoPlayer?.HasAudio ?? false;
+        public TimeSpan? CurrentTime => TimeSpan.FromMilliseconds(_backgroundVideoPlayer?.CurTime / 10000 ?? 0);
+        public TimeSpan? Duration => TimeSpan.FromMilliseconds(_backgroundVideoPlayer?.Duration / 10000 ?? 0);
+        public double? FrameRate => _backgroundVideoPlayer?.Video.FPS;
 
-        public PlayerStatus? VideoPlayerStatus => _backgroundVideoPlayer?.Status;
+        public bool HasAudio => !_backgroundVideoPlayer?.Audio.Mute ?? false;
+
+        public bool IsLive => _backgroundVideoPlayer?.IsLive ?? false;
+        public Status? VideoPlayerStatus => _backgroundVideoPlayer?.Status;
 
         public float Volume
         {
-            get { return _backgroundVideoPlayer?.Volume * 100 ?? 0; }
+            get { return _backgroundVideoPlayer?.Audio.Volume / 100.0f ?? 0; }
             set
             {
-                if (value >= 0 && _backgroundVideoPlayer != null)
+                if(_backgroundVideoPlayer != null)
                 {
-                    if (_backgroundVideoPlayer.Volume != value)
-                    {
-                        _backgroundVideoPlayer.Volume = value;
-                    }
+                    _backgroundVideoPlayer.Audio.Volume = (int)(value * 100);
                 }
             }
         }
@@ -107,11 +111,31 @@ namespace InfoPanel.Models
                     try
                     {
                         Type = ImageType.FFMPEG;
-                        _backgroundVideoPlayer = new BackgroundVideoPlayer(ImagePath);
-                        Width = _backgroundVideoPlayer.Width;
-                        Height = _backgroundVideoPlayer.Height;
-                        Frames = _backgroundVideoPlayer.TotalFrames;
-                        TotalFrameTime = (long)_backgroundVideoPlayer.Duration.TotalMilliseconds;
+
+                        _config = new Config();
+                        _config.Player.VolumeMax = 100;
+                        _config.Player.AutoPlay = true;
+
+                        // Inform the lib to refresh stats
+                        _config.Player.Stats = true;
+
+                        _backgroundVideoPlayer = new(_config)
+                        {
+                            LoopPlayback = true,
+                        };
+
+                        _backgroundVideoPlayer.Open(ImagePath);
+
+                        Width = _backgroundVideoPlayer.Video.Width;
+                        Height = _backgroundVideoPlayer.Video.Height;
+                        Frames = _backgroundVideoPlayer.Video.FramesTotal;
+
+                        if(Frames == 0 && _backgroundVideoPlayer.IsLive)
+                        {
+                            Frames = long.MaxValue;
+                        }
+
+                        TotalFrameTime = _backgroundVideoPlayer.Duration;
 
                         Loaded = true;
                         return;
@@ -240,7 +264,7 @@ namespace InfoPanel.Models
 
         public void RemoveImageDisplayItem(ImageDisplayItem item)
         {
-          if(imageDisplayItems.TryRemove(item.Guid, out _))
+            if (imageDisplayItems.TryRemove(item.Guid, out _))
             {
                 item.Profile.PropertyChanged -= Profile_PropertyChanged;
                 item.PropertyChanged -= ImageDisplayItem_PropertyChanged;
@@ -275,9 +299,9 @@ namespace InfoPanel.Models
             int volume = 0;
             foreach (var item in imageDisplayItems.Values)
             {
-                if(item.Profile.Active && !item.Hidden && item.Volume > volume)
+                if (item.Profile.Active && !item.Hidden && item.Volume > volume)
                 {
-                   volume = item.Volume;
+                    volume = item.Volume;
                 }
             }
 
@@ -496,7 +520,34 @@ namespace InfoPanel.Models
             }
         }
 
+        public static SKImage ConvertToSKImage(Bitmap bitmap)
+        {
+            var bitmapData = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.ReadOnly,
+                bitmap.PixelFormat);
 
+            try
+            {
+                var colorType = bitmap.PixelFormat switch
+                {
+                    PixelFormat.Format32bppArgb => SKColorType.Bgra8888,
+                    PixelFormat.Format32bppRgb => SKColorType.Bgra8888,
+                    PixelFormat.Format24bppRgb => SKColorType.Rgb888x,
+                    PixelFormat.Format8bppIndexed => SKColorType.Gray8,
+                    _ => SKColorType.Bgra8888
+                };
+
+                var info = new SKImageInfo(bitmap.Width, bitmap.Height, colorType);
+
+                // Create SKImage directly from pixels
+                return SKImage.FromPixelCopy(info, bitmapData.Scan0, bitmapData.Stride);
+            }
+            finally
+            {
+                bitmap.UnlockBits(bitmapData);
+            }
+        }
 
         public void AccessSK(int targetWidth, int targetHeight, Action<SKImage> access, bool cache = true, string cacheHint = "default", GRContext? grContext = null)
         {
@@ -514,11 +565,14 @@ namespace InfoPanel.Models
             {
                 if (Type == ImageType.FFMPEG)
                 {
-                    using var image = _backgroundVideoPlayer?.GetLatestFrame(targetWidth, targetHeight);
-
-                    if (image != null)
+                    if (_backgroundVideoPlayer != null)
                     {
-                        access(image);
+                        using var bitmap = _backgroundVideoPlayer.renderer.GetBitmap(targetWidth, targetHeight);
+                        if (bitmap != null)
+                        {
+                            using var image = ConvertToSKImage(bitmap);
+                            access(image);
+                        }
                     }
 
                     return;
@@ -612,8 +666,9 @@ namespace InfoPanel.Models
                     SKGLImageMemoryCache.Dispose();
 
                     SKSvg?.Dispose();
-                    _backgroundVideoPlayer?.Dispose();
 
+                    _backgroundVideoPlayer?.Stop();
+                    _backgroundVideoPlayer?.Dispose();
 
                     _codec?.Dispose();
                     _stream?.Dispose();

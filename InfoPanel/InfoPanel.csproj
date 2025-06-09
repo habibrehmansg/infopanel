@@ -53,10 +53,12 @@
 
 	<PropertyGroup Condition="'$(Configuration)'=='Debug'">
 		<DebugType>full</DebugType>
+		<WarningLevel>6</WarningLevel>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)'=='Release'">
 		<DebugType>none</DebugType>
+		<WarningLevel>6</WarningLevel>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -192,15 +194,14 @@
 		<PackageReference Include="AutoMapper" Version="13.0.1" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-		<PackageReference Include="FFmpeg.AutoGen" Version="7.1.1" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
+		<PackageReference Include="FlyleafLib" Version="3.8.4" />
 		<PackageReference Include="HidSharp" Version="2.1.0" />
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
 		<PackageReference Include="LibUsbDotNet" Version="2.2.75" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
-		<PackageReference Include="NAudio" Version="2.2.1" />
 		<PackageReference Include="SecureStore" Version="1.2.2" />
 		<PackageReference Include="Sentry" Version="5.3.0" />
 		<PackageReference Include="SkiaSharp" Version="3.119.0" />
@@ -263,41 +264,29 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Update="Lib\d2dlib64.dll">
+		<None Update="FFmpeg\avcodec-61.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<TargetPath>d2dlib64.dll</TargetPath>
 		</None>
-		<None Update="Lib\FFmpeg\avcodec-61.dll">
+		<None Update="FFmpeg\avdevice-61.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>avcodec-61.dll</Link>
 		</None>
-		<None Update="Lib\FFmpeg\avdevice-61.dll">
+		<None Update="FFmpeg\avfilter-10.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>avdevice-61.dll</Link>
 		</None>
-		<None Update="Lib\FFmpeg\avfilter-10.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>avfilter-10.dll</Link>
-		</None>
-		<None Update="Lib\FFmpeg\avformat-61.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>avformat-61.dll</Link>
-		</None>
-		<None Update="Lib\FFmpeg\avutil-59.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>avutil-59.dll</Link>
-		</None>
-		<None Update="Lib\FFmpeg\postproc-58.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>postproc-58.dll</Link>
-		</None>
-		<None Update="Lib\FFmpeg\swresample-5.dll">
+		<None Update="FFmpeg\avformat-61.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>swresample-5.dll</Link>
 		</None>
-		<None Update="Lib\FFmpeg\swscale-8.dll">
+		<None Update="FFmpeg\avutil-59.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<Link>swscale-8.dll</Link>
+		</None>
+		<None Update="FFmpeg\postproc-58.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="FFmpeg\swresample-5.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="FFmpeg\swscale-8.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<None Update="NunitoSans_7pt_Condensed-BlackItalic.ttf">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>

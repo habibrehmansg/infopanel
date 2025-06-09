@@ -1,4 +1,6 @@
-﻿using InfoPanel.Extensions;
+﻿using ExCSS;
+using FlyleafLib.MediaPlayer;
+using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Plugins;
 using InfoPanel.Utils;
@@ -323,7 +325,7 @@ namespace InfoPanel.Drawing
                                         cachedImage.CurrentTime.Value,
                                         cachedImage.Duration.Value,
                                         cachedImage.FrameRate.Value,
-                                        cachedImage.HasAudio,
+                                        cachedImage.Volume,
                                         cachedImage.VideoPlayerStatus.Value
                                     );
 
@@ -681,7 +683,7 @@ namespace InfoPanel.Drawing
             }
         }
 
-        private static SKBitmap CreateVideoOverlay(float imageWidth, double progress, TimeSpan currentTime, TimeSpan duration, double frameRate, bool hasAudio, PlayerStatus playerStatus)
+        private static SKBitmap CreateVideoOverlay(float imageWidth, double progress, TimeSpan currentTime, TimeSpan duration, double frameRate, float volume, Status playerStatus)
         {
             const int overlayHeight = 40;
             var overlayBitmap = new SKBitmap((int)imageWidth, overlayHeight);
@@ -704,7 +706,7 @@ namespace InfoPanel.Drawing
             var progressBarLeft = 12f;
             var progressBarWidth = imageWidth - 24f;
 
-            var isLive = duration == TimeSpan.MaxValue;
+            var isLive = duration == TimeSpan.Zero;
 
             // Draw background progress bar
             using var backgroundPaint = new SKPaint { Color = SKColor.Parse("#4DFFFFFF"), IsAntialias = true };
@@ -733,12 +735,34 @@ namespace InfoPanel.Drawing
                 }
             }
 
-           if (isLive)
+            var percent = (int)(volume * 100);
+            var icon = percent switch
+            {
+                0 => "🔇",
+                < 33 => "🔈",
+                < 66 => "🔉",
+                _ => "🔊"
+            };
+
+            // Measure text widths for positioning
+            using var measurePaint = new SKPaint();
+
+            if (isLive)
             {
                 // Draw LIVE indicator
-                using var liveFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), 12f);
+                using var liveFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Symbol", SKFontStyle.Bold), 12f);
                 using var livePaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
-                overlayCanvas.DrawText(playerStatus == PlayerStatus.Playing ? "LIVE" : "CONNECTING..", progressBarLeft, overlayHeight - 8f, liveFont, livePaint);
+
+                var liveText = playerStatus == Status.Playing ? "LIVE" : "CONNECTING..";
+                overlayCanvas.DrawText(liveText, progressBarLeft, overlayHeight - 8f, liveFont, livePaint);
+
+                // Measure the LIVE text width
+                var liveTextWidth = liveFont.MeasureText(liveText);
+
+                // Draw volume icon to the right of LIVE
+                using var iconFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Emoji", SKFontStyle.Normal), 14f);
+                using var iconPaint = new SKPaint { Color = SKColor.Parse("#FFFF00"), IsAntialias = true }; // Yellow color
+                overlayCanvas.DrawText(icon, progressBarLeft + liveTextWidth + 10f, overlayHeight - 8f, iconFont, iconPaint);
             }
             else
             {
@@ -747,14 +771,22 @@ namespace InfoPanel.Drawing
                 using var timeFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 12f);
                 using var timePaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
                 overlayCanvas.DrawText(timeDisplay, progressBarLeft, overlayHeight - 8f, timeFont, timePaint);
+
+                // Measure the time text width
+                var timeTextWidth = timeFont.MeasureText(timeDisplay);
+
+                // Draw volume icon to the right of time
+                using var iconFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Emoji", SKFontStyle.Normal), 14f);
+                using var iconPaint = new SKPaint { Color = SKColor.Parse("#FFFFFF"), IsAntialias = true }; // White color
+                overlayCanvas.DrawText(icon, progressBarLeft + timeTextWidth + 10f, overlayHeight - 8f, iconFont, iconPaint);
             }
 
-            // Draw right side display (framerate and audio status)
-            var volumeIcon = hasAudio ? "STEREO" : "MUTE";
-            var frameRateText = $"{frameRate:F0}fps";
-            var rightDisplayText = $"{frameRateText} | {volumeIcon}";
 
-            using var rightFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 11f);
+            // Draw right side display
+            var frameRateText = $"{frameRate:F0} FPS";
+            var rightDisplayText = $"{frameRateText}";
+
+            using var rightFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Symbol", SKFontStyle.Normal), 11f);
             using var rightPaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
             var rightTextWidth = rightFont.MeasureText(rightDisplayText);
             overlayCanvas.DrawText(rightDisplayText, progressBarLeft + progressBarWidth - rightTextWidth, overlayHeight - 8f, rightFont, rightPaint);

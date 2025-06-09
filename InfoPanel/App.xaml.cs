@@ -1,12 +1,9 @@
-﻿using InfoPanel.Models;
+﻿using FlyleafLib;
+using InfoPanel.Models;
 using InfoPanel.Monitors;
-using InfoPanel.Plugins.Loader;
 using InfoPanel.Services;
-using InfoPanel.Utils;
 using InfoPanel.ViewModels;
-using InfoPanel.Views;
 using InfoPanel.Views.Common;
-using InfoPanel.Views.Components;
 using InfoPanel.Views.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -17,9 +14,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -104,20 +100,74 @@ namespace InfoPanel
         public App()
         {
             DispatcherUnhandledException += App_DispatcherUnhandledException;
+
+            // 1. Handle exceptions from background threads and Task.Run
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+
+            // 2. Handle unobserved task exceptions (async/await without proper handling)
+            TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+
             SentrySdk.Init(o =>
             {
                 o.Dsn = "https://5ca30f9d2faba70d50918db10cee0d26@o4508414465146880.ingest.us.sentry.io/4508414467833856";
                 o.Debug = true;
                 o.AutoSessionTracking = true;
+
+                // Add Sentry-specific options
+                o.SendDefaultPii = true; // Include user info
+                o.AttachStacktrace = true; // Always attach stack traces
+                o.Environment = "production"; // or "development"
+                o.Release = Assembly.GetExecutingAssembly().GetName().Version?.ToString();
             });
         }
 
-        void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+        void App_DispatcherUnhandledException(object? sender, DispatcherUnhandledExceptionEventArgs e)
         {
+            SentrySdk.AddBreadcrumb("WPF Dispatcher unhandled exception", "error");
             SentrySdk.CaptureException(e.Exception);
 
-            // If you want to avoid the application from crashing:
-            //e.Handled = true;
+            // Log locally as well
+            Trace.WriteLine($"DispatcherUnhandledException: {e.Exception}");
+
+            // Decide whether to crash or continue
+             e.Handled = true; // Uncomment to prevent crash
+        }
+
+        void CurrentDomain_UnhandledException(object? sender, UnhandledExceptionEventArgs e)
+        {
+            var exception = e.ExceptionObject as Exception ?? new Exception($"Non-exception thrown: {e.ExceptionObject}");
+
+            SentrySdk.AddBreadcrumb($"AppDomain unhandled exception (IsTerminating: {e.IsTerminating})", "error");
+            SentrySdk.CaptureException(exception);
+
+            Trace.WriteLine($"CurrentDomain_UnhandledException: {exception}");
+            Trace.WriteLine($"IsTerminating: {e.IsTerminating}");
+
+            // Flush Sentry before potential termination
+            SentrySdk.FlushAsync(TimeSpan.FromSeconds(5)).Wait();
+        }
+
+        void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            SentrySdk.AddBreadcrumb("Unobserved task exception", "error");
+
+            // Handle aggregate exceptions
+            if (e.Exception is AggregateException agg)
+            {
+                foreach (var innerEx in agg.InnerExceptions)
+                {
+                    SentrySdk.CaptureException(innerEx);
+                    Trace.WriteLine($"TaskScheduler_UnobservedTaskException: {innerEx}");
+                }
+            }
+            else
+            {
+                SentrySdk.CaptureException(e.Exception);
+                Trace.WriteLine($"TaskScheduler_UnobservedTaskException: {e.Exception}");
+            }
+
+            // Mark as observed to prevent app termination
+            e.SetObserved();
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -160,6 +210,19 @@ namespace InfoPanel
             }
 
             _host.Start();
+
+
+
+            Engine.Start(new EngineConfig()
+            {
+#if DEBUG
+                LogOutput = ":debug",
+                LogLevel = LogLevel.Debug,
+                FFmpegLogLevel = Flyleaf.FFmpeg.LogLevel.Warn,
+#endif
+                PluginsPath = ":FlyleafPlugins",
+                FFmpegPath = ":FFmpeg",
+            });
 
             ConfigModel.Instance.Initialize();
 
@@ -213,7 +276,8 @@ namespace InfoPanel
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)
         {
-            Task.Run(async () => {
+            Task.Run(async () =>
+            {
                 await BeadaPanelTask.Instance.StopAsync(true);
                 await TuringPanelATask.Instance.StopAsync(true);
                 await TuringPanelCTask.Instance.StopAsync(true);
@@ -226,13 +290,15 @@ namespace InfoPanel
             switch (e.Mode)
             {
                 case PowerModes.Resume:
-                    Task.Run(async () => {
+                    Task.Run(async () =>
+                    {
                         await Task.Delay(1000);
                         await StartPanels();
                     }).ConfigureAwait(false).GetAwaiter().GetResult();
                     break;
                 case PowerModes.Suspend:
-                    Task.Run(async () => {
+                    Task.Run(async () =>
+                    {
                         await BeadaPanelTask.Instance.StopAsync(true);
                         await TuringPanelATask.Instance.StopAsync(true);
                         await TuringPanelCTask.Instance.StopAsync(true);

@@ -66,12 +66,17 @@ namespace InfoPanel.Models
             get { return _rtspUrl; }
             set
             {
-                if(string.IsNullOrEmpty(value) 
+                var previousValue = _rtspUrl;
+                if (string.IsNullOrEmpty(value) 
                     || value.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) 
                     || value.StartsWith("rtsps://"))
                 {
                     SetProperty(ref _rtspUrl, value);
                     OnPropertyChanged(nameof(CalculatedPath));
+                    if (!string.IsNullOrEmpty(previousValue))
+                    {
+                        InfoPanel.Cache.InvalidateImage(previousValue);
+                    }
                 }
             }
         }
@@ -83,12 +88,18 @@ namespace InfoPanel.Models
             get { return _httpUrl; }
             set
             {
+                var previousValue = _httpUrl;
                 if (string.IsNullOrEmpty(value)
                      || value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
                      || value.StartsWith("https://"))
                 {
                     SetProperty(ref _httpUrl, value);
                     OnPropertyChanged(nameof(CalculatedPath));
+
+                    if (!string.IsNullOrEmpty(previousValue))
+                    {
+                        InfoPanel.Cache.InvalidateImage(previousValue);
+                    }
                 }
             }
         }

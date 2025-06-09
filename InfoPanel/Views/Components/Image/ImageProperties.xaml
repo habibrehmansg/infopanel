@@ -241,7 +241,7 @@
                         IsSnapToTickEnabled="True"
                         Maximum="100"
                         TickFrequency="1"
-                        Value="{Binding Volume, Delay=300}" />
+                        Value="{Binding Volume}" />
 
                     <Grid Margin="5,0,5,0">
                         <Grid.ColumnDefinitions>

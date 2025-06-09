@@ -46,6 +46,8 @@ namespace InfoPanel.Views.Components
 
                         try
                         {
+                            var copy = (ImageDisplayItem) imageDisplayItem.Clone();
+
                             var fileName = openFileDialog.SafeFileName;
 
                             var filePath = Path.Combine(imageFolder, openFileDialog.SafeFileName);
@@ -56,13 +58,7 @@ namespace InfoPanel.Views.Components
                             imageDisplayItem.Name = openFileDialog.SafeFileName;
                             imageDisplayItem.FilePath = fileName;
 
-                            var lockedImage = Cache.GetLocalImage(imageDisplayItem);
-
-                            if(lockedImage != null)
-                            {
-                                imageDisplayItem.Width = lockedImage.Width;
-                                imageDisplayItem.Height = lockedImage.Height;
-                            }
+                            Cache.InvalidateImage(copy);
                         }
                         catch
                         {

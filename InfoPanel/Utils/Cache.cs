@@ -1,4 +1,5 @@
-﻿using InfoPanel.Extensions;
+﻿using FlyleafLib;
+using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
@@ -161,6 +162,15 @@ namespace InfoPanel
         public static void InvalidateImage(ImageDisplayItem imageDisplayItem)
         {
             var path = imageDisplayItem.CalculatedPath;
+
+            if (!string.IsNullOrEmpty(path))
+            {
+                InvalidateImage(path);
+            }
+        }
+
+        public static void InvalidateImage(string path)
+        {
             if (!string.IsNullOrEmpty(path))
             {
                 var semaphore = _locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
