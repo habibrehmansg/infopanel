@@ -224,6 +224,7 @@ namespace InfoPanel
                 }
                 else
                 {
+                    // Master toggle OFF - stop task and cleanly turn off any running panels
                     await BeadaPanelTask.Instance.StopAsync();
                 }
             }

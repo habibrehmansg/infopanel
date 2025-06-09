@@ -268,6 +268,13 @@ namespace InfoPanel
                 {
                     var settings = ConfigModel.Instance.Settings;
                     
+                    // Exit if multi-device mode was turned off
+                    if (!settings.BeadaPanelMultiDeviceMode)
+                    {
+                        Trace.WriteLine("BeadaPanel: Multi-device mode turned off, exiting loop");
+                        break;
+                    }
+                    
                     // Auto-enumeration every 10 seconds
                     if (autoEnumerationCounter <= 0)
                     {
@@ -413,6 +420,12 @@ namespace InfoPanel
             }
         }
 
+
+        public override async Task StopAsync(bool shutdown = false)
+        {
+            await StopAllDevices();
+            await base.StopAsync(shutdown);
+        }
 
         //protected override async ValueTask DisposeAsync()
         //{
