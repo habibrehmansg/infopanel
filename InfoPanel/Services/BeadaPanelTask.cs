@@ -227,6 +227,10 @@ namespace InfoPanel
                     {
                         brightnessTag.Payload = [0];
                         writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
+
+                        using var blankFrame = new SKBitmap(new SKImageInfo(_panelWidth, _panelHeight, SKColorType.Rgb565, SKAlphaType.Opaque));
+                        dataWriter.Write(blankFrame.Bytes, 2000, out int _);
+
                         dataWriter.Write(endTag.ToBuffer(), 2000, out int _);
                         Trace.WriteLine("Sent endTag");
                     }
