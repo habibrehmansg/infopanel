@@ -470,6 +470,9 @@ namespace InfoPanel
                             {
                                 Settings.BeadaPanelDevices.Add(device);
                             }
+
+                            //  Re-establish event subscriptions after deserialization
+                            Settings.InitializeAfterDeserialization();
                         }
 
                         ValidateStartup();

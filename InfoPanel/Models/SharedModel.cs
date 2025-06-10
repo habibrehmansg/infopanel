@@ -43,16 +43,13 @@ namespace InfoPanel
         }
 
 
-        private ObservableCollection<BeadaPanelDeviceStatus> _beadaPanelDeviceStatuses = new();
-        public ObservableCollection<BeadaPanelDeviceStatus> BeadaPanelDeviceStatuses
-        {
-            get { return _beadaPanelDeviceStatuses; }
-            set { SetProperty(ref _beadaPanelDeviceStatuses, value); }
-        }
+        [ObservableProperty]
+        private ObservableCollection<BeadaPanelDeviceStatus> _beadaPanelDeviceStatuses = [];
 
         public BeadaPanelDeviceStatus? GetBeadaPanelDeviceStatus(string deviceId)
         {
-            return BeadaPanelDeviceStatuses.FirstOrDefault(s => s.DeviceId == deviceId);
+            
+            return BeadaPanelDeviceStatuses.FirstOrDefault(s => s?.DeviceId == deviceId);
         }
 
         public void UpdateBeadaPanelDeviceStatus(string deviceId, bool isRunning, bool isConnected, int frameRate = 0, long frameTime = 0, string errorMessage = "")

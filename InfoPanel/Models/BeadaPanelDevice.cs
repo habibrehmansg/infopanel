@@ -179,7 +179,7 @@ namespace InfoPanel.Models
         {
             get
             {
-                return SharedModel.Instance.BeadaPanelDeviceStatuses.FirstOrDefault(s => s.DeviceId == Id);
+                return SharedModel.Instance.BeadaPanelDeviceStatuses.FirstOrDefault(s => s?.DeviceId == Id);
             }
         }
         
