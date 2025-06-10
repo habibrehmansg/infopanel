@@ -196,28 +196,32 @@ namespace InfoPanel.Views.Pages
 
                 Trace.WriteLine($"Discovery found {discoveredDevices.Count} devices, current collection has {settings.BeadaPanelDevices.Count} devices");
                 
-                foreach (var discoveredDevice in discoveredDevices)
+                // Ensure we're on the UI thread after the await
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    Trace.WriteLine($"Processing discovered device: {discoveredDevice.Name} with hardware serial: {discoveredDevice.HardwareSerialNumber}");
-                    
-                    var existingDevice = FindMatchingDevice(settings.BeadaPanelDevices, discoveredDevice);
-
-                    if (existingDevice == null)
+                    foreach (var discoveredDevice in discoveredDevices)
                     {
-                        discoveredDevice.ProfileGuid = settings.BeadaPanelDevices.Count > 0 
-                            ? settings.BeadaPanelDevices.First().ProfileGuid 
-                            : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
+                        Trace.WriteLine($"Processing discovered device: {discoveredDevice.Name} with hardware serial: {discoveredDevice.HardwareSerialNumber}");
+                        
+                        var existingDevice = FindMatchingDevice(settings.BeadaPanelDevices, discoveredDevice);
 
-                        settings.BeadaPanelDevices.Add(discoveredDevice);
-                        Trace.WriteLine($"Added new BeadaPanel device: {discoveredDevice.Name} (ID: {discoveredDevice.IdentificationMethod})");
+                        if (existingDevice == null)
+                        {
+                            discoveredDevice.ProfileGuid = settings.BeadaPanelDevices.Count > 0 
+                                ? settings.BeadaPanelDevices.First().ProfileGuid 
+                                : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
+
+                            settings.BeadaPanelDevices.Add(discoveredDevice);
+                            Trace.WriteLine($"Added new BeadaPanel device: {discoveredDevice.Name} (ID: {discoveredDevice.IdentificationMethod})");
+                        }
+                        else
+                        {
+                            // Update existing device with new information
+                            UpdateExistingDevice(existingDevice, discoveredDevice);
+                            Trace.WriteLine($"Updated existing BeadaPanel device: {existingDevice.Name} (ID: {existingDevice.IdentificationMethod})");
+                        }
                     }
-                    else
-                    {
-                        // Update existing device with new information
-                        UpdateExistingDevice(existingDevice, discoveredDevice);
-                        Trace.WriteLine($"Updated existing BeadaPanel device: {existingDevice.Name} (ID: {existingDevice.IdentificationMethod})");
-                    }
-                }
+                });
 
                 if (button != null)
                 {

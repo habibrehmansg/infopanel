@@ -15,6 +15,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace InfoPanel
 {
@@ -326,7 +327,11 @@ namespace InfoPanel
                             ? settings.BeadaPanelDevices.First().ProfileGuid 
                             : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
 
-                        settings.BeadaPanelDevices.Add(discoveredDevice);
+                        // Use Dispatcher to add to the collection on UI thread
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            settings.BeadaPanelDevices.Add(discoveredDevice);
+                        });
                         Trace.WriteLine($"Auto-enumerated new BeadaPanel device: {discoveredDevice.Name} (disabled by default)");
                     }
                     else
