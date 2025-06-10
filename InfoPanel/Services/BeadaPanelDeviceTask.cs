@@ -32,11 +32,11 @@ namespace InfoPanel.Services
 
         public byte[]? GenerateLcdBuffer()
         {
-            var profileGuid = _device.ProfileGuid;
+            var profileGuid = _device.Config.ProfileGuid;
 
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
-                var rotation = _device.Rotation;
+                var rotation = _device.Config.Rotation;
                 using var bitmap = PanelDrawTask.RenderSK(profile, false, colorType: SKColorType.Rgb565, alphaType: SKAlphaType.Opaque);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
@@ -54,51 +54,51 @@ namespace InfoPanel.Services
                 if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
                 {
                     // Priority 1: Match by USB path (fastest, works if path hasn't changed)
-                    if (!string.IsNullOrEmpty(_device.UsbPath) && deviceReg.DevicePath == _device.UsbPath)
+                    if (!string.IsNullOrEmpty(_device.Config.UsbPath) && deviceReg.DevicePath == _device.Config.UsbPath)
                     {
-                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by USB path: {_device.UsbPath}");
+                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by USB path: {_device.Config.UsbPath}");
                         return deviceReg.Device;
                     }
 
                     // Priority 2: Match by hardware serial number (reliable across reboots)
-                    if (!string.IsNullOrEmpty(_device.HardwareSerialNumber))
+                    if (!string.IsNullOrEmpty(_device.Config.SerialNumber))
                     {
                         var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
-                        if (panelInfo != null && panelInfo.SerialNumber == _device.HardwareSerialNumber)
+                        if (panelInfo != null && panelInfo.SerialNumber == _device.Config.SerialNumber)
                         {
-                            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by hardware serial: {_device.HardwareSerialNumber}");
+                            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by hardware serial: {_device.Config.SerialNumber}");
                             // Update USB path for future fast reconnection
-                            _device.UsbPath = deviceReg.DevicePath ?? _device.UsbPath;
+                            _device.Config.UsbPath = deviceReg.DevicePath ?? _device.Config.UsbPath;
                             return deviceReg.Device;
                         }
                     }
 
                     // Priority 3: Match by model fingerprint (when serial isn't available)
-                    if (_device.ModelType.HasValue && _device.FirmwareVersion > 0)
+                    if (_device.Config.ModelType.HasValue && _device.FirmwareVersion > 0)
                     {
                         var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
                         if (panelInfo != null && 
-                            panelInfo.Model == _device.ModelType &&
+                            panelInfo.Model == _device.Config.ModelType &&
                             panelInfo.FirmwareVersion == _device.FirmwareVersion &&
                             (panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX) == _device.NativeResolutionX &&
                             (panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY) == _device.NativeResolutionY)
                         {
-                            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by model fingerprint: {_device.ModelType}_{_device.FirmwareVersion}");
+                            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by model fingerprint: {_device.Config.ModelType}_{_device.FirmwareVersion}");
                             // Update identification info for future use
-                            _device.UsbPath = deviceReg.DevicePath ?? _device.UsbPath;
+                            _device.Config.UsbPath = deviceReg.DevicePath ?? _device.Config.UsbPath;
                             if (!string.IsNullOrEmpty(panelInfo.SerialNumber))
                             {
-                                _device.HardwareSerialNumber = panelInfo.SerialNumber;
-                                _device.IdentificationMethod = DeviceIdentificationMethod.HardwareSerial;
+                                _device.Config.SerialNumber = panelInfo.SerialNumber;
+                                _device.Config.IdentificationMethod = DeviceIdentificationMethod.HardwareSerial;
                             }
                             return deviceReg.Device;
                         }
                     }
 
                     // Priority 4: Match by legacy serial number (backward compatibility)
-                    if (!string.IsNullOrEmpty(_device.SerialNumber) && deviceReg.SymbolicName.Contains(_device.SerialNumber))
+                    if (!string.IsNullOrEmpty(_device.Config.SerialNumber) && deviceReg.SymbolicName.Contains(_device.Config.SerialNumber))
                     {
-                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by legacy serial: {_device.SerialNumber}");
+                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by legacy serial: {_device.Config.SerialNumber}");
                         return deviceReg.Device;
                     }
                 }
@@ -156,9 +156,9 @@ namespace InfoPanel.Services
             await Task.Delay(300, token);
             
             // Validate device has a known model type
-            if (!_device.ModelType.HasValue || !BeadaPanelModelDatabase.Models.ContainsKey(_device.ModelType.Value))
+            if (!_device.Config.ModelType.HasValue || !BeadaPanelModelDatabase.Models.ContainsKey(_device.Config.ModelType.Value))
             {
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Cannot start - unknown model type: {_device.ModelType}");
+                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Cannot start - unknown model type: {_device.Config.ModelType}");
                 SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Unknown model type");
                 return;
             }
@@ -255,7 +255,7 @@ namespace InfoPanel.Services
 
                 await Task.Delay(1000, token);
 
-                var brightness = _device.Brightness;
+                var brightness = _device.Config.Brightness;
 
                 brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
 
@@ -313,9 +313,9 @@ namespace InfoPanel.Services
 
                         while (!token.IsCancellationRequested)
                         {
-                            if (brightness != _device.Brightness)
+                            if (brightness != _device.Config.Brightness)
                             {
-                                brightness = _device.Brightness;
+                                brightness = _device.Config.Brightness;
                                 brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
                                 writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
                             }
@@ -386,9 +386,9 @@ namespace InfoPanel.Services
             if (newConfig == null) return;
 
             // Update configuration properties that can be changed at runtime
-            bool profileChanged = _device.ProfileGuid != newConfig.ProfileGuid;
-            bool rotationChanged = _device.Rotation != newConfig.Rotation;
-            bool brightnessChanged = _device.Brightness != newConfig.Brightness;
+            bool profileChanged = _device.Config.ProfileGuid != newConfig.ProfileGuid;
+            bool rotationChanged = _device.Config.Rotation != newConfig.Rotation;
+            bool brightnessChanged = _device.Config.Brightness != newConfig.Brightness;
 
             // Apply the configuration changes to the device's config object
             _device.Config.ProfileGuid = newConfig.ProfileGuid;

@@ -31,9 +31,9 @@ namespace InfoPanel
         private BeadaPanelTask() { }
 
 
-        public async Task<List<BeadaPanelDevice>> DiscoverDevicesAsync()
+        public async Task<Dictionary<string, BeadaPanelInfo>> DiscoverDevicesAsync()
         {
-            var discoveredDevices = new List<BeadaPanelDevice>();
+            var discoveredDevices = new Dictionary<string, BeadaPanelInfo>();
             
             try
             {
@@ -43,49 +43,26 @@ namespace InfoPanel
                 var allDevices = UsbDevice.AllDevices;
                 Trace.WriteLine($"BeadaPanel Discovery: Scanning {allDevices.Count} USB devices for VID={vendorId:X4} PID={productId:X4}");
 
-                int deviceIndex = 1;
                 foreach (UsbRegistry deviceReg in allDevices)
                 {
                     if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
                     {
                         Trace.WriteLine($"BeadaPanel Discovery: Found matching device - FullName: '{deviceReg.FullName}', DevicePath: '{deviceReg.DevicePath}', SymbolicName: '{deviceReg.SymbolicName}'");
-                        
+
                         try
                         {
-                            // Create initial device with USB path as fallback identifier
-                            var usbPath = deviceReg.DevicePath ?? $"USB_{deviceReg.DeviceInterfaceGuids}_{deviceIndex}";
-                            var tempSerialNumber = deviceReg.DevicePath ?? deviceReg.DeviceInterfaceGuids.ToString();
-                            
-                            var device = new BeadaPanelDevice(
-                                serialNumber: tempSerialNumber,
-                                usbPath: usbPath,
-                                name: $"BeadaPanel Device {deviceIndex}"
-                            );
-
                             // Try to query StatusLink for detailed device information
                             var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
-                            if (panelInfo != null)
+                            if (panelInfo != null && BeadaPanelModelDatabase.Models.ContainsKey(panelInfo.Model))
                             {
-                                // Only add device if it has a valid model type
-                                if (device.UpdateFromStatusLink(panelInfo))
-                                {
-                                    Trace.WriteLine($"StatusLink Query Success: {device.Name} - Hardware Serial: {device.HardwareSerialNumber}, Model: {device.ModelName}");
-                                    
-                                    discoveredDevices.Add(device);
-                                    Trace.WriteLine($"Discovered BeadaPanel device: {device.Name} (ID Method: {device.IdentificationMethod}) at {device.UsbPath}");
-                                }
-                                else
-                                {
-                                    Trace.WriteLine($"Skipping device at {deviceReg.DevicePath} - Unknown model type: {panelInfo.Model}");
-                                }
+                                discoveredDevices[deviceReg.DevicePath] = panelInfo;
+                                Trace.WriteLine($"Discovered BeadaPanel device: {panelInfo}");
                             }
                             else
                             {
                                 // Skip devices that can't be queried - they are likely already running
                                 Trace.WriteLine($"Skipping device {deviceReg.DevicePath} - StatusLink unavailable (likely already running)");
                             }
-                            
-                            deviceIndex++;
                         }
                         catch (Exception ex)
                         {
@@ -273,10 +250,7 @@ namespace InfoPanel
 
         private async Task RunMultiDeviceMode(CancellationToken token)
         {
-            Trace.WriteLine("BeadaPanel: Starting multi-device mode with auto-enumeration");
-            
-            int autoEnumerationCounter = 0;
-            const int AutoEnumerationInterval = 40; // Every 10 seconds (40 * 250ms)
+            Trace.WriteLine("BeadaPanel: Starting multi-device mode");
             
             while (!token.IsCancellationRequested)
             {
@@ -290,14 +264,6 @@ namespace InfoPanel
                         Trace.WriteLine("BeadaPanel: Multi-device mode turned off, exiting loop");
                         break;
                     }
-                    
-                    // Auto-enumeration every 10 seconds
-                    if (autoEnumerationCounter <= 0)
-                    {
-                        await PerformAutoEnumeration(settings);
-                        autoEnumerationCounter = AutoEnumerationInterval;
-                    }
-                    autoEnumerationCounter--;
 
                     // Start enabled devices that aren't running
                     var enabledConfigs = settings.BeadaPanelDevices.Where(d => d.Enabled).ToList();
@@ -339,111 +305,12 @@ namespace InfoPanel
             }
         }
 
-        private async Task PerformAutoEnumeration(Settings settings)
-        {
-            try
-            {
-                Trace.WriteLine("BeadaPanel: Performing auto-enumeration");
-                var discoveredDevices = await DiscoverDevicesAsync();
-                
-                foreach (var discoveredDevice in discoveredDevices)
-                {
-                    var existingConfig = FindMatchingDeviceConfig(settings.BeadaPanelDevices, discoveredDevice);
-
-                    if (existingConfig == null)
-                    {
-                        // Auto-add new devices (disabled by default)
-                        var newConfig = discoveredDevice.GetConfig();
-                        if (newConfig != null && newConfig.ModelType.HasValue)
-                        {
-                            newConfig = new BeadaPanelDeviceConfig
-                            {
-                                UsbPath = discoveredDevice.UsbPath,
-                                HardwareSerialNumber = discoveredDevice.HardwareSerialNumber,
-                                IdentificationMethod = discoveredDevice.IdentificationMethod,
-                                ModelType = discoveredDevice.ModelType,
-                                Enabled = false,
-                                Brightness = 100,
-                                Rotation = LCD_ROTATION.RotateNone
-                            };
-                            newConfig.ProfileGuid = settings.BeadaPanelDevices.Count > 0 
-                                ? settings.BeadaPanelDevices.First().ProfileGuid 
-                                : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
-
-                            // Use Dispatcher to add to the collection on UI thread
-                            Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                settings.BeadaPanelDevices.Add(newConfig);
-                            });
-                            Trace.WriteLine($"Auto-enumerated new BeadaPanel device: {discoveredDevice.Name} (disabled by default)");
-                        }
-                        else
-                        {
-                            Trace.WriteLine($"BeadaPanel: Skipping device with unknown model type during auto-enumeration: {discoveredDevice.ModelType}");
-                        }
-                    }
-                    else
-                    {
-                        // Update existing config with new information
-                        UpdateExistingDeviceConfig(existingConfig, discoveredDevice);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"BeadaPanel: Error during auto-enumeration: {ex.Message}");
-            }
-        }
-
-        private BeadaPanelDeviceConfig? FindMatchingDeviceConfig(IEnumerable<BeadaPanelDeviceConfig> existingConfigs, BeadaPanelDevice discoveredDevice)
-        {
-            // Priority 1: Match by hardware serial number (most reliable)
-            if (!string.IsNullOrEmpty(discoveredDevice.HardwareSerialNumber))
-            {
-                var serialMatch = existingConfigs.FirstOrDefault(d => 
-                    !string.IsNullOrEmpty(d.HardwareSerialNumber) && 
-                    d.HardwareSerialNumber == discoveredDevice.HardwareSerialNumber);
-                if (serialMatch != null) return serialMatch;
-            }
-
-            // Priority 2: Match by model fingerprint (model type)
-            if (discoveredDevice.ModelType.HasValue)
-            {
-                var fingerprintMatch = existingConfigs.FirstOrDefault(d => 
-                    d.ModelType == discoveredDevice.ModelType);
-                if (fingerprintMatch != null) return fingerprintMatch;
-            }
-
-            // Priority 3: Match by USB path (fallback, unreliable across reboots)
-            if (!string.IsNullOrEmpty(discoveredDevice.UsbPath))
-            {
-                var usbPathMatch = existingConfigs.FirstOrDefault(d => d.UsbPath == discoveredDevice.UsbPath);
-                if (usbPathMatch != null) return usbPathMatch;
-            }
-
-            return null;
-        }
-
-        private void UpdateExistingDeviceConfig(BeadaPanelDeviceConfig existingConfig, BeadaPanelDevice discoveredDevice)
-        {
-            // Always update USB path
-            existingConfig.UsbPath = discoveredDevice.UsbPath;
-
-            // Update StatusLink information if available
-            if (discoveredDevice.StatusLinkAvailable)
-            {
-                existingConfig.HardwareSerialNumber = discoveredDevice.HardwareSerialNumber;
-                existingConfig.ModelType = discoveredDevice.ModelType;
-                existingConfig.IdentificationMethod = discoveredDevice.IdentificationMethod;
-            }
-        }
-
         private string GetConfigId(BeadaPanelDeviceConfig config)
         {
             // Generate a stable ID based on the device's unique identifier
             return config.IdentificationMethod switch
             {
-                DeviceIdentificationMethod.HardwareSerial => config.HardwareSerialNumber,
+                DeviceIdentificationMethod.HardwareSerial => config.SerialNumber,
                 DeviceIdentificationMethod.ModelFingerprint => GetModelFingerprint(config),
                 DeviceIdentificationMethod.UsbPath => config.UsbPath,
                 _ => config.UsbPath
@@ -454,7 +321,7 @@ namespace InfoPanel
         {
             if (config.ModelType.HasValue && BeadaPanelModelDatabase.Models.TryGetValue(config.ModelType.Value, out var modelInfo))
             {
-                return $"{config.ModelType}_{modelInfo.Width}x{modelInfo.Height}";
+                return $"{config.ModelType}";
             }
             return config.UsbPath; // Fallback
         }

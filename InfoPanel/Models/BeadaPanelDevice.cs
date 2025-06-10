@@ -11,76 +11,16 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private string _id = string.Empty;
 
-        private string _name = string.Empty;
-        public string Name
-        {
-            get => _name;
-            set => SetProperty(ref _name, SanitizeString(value));
-        }
+        public string Name => ModelName;
 
-        private string _serialNumber = string.Empty;
-        public string SerialNumber
-        {
-            get => _serialNumber;
-            set => SetProperty(ref _serialNumber, SanitizeString(value));
-        }
 
         [ObservableProperty]
-        private BeadaPanelDeviceConfig _config = new BeadaPanelDeviceConfig();
-
-        // Configuration property passthroughs
-        public string UsbPath
-        {
-            get => Config.UsbPath;
-            set => Config.UsbPath = SanitizeString(value);
-        }
-
-        public bool Enabled
-        {
-            get => Config.Enabled;
-            set => Config.Enabled = value;
-        }
-
-        public Guid ProfileGuid
-        {
-            get => Config.ProfileGuid;
-            set => Config.ProfileGuid = value;
-        }
-
-        public LCD_ROTATION Rotation
-        {
-            get => Config.Rotation;
-            set => Config.Rotation = value;
-        }
-
-        public int Brightness
-        {
-            get => Config.Brightness;
-            set => Config.Brightness = value;
-        }
-
-        public string HardwareSerialNumber
-        {
-            get => Config.HardwareSerialNumber;
-            set => Config.HardwareSerialNumber = SanitizeString(value);
-        }
-
-        public BeadaPanelModel? ModelType
-        {
-            get => Config.ModelType;
-            set => Config.ModelType = value;
-        }
-
-        public DeviceIdentificationMethod IdentificationMethod
-        {
-            get => Config.IdentificationMethod;
-            set => Config.IdentificationMethod = value;
-        }
+        private BeadaPanelDeviceConfig _config = new();
 
         // Runtime properties
-        public string ModelName => ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[ModelType.Value].Name
-            : string.Empty;
+        public string ModelName => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
+            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].Name
+            : "Unknown Model";
 
         [ObservableProperty]
         private ushort _firmwareVersion = 0;
@@ -88,24 +28,22 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private byte _platform = 0;
 
-        public int NativeResolutionX => ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[ModelType.Value].Width
+        public int NativeResolutionX => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
+            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].Width
             : 0;
 
-        public int NativeResolutionY => ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[ModelType.Value].Height
+        public int NativeResolutionY => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
+            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].Height
             : 0;
 
-        public int WidthMm => ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[ModelType.Value].WidthMM
+        public int WidthMm => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
+            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].WidthMM
             : 0;
 
-        public int HeightMm => ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[ModelType.Value].HeightMM
+        public int HeightMm => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
+            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].HeightMM
             : 0;
 
-        [ObservableProperty]
-        private byte _maxBrightness = 255;
 
         [ObservableProperty]
         private bool _statusLinkAvailable = false;
@@ -134,68 +72,26 @@ namespace InfoPanel.Models
             Id = Guid.NewGuid().ToString();
         }
 
-        public BeadaPanelDevice(string serialNumber, string usbPath, string name = "")
-        {
-            Id = Guid.NewGuid().ToString();
-            SerialNumber = serialNumber;
-            Config.UsbPath = usbPath;
-            Name = string.IsNullOrEmpty(name) ? $"BeadaPanel {serialNumber}" : name;
-            Config.IdentificationMethod = DeviceIdentificationMethod.UsbPath;
-        }
-
         public BeadaPanelDevice(BeadaPanelDeviceConfig config)
         {
-            Config = config ?? throw new ArgumentNullException(nameof(config));
+            Config = config;
             Id = Guid.NewGuid().ToString();
-        }
-
-        public bool UpdateFromStatusLink(BeadaPanelInfo panelInfo)
-        {
-            // Reject unknown models
-            if (!BeadaPanelModelDatabase.Models.ContainsKey(panelInfo.Model))
-                return false;
-
-            HardwareSerialNumber = panelInfo.SerialNumber;
-            ModelType = panelInfo.Model;
-            FirmwareVersion = panelInfo.FirmwareVersion;
-            Platform = panelInfo.Platform;
-            MaxBrightness = panelInfo.MaxBrightness;
-            StatusLinkAvailable = true;
-
-            if (!string.IsNullOrEmpty(HardwareSerialNumber))
-            {
-                IdentificationMethod = DeviceIdentificationMethod.HardwareSerial;
-                if (string.IsNullOrEmpty(Name) || Name.StartsWith("BeadaPanel Device"))
-                {
-                    Name = $"{ModelName} ({HardwareSerialNumber})";
-                }
-            }
-            else if (ModelType.HasValue)
-            {
-                IdentificationMethod = DeviceIdentificationMethod.ModelFingerprint;
-                if (string.IsNullOrEmpty(Name) || Name.StartsWith("BeadaPanel Device"))
-                {
-                    Name = $"{ModelName} #{Id[..8]}";
-                }
-            }
-            
-            return true;
         }
 
         public string GetUniqueIdentifier()
         {
-            return IdentificationMethod switch
+            return Config.IdentificationMethod switch
             {
-                DeviceIdentificationMethod.HardwareSerial => HardwareSerialNumber,
-                DeviceIdentificationMethod.ModelFingerprint => $"{ModelType}_{FirmwareVersion}_{NativeResolutionX}x{NativeResolutionY}",
-                DeviceIdentificationMethod.UsbPath => UsbPath,
+                DeviceIdentificationMethod.HardwareSerial => Config.SerialNumber,
+                DeviceIdentificationMethod.ModelFingerprint => $"{Config.ModelType}_{FirmwareVersion}_{NativeResolutionX}x{NativeResolutionY}",
+                DeviceIdentificationMethod.UsbPath => Config.UsbPath,
                 _ => Id
             };
         }
 
         public string GetIdentificationStatusText()
         {
-            return IdentificationMethod switch
+            return Config.IdentificationMethod switch
             {
                 DeviceIdentificationMethod.HardwareSerial => "Identified by hardware serial",
                 DeviceIdentificationMethod.ModelFingerprint => "Identified by device fingerprint",
