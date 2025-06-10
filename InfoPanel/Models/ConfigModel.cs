@@ -11,10 +11,12 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
-using System.Windows.Threading;
 using System.Xml;
 using System.Xml.Serialization;
+using Task = System.Threading.Tasks.Task;
+using Timer = System.Threading.Timer;
 
 namespace InfoPanel
 {
@@ -32,6 +34,11 @@ namespace InfoPanel
         public Settings Settings { get; private set; }
         private readonly object _settingsLock = new object();
 
+        // Debouncing and async save fields
+        private Timer? _saveDebounceTimer;
+        private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
+        private const int SaveDebounceDelayMs = 500;
+
         private ConfigModel()
         {
             Settings = new Settings();
@@ -43,7 +50,7 @@ namespace InfoPanel
                 {
                     Upgrade_File_Structure_From_1_1_4();
                     Settings.Version = 115;
-                    SaveSettings();
+                    _ = SaveSettingsAsync(batch: false);
                 }
             }
 
@@ -229,7 +236,7 @@ namespace InfoPanel
                 }
             }
 
-            SaveSettings();
+            await SaveSettingsAsync();
         }
 
         public List<Profile> GetProfilesCopy()
@@ -250,27 +257,146 @@ namespace InfoPanel
 
         public void SaveSettings()
         {
-            lock (_settingsLock)
+            // Synchronous wrapper for backward compatibility
+            Task.Run(async () => await SaveSettingsAsync(batch: false)).Wait();
+        }
+
+        public async Task SaveSettingsAsync(bool batch = true)
+        {
+            if (!batch)
+            {
+                await SaveSettingsInternalAsync();
+                return;
+            }
+
+            // Reset debounce timer
+            _saveDebounceTimer?.Dispose();
+            _saveDebounceTimer = new Timer(
+                async _ => await SaveSettingsInternalAsync(),
+                null,
+                SaveDebounceDelayMs,
+                Timeout.Infinite);
+        }
+
+        private async Task SaveSettingsInternalAsync()
+        {
+            await _saveSemaphore.WaitAsync();
+            try
             {
                 var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
                 Directory.CreateDirectory(folder);
+                
                 var fileName = Path.Combine(folder, "settings.xml");
-                XmlSerializer xs = new(typeof(Settings));
+                var tempFileName = fileName + ".tmp";
+                var backupFileName = fileName + ".bak";
 
-                var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-                using var wr = XmlWriter.Create(fileName, settings);
-                xs.Serialize(wr, Settings);
+                // Serialize settings to memory first to ensure it's valid
+                Settings settingsSnapshot;
+                lock (_settingsLock)
+                {
+                    // Create a copy of settings to avoid locking during I/O
+                    var xs = new XmlSerializer(typeof(Settings));
+                    using var ms = new MemoryStream();
+                    xs.Serialize(ms, Settings);
+                    ms.Position = 0;
+                    settingsSnapshot = (Settings)xs.Deserialize(ms)!;
+                }
+
+                // Write to temp file asynchronously
+                var xmlSettings = new XmlWriterSettings() 
+                { 
+                    Encoding = Encoding.UTF8, 
+                    Indent = true, 
+                    Async = true 
+                };
+                
+                await using var stream = new FileStream(tempFileName, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+                await using var writer = XmlWriter.Create(stream, xmlSettings);
+                
+                var xs2 = new XmlSerializer(typeof(Settings));
+                xs2.Serialize(writer, settingsSnapshot);
+                
+                await writer.FlushAsync();
+                writer.Close();
+
+                await stream.FlushAsync();
+                stream.Close();
+
+                // Atomic replace with backup
+                // File.Replace automatically creates a backup and atomically replaces the file
+                if (File.Exists(fileName))
+                {
+                    File.Replace(tempFileName, fileName, backupFileName, ignoreMetadataErrors: true);
+                }
+                else
+                {
+                    // First time save, no backup needed
+                    File.Move(tempFileName, fileName, overwrite: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error (consider adding proper logging)
+                System.Diagnostics.Debug.WriteLine($"Error saving settings: {ex.Message}");
+                
+                // Try to restore from backup if available
+                var backupFileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "settings.xml.bak");
+                if (File.Exists(backupFileName))
+                {
+                    try
+                    {
+                        var fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "settings.xml");
+                        File.Copy(backupFileName, fileName, overwrite: true);
+                    }
+                    catch
+                    {
+                        // Failed to restore backup
+                    }
+                }
+                throw;
+            }
+            finally
+            {
+                _saveSemaphore.Release();
             }
         }
 
         public void LoadSettings()
         {
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
+            var fileName = Path.Combine(folder, "settings.xml");
+            var backupFileName = Path.Combine(folder, "settings.xml.bak");
+            
+            bool loadedFromBackup = false;
+            string fileToLoad = fileName;
 
-            var fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "settings.xml");
-            if (File.Exists(fileName))
+            // Try to load the main settings file first
+            if (!TryLoadSettingsFromFile(fileName))
+            {
+                // If main file fails, try backup
+                if (File.Exists(backupFileName) && TryLoadSettingsFromFile(backupFileName))
+                {
+                    loadedFromBackup = true;
+                    fileToLoad = backupFileName;
+                    
+                    // Try to restore the backup to the main file
+                    try
+                    {
+                        File.Copy(backupFileName, fileName, overwrite: true);
+                        System.Diagnostics.Debug.WriteLine("Settings restored from backup file.");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Failed to restore backup: {ex.Message}");
+                    }
+                }
+            }
+
+            // Actually load the settings if successful
+            if (File.Exists(fileToLoad))
             {
                 XmlSerializer xs = new XmlSerializer(typeof(Settings));
-                using var rd = XmlReader.Create(fileName);
+                using var rd = XmlReader.Create(fileToLoad);
                 try
                 {
                     if (xs.Deserialize(rd) is Settings settings)
@@ -333,9 +459,35 @@ namespace InfoPanel
                         }
 
                         ValidateStartup();
+                        
+                        if (loadedFromBackup)
+                        {
+                            System.Diagnostics.Debug.WriteLine("Settings loaded from backup file.");
+                        }
                     }
                 }
-                catch { }
+                catch (Exception ex) 
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error loading settings: {ex.Message}");
+                }
+            }
+        }
+
+        private bool TryLoadSettingsFromFile(string filePath)
+        {
+            if (!File.Exists(filePath))
+                return false;
+
+            try
+            {
+                XmlSerializer xs = new XmlSerializer(typeof(Settings));
+                using var rd = XmlReader.Create(filePath);
+                var testSettings = xs.Deserialize(rd) as Settings;
+                return testSettings != null;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -523,6 +675,29 @@ namespace InfoPanel
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Cleanup resources when application shuts down
+        /// </summary>
+        public void Cleanup()
+        {
+            // Dispose the debounce timer
+            _saveDebounceTimer?.Dispose();
+            _saveDebounceTimer = null;
+            
+            // Ensure any pending saves are completed
+            try
+            {
+                SaveSettingsAsync(batch: false).Wait(TimeSpan.FromSeconds(5));
+            }
+            catch
+            {
+                // Best effort - don't throw on shutdown
+            }
+            
+            // Dispose the semaphore
+            _saveSemaphore?.Dispose();
         }
     }
 }
