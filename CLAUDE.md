@@ -7,8 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 InfoPanel is a Windows desktop visualization software that displays hardware information on desktop overlays or external displays (USB LCD panels, Turing Smart Screens). It's built with C# WPF using .NET 8.0 and features a plugin system for extensibility.
 
 ## Build Commands
-- Claude environment is in WSL: It cannot build for Windows. 
-  - Ask the developer for assistance in build and verification instead.
+- **Main application build**: `dotnet-win build InfoPanel.sln -c Debug` or `dotnet-win build InfoPanel.sln -c Release`
+- **Plugin Simulator build**: `dotnet-win build InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj`
+- **Publish for deployment**: `dotnet-win publish InfoPanel/InfoPanel.csproj -c Release -r win-x64 --self-contained false`
+- **Build specific project**: `dotnet-win build InfoPanel/InfoPanel.csproj` or `dotnet-win build InfoPanel.Extras/InfoPanel.Extras.csproj`
 
 ## Architecture Overview
 
@@ -94,6 +96,12 @@ Plugin lifecycle: Initialize → Load containers → Periodic UpdateAsync → Cl
 **Testing Approach:**
 InfoPanel does not use formal unit testing frameworks (MSTest, xUnit, NUnit). Testing is primarily manual and plugin-focused.
 
+**Plugin Testing:**
+- Use `InfoPanel.Plugins.Simulator` project for testing plugins in isolation
+- Build simulator: `dotnet-win build InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj`
+- Modify `Program.cs` in the simulator project to target specific plugins
+- The simulator loads plugins from the InfoPanel.Extras build output directory
+
 ## Development Workflow
 
 **MVVM Architecture Guidelines:**
@@ -130,12 +138,29 @@ InfoPanel does not use formal unit testing frameworks (MSTest, xUnit, NUnit). Te
 - Plugin testing can be done via InfoPanel.Plugins.Simulator project
 - Current development focus: BeadaPanel multi-device support
 
-## Memories
-- Converters are defined in App.xaml
+## Key Implementation Details
+
+**Build System:**
+- Main project automatically builds InfoPanel.Extras via MSBuild targets
+- Built-in plugins are copied to `plugins/InfoPanel.Extras/` directory during build
+- Solution uses x64 architecture only, targeting .NET 8.0 Windows runtime
+
+**Plugin Testing Workflow:**
+- InfoPanel.Plugins.Simulator is the primary tool for plugin development and debugging
+- Simulator can be configured to test specific plugins by modifying `Program.cs`
+- Test plugins independently before integrating with main application
+
+**External Documentation:**
+- PLUGINS.md contains comprehensive plugin development guide
+- PANELS.md provides detailed hardware panel compatibility information
+- Both files contain valuable context for understanding plugin architecture and supported hardware
+
+## Development Memories
+- Converters are defined in App.xaml for data binding
 - No formal testing framework used - relies on Plugin Simulator and manual testing
-- Plugin Simulator is primary tool for plugin development and debugging
-- Current branch focuses on BeadaPanel multi-device support
+- Current development focus: BeadaPanel multi-device support
 - Graphics rendering supports multiple backends (WPF, SkiaSharp, DirectX)
 - Hardware monitoring via HWiNFO shared memory and LibreHardwareMonitor
 - FFmpeg video support exists but is experimental
 - Solution uses dependency injection via Microsoft.Extensions.Hosting
+- Use `dotnet-win` alias for building Windows projects in WSL environment
