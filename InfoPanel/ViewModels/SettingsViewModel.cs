@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -37,10 +38,6 @@ namespace InfoPanel.ViewModels
 
             // Subscribe to config changes
             ConfigModel.Instance.Settings.BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
-            foreach (var config in ConfigModel.Instance.Settings.BeadaPanelDevices)
-            {
-                config.PropertyChanged += BeadaPanelDeviceConfig_PropertyChanged;
-            }
 
             // Subscribe to device status changes
             SharedModel.Instance.BeadaPanelDeviceStatusChanged += OnBeadaPanelDeviceStatusChanged;
@@ -58,30 +55,38 @@ namespace InfoPanel.ViewModels
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
+            // Handle removed items
             if (e.OldItems != null)
             {
                 foreach (BeadaPanelDeviceConfig config in e.OldItems)
                 {
-                    config.PropertyChanged -= BeadaPanelDeviceConfig_PropertyChanged;
+                    // Find and remove the corresponding runtime device
+                    var deviceToRemove = RuntimeBeadaPanelDevices.FirstOrDefault(d => d.Config == config);
+                    if (deviceToRemove != null)
+                    {
+                        deviceToRemove.PropertyChanged -= RuntimeDevice_PropertyChanged;
+                        deviceToRemove.Config.PropertyChanged -= Config_PropertyChanged;
+                        RuntimeBeadaPanelDevices.Remove(deviceToRemove);
+                    }
                 }
             }
 
+            // Handle added items
             if (e.NewItems != null)
             {
                 foreach (BeadaPanelDeviceConfig config in e.NewItems)
                 {
-                    config.PropertyChanged += BeadaPanelDeviceConfig_PropertyChanged;
+                    var runtimeDevice = config.ToDevice();
+                    if (runtimeDevice != null)
+                    {
+                        runtimeDevice.PropertyChanged += RuntimeDevice_PropertyChanged;
+                        runtimeDevice.Config.PropertyChanged += Config_PropertyChanged;
+                        RuntimeBeadaPanelDevices.Add(runtimeDevice);
+                    }
                 }
             }
-
-            UpdateRuntimeDevices();
         }
 
-        private void BeadaPanelDeviceConfig_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-        {
-            // Update runtime devices when config changes
-            UpdateRuntimeDevices();
-        }
 
         private void OnBeadaPanelDeviceStatusChanged(object? sender, string deviceId)
         {
@@ -102,24 +107,37 @@ namespace InfoPanel.ViewModels
 
         private void UpdateRuntimeDevices()
         {
-            // Unsubscribe from old runtime devices
-            foreach (var device in RuntimeBeadaPanelDevices)
+            // Create a dictionary of existing devices by their config
+            var existingDevices = RuntimeBeadaPanelDevices.ToDictionary(d => d.Config);
+            
+            // Track which configs are still present
+            var presentConfigs = new HashSet<BeadaPanelDeviceConfig>();
+
+            // Update or add devices
+            foreach (var config in ConfigModel.Instance.Settings.BeadaPanelDevices)
+            {
+                presentConfigs.Add(config);
+                
+                if (!existingDevices.ContainsKey(config))
+                {
+                    // New config - create runtime device
+                    var runtimeDevice = config.ToDevice();
+                    if (runtimeDevice != null)
+                    {
+                        runtimeDevice.PropertyChanged += RuntimeDevice_PropertyChanged;
+                        runtimeDevice.Config.PropertyChanged += Config_PropertyChanged;
+                        RuntimeBeadaPanelDevices.Add(runtimeDevice);
+                    }
+                }
+            }
+
+            // Remove devices whose configs are no longer present
+            var devicesToRemove = RuntimeBeadaPanelDevices.Where(d => !presentConfigs.Contains(d.Config)).ToList();
+            foreach (var device in devicesToRemove)
             {
                 device.PropertyChanged -= RuntimeDevice_PropertyChanged;
                 device.Config.PropertyChanged -= Config_PropertyChanged;
-            }
-
-            RuntimeBeadaPanelDevices.Clear();
-
-            foreach (var config in ConfigModel.Instance.Settings.BeadaPanelDevices)
-            {
-                var runtimeDevice = config.ToDevice();
-                if (runtimeDevice != null)
-                {
-                    runtimeDevice.PropertyChanged += RuntimeDevice_PropertyChanged;
-                    runtimeDevice.Config.PropertyChanged += Config_PropertyChanged;
-                    RuntimeBeadaPanelDevices.Add(runtimeDevice);
-                }
+                RuntimeBeadaPanelDevices.Remove(device);
             }
         }
 
