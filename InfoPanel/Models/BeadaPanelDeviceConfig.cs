@@ -15,28 +15,15 @@ namespace InfoPanel.Models
         public string UsbPath
         {
             get => _usbPath;
-            set => SetProperty(ref _usbPath, value);
-        }
-
-        private string _modelName = string.Empty;
-        public string ModelName
-        {
-            get => _modelName;
-            set => SetProperty(ref _modelName, value);
+            set => SetProperty(ref _usbPath, BeadaPanelDevice.SanitizeString(value));
         }
 
         private string _hardwareSerialNumber = string.Empty;
         public string HardwareSerialNumber
         {
             get => _hardwareSerialNumber;
-            set => SetProperty(ref _hardwareSerialNumber, value);
+            set => SetProperty(ref _hardwareSerialNumber, BeadaPanelDevice.SanitizeString(value));
         }
-
-        [ObservableProperty]
-        private int _nativeResolutionX = 0;
-
-        [ObservableProperty]
-        private int _nativeResolutionY = 0;
 
         [ObservableProperty]
         private DeviceIdentificationMethod _identificationMethod = DeviceIdentificationMethod.UsbPath;
@@ -56,35 +43,24 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private BeadaPanelModel? _modelType = null;
 
-        [ObservableProperty]
-        private byte _maxBrightness = 255;
-
         /// <summary>
         /// Creates a runtime BeadaPanelDevice from this configuration
         /// </summary>
-        public BeadaPanelDevice ToDevice()
+        public BeadaPanelDevice? ToDevice()
         {
-            var device = new BeadaPanelDevice
-            {
-                UsbPath = UsbPath,
-                ModelName = ModelName,
-                HardwareSerialNumber = HardwareSerialNumber,
-                NativeResolutionX = NativeResolutionX,
-                NativeResolutionY = NativeResolutionY,
-                IdentificationMethod = IdentificationMethod,
-                Enabled = Enabled,
-                ProfileGuid = ProfileGuid,
-                Rotation = Rotation,
-                Brightness = Brightness,
-                ModelType = ModelType,
-                MaxBrightness = MaxBrightness
-            };
+            // Reject devices without valid model type
+            if (!ModelType.HasValue || !BeadaPanelModelDatabase.Models.ContainsKey(ModelType.Value))
+                return null;
+
+            var modelInfo = BeadaPanelModelDatabase.Models[ModelType.Value];
+            
+            var device = new BeadaPanelDevice(this);
 
             // Set stable ID based on identification method
             device.Id = IdentificationMethod switch
             {
                 DeviceIdentificationMethod.HardwareSerial => HardwareSerialNumber,
-                DeviceIdentificationMethod.ModelFingerprint => $"{ModelType}_{NativeResolutionX}x{NativeResolutionY}",
+                DeviceIdentificationMethod.ModelFingerprint => $"{ModelType}_{modelInfo.Width}x{modelInfo.Height}",
                 DeviceIdentificationMethod.UsbPath => UsbPath,
                 _ => UsbPath
             };
@@ -92,15 +68,11 @@ namespace InfoPanel.Models
             // Generate runtime properties based on available data
             if (!string.IsNullOrEmpty(HardwareSerialNumber))
             {
-                device.Name = $"{ModelName} ({HardwareSerialNumber})";
-            }
-            else if (!string.IsNullOrEmpty(ModelName))
-            {
-                device.Name = $"{ModelName} #{device.Id[..8]}";
+                device.Name = $"{modelInfo.Name} ({HardwareSerialNumber})";
             }
             else
             {
-                device.Name = $"BeadaPanel Device";
+                device.Name = $"{modelInfo.Name} #{device.Id[..8]}";
             }
 
             return device;
@@ -109,23 +81,13 @@ namespace InfoPanel.Models
         /// <summary>
         /// Creates a configuration from a runtime device
         /// </summary>
-        public static BeadaPanelDeviceConfig FromDevice(BeadaPanelDevice device)
+        public static BeadaPanelDeviceConfig? FromDevice(BeadaPanelDevice device)
         {
-            return new BeadaPanelDeviceConfig
-            {
-                UsbPath = device.UsbPath,
-                ModelName = device.ModelName,
-                HardwareSerialNumber = device.HardwareSerialNumber,
-                NativeResolutionX = device.NativeResolutionX,
-                NativeResolutionY = device.NativeResolutionY,
-                IdentificationMethod = device.IdentificationMethod,
-                Enabled = device.Enabled,
-                ProfileGuid = device.ProfileGuid,
-                Rotation = device.Rotation,
-                Brightness = device.Brightness,
-                ModelType = device.ModelType,
-                MaxBrightness = device.MaxBrightness
-            };
+            // Only create config for devices with valid model type
+            if (!device.ModelType.HasValue || !BeadaPanelModelDatabase.Models.ContainsKey(device.ModelType.Value))
+                return null;
+                
+            return device.GetConfig();
         }
     }
 }

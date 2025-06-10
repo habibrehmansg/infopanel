@@ -155,6 +155,14 @@ namespace InfoPanel.Services
         {
             await Task.Delay(300, token);
             
+            // Validate device has a known model type
+            if (!_device.ModelType.HasValue || !BeadaPanelModelDatabase.Models.ContainsKey(_device.ModelType.Value))
+            {
+                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Cannot start - unknown model type: {_device.ModelType}");
+                SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Unknown model type");
+                return;
+            }
+            
             try
             {
                 int vendorId = 0x4e58;
@@ -382,10 +390,10 @@ namespace InfoPanel.Services
             bool rotationChanged = _device.Rotation != newConfig.Rotation;
             bool brightnessChanged = _device.Brightness != newConfig.Brightness;
 
-            // Apply the configuration changes
-            _device.ProfileGuid = newConfig.ProfileGuid;
-            _device.Rotation = newConfig.Rotation;
-            _device.Brightness = newConfig.Brightness;
+            // Apply the configuration changes to the device's config object
+            _device.Config.ProfileGuid = newConfig.ProfileGuid;
+            _device.Config.Rotation = newConfig.Rotation;
+            _device.Config.Brightness = newConfig.Brightness;
 
             // Log the changes
             if (profileChanged)

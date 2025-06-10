@@ -106,6 +106,7 @@ namespace InfoPanel.ViewModels
             foreach (var device in RuntimeBeadaPanelDevices)
             {
                 device.PropertyChanged -= RuntimeDevice_PropertyChanged;
+                device.Config.PropertyChanged -= Config_PropertyChanged;
             }
 
             RuntimeBeadaPanelDevices.Clear();
@@ -113,71 +114,36 @@ namespace InfoPanel.ViewModels
             foreach (var config in ConfigModel.Instance.Settings.BeadaPanelDevices)
             {
                 var runtimeDevice = config.ToDevice();
-                runtimeDevice.PropertyChanged += RuntimeDevice_PropertyChanged;
-                RuntimeBeadaPanelDevices.Add(runtimeDevice);
+                if (runtimeDevice != null)
+                {
+                    runtimeDevice.PropertyChanged += RuntimeDevice_PropertyChanged;
+                    runtimeDevice.Config.PropertyChanged += Config_PropertyChanged;
+                    RuntimeBeadaPanelDevices.Add(runtimeDevice);
+                }
             }
         }
 
         private void RuntimeDevice_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (sender is BeadaPanelDevice runtimeDevice)
+            // Handle runtime property changes if needed
+        }
+
+        private void Config_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (sender is BeadaPanelDeviceConfig config)
             {
-                // Find the corresponding config and update it with changes to persistent properties
-                var config = FindConfigForRuntimeDevice(runtimeDevice);
-                if (config != null)
+                // Config properties have changed, notify the running device task
+                switch (e.PropertyName)
                 {
-                    // Only sync configuration properties, not runtime properties
-                    switch (e.PropertyName)
-                    {
-                        case nameof(BeadaPanelDevice.Enabled):
-                            config.Enabled = runtimeDevice.Enabled;
-                            break;
-                        case nameof(BeadaPanelDevice.ProfileGuid):
-                            config.ProfileGuid = runtimeDevice.ProfileGuid;
-                            // Notify running device task of configuration change
-                            InfoPanel.BeadaPanelTask.Instance.NotifyDeviceConfigurationChanged(config);
-                            break;
-                        case nameof(BeadaPanelDevice.Rotation):
-                            config.Rotation = runtimeDevice.Rotation;
-                            // Notify running device task of configuration change
-                            InfoPanel.BeadaPanelTask.Instance.NotifyDeviceConfigurationChanged(config);
-                            break;
-                        case nameof(BeadaPanelDevice.Brightness):
-                            config.Brightness = runtimeDevice.Brightness;
-                            // Notify running device task of configuration change
-                            InfoPanel.BeadaPanelTask.Instance.NotifyDeviceConfigurationChanged(config);
-                            break;
-                    }
+                    case nameof(BeadaPanelDeviceConfig.ProfileGuid):
+                    case nameof(BeadaPanelDeviceConfig.Rotation):
+                    case nameof(BeadaPanelDeviceConfig.Brightness):
+                        InfoPanel.BeadaPanelTask.Instance.NotifyDeviceConfigurationChanged(config);
+                        break;
                 }
             }
         }
 
-        private BeadaPanelDeviceConfig? FindConfigForRuntimeDevice(BeadaPanelDevice runtimeDevice)
-        {
-            var targetId = runtimeDevice.Id;
-
-            foreach (var config in ConfigModel.Instance.Settings.BeadaPanelDevices)
-            {
-                var configId = GetConfigId(config);
-                if (configId == targetId)
-                {
-                    return config;
-                }
-            }
-
-            return null;
-        }
-
-        private string GetConfigId(BeadaPanelDeviceConfig config)
-        {
-            return config.IdentificationMethod switch
-            {
-                DeviceIdentificationMethod.HardwareSerial => config.HardwareSerialNumber,
-                DeviceIdentificationMethod.ModelFingerprint => $"{config.ModelType}_{config.NativeResolutionX}x{config.NativeResolutionY}",
-                DeviceIdentificationMethod.UsbPath => config.UsbPath,
-                _ => config.UsbPath
-            };
-        }
 
         public void OnNavigatedFrom()
         {

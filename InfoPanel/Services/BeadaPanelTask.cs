@@ -5,6 +5,7 @@ using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Services;
 using InfoPanel.Utils;
+using InfoPanel.ViewModels;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
 using SkiaSharp;
@@ -65,11 +66,18 @@ namespace InfoPanel
                             var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
                             if (panelInfo != null)
                             {
-                                device.UpdateFromStatusLink(panelInfo);
-                                Trace.WriteLine($"StatusLink Query Success: {device.Name} - Hardware Serial: {device.HardwareSerialNumber}, Model: {device.ModelName}");
-                                
-                                discoveredDevices.Add(device);
-                                Trace.WriteLine($"Discovered BeadaPanel device: {device.Name} (ID Method: {device.IdentificationMethod}) at {device.UsbPath}");
+                                // Only add device if it has a valid model type
+                                if (device.UpdateFromStatusLink(panelInfo))
+                                {
+                                    Trace.WriteLine($"StatusLink Query Success: {device.Name} - Hardware Serial: {device.HardwareSerialNumber}, Model: {device.ModelName}");
+                                    
+                                    discoveredDevices.Add(device);
+                                    Trace.WriteLine($"Discovered BeadaPanel device: {device.Name} (ID Method: {device.IdentificationMethod}) at {device.UsbPath}");
+                                }
+                                else
+                                {
+                                    Trace.WriteLine($"Skipping device at {deviceReg.DevicePath} - Unknown model type: {panelInfo.Model}");
+                                }
                             }
                             else
                             {
@@ -300,7 +308,14 @@ namespace InfoPanel
                         if (!IsDeviceRunning(configId))
                         {
                             var runtimeDevice = config.ToDevice();
-                            StartDevice(runtimeDevice);
+                            if (runtimeDevice != null)
+                            {
+                                StartDevice(runtimeDevice);
+                            }
+                            else
+                            {
+                                Trace.WriteLine($"BeadaPanel: Skipping device with unknown model type: {config.ModelType}");
+                            }
                         }
                     }
 
@@ -338,18 +353,34 @@ namespace InfoPanel
                     if (existingConfig == null)
                     {
                         // Auto-add new devices (disabled by default)
-                        var newConfig = discoveredDevice.ToConfig();
-                        newConfig.Enabled = false;
-                        newConfig.ProfileGuid = settings.BeadaPanelDevices.Count > 0 
-                            ? settings.BeadaPanelDevices.First().ProfileGuid 
-                            : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
-
-                        // Use Dispatcher to add to the collection on UI thread
-                        Application.Current.Dispatcher.Invoke(() =>
+                        var newConfig = discoveredDevice.GetConfig();
+                        if (newConfig != null && newConfig.ModelType.HasValue)
                         {
-                            settings.BeadaPanelDevices.Add(newConfig);
-                        });
-                        Trace.WriteLine($"Auto-enumerated new BeadaPanel device: {discoveredDevice.Name} (disabled by default)");
+                            newConfig = new BeadaPanelDeviceConfig
+                            {
+                                UsbPath = discoveredDevice.UsbPath,
+                                HardwareSerialNumber = discoveredDevice.HardwareSerialNumber,
+                                IdentificationMethod = discoveredDevice.IdentificationMethod,
+                                ModelType = discoveredDevice.ModelType,
+                                Enabled = false,
+                                Brightness = 100,
+                                Rotation = LCD_ROTATION.RotateNone
+                            };
+                            newConfig.ProfileGuid = settings.BeadaPanelDevices.Count > 0 
+                                ? settings.BeadaPanelDevices.First().ProfileGuid 
+                                : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
+
+                            // Use Dispatcher to add to the collection on UI thread
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                settings.BeadaPanelDevices.Add(newConfig);
+                            });
+                            Trace.WriteLine($"Auto-enumerated new BeadaPanel device: {discoveredDevice.Name} (disabled by default)");
+                        }
+                        else
+                        {
+                            Trace.WriteLine($"BeadaPanel: Skipping device with unknown model type during auto-enumeration: {discoveredDevice.ModelType}");
+                        }
                     }
                     else
                     {
@@ -375,13 +406,11 @@ namespace InfoPanel
                 if (serialMatch != null) return serialMatch;
             }
 
-            // Priority 2: Match by model fingerprint (model + firmware + resolution)
+            // Priority 2: Match by model fingerprint (model type)
             if (discoveredDevice.ModelType.HasValue)
             {
                 var fingerprintMatch = existingConfigs.FirstOrDefault(d => 
-                    d.ModelType == discoveredDevice.ModelType &&
-                    d.NativeResolutionX == discoveredDevice.NativeResolutionX &&
-                    d.NativeResolutionY == discoveredDevice.NativeResolutionY);
+                    d.ModelType == discoveredDevice.ModelType);
                 if (fingerprintMatch != null) return fingerprintMatch;
             }
 
@@ -405,10 +434,6 @@ namespace InfoPanel
             {
                 existingConfig.HardwareSerialNumber = discoveredDevice.HardwareSerialNumber;
                 existingConfig.ModelType = discoveredDevice.ModelType;
-                existingConfig.ModelName = discoveredDevice.ModelName;
-                existingConfig.NativeResolutionX = discoveredDevice.NativeResolutionX;
-                existingConfig.NativeResolutionY = discoveredDevice.NativeResolutionY;
-                existingConfig.MaxBrightness = discoveredDevice.MaxBrightness;
                 existingConfig.IdentificationMethod = discoveredDevice.IdentificationMethod;
             }
         }
@@ -419,10 +444,19 @@ namespace InfoPanel
             return config.IdentificationMethod switch
             {
                 DeviceIdentificationMethod.HardwareSerial => config.HardwareSerialNumber,
-                DeviceIdentificationMethod.ModelFingerprint => $"{config.ModelType}_{config.NativeResolutionX}x{config.NativeResolutionY}",
+                DeviceIdentificationMethod.ModelFingerprint => GetModelFingerprint(config),
                 DeviceIdentificationMethod.UsbPath => config.UsbPath,
                 _ => config.UsbPath
             };
+        }
+
+        private string GetModelFingerprint(BeadaPanelDeviceConfig config)
+        {
+            if (config.ModelType.HasValue && BeadaPanelModelDatabase.Models.TryGetValue(config.ModelType.Value, out var modelInfo))
+            {
+                return $"{config.ModelType}_{modelInfo.Width}x{modelInfo.Height}";
+            }
+            return config.UsbPath; // Fallback
         }
 
 

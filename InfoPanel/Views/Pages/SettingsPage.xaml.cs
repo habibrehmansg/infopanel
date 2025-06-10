@@ -331,9 +331,7 @@ namespace InfoPanel.Views.Pages
             if (discoveredDevice.ModelType.HasValue)
             {
                 var fingerprintMatch = existingConfigs.FirstOrDefault(d => 
-                    d.ModelType == discoveredDevice.ModelType &&
-                    d.NativeResolutionX == discoveredDevice.NativeResolutionX &&
-                    d.NativeResolutionY == discoveredDevice.NativeResolutionY);
+                    d.ModelType == discoveredDevice.ModelType);
                 if (fingerprintMatch != null)
                 {
                     Trace.WriteLine($"Device matched by model fingerprint: {discoveredDevice.ModelType}_{discoveredDevice.NativeResolutionX}x{discoveredDevice.NativeResolutionY}");
@@ -366,10 +364,6 @@ namespace InfoPanel.Views.Pages
             {
                 existingConfig.HardwareSerialNumber = discoveredDevice.HardwareSerialNumber;
                 existingConfig.ModelType = discoveredDevice.ModelType;
-                existingConfig.ModelName = discoveredDevice.ModelName;
-                existingConfig.NativeResolutionX = discoveredDevice.NativeResolutionX;
-                existingConfig.NativeResolutionY = discoveredDevice.NativeResolutionY;
-                existingConfig.MaxBrightness = discoveredDevice.MaxBrightness;
                 existingConfig.IdentificationMethod = discoveredDevice.IdentificationMethod;
             }
         }
@@ -380,7 +374,7 @@ namespace InfoPanel.Views.Pages
             return config.IdentificationMethod switch
             {
                 DeviceIdentificationMethod.HardwareSerial => config.HardwareSerialNumber,
-                DeviceIdentificationMethod.ModelFingerprint => $"{config.ModelType}_{config.NativeResolutionX}x{config.NativeResolutionY}",
+                DeviceIdentificationMethod.ModelFingerprint => $"{config.ModelType}",
                 DeviceIdentificationMethod.UsbPath => config.UsbPath,
                 _ => config.UsbPath
             };
