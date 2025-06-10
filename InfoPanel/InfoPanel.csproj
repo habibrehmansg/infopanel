@@ -62,20 +62,11 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Reference Include="d2dlibexport">
-			<HintPath>Lib\d2dlibexport.dll</HintPath>
-		</Reference>
-		<Reference Include="d2dwinform">
-			<HintPath>Lib\d2dwinform.dll</HintPath>
-		</Reference>
 		<Reference Include="LibreHardwareMonitorLib">
 			<HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
 		</Reference>
 		<Reference Include="TuringSmartScreenLib">
 			<HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
-		</Reference>
-		<Reference Include="TuringSmartScreenLib.Helpers.GDI">
-			<HintPath>Lib\TuringSmartScreenLib.Helpers.GDI.dll</HintPath>
 		</Reference>
 		<Reference Include="TuringSmartScreenLib.Helpers.SkiaSharp">
 		  <HintPath>Lib\TuringSmartScreenLib.Helpers.SkiaSharp.dll</HintPath>
