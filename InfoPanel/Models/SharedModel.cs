@@ -28,6 +28,9 @@ namespace InfoPanel
 
         public static SharedModel Instance { get { return lazy.Value; } }
 
+        // Event to notify when device status changes
+        public event EventHandler<string>? BeadaPanelDeviceStatusChanged;
+
         private bool _hwInfoAvailable = false;
 
         public bool HwInfoAvailable
@@ -68,9 +71,8 @@ namespace InfoPanel
             status.ErrorMessage = errorMessage;
             status.LastUpdate = DateTime.Now;
             
-            // Notify the corresponding device that its status changed
-            var device = ConfigModel.Instance.Settings.BeadaPanelDevices.FirstOrDefault(d => d.Id == deviceId);
-            device?.NotifyDeviceStatusChanged();
+            // Notify that device status changed
+            BeadaPanelDeviceStatusChanged?.Invoke(this, deviceId);
         }
 
         public void RemoveBeadaPanelDeviceStatus(string deviceId)

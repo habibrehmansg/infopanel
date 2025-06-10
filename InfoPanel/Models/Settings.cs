@@ -62,8 +62,8 @@ namespace InfoPanel.Models
         }
 
 
-        private ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = new();
-        public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices
+        private ObservableCollection<BeadaPanelDeviceConfig> _beadaPanelDevices = new();
+        public ObservableCollection<BeadaPanelDeviceConfig> BeadaPanelDevices
         {
             get { return _beadaPanelDevices; }
             set 
@@ -74,7 +74,7 @@ namespace InfoPanel.Models
                     _beadaPanelDevices.CollectionChanged -= BeadaPanelDevices_CollectionChanged;
                     foreach (var device in _beadaPanelDevices)
                     {
-                        device.PropertyChanged -= BeadaPanelDevice_PropertyChanged;
+                        device.PropertyChanged -= BeadaPanelDeviceConfig_PropertyChanged;
                     }
                 }
                 
@@ -86,7 +86,7 @@ namespace InfoPanel.Models
                     _beadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
                     foreach (var device in _beadaPanelDevices)
                     {
-                        device.PropertyChanged += BeadaPanelDevice_PropertyChanged;
+                        device.PropertyChanged += BeadaPanelDeviceConfig_PropertyChanged;
                     }
                 }
             }
@@ -322,17 +322,17 @@ namespace InfoPanel.Models
         {
             if (e.NewItems != null)
             {
-                foreach (BeadaPanelDevice device in e.NewItems)
+                foreach (BeadaPanelDeviceConfig device in e.NewItems)
                 {
-                    device.PropertyChanged += BeadaPanelDevice_PropertyChanged;
+                    device.PropertyChanged += BeadaPanelDeviceConfig_PropertyChanged;
                 }
             }
 
             if (e.OldItems != null)
             {
-                foreach (BeadaPanelDevice device in e.OldItems)
+                foreach (BeadaPanelDeviceConfig device in e.OldItems)
                 {
-                    device.PropertyChanged -= BeadaPanelDevice_PropertyChanged;
+                    device.PropertyChanged -= BeadaPanelDeviceConfig_PropertyChanged;
                 }
             }
 
@@ -340,9 +340,9 @@ namespace InfoPanel.Models
             OnPropertyChanged(nameof(BeadaPanelDevices));
         }
 
-        private void BeadaPanelDevice_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        private void BeadaPanelDeviceConfig_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            // Trigger save when any device property changes
+            // Trigger save when any device configuration property changes
             OnPropertyChanged(nameof(BeadaPanelDevices));
         }
     }

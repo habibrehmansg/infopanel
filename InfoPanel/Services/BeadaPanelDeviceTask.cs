@@ -367,5 +367,39 @@ namespace InfoPanel.Services
                 SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false);
             }
         }
+
+        /// <summary>
+        /// Updates the device configuration while the task is running.
+        /// This allows for real-time updates without restarting the device task.
+        /// </summary>
+        /// <param name="newConfig">The updated configuration</param>
+        public void UpdateConfiguration(BeadaPanelDeviceConfig newConfig)
+        {
+            if (newConfig == null) return;
+
+            // Update configuration properties that can be changed at runtime
+            bool profileChanged = _device.ProfileGuid != newConfig.ProfileGuid;
+            bool rotationChanged = _device.Rotation != newConfig.Rotation;
+            bool brightnessChanged = _device.Brightness != newConfig.Brightness;
+
+            // Apply the configuration changes
+            _device.ProfileGuid = newConfig.ProfileGuid;
+            _device.Rotation = newConfig.Rotation;
+            _device.Brightness = newConfig.Brightness;
+
+            // Log the changes
+            if (profileChanged)
+            {
+                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Profile changed to {newConfig.ProfileGuid}");
+            }
+            if (rotationChanged)
+            {
+                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Rotation changed to {newConfig.Rotation}");
+            }
+            if (brightnessChanged)
+            {
+                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Brightness changed to {newConfig.Brightness}");
+            }
+        }
     }
 }

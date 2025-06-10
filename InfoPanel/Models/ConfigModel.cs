@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -50,6 +51,13 @@ namespace InfoPanel
                 {
                     Upgrade_File_Structure_From_1_1_4();
                     Settings.Version = 115;
+                    _ = SaveSettingsAsync(batch: false);
+                }
+                if (Settings.Version < 123)
+                {
+                    // Migrate BeadaPanelDevice collection to BeadaPanelDeviceConfig collection
+                    MigrateBeadaPanelDevices();
+                    Settings.Version = 123;
                     _ = SaveSettingsAsync(batch: false);
                 }
             }
@@ -157,6 +165,12 @@ namespace InfoPanel
             if (e.PropertyName == nameof(Settings.AutoStart))
             {
                 ValidateStartup();
+            }
+            else if (e.PropertyName == nameof(Settings.BeadaPanelDevices))
+            {
+                // BeadaPanel device properties changed, ensure settings are saved
+                await SaveSettingsAsync();
+                return; // Early return to avoid double save
             }
             else if (e.PropertyName == nameof(Settings.LibreHardwareMonitor) || e.PropertyName == nameof(Settings.LibreHardMonitorRing0))
             {
@@ -621,6 +635,15 @@ namespace InfoPanel
             }
 
             return null;
+        }
+
+        private void MigrateBeadaPanelDevices()
+        {
+            // Migration from BeadaPanelDevice collection to BeadaPanelDeviceConfig collection
+            // This is handled automatically by XML deserialization since BeadaPanelDeviceConfig
+            // contains all the same persistent properties as BeadaPanelDevice.
+            // The XML serializer will map the properties correctly.
+            Trace.WriteLine("Migrated BeadaPanelDevice collection to BeadaPanelDeviceConfig collection");
         }
 
         private void Upgrade_File_Structure_From_1_1_4()

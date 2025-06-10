@@ -189,6 +189,33 @@ namespace InfoPanel.Models
             OnPropertyChanged(nameof(DeviceStatus));
         }
 
+        /// <summary>
+        /// Updates this device's configuration properties from a config object
+        /// </summary>
+        public void UpdateFromConfig(BeadaPanelDeviceConfig config)
+        {
+            UsbPath = config.UsbPath;
+            ModelName = config.ModelName;
+            HardwareSerialNumber = config.HardwareSerialNumber;
+            NativeResolutionX = config.NativeResolutionX;
+            NativeResolutionY = config.NativeResolutionY;
+            IdentificationMethod = config.IdentificationMethod;
+            Enabled = config.Enabled;
+            ProfileGuid = config.ProfileGuid;
+            Rotation = config.Rotation;
+            Brightness = config.Brightness;
+            ModelType = config.ModelType;
+            MaxBrightness = config.MaxBrightness;
+        }
+
+        /// <summary>
+        /// Creates a configuration object from this device's persistent properties
+        /// </summary>
+        public BeadaPanelDeviceConfig ToConfig()
+        {
+            return BeadaPanelDeviceConfig.FromDevice(this);
+        }
+
         public override string ToString()
         {
             return Name;

@@ -458,7 +458,7 @@
                     <!--  BeadaPanel Device List  -->
                     <ItemsControl
                         Margin="0,10,0,0"
-                        ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelDevices}"
+                        ItemsSource="{Binding Path=ViewModel.RuntimeBeadaPanelDevices, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
