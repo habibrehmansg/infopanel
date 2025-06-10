@@ -215,7 +215,7 @@ namespace InfoPanel
         /// <param name="deviceConfig">The updated device configuration</param>
         public void NotifyDeviceConfigurationChanged(BeadaPanelDeviceConfig deviceConfig)
         {
-            var deviceId = GetConfigId(deviceConfig);
+            var deviceId = deviceConfig.GetStableId();
             if (_deviceTasks.TryGetValue(deviceId, out var deviceTask))
             {
                 deviceTask.UpdateConfiguration(deviceConfig);
@@ -270,7 +270,7 @@ namespace InfoPanel
                     
                     foreach (var config in enabledConfigs)
                     {
-                        var configId = GetConfigId(config);
+                        var configId = config.GetStableId();
                         if (!IsDeviceRunning(configId))
                         {
                             var runtimeDevice = config.ToDevice();
@@ -289,7 +289,7 @@ namespace InfoPanel
                     var runningDeviceIds = _deviceTasks.Keys.ToList();
                     foreach (var deviceId in runningDeviceIds)
                     {
-                        if (!enabledConfigs.Any(c => GetConfigId(c) == deviceId))
+                        if (!enabledConfigs.Any(c => c.GetStableId() == deviceId))
                         {
                             await StopDevice(deviceId);
                         }
@@ -305,26 +305,6 @@ namespace InfoPanel
             }
         }
 
-        private string GetConfigId(BeadaPanelDeviceConfig config)
-        {
-            // Generate a stable ID based on the device's unique identifier
-            return config.IdentificationMethod switch
-            {
-                DeviceIdentificationMethod.HardwareSerial => config.SerialNumber,
-                DeviceIdentificationMethod.ModelFingerprint => GetModelFingerprint(config),
-                DeviceIdentificationMethod.UsbPath => config.UsbPath,
-                _ => config.UsbPath
-            };
-        }
-
-        private string GetModelFingerprint(BeadaPanelDeviceConfig config)
-        {
-            if (config.ModelType.HasValue && BeadaPanelModelDatabase.Models.TryGetValue(config.ModelType.Value, out var modelInfo))
-            {
-                return $"{config.ModelType}";
-            }
-            return config.UsbPath; // Fallback
-        }
 
 
         public override async Task StopAsync(bool shutdown = false)

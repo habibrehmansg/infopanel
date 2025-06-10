@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.BeadaPanel;
+using InfoPanel.Utils;
 using InfoPanel.ViewModels;
 using System;
 
@@ -15,7 +16,7 @@ namespace InfoPanel.Models
         public string UsbPath
         {
             get => _usbPath;
-            set => SetProperty(ref _usbPath, BeadaPanelDevice.SanitizeString(value));
+            set => SetProperty(ref _usbPath, StringUtils.SanitizeString(value));
         }
 
         [ObservableProperty]
@@ -25,7 +26,7 @@ namespace InfoPanel.Models
         public string SerialNumber
         {
             get => _serialNumber;
-            set => SetProperty(ref _serialNumber, BeadaPanelDevice.SanitizeString(value));
+            set => SetProperty(ref _serialNumber, StringUtils.SanitizeString(value));
         }
 
         [ObservableProperty]
@@ -54,25 +55,34 @@ namespace InfoPanel.Models
         }
 
         /// <summary>
+        /// Gets a stable identifier for this device based on its identification method
+        /// </summary>
+        public string GetStableId()
+        {
+            return IdentificationMethod switch
+            {
+                DeviceIdentificationMethod.HardwareSerial => SerialNumber,
+                DeviceIdentificationMethod.ModelFingerprint => ModelType.HasValue && BeadaPanelModelDatabase.Models.TryGetValue(ModelType.Value, out var modelInfo)
+                    ? $"{ModelType}_{modelInfo.Width}x{modelInfo.Height}"
+                    : UsbPath,
+                DeviceIdentificationMethod.UsbPath => UsbPath,
+                _ => UsbPath
+            };
+        }
+
+        /// <summary>
         /// Creates a runtime BeadaPanelDevice from this configuration
         /// </summary>
         public BeadaPanelDevice? ToDevice()
         {
             // Reject devices without valid model type
-            if (!ModelType.HasValue || !BeadaPanelModelDatabase.Models.TryGetValue(ModelType.Value, out BeadaPanelModelInfo? modelInfo))
+            if (!ModelType.HasValue || !BeadaPanelModelDatabase.Models.ContainsKey(ModelType.Value))
                 return null;
+                
             var device = new BeadaPanelDevice(this)
             {
-                // Set stable ID based on identification method
-                Id = IdentificationMethod switch
-                {
-                    DeviceIdentificationMethod.HardwareSerial => SerialNumber,
-                    DeviceIdentificationMethod.ModelFingerprint => $"{ModelType}_{modelInfo.Width}x{modelInfo.Height}",
-                    DeviceIdentificationMethod.UsbPath => UsbPath,
-                    _ => UsbPath
-                }
+                Id = GetStableId()
             };
-
 
             return device;
         }
@@ -86,7 +96,7 @@ namespace InfoPanel.Models
             if (!device.Config.ModelType.HasValue || !BeadaPanelModelDatabase.Models.ContainsKey(device.Config.ModelType.Value))
                 return null;
                 
-            return device.GetConfig();
+            return device.Config;
         }
     }
 }

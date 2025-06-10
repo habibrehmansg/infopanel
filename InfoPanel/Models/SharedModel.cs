@@ -46,10 +46,12 @@ namespace InfoPanel
         [ObservableProperty]
         private ObservableCollection<BeadaPanelDeviceStatus> _beadaPanelDeviceStatuses = [];
 
+        private readonly Dictionary<string, BeadaPanelDeviceStatus> _beadaPanelDeviceStatusDict = new();
+
         public BeadaPanelDeviceStatus? GetBeadaPanelDeviceStatus(string deviceId)
         {
-            
-            return BeadaPanelDeviceStatuses.FirstOrDefault(s => s?.DeviceId == deviceId);
+            _beadaPanelDeviceStatusDict.TryGetValue(deviceId, out var status);
+            return status;
         }
 
         public void UpdateBeadaPanelDeviceStatus(string deviceId, bool isRunning, bool isConnected, int frameRate = 0, long frameTime = 0, string errorMessage = "")
@@ -59,6 +61,7 @@ namespace InfoPanel
             {
                 status = new BeadaPanelDeviceStatus(deviceId);
                 BeadaPanelDeviceStatuses.Add(status);
+                _beadaPanelDeviceStatusDict[deviceId] = status;
             }
             
             status.IsRunning = isRunning;
@@ -74,10 +77,10 @@ namespace InfoPanel
 
         public void RemoveBeadaPanelDeviceStatus(string deviceId)
         {
-            var status = GetBeadaPanelDeviceStatus(deviceId);
-            if (status != null)
+            if (_beadaPanelDeviceStatusDict.TryGetValue(deviceId, out var status))
             {
                 BeadaPanelDeviceStatuses.Remove(status);
+                _beadaPanelDeviceStatusDict.Remove(deviceId);
             }
         }
 

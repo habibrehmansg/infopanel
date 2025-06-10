@@ -11,7 +11,7 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private string _id = string.Empty;
 
-        public string Name => ModelName;
+        public string Name => $"BeadaPanel {ModelName}";
 
 
         [ObservableProperty]
@@ -36,75 +36,24 @@ namespace InfoPanel.Models
             ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].Height
             : 0;
 
-        public int WidthMm => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].WidthMM
-            : 0;
-
-        public int HeightMm => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].HeightMM
-            : 0;
-
-
         [ObservableProperty]
         private bool _statusLinkAvailable = false;
 
-        public static string SanitizeString(string? input)
-        {
-            if (string.IsNullOrEmpty(input))
-                return string.Empty;
-            
-            // Remove null characters and other invalid XML characters
-            // Also remove any non-printable characters
-            var sanitized = new System.Text.StringBuilder();
-            foreach (char c in input)
-            {
-                if (c != '\0' && !char.IsControl(c))
-                {
-                    sanitized.Append(c);
-                }
-            }
-            
-            return sanitized.ToString().Trim();
-        }
-
         public BeadaPanelDevice()
         {
-            Id = Guid.NewGuid().ToString();
         }
 
         public BeadaPanelDevice(BeadaPanelDeviceConfig config)
         {
             Config = config;
-            Id = Guid.NewGuid().ToString();
         }
 
-        public string GetUniqueIdentifier()
-        {
-            return Config.IdentificationMethod switch
-            {
-                DeviceIdentificationMethod.HardwareSerial => Config.SerialNumber,
-                DeviceIdentificationMethod.ModelFingerprint => $"{Config.ModelType}_{FirmwareVersion}_{NativeResolutionX}x{NativeResolutionY}",
-                DeviceIdentificationMethod.UsbPath => Config.UsbPath,
-                _ => Id
-            };
-        }
-
-        public string GetIdentificationStatusText()
-        {
-            return Config.IdentificationMethod switch
-            {
-                DeviceIdentificationMethod.HardwareSerial => "Identified by hardware serial",
-                DeviceIdentificationMethod.ModelFingerprint => "Identified by device fingerprint",
-                DeviceIdentificationMethod.UsbPath => "Identified by USB path (unstable)",
-                _ => "Unknown identification method"
-            };
-        }
 
         public BeadaPanelDeviceStatus? DeviceStatus
         {
             get
             {
-                return SharedModel.Instance.BeadaPanelDeviceStatuses.FirstOrDefault(s => s?.DeviceId == Id);
+                return SharedModel.Instance.GetBeadaPanelDeviceStatus(Id);
             }
         }
         
@@ -114,13 +63,6 @@ namespace InfoPanel.Models
             OnPropertyChanged(nameof(DeviceStatus));
         }
 
-        /// <summary>
-        /// Gets the configuration object for this device
-        /// </summary>
-        public BeadaPanelDeviceConfig GetConfig()
-        {
-            return Config;
-        }
 
         public override string ToString()
         {
@@ -145,12 +87,8 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private long _frameTime = 0;
 
+        [ObservableProperty]
         private string _errorMessage = string.Empty;
-        public string ErrorMessage
-        {
-            get => _errorMessage;
-            set => SetProperty(ref _errorMessage, BeadaPanelDevice.SanitizeString(value));
-        }
 
         [ObservableProperty]
         private DateTime _lastUpdate = DateTime.Now;

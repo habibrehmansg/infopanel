@@ -290,7 +290,7 @@ namespace InfoPanel.Views.Pages
                             Trace.WriteLine($"Device removal result: {removed}, After removal - Collection count: {settings.BeadaPanelDevices.Count}");
 
                             // Stop device if running
-                            var deviceId = GetConfigId(deviceConfig);
+                            var deviceId = deviceConfig.GetStableId();
                             if (BeadaPanelTask.Instance.IsDeviceRunning(deviceId))
                             {
                                 _ = BeadaPanelTask.Instance.StopDevice(deviceId);
@@ -355,17 +355,6 @@ namespace InfoPanel.Views.Pages
             return null;
         }
 
-        private string GetConfigId(BeadaPanelDeviceConfig config)
-        {
-            // Generate a stable ID based on the device's unique identifier
-            return config.IdentificationMethod switch
-            {
-                DeviceIdentificationMethod.HardwareSerial => config.SerialNumber,
-                DeviceIdentificationMethod.ModelFingerprint => $"{config.ModelType}",
-                DeviceIdentificationMethod.UsbPath => config.UsbPath,
-                _ => config.UsbPath
-            };
-        }
 
     }
 }
