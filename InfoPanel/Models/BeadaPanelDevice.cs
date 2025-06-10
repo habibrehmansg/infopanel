@@ -124,7 +124,7 @@ namespace InfoPanel.Models
         public void UpdateFromStatusLink(BeadaPanelInfo panelInfo)
         {
             HardwareSerialNumber = panelInfo.SerialNumber;
-            ModelType = panelInfo.ModelId;
+            ModelType = panelInfo.Model;
             ModelName = panelInfo.ModelInfo?.Name ?? "Unknown Model";
             FirmwareVersion = panelInfo.FirmwareVersion;
             Platform = panelInfo.Platform;

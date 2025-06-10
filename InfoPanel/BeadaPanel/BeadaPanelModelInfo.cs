@@ -8,7 +8,6 @@ namespace InfoPanel.BeadaPanel
 {
     public class BeadaPanelModelInfo
     {
-        public BeadaPanelModel Id { get; init; }
         public string Name { get; init; } = string.Empty;
         public int Width { get; init; }
         public int Height { get; init; }

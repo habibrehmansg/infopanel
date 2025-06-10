@@ -17,16 +17,8 @@ namespace InfoPanel.BeadaPanel
         public uint StorageSizeKB { get; init; }
         public byte MaxBrightness { get; init; }
         public byte CurrentBrightness { get; init; }
-        public BeadaPanelModel? ModelId { get; init; }
-        public BeadaPanelModelInfo? ModelInfo { get; init; }
-
-        int DecodeBCD(ushort bcd)
-        {
-            int hundreds = (bcd >> 8) & 0xF;
-            int tens = (bcd >> 4) & 0xF;
-            int ones = bcd & 0xF;
-            return hundreds * 100 + tens * 10 + ones;
-        }
+        public BeadaPanelModel Model { get; init; }
+        public required BeadaPanelModelInfo ModelInfo { get; init; }
 
         public override string ToString()
         {
@@ -37,8 +29,8 @@ namespace InfoPanel.BeadaPanel
             sb.AppendLine($"PanelLink Version    : {PanelLinkVersion}");
             sb.AppendLine($"StatusLink Version   : {StatusLinkVersion}");
             sb.AppendLine($"Platform             : {Platform}");
-            sb.AppendLine($"Model Code           : {(ModelId.HasValue ? ((byte)ModelId.Value).ToString() : "Unknown")}");
-            sb.AppendLine($"Model Name           : {ModelInfo?.Name ?? "Unknown"}");
+            sb.AppendLine($"Model Code           : {(byte)Model}");
+            sb.AppendLine($"Model Name           : {ModelInfo.Name}");
             sb.AppendLine($"Serial Number        : {SerialNumber}");
             sb.AppendLine($"Reported Resolution  : {ResolutionX} x {ResolutionY}");
             sb.AppendLine($"Storage Size         : {StorageSizeKB} KB");

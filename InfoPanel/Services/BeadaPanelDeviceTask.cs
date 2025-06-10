@@ -78,7 +78,7 @@ namespace InfoPanel.Services
                     {
                         var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
                         if (panelInfo != null && 
-                            panelInfo.ModelId == _device.ModelType &&
+                            panelInfo.Model == _device.ModelType &&
                             panelInfo.FirmwareVersion == _device.FirmwareVersion &&
                             (panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX) == _device.NativeResolutionX &&
                             (panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY) == _device.NativeResolutionY)
