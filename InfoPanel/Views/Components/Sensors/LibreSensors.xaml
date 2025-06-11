@@ -115,91 +115,12 @@
                 </StackPanel>
             </Expander>
 
-            <Grid
-                x:Name="GridActions"
+            <Separator Grid.Row="4" Margin="0,5,0,0" />
+
+            <components:SensorActions
                 Grid.Row="5"
-                Margin="0,10,0,0"
-                IsEnabled="{Binding Path=SelectedItem, Converter={StaticResource NullToBooleanConverter}}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock
-                    Grid.Column="0"
-                    Margin="0,5,10,0"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Center">
-                    <Bold FontSize="20" FontWeight="Medium">Sensor Items</Bold>
-                </TextBlock>
-                <ui:Button
-                    x:Name="ButtonSelect"
-                    Grid.Column="1"
-                    Appearance="Success"
-                    Click="ButtonSelect_Click"
-                    Icon="Temperature20"
-                    IsEnabled="True"
-                    ToolTip="Add selected sensor as a text item" />
-                <ui:Button
-                    x:Name="ButtonAddBar"
-                    Grid.Column="2"
-                    Margin="10,0,0,0"
-                    Appearance="Success"
-                    Click="ButtonAddBar_Click"
-                    Icon="DataBarHorizontal20"
-                    IsEnabled="True"
-                    ToolTip="Add selected sensor as a bar" />
-                <ui:Button
-                    x:Name="ButtonAddDonut"
-                    Grid.Column="3"
-                    Margin="10,0,0,0"
-                    Appearance="Success"
-                    Click="ButtonAddDonut_Click"
-                    Icon="DataPie20"
-                    IsEnabled="True"
-                    ToolTip="Add selected sensor as a donut" />
-                <ui:Button
-                    x:Name="ButtonAddGraph"
-                    Grid.Column="4"
-                    Margin="10,0,0,0"
-                    Appearance="Success"
-                    Click="ButtonAddGraph_Click"
-                    Icon="DataBarVertical20"
-                    IsEnabled="True"
-                    ToolTip="Add selected sensor as a graph" />
-                <ui:Button
-                    x:Name="ButtonAddCustom"
-                    Grid.Column="5"
-                    Margin="10,0,0,0"
-                    Appearance="Success"
-                    Click="ButtonAddCustom_Click"
-                    Icon="Gauge20"
-                    IsEnabled="True"
-                    ToolTip="Add selected sensor as gauge" />
-                <ui:Button
-                    x:Name="ButtonAddSensorImage"
-                    Grid.Column="6"
-                    Margin="10,0,0,0"
-                    Appearance="Success"
-                    Click="ButtonAddSensorImage_Click"
-                    Icon="CircleImage20"
-                    IsEnabled="True"
-                    ToolTip="Add selected sensor as sensor image" />
-                <ui:Button
-                    x:Name="ButtonReplace"
-                    Grid.Column="7"
-                    Margin="10,0,0,0"
-                    Appearance="Caution"
-                    Click="ButtonReplace_Click"
-                    Icon="ArrowSwap20"
-                    IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource IsSensorConverter}}"
-                    ToolTip="Replace selected sensor" />
-            </Grid>
+                SelectedSensorItem="{Binding SelectedItem}"
+                SensorType="Libre" />
         </StackPanel>
     </Grid>
 </UserControl>
