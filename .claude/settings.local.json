@@ -3,7 +3,8 @@
     "allow": [
       "mcp__context7__get-library-docs",
       "Bash(rg:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git log:*)"
     ],
     "deny": []
   }

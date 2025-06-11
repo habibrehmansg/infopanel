@@ -92,11 +92,79 @@ namespace InfoPanel.ViewModels
                 ]
             };
 
+            var version130 =
+                new UpdateVersion
+                {
+                    Version = "v1.3.0",
+                    Expanded = true,
+                    Title = "Video streaming, multiple panel support, and new design tools",
+                    Items = [
+                            new UpdateVersionItem() { Title = "Video and Live Stream Support",
+                            Description = [
+                                "Image items can now display videos and live streams.",
+                                "RTSP stream support for security cameras and CCTV systems.",
+                                "Play local videos or stream from URLs.",
+                                "Full audio support with volume control.",
+                                "Works with common formats: MP4, MKV, AVI, and more."
+                                ] },
+                            new UpdateVersionItem() { Title = "Multiple BeadaPanel Support",
+                            Description = [
+                                "Connect and use multiple BeadaPanel displays at the same time.",
+                                "Automatic detection when you plug in new panels.",
+                                "Individual control for each connected panel.",
+                                "More stable connection with automatic reconnection."
+                                ] },
+                            new UpdateVersionItem() { Title = "Custom Shapes",
+                            Description = [
+                                "New shape tool with 11 different shapes including stars, arrows, and polygons.",
+                                "Animated gradients with 6 different styles (linear, radial, spiral, and more).",
+                                "Customizable colors, borders, and rotation.",
+                                "Perfect for creating unique backgrounds and design elements."
+                                ] },
+                            new UpdateVersionItem() { Title = "Group Items Together",
+                            Description = [
+                                "Group multiple sensors and elements to move them together.",
+                                "Clone entire groups with one click.",
+                                "Better organization for complex layouts.",
+                                "Lock groups to prevent accidental changes."
+                                ] },
+                            new UpdateVersionItem() { Title = "Visual Improvements",
+                            Description = [
+                                "Smoother animations and transitions.",
+                                "Rounded corners option for bar charts.",
+                                "SVG image support for sharper icons.",
+                                "New design grid to help align items perfectly.",
+                                "Better font scaling that works across all profiles."
+                                ] },
+                            new UpdateVersionItem() { Title = "Performance & Stability",
+                            Description = [
+                                "Faster rendering with lower CPU usage.",
+                                "Fixed crashes when switching panels on and off.",
+                                "More reliable settings saving.",
+                                "Reduced memory usage for long-running sessions.",
+                                "Better handling of high DPI displays."
+                                ] },
+                            new UpdateVersionItem() { Title = "Hardware Updates",
+                            Description = [
+                                "Support for newer Turing 8.8\" LCD models.",
+                                "Panels now turn off properly when shutting down Windows.",
+                                "More stable USB connections.",
+                                "Fixed frame rate issues on some BeadaPanel models."
+                                ] },
+                            new UpdateVersionItem() { Title = "Plugin Improvements",
+                            Description = [
+                                "Plugins can now show minimum, maximum, and average values.",
+                                "Better error handling for plugin issues.",
+                                "Table view improvements for plugin data."
+                                ] }
+                            ]
+                };
+
             var version129 =
                 new UpdateVersion
                 {
                     Version = "v1.2.9",
-                    Expanded = true,
+                    Expanded = false,
                     Title = "Plugins, additional features and bug fixes.",
                     Items = [
                             new UpdateVersionItem() { Title = "Plugin Support",
@@ -139,6 +207,7 @@ namespace InfoPanel.ViewModels
                             ]
                 };
 
+            UpdateVersions.Add(version130);
             UpdateVersions.Add(version129);
             UpdateVersions.Add(version128);
         }
