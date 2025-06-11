@@ -458,7 +458,7 @@
                     <!--  BeadaPanel Device List  -->
                     <ItemsControl
                         Margin="0,10,0,0"
-                        ItemsSource="{Binding Path=ViewModel.RuntimeBeadaPanelDevices, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
+                        ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelDevices}"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -473,26 +473,31 @@
                                                 <TextBlock
                                                     FontSize="13"
                                                     FontWeight="Medium"
-                                                    Text="{Binding ModelName}" />
+                                                    Text="{Binding RuntimeProperties.Name}" />
                                                 <TextBlock
-                                                    Margin="0,5,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                    Text="{Binding DeviceLocation}" />
+                                                <TextBlock
+                                                    Margin="0,0,0,0"
                                                     FontSize="12"
                                                     Foreground="{DynamicResource TextFillColorTertiaryBrush}">
                                                     <TextBlock.Text>
-                                                        <MultiBinding StringFormat="{}{0}×{1} • {2}">
-                                                            <Binding Path="NativeResolutionX" />
-                                                            <Binding Path="NativeResolutionY" />
-                                                            <Binding Path="Config.SerialNumber" />
+                                                        <MultiBinding StringFormat="{}Dimensions: {0}×{1} | Firmware: v{2}">
+                                                            <Binding Path="RuntimeProperties.PanelInfo.ModelInfo.Width" />
+                                                            <Binding Path="RuntimeProperties.PanelInfo.ModelInfo.Height" />
+                                                            <Binding Path="RuntimeProperties.PanelInfo.FirmwareVersion" />
+                                                            <Binding Path="RuntimeProperties.PanelInfo.Platform" />
                                                         </MultiBinding>
                                                     </TextBlock.Text>
                                                 </TextBlock>
                                                 <!--  Panel status when enabled  -->
-                                                <StackPanel Visibility="{Binding Config.Enabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <StackPanel Visibility="{Binding Enabled, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <!--  Show when running  -->
                                                     <StackPanel
                                                         Margin="0,5,0,0"
                                                         Orientation="Horizontal"
-                                                        Visibility="{Binding DeviceStatus, Converter={StaticResource DeviceStatusRunningConverter}}">
+                                                        Visibility="{Binding RuntimeProperties.IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                         <TextBlock
                                                             Margin="0,0,0,0"
                                                             FontSize="12"
@@ -502,12 +507,12 @@
                                                             Margin="10,0,0,0"
                                                             FontSize="12"
                                                             Foreground="LawnGreen"
-                                                            Text="{Binding DeviceStatus.FrameRate, StringFormat='{}{0} FPS'}" />
+                                                            Text="{Binding RuntimeProperties.FrameRate, StringFormat='{}{0} FPS'}" />
                                                         <TextBlock
                                                             Margin="0,0,0,0"
                                                             FontSize="12"
                                                             Foreground="LawnGreen"
-                                                            Text="{Binding DeviceStatus.FrameTime, StringFormat=' @ {0}ms'}" />
+                                                            Text="{Binding RuntimeProperties.FrameTime, StringFormat=' @ {0}ms'}" />
                                                     </StackPanel>
 
                                                     <!--  Show when not running  -->
@@ -516,7 +521,7 @@
                                                         FontSize="12"
                                                         Foreground="Orange"
                                                         Text="Display is not running. Check your USB connection and try again."
-                                                        Visibility="{Binding DeviceStatus, Converter={StaticResource DeviceStatusNotRunningConverter}}" />
+                                                        Visibility="{Binding RuntimeProperties.IsRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                                 </StackPanel>
                                             </StackPanel>
                                         </Grid>
@@ -529,7 +534,7 @@
                                                 Margin="0,0,0,0"
                                                 DisplayMemberPath="Name"
                                                 ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                                                SelectedValue="{Binding Config.ProfileGuid}"
+                                                SelectedValue="{Binding ProfileGuid}"
                                                 SelectedValuePath="Guid" />
                                             <Grid Margin="0,10,0,0">
                                                 <Grid.ColumnDefinitions>
@@ -540,7 +545,7 @@
                                                 <ComboBox
                                                     Margin="0,0,10,0"
                                                     ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                                    SelectedItem="{Binding Config.Rotation}">
+                                                    SelectedItem="{Binding Rotation}">
                                                     <ComboBox.ItemTemplate>
                                                         <DataTemplate>
                                                             <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
@@ -555,7 +560,7 @@
                                                         Maximum="100"
                                                         Minimum="0"
                                                         TickFrequency="1"
-                                                        Value="{Binding Config.Brightness}" />
+                                                        Value="{Binding Brightness}" />
                                                     <Grid Margin="0,0,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*" />
@@ -571,7 +576,7 @@
                                                             Margin="5,0,0,0"
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                            Text="{Binding Config.Brightness}" />
+                                                            Text="{Binding Brightness}" />
                                                     </Grid>
                                                 </StackPanel>
                                             </Grid>
@@ -585,7 +590,7 @@
                                             <ui:ToggleSwitch
                                                 Margin="0,0,0,0"
                                                 VerticalAlignment="Center"
-                                                IsChecked="{Binding Config.Enabled}" />
+                                                IsChecked="{Binding Enabled}" />
                                             <!--  Remove button  -->
                                             <ui:Button
                                                 Grid.Row="1"

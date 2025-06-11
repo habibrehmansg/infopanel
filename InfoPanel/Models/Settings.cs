@@ -1,14 +1,8 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.ViewModels;
-using SkiaSharp;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace InfoPanel.Models
 {
@@ -41,37 +35,12 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _libreHardMonitorRing0 = true;
 
+        private readonly ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = [];
 
-        private ObservableCollection<BeadaPanelDeviceConfig> _beadaPanelDevices = [];
-        public ObservableCollection<BeadaPanelDeviceConfig> BeadaPanelDevices
+        public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices
         {
             get { return _beadaPanelDevices; }
-            set 
-            { 
-                if (_beadaPanelDevices != null)
-                {
-                    _beadaPanelDevices.CollectionChanged -= BeadaPanelDevices_CollectionChanged;
-                    foreach (var device in _beadaPanelDevices)
-                    {
-                        device.PropertyChanged -= BeadaPanelDeviceConfig_PropertyChanged;
-                    }
-                }
-                
-                SetProperty(ref _beadaPanelDevices, value);
-                
-                if (_beadaPanelDevices != null)
-                {
-                    _beadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
-                    foreach (var device in _beadaPanelDevices)
-                    {
-                        device.PropertyChanged += BeadaPanelDeviceConfig_PropertyChanged;
-                    }
-                }
-            }
         }
-
-        [ObservableProperty]
-        private string _selectedBeadaPanelDeviceId = string.Empty;
 
         [ObservableProperty]
         private bool _beadaPanelMultiDeviceMode = false;
@@ -156,60 +125,37 @@ namespace InfoPanel.Models
 
         public Settings()
         {
-            // Subscribe to initial collection changes
-            _beadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
-            
-            // Subscribe to initial device property changes
-            foreach (var device in _beadaPanelDevices)
-            {
-                device.PropertyChanged += BeadaPanelDeviceConfig_PropertyChanged;
-            }
-        }
-
-        // Called after XML deserialization to re-establish event subscriptions
-        public void InitializeAfterDeserialization()
-        {
-            if (_beadaPanelDevices != null)
-            {
-                // Ensure we don't double-subscribe
-                _beadaPanelDevices.CollectionChanged -= BeadaPanelDevices_CollectionChanged;
-                _beadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
-                
-                // Subscribe to each device's property changes
-                foreach (var device in _beadaPanelDevices)
-                {
-                    device.PropertyChanged -= BeadaPanelDeviceConfig_PropertyChanged;
-                    device.PropertyChanged += BeadaPanelDeviceConfig_PropertyChanged;
-                }
-            }
+            BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
         }
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            if (e.NewItems != null)
+            if(e.OldItems != null)
             {
-                foreach (BeadaPanelDeviceConfig device in e.NewItems)
+                foreach(BeadaPanelDevice device in e.OldItems)
                 {
-                    device.PropertyChanged += BeadaPanelDeviceConfig_PropertyChanged;
+                    device.PropertyChanged -= Device_PropertyChanged;
                 }
             }
 
-            if (e.OldItems != null)
+            if(e.NewItems != null)
             {
-                foreach (BeadaPanelDeviceConfig device in e.OldItems)
+                foreach(BeadaPanelDevice device in e.NewItems)
                 {
-                    device.PropertyChanged -= BeadaPanelDeviceConfig_PropertyChanged;
+                    device.PropertyChanged += Device_PropertyChanged; ;
                 }
             }
 
-            // Trigger save when devices are added/removed
             OnPropertyChanged(nameof(BeadaPanelDevices));
         }
 
-        private void BeadaPanelDeviceConfig_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        private void Device_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            // Trigger save when any device configuration property changes
-            OnPropertyChanged(nameof(BeadaPanelDevices));
+            if (e.PropertyName != nameof(BeadaPanelDevice.RuntimeProperties))
+            {
+                OnPropertyChanged(nameof(BeadaPanelDevices));
+            }
         }
     }
+    
 }

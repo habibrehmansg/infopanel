@@ -30,145 +30,19 @@ namespace InfoPanel
 
         private BeadaPanelTask() { }
 
-
-        public async Task<Dictionary<string, BeadaPanelInfo>> DiscoverDevicesAsync()
+        public async Task StartDevice(BeadaPanelDevice device)
         {
-            var discoveredDevices = new Dictionary<string, BeadaPanelInfo>();
-            
-            try
+            if (_deviceTasks.ContainsKey(device.DeviceLocation))
             {
-                int vendorId = 0x4e58;
-                int productId = 0x1001;
-
-                var allDevices = UsbDevice.AllDevices;
-                Trace.WriteLine($"BeadaPanel Discovery: Scanning {allDevices.Count} USB devices for VID={vendorId:X4} PID={productId:X4}");
-
-                foreach (UsbRegistry deviceReg in allDevices)
-                {
-                    if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
-                    {
-                        Trace.WriteLine($"BeadaPanel Discovery: Found matching device - FullName: '{deviceReg.FullName}', DevicePath: '{deviceReg.DevicePath}', SymbolicName: '{deviceReg.SymbolicName}'");
-
-                        try
-                        {
-                            // Try to query StatusLink for detailed device information
-                            var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
-                            if (panelInfo != null && BeadaPanelModelDatabase.Models.ContainsKey(panelInfo.Model))
-                            {
-                                discoveredDevices[deviceReg.DevicePath] = panelInfo;
-                                Trace.WriteLine($"Discovered BeadaPanel device: {panelInfo}");
-                            }
-                            else
-                            {
-                                // Skip devices that can't be queried - they are likely already running
-                                Trace.WriteLine($"Skipping device {deviceReg.DevicePath} - StatusLink unavailable (likely already running)");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Trace.WriteLine($"Error discovering BeadaPanel device: {ex.Message}");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"Error during BeadaPanel device discovery: {ex.Message}");
-            }
-
-            Trace.WriteLine($"BeadaPanel Discovery: Complete - Found {discoveredDevices.Count} devices total");
-            return discoveredDevices;
-        }
-
-        private async Task<BeadaPanelInfo?> QueryDeviceStatusLinkAsync(UsbRegistry deviceReg)
-        {
-            UsbDevice? usbDevice = null;
-            try
-            {
-                // Try to open the specific device
-                usbDevice = deviceReg.Device;
-                if (usbDevice == null)
-                {
-                    Trace.WriteLine($"StatusLink Query: Could not open USB device {deviceReg.DevicePath}");
-                    return null;
-                }
-
-                if (usbDevice is IUsbDevice wholeUsbDevice)
-                {
-                    wholeUsbDevice.SetConfiguration(1);
-                    wholeUsbDevice.ClaimInterface(0);
-                }
-
-                // Send StatusLink GetPanelInfo request
-                var infoMessage = new StatusLinkMessage
-                {
-                    Type = StatusLinkMessageType.GetPanelInfo
-                };
-
-                using var writer = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep02);
-                var writeResult = writer.Write(infoMessage.ToBuffer(), 1000, out int _);
-                
-                if (writeResult != ErrorCode.None)
-                {
-                    Trace.WriteLine($"StatusLink Query: Write failed with error {writeResult}");
-                    return null;
-                }
-
-                // Read response
-                byte[] responseBuffer = new byte[100];
-                using var reader = usbDevice.OpenEndpointReader(ReadEndpointID.Ep02);
-                var readResult = reader.Read(responseBuffer, 1000, out int bytesRead);
-
-                if (readResult != ErrorCode.None || bytesRead == 0)
-                {
-                    Trace.WriteLine($"StatusLink Query: Read failed with error {readResult}, bytes read: {bytesRead}");
-                    return null;
-                }
-
-                // Parse panel info
-                var panelInfo = BeadaPanelParser.ParsePanelInfoResponse(responseBuffer);
-                if (panelInfo != null)
-                {
-                    Trace.WriteLine($"StatusLink Query: Successfully parsed panel info for serial {panelInfo.SerialNumber}");
-                }
-
-                return panelInfo;
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"StatusLink Query Exception: {ex.Message}");
-                return null;
-            }
-            finally
-            {
-                try
-                {
-                    if (usbDevice is IUsbDevice wholeUsbDevice)
-                    {
-                        wholeUsbDevice.ReleaseInterface(0);
-                    }
-                    usbDevice?.Close();
-                }
-                catch (Exception ex)
-                {
-                    Trace.WriteLine($"StatusLink Query Cleanup Exception: {ex.Message}");
-                }
-            }
-        }
-
-        public void StartDevice(BeadaPanelDevice device)
-        {
-            if (_deviceTasks.ContainsKey(device.Id))
-            {
-                Trace.WriteLine($"BeadaPanel device {device.Name} is already running");
+                Trace.WriteLine($"BeadaPanel device {device} is already running");
                 return;
             }
 
             var deviceTask = new BeadaPanelDeviceTask(device);
-            if (_deviceTasks.TryAdd(device.Id, deviceTask))
+            if (_deviceTasks.TryAdd(device.DeviceLocation, deviceTask))
             {
-                _ = deviceTask.StartAsync();
-                Trace.WriteLine($"Started BeadaPanel device {device.Name}");
+                await deviceTask.StartAsync();
+                Trace.WriteLine($"Started BeadaPanel device {device}");
             }
         }
 
@@ -178,7 +52,6 @@ namespace InfoPanel
             {
                 await deviceTask.StopAsync();
                 //deviceTask.Dispose();
-                SharedModel.Instance.RemoveBeadaPanelDeviceStatus(deviceId);
                 Trace.WriteLine($"Stopped BeadaPanel device {deviceId}");
             }
         }
@@ -195,7 +68,6 @@ namespace InfoPanel
                     {
                         await deviceTask.StopAsync();
                         //deviceTask.Dispose();
-                        SharedModel.Instance.RemoveBeadaPanelDeviceStatus(kvp.Key);
                     }));
                 }
             }
@@ -207,20 +79,6 @@ namespace InfoPanel
         public bool IsDeviceRunning(string deviceId)
         {
             return _deviceTasks.ContainsKey(deviceId);
-        }
-
-        /// <summary>
-        /// Notifies a running device task of configuration changes
-        /// </summary>
-        /// <param name="deviceConfig">The updated device configuration</param>
-        public void NotifyDeviceConfigurationChanged(BeadaPanelDeviceConfig deviceConfig)
-        {
-            var deviceId = deviceConfig.GetStableId();
-            if (_deviceTasks.TryGetValue(deviceId, out var deviceTask))
-            {
-                deviceTask.UpdateConfiguration(deviceConfig);
-                Trace.WriteLine($"BeadaPanel: Notified device task {deviceId} of configuration changes");
-            }
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
@@ -270,18 +128,10 @@ namespace InfoPanel
                     
                     foreach (var config in enabledConfigs)
                     {
-                        var configId = config.GetStableId();
+                        var configId = config.DeviceLocation;
                         if (!IsDeviceRunning(configId))
                         {
-                            var runtimeDevice = config.ToDevice();
-                            if (runtimeDevice != null)
-                            {
-                                StartDevice(runtimeDevice);
-                            }
-                            else
-                            {
-                                Trace.WriteLine($"BeadaPanel: Skipping device with unknown model type: {config.ModelType}");
-                            }
+                            await StartDevice(config);
                         }
                     }
 
@@ -289,7 +139,7 @@ namespace InfoPanel
                     var runningDeviceIds = _deviceTasks.Keys.ToList();
                     foreach (var deviceId in runningDeviceIds)
                     {
-                        if (!enabledConfigs.Any(c => c.GetStableId() == deviceId))
+                        if (!enabledConfigs.Any(c => c.DeviceLocation == deviceId))
                         {
                             await StopDevice(deviceId);
                         }

@@ -1,108 +1,116 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using InfoPanel.ViewModels;
 using InfoPanel.BeadaPanel;
+using InfoPanel.ViewModels;
 using System;
-using System.Linq;
+using System.Windows.Threading;
+using System.Xml.Serialization;
 
 namespace InfoPanel.Models
 {
     public partial class BeadaPanelDevice : ObservableObject
     {
+        // Configuration properties
         [ObservableProperty]
-        private string _id = string.Empty;
-
-        public string Name => $"BeadaPanel {ModelName}";
-
+        private string _deviceLocation = string.Empty;
 
         [ObservableProperty]
-        private BeadaPanelDeviceConfig _config = new();
+        private bool _enabled = false;
+
+        [ObservableProperty]
+        private Guid _profileGuid = Guid.Empty;
+
+        [ObservableProperty]
+        private LCD_ROTATION _rotation = LCD_ROTATION.RotateNone;
+
+        [ObservableProperty]
+        private int _brightness = 100;
 
         // Runtime properties
-        public string ModelName => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].Name
-            : "Unknown Model";
-
         [ObservableProperty]
-        private ushort _firmwareVersion = 0;
-
-        [ObservableProperty]
-        private byte _platform = 0;
-
-        public int NativeResolutionX => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].Width
-            : 0;
-
-        public int NativeResolutionY => Config.ModelType.HasValue && BeadaPanelModelDatabase.Models.ContainsKey(Config.ModelType.Value)
-            ? BeadaPanelModelDatabase.Models[Config.ModelType.Value].Height
-            : 0;
-
-        [ObservableProperty]
-        private bool _statusLinkAvailable = false;
+        [property: XmlIgnore]
+        private BeadaPanelDeviceRuntimeProperties _runtimeProperties;
 
         public BeadaPanelDevice()
         {
+            _runtimeProperties = new();
         }
 
-        public BeadaPanelDevice(BeadaPanelDeviceConfig config)
+        public void UpdateRuntimeProperties(bool? isRunning = null, BeadaPanelInfo? panelInfo = null, int? frameRate = null, long? frameTime = null, string? errorMessage = null)
         {
-            Config = config;
-        }
-
-
-        public BeadaPanelDeviceStatus? DeviceStatus
-        {
-            get
+            if(System.Windows.Application.Current.Dispatcher is Dispatcher dispatcher)
             {
-                return SharedModel.Instance.GetBeadaPanelDeviceStatus(Id);
+                dispatcher.BeginInvoke(() =>
+                {
+                    if(isRunning != null)
+                    {
+                        RuntimeProperties.IsRunning = isRunning.Value;
+                    }
+
+                    if(panelInfo != null)
+                    {
+                        RuntimeProperties.PanelInfo = panelInfo;
+                    }
+
+                    if(frameRate != null)
+                    {
+                        RuntimeProperties.FrameRate = frameRate.Value;
+                    }
+
+                    if(frameTime != null)
+                    {
+                        RuntimeProperties.FrameTime = frameTime.Value;
+                    }
+
+                    if(errorMessage != null)
+                    {
+                        RuntimeProperties.ErrorMessage = errorMessage;
+                    }
+                });
             }
         }
-        
-        // Method to notify when device status changes  
-        public void NotifyDeviceStatusChanged()
-        {
-            OnPropertyChanged(nameof(DeviceStatus));
-        }
-
 
         public override string ToString()
         {
-            return Name;
+            return DeviceLocation;
         }
-    }
 
-    public partial class BeadaPanelDeviceStatus : ObservableObject
-    {
-        [ObservableProperty]
-        private string _deviceId = string.Empty;
-
-        [ObservableProperty]
-        private bool _isRunning = false;
-
-        [ObservableProperty]
-        private bool _isConnected = false;
-
-        [ObservableProperty]
-        private int _frameRate = 0;
-
-        [ObservableProperty]
-        private long _frameTime = 0;
-
-        [ObservableProperty]
-        private string _errorMessage = string.Empty;
-
-        [ObservableProperty]
-        private DateTime _lastUpdate = DateTime.Now;
-
-        public BeadaPanelDeviceStatus(string deviceId)
+        public partial class BeadaPanelDeviceRuntimeProperties: ObservableObject
         {
-            DeviceId = deviceId;
-        }
-    }
+            [ObservableProperty]
+            private bool _isRunning = false;
 
-    public enum DeviceIdentificationMethod
-    {
-        UsbPath,
-        HardwareSerial,
-        ModelFingerprint
+            public string Name
+            {
+                get
+                {
+                    if(PanelInfo != null)
+                    {
+                        return $"BeadaPanel {PanelInfo.ModelInfo.Name}";
+                    }
+
+                    return "Device not detected";
+                }
+            }
+
+            private BeadaPanelInfo? _panelInfo;
+            public BeadaPanelInfo? PanelInfo
+            {
+                get { return _panelInfo; }
+                set
+                {
+                    SetProperty(ref _panelInfo, value);
+                    OnPropertyChanged(nameof(Name));
+                }
+            }
+
+            [ObservableProperty]
+            private int _frameRate = 0;
+
+            [ObservableProperty]
+            private long _frameTime = 0;
+
+            [ObservableProperty]
+            private string _errorMessage = string.Empty;
+        }
     }
 }

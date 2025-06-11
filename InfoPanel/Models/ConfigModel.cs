@@ -14,6 +14,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using System.Windows.Threading;
 using System.Xml;
 using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
@@ -53,13 +54,6 @@ namespace InfoPanel
                     Settings.Version = 115;
                     _ = SaveSettingsAsync(batch: false);
                 }
-                if (Settings.Version < 123)
-                {
-                    // Migrate BeadaPanelDevice collection to BeadaPanelDeviceConfig collection
-                    MigrateBeadaPanelDevices();
-                    Settings.Version = 123;
-                    _ = SaveSettingsAsync(batch: false);
-                }
             }
 
             Settings.PropertyChanged += Settings_PropertyChanged;
@@ -71,7 +65,25 @@ namespace InfoPanel
             LoadProfiles();
         }
 
-        private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        public void AccessSettings(Action<Settings> action)
+        {
+            if (System.Windows.Application.Current.Dispatcher is Dispatcher dispatcher)
+            {
+                if (dispatcher.CheckAccess())
+                {
+                    action(Settings);
+                }
+                else
+                {
+                    dispatcher.Invoke(() =>
+                    {
+                        action(Settings);
+                    });
+                }
+            }
+        }
+
+        private void Profiles_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
             if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null)
             {
@@ -166,12 +178,6 @@ namespace InfoPanel
             {
                 ValidateStartup();
             }
-            else if (e.PropertyName == nameof(Settings.BeadaPanelDevices))
-            {
-                // BeadaPanel device properties changed, ensure settings are saved
-                await SaveSettingsAsync();
-                return; // Early return to avoid double save
-            }
             else if (e.PropertyName == nameof(Settings.LibreHardwareMonitor) || e.PropertyName == nameof(Settings.LibreHardMonitorRing0))
             {
                 await LibreMonitor.Instance.StopAsync();
@@ -234,7 +240,7 @@ namespace InfoPanel
                 }
                 else
                 {
-                   await WebServerTask.Instance.StopAsync();
+                    await WebServerTask.Instance.StopAsync();
                 }
             }
             else if (e.PropertyName == nameof(Settings.BeadaPanelMultiDeviceMode))
@@ -245,7 +251,6 @@ namespace InfoPanel
                 }
                 else
                 {
-                    // Master toggle OFF - stop task and cleanly turn off any running panels
                     await BeadaPanelTask.Instance.StopAsync();
                 }
             }
@@ -297,42 +302,27 @@ namespace InfoPanel
             await _saveSemaphore.WaitAsync();
             try
             {
+                Trace.WriteLine("Saving settings...");  // Debug log for save operation
                 var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
                 Directory.CreateDirectory(folder);
-                
+
                 var fileName = Path.Combine(folder, "settings.xml");
                 var tempFileName = fileName + ".tmp";
                 var backupFileName = fileName + ".bak";
 
                 // Serialize settings to memory first to ensure it's valid
-                Settings settingsSnapshot;
+                using var ms = new MemoryStream();
                 lock (_settingsLock)
                 {
-                    // Create a copy of settings to avoid locking during I/O
                     var xs = new XmlSerializer(typeof(Settings));
-                    using var ms = new MemoryStream();
                     xs.Serialize(ms, Settings);
-                    ms.Position = 0;
-                    settingsSnapshot = (Settings)xs.Deserialize(ms)!;
                 }
 
-                // Write to temp file asynchronously
-                var xmlSettings = new XmlWriterSettings() 
-                { 
-                    Encoding = Encoding.UTF8, 
-                    Indent = true, 
-                    Async = true 
-                };
-                
+                ms.Position = 0;
                 await using var stream = new FileStream(tempFileName, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true);
-                await using var writer = XmlWriter.Create(stream, xmlSettings);
-                
-                var xs2 = new XmlSerializer(typeof(Settings));
-                xs2.Serialize(writer, settingsSnapshot);
-                
-                await writer.FlushAsync();
-                writer.Close();
 
+                // Copy memory stream directly to file stream
+                await ms.CopyToAsync(stream);
                 await stream.FlushAsync();
                 stream.Close();
 
@@ -352,7 +342,7 @@ namespace InfoPanel
             {
                 // Log error (consider adding proper logging)
                 System.Diagnostics.Debug.WriteLine($"Error saving settings: {ex.Message}");
-                
+
                 // Try to restore from backup if available
                 var backupFileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "settings.xml.bak");
                 if (File.Exists(backupFileName))
@@ -380,7 +370,7 @@ namespace InfoPanel
             var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
             var fileName = Path.Combine(folder, "settings.xml");
             var backupFileName = Path.Combine(folder, "settings.xml.bak");
-            
+
             bool loadedFromBackup = false;
             string fileToLoad = fileName;
 
@@ -392,7 +382,7 @@ namespace InfoPanel
                 {
                     loadedFromBackup = true;
                     fileToLoad = backupFileName;
-                    
+
                     // Try to restore the backup to the main file
                     try
                     {
@@ -462,28 +452,24 @@ namespace InfoPanel
 
                             // Load BeadaPanel multi-device settings
                             Settings.BeadaPanelMultiDeviceMode = settings.BeadaPanelMultiDeviceMode;
-                            Settings.SelectedBeadaPanelDeviceId = settings.SelectedBeadaPanelDeviceId;
-                            
+
                             // Clear existing devices and add loaded ones
                             Settings.BeadaPanelDevices.Clear();
                             foreach (var device in settings.BeadaPanelDevices)
                             {
                                 Settings.BeadaPanelDevices.Add(device);
                             }
-
-                            //  Re-establish event subscriptions after deserialization
-                            Settings.InitializeAfterDeserialization();
                         }
 
                         ValidateStartup();
-                        
+
                         if (loadedFromBackup)
                         {
                             System.Diagnostics.Debug.WriteLine("Settings loaded from backup file.");
                         }
                     }
                 }
-                catch (Exception ex) 
+                catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Error loading settings: {ex.Message}");
                 }
@@ -640,15 +626,6 @@ namespace InfoPanel
             return null;
         }
 
-        private void MigrateBeadaPanelDevices()
-        {
-            // Migration from BeadaPanelDevice collection to BeadaPanelDeviceConfig collection
-            // This is handled automatically by XML deserialization since BeadaPanelDeviceConfig
-            // contains all the same persistent properties as BeadaPanelDevice.
-            // The XML serializer will map the properties correctly.
-            Trace.WriteLine("Migrated BeadaPanelDevice collection to BeadaPanelDeviceConfig collection");
-        }
-
         private void Upgrade_File_Structure_From_1_1_4()
         {
             var profilesFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
@@ -711,7 +688,7 @@ namespace InfoPanel
             // Dispose the debounce timer
             _saveDebounceTimer?.Dispose();
             _saveDebounceTimer = null;
-            
+
             // Ensure any pending saves are completed
             try
             {
@@ -721,7 +698,7 @@ namespace InfoPanel
             {
                 // Best effort - don't throw on shutdown
             }
-            
+
             // Dispose the semaphore
             _saveSemaphore?.Dispose();
         }

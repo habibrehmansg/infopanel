@@ -1,4 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using ControlzEx.Standard;
+using InfoPanel.BeadaPanel;
 using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
@@ -28,9 +30,6 @@ namespace InfoPanel
 
         public static SharedModel Instance { get { return lazy.Value; } }
 
-        // Event to notify when device status changes
-        public event EventHandler<string>? BeadaPanelDeviceStatusChanged;
-
         private bool _hwInfoAvailable = false;
 
         public bool HwInfoAvailable
@@ -41,49 +40,6 @@ namespace InfoPanel
                 SetProperty(ref _hwInfoAvailable, value);
             }
         }
-
-
-        [ObservableProperty]
-        private ObservableCollection<BeadaPanelDeviceStatus> _beadaPanelDeviceStatuses = [];
-
-        private readonly Dictionary<string, BeadaPanelDeviceStatus> _beadaPanelDeviceStatusDict = new();
-
-        public BeadaPanelDeviceStatus? GetBeadaPanelDeviceStatus(string deviceId)
-        {
-            _beadaPanelDeviceStatusDict.TryGetValue(deviceId, out var status);
-            return status;
-        }
-
-        public void UpdateBeadaPanelDeviceStatus(string deviceId, bool isRunning, bool isConnected, int frameRate = 0, long frameTime = 0, string errorMessage = "")
-        {
-            var status = GetBeadaPanelDeviceStatus(deviceId);
-            if (status == null)
-            {
-                status = new BeadaPanelDeviceStatus(deviceId);
-                BeadaPanelDeviceStatuses.Add(status);
-                _beadaPanelDeviceStatusDict[deviceId] = status;
-            }
-            
-            status.IsRunning = isRunning;
-            status.IsConnected = isConnected;
-            status.FrameRate = frameRate;
-            status.FrameTime = frameTime;
-            status.ErrorMessage = errorMessage;
-            status.LastUpdate = DateTime.Now;
-            
-            // Notify that device status changed
-            BeadaPanelDeviceStatusChanged?.Invoke(this, deviceId);
-        }
-
-        public void RemoveBeadaPanelDeviceStatus(string deviceId)
-        {
-            if (_beadaPanelDeviceStatusDict.TryGetValue(deviceId, out var status))
-            {
-                BeadaPanelDeviceStatuses.Remove(status);
-                _beadaPanelDeviceStatusDict.Remove(deviceId);
-            }
-        }
-
 
         private bool _turingPanelRunning = false;
 

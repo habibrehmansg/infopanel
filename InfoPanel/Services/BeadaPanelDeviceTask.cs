@@ -32,11 +32,11 @@ namespace InfoPanel.Services
 
         public byte[]? GenerateLcdBuffer()
         {
-            var profileGuid = _device.Config.ProfileGuid;
+            var profileGuid = _device.ProfileGuid;
 
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
-                var rotation = _device.Config.Rotation;
+                var rotation = _device.Rotation;
                 using var bitmap = PanelDrawTask.RenderSK(profile, false, colorType: SKColorType.Rgb565, alphaType: SKAlphaType.Opaque);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
@@ -47,148 +47,59 @@ namespace InfoPanel.Services
             return null;
         }
 
-        private async Task<UsbDevice?> FindTargetDeviceAsync(IEnumerable<UsbRegistry> allDevices, int vendorId, int productId)
+        private async Task<UsbRegistry?> FindTargetDeviceAsync()
         {
-            foreach (UsbRegistry deviceReg in allDevices)
+            int vendorId = 0x4e58;
+            int productId = 0x1001;
+
+            foreach (UsbRegistry deviceReg in UsbDevice.AllDevices)
             {
                 if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
                 {
-                    // Priority 1: Match by USB path (fastest, works if path hasn't changed)
-                    if (!string.IsNullOrEmpty(_device.Config.UsbPath) && deviceReg.DevicePath == _device.Config.UsbPath)
+                    // Always query first
+                    var panelInfo = await BeadaPanelHelper.GetPanelInfoAsync(deviceReg);
+
+                    if(panelInfo == null)
                     {
-                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by USB path: {_device.Config.UsbPath}");
-                        return deviceReg.Device;
+                        continue; // Skip this device if we can't get info
                     }
 
-                    // Priority 2: Match by hardware serial number (reliable across reboots)
-                    if (!string.IsNullOrEmpty(_device.Config.SerialNumber))
-                    {
-                        var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
-                        if (panelInfo != null && panelInfo.SerialNumber == _device.Config.SerialNumber)
-                        {
-                            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by hardware serial: {_device.Config.SerialNumber}");
-                            // Update USB path for future fast reconnection
-                            _device.Config.UsbPath = deviceReg.DevicePath ?? _device.Config.UsbPath;
-                            return deviceReg.Device;
-                        }
-                    }
+                    var deviceLocation = deviceReg.DeviceProperties["LocationInformation"] as string;
 
-                    // Priority 3: Match by model fingerprint (when serial isn't available)
-                    if (_device.Config.ModelType.HasValue && _device.FirmwareVersion > 0)
+                    if (!string.IsNullOrEmpty(deviceLocation) && deviceLocation == _device.DeviceLocation)
                     {
-                        var panelInfo = await QueryDeviceStatusLinkAsync(deviceReg);
-                        if (panelInfo != null && 
-                            panelInfo.Model == _device.Config.ModelType &&
-                            panelInfo.FirmwareVersion == _device.FirmwareVersion &&
-                            (panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX) == _device.NativeResolutionX &&
-                            (panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY) == _device.NativeResolutionY)
-                        {
-                            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by model fingerprint: {_device.Config.ModelType}_{_device.FirmwareVersion}");
-                            // Update identification info for future use
-                            _device.Config.UsbPath = deviceReg.DevicePath ?? _device.Config.UsbPath;
-                            if (!string.IsNullOrEmpty(panelInfo.SerialNumber))
-                            {
-                                _device.Config.SerialNumber = panelInfo.SerialNumber;
-                                _device.Config.IdentificationMethod = DeviceIdentificationMethod.HardwareSerial;
-                            }
-                            return deviceReg.Device;
-                        }
-                    }
-
-                    // Priority 4: Match by legacy serial number (backward compatibility)
-                    if (!string.IsNullOrEmpty(_device.Config.SerialNumber) && deviceReg.SymbolicName.Contains(_device.Config.SerialNumber))
-                    {
-                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Found device by legacy serial: {_device.Config.SerialNumber}");
-                        return deviceReg.Device;
+                        Trace.WriteLine($"BeadaPanelDevice {_device}: Found device");
+                        return deviceReg;
                     }
                 }
             }
 
-            Trace.WriteLine($"BeadaPanelDevice {_device.Name}: No matching device found with any identification method");
             return null;
         }
 
-        private async Task<BeadaPanelInfo?> QueryDeviceStatusLinkAsync(UsbRegistry deviceReg)
-        {
-            UsbDevice? usbDevice = null;
-            try
-            {
-                usbDevice = deviceReg.Device;
-                if (usbDevice == null) return null;
-
-                if (usbDevice is IUsbDevice wholeUsbDevice)
-                {
-                    wholeUsbDevice.SetConfiguration(1);
-                    wholeUsbDevice.ClaimInterface(0);
-                }
-
-                var infoMessage = new StatusLinkMessage { Type = StatusLinkMessageType.GetPanelInfo };
-
-                using var writer = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep02);
-                var writeResult = writer.Write(infoMessage.ToBuffer(), 500, out int _);
-                if (writeResult != ErrorCode.None) return null;
-
-                byte[] responseBuffer = new byte[100];
-                using var reader = usbDevice.OpenEndpointReader(ReadEndpointID.Ep02);
-                var readResult = reader.Read(responseBuffer, 500, out int bytesRead);
-                if (readResult != ErrorCode.None || bytesRead == 0) return null;
-
-                return BeadaPanelParser.ParsePanelInfoResponse(responseBuffer);
-            }
-            catch
-            {
-                return null;
-            }
-            finally
-            {
-                try
-                {
-                    if (usbDevice is IUsbDevice wholeUsbDevice)
-                        wholeUsbDevice.ReleaseInterface(0);
-                    usbDevice?.Close();
-                }
-                catch { }
-            }
-        }
 
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
             
-            // Validate device has a known model type
-            if (!_device.Config.ModelType.HasValue || !BeadaPanelModelDatabase.Models.ContainsKey(_device.Config.ModelType.Value))
-            {
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Cannot start - unknown model type: {_device.Config.ModelType}");
-                SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Unknown model type");
-                return;
-            }
-            
             try
             {
-                int vendorId = 0x4e58;
-                int productId = 0x1001;
+                var usbRegistry = await FindTargetDeviceAsync();
 
-                UsbDeviceFinder finder = new(vendorId, productId);
-                
-                var allDevices = UsbDevice.AllDevices;
-                UsbDevice? targetDevice = null;
-
-                // Enhanced device reconnection logic using hardware characteristics
-                targetDevice = await FindTargetDeviceAsync(allDevices, vendorId, productId);
-
-                if (targetDevice == null)
+                if (usbRegistry == null)
                 {
-                    targetDevice = UsbDevice.OpenUsbDevice(finder);
-                }
-
-                if (targetDevice == null)
-                {
-                    Trace.WriteLine($"BeadaPanelDevice {_device.Name}: USB Device not found.");
-                    SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Device not found");
+                    Trace.WriteLine($"BeadaPanelDevice {_device}: USB Device not found.");
+                    //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Device not found");
                     return;
                 }
 
-                using UsbDevice usbDevice = targetDevice;
+                using var usbDevice = usbRegistry.Device;
+
+                if(usbDevice == null)
+                {
+                    //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Unable to open device");
+                    return;
+                }
 
                 if (usbDevice is IUsbDevice wholeUsbDevice)
                 {
@@ -204,7 +115,7 @@ namespace InfoPanel.Services
                 using UsbEndpointWriter writer = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep02);
                 writer.Write(infoMessage.ToBuffer(), 2000, out int _);
 
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Sent infoTag");
+                Trace.WriteLine($"BeadaPanelDevice {_device}: Sent infoTag");
 
                 byte[] responseBuffer = new byte[100];
 
@@ -215,19 +126,16 @@ namespace InfoPanel.Services
 
                 if (panelInfo == null)
                 {
-                    Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Failed to parse panel info.");
-                    SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Failed to parse panel info");
                     return;
                 }
 
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: {panelInfo}");
+                Trace.WriteLine($"BeadaPanelDevice {_device}: {panelInfo}");
+                _device.UpdateRuntimeProperties(panelInfo: panelInfo);
 
                 bool writeThroughMode = panelInfo.Platform == 1 || panelInfo.Platform == 2;
 
                 _panelWidth = panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX;
                 _panelHeight = panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY;
-
-                SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, true, true);
 
                 var startTag = new PanelLinkMessage
                 {
@@ -255,7 +163,7 @@ namespace InfoPanel.Services
 
                 await Task.Delay(1000, token);
 
-                var brightness = _device.Config.Brightness;
+                var brightness = _device.Brightness;
 
                 brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
 
@@ -264,7 +172,7 @@ namespace InfoPanel.Services
                 using UsbEndpointWriter dataWriter = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep01);
                 dataWriter.Write(startTag.ToBuffer(), 2000, out int _);
 
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Sent startTag");
+                Trace.WriteLine($"BeadaPanelDevice {_device}: Sent startTag");
 
                 try
                 {
@@ -313,9 +221,9 @@ namespace InfoPanel.Services
 
                         while (!token.IsCancellationRequested)
                         {
-                            if (brightness != _device.Config.Brightness)
+                            if (brightness != _device.Brightness)
                             {
-                                brightness = _device.Config.Brightness;
+                                brightness = _device.Brightness;
                                 brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
                                 writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
                             }
@@ -329,22 +237,23 @@ namespace InfoPanel.Services
                                     dataWriter.Write(frame, 2000, out int _);
 
                                     fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
-                                    SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, true, true, fpsCounter.FramesPerSecond, fpsCounter.FrameTime);
+                                    _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
                                 }
                             }
                         }
                     }, token);
 
+                    _device.UpdateRuntimeProperties(isRunning: true);
                     await Task.WhenAll(renderTask, sendTask);
                 }
                 catch (TaskCanceledException)
                 {
-                    Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Task cancelled");
+                    Trace.WriteLine($"BeadaPanelDevice {_device}: Task cancelled");
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Exception during work: {ex.Message}");
-                    SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, ex.Message);
+                    Trace.WriteLine($"BeadaPanelDevice {_device}: Exception during work: {ex.Message}");
+                    //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, ex.Message);
                 }
                 finally
                 {
@@ -357,56 +266,22 @@ namespace InfoPanel.Services
                         dataWriter.Write(blankFrame.Bytes, 2000, out int _);
 
                         dataWriter.Write(endTag.ToBuffer(), 2000, out int _);
-                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Sent endTag");
+                        Trace.WriteLine($"BeadaPanelDevice {_device}: Sent endTag");
                     }
                     catch (Exception ex)
                     {
-                        Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Exception when sending endTag: {ex.Message}");
+                        Trace.WriteLine($"BeadaPanelDevice {_device}: Exception when sending endTag: {ex.Message}");
                     }
                 }
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Init error: {e.Message}");
-                SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, e.Message);
+                Trace.WriteLine($"BeadaPanelDevice {_device}: Init error: {e.Message}");
+                //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, e.Message);
             }
             finally
             {
-                SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false);
-            }
-        }
-
-        /// <summary>
-        /// Updates the device configuration while the task is running.
-        /// This allows for real-time updates without restarting the device task.
-        /// </summary>
-        /// <param name="newConfig">The updated configuration</param>
-        public void UpdateConfiguration(BeadaPanelDeviceConfig newConfig)
-        {
-            if (newConfig == null) return;
-
-            // Update configuration properties that can be changed at runtime
-            bool profileChanged = _device.Config.ProfileGuid != newConfig.ProfileGuid;
-            bool rotationChanged = _device.Config.Rotation != newConfig.Rotation;
-            bool brightnessChanged = _device.Config.Brightness != newConfig.Brightness;
-
-            // Apply the configuration changes to the device's config object
-            _device.Config.ProfileGuid = newConfig.ProfileGuid;
-            _device.Config.Rotation = newConfig.Rotation;
-            _device.Config.Brightness = newConfig.Brightness;
-
-            // Log the changes
-            if (profileChanged)
-            {
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Profile changed to {newConfig.ProfileGuid}");
-            }
-            if (rotationChanged)
-            {
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Rotation changed to {newConfig.Rotation}");
-            }
-            if (brightnessChanged)
-            {
-                Trace.WriteLine($"BeadaPanelDevice {_device.Name}: Brightness changed to {newConfig.Brightness}");
+                //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false);
             }
         }
     }

@@ -1,4 +1,5 @@
 ﻿using InfoPanel.BeadaPanel.StatusLink;
+using InfoPanel.Extensions;
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -43,6 +44,12 @@ namespace InfoPanel.BeadaPanel
             byte platform = payload[4];
             byte modelByte = payload[5];
             string serialNumber = Encoding.ASCII.GetString(payload, 6, 64).Trim('\0').Trim();
+
+            if (!serialNumber.IsAlphanumeric())
+            {
+                serialNumber = string.Empty;
+            }
+
             ushort resX = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(70));
             ushort resY = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(72));
             uint storageSizeKB = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(74));

@@ -1,15 +1,16 @@
-﻿using Flurl.Util;
-using InfoPanel.BeadaPanel;
+﻿using InfoPanel.BeadaPanel;
 using InfoPanel.Models;
 using InfoPanel.ViewModels;
+using LibUsbDotNet;
+using LibUsbDotNet.Main;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Management;
 using System.Net.NetworkInformation;
+using System.Threading.Tasks;
 using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
@@ -103,6 +104,13 @@ namespace InfoPanel.Views.Pages
             watcher.EventArrived += new EventArrivedEventHandler(HandleEvent);
             watcher.Query = query;
             watcher.Start();
+
+            Loaded += SettingsPage_Loaded;
+        }
+
+        private async void SettingsPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            await UpdateBeadaPanelDeviceList();
         }
 
         private void DebounceTimer_Elapsed(object? sender, ElapsedEventArgs e)
@@ -182,179 +190,102 @@ namespace InfoPanel.Views.Pages
             }
         }
 
-        private async void ButtonDiscoverBeadaPanelDevices_Click(object sender, RoutedEventArgs e)
+        private async Task UpdateBeadaPanelDeviceList()
         {
-            try
+            int vendorId = 0x4e58;
+            int productId = 0x1001;
+
+            var allDevices = UsbDevice.AllDevices;
+            Trace.WriteLine($"BeadaPanel Discovery: Scanning {allDevices.Count} USB devices for VID={vendorId:X4} PID={productId:X4}");
+
+            foreach (UsbRegistry deviceReg in allDevices)
             {
-                var button = sender as Button;
-                if (button != null)
+                if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
                 {
-                    button.IsEnabled = false;
-                    button.Content = "Discovering...";
-                }
+                    var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
+                    var deviceLocation = deviceReg.DeviceProperties["LocationInformation"] as string;
 
-                Dictionary<string, BeadaPanelInfo> discoveredDevices = await BeadaPanelTask.Instance.DiscoverDevicesAsync();
-                var settings = ConfigModel.Instance.Settings;
-
-                Trace.WriteLine($"Discovery found {discoveredDevices.Count} devices, current collection has {settings.BeadaPanelDevices.Count} devices");
-
-                foreach(var key in discoveredDevices.Keys)
-                {
-                    var panelInfo = discoveredDevices[key];
-                    var existingConfig = FindMatchingDeviceConfig(settings.BeadaPanelDevices, key, panelInfo);
-
-                    if (existingConfig == null)
+                    if(string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
                     {
-                        var config = new BeadaPanelDeviceConfig
-                        {
-                            UsbPath = key,
-                            ModelType = panelInfo.Model,
-                            SerialNumber = panelInfo.SerialNumber,
-                            ProfileGuid = settings.BeadaPanelDevices.Count > 0 
-                                ? settings.BeadaPanelDevices.First().ProfileGuid 
-                                : ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty
-                        };
+                        Trace.WriteLine($"BeadaPanel Discovery: Skipping device with missing properties - DeviceID: '{deviceId}', LocationInformation: '{deviceLocation}'");
+                        continue;
+                    }
 
-                        if(!string.IsNullOrEmpty(config.SerialNumber))
+                    Trace.WriteLine($"BeadaPanel Discovery: Found matching device - FullName: '{deviceReg.FullName}', DevicePath: '{deviceReg.DevicePath}', SymbolicName: '{deviceReg.SymbolicName}'");
+
+                    try
+                    {
+                        // Try to query StatusLink for detailed device information
+                        var panelInfo = await BeadaPanelHelper.GetPanelInfoAsync(deviceReg);
+                        if (panelInfo != null && BeadaPanelModelDatabase.Models.ContainsKey(panelInfo.Model))
                         {
-                            config.IdentificationMethod = DeviceIdentificationMethod.HardwareSerial;
+                            Trace.WriteLine($"Discovered BeadaPanel device: {panelInfo}");
+                            ConfigModel.Instance.AccessSettings(settings =>
+                            {
+                                var device = settings.BeadaPanelDevices.FirstOrDefault(d => d.DeviceLocation == deviceLocation);
+
+                                if(device != null)
+                                {
+                                    device.UpdateRuntimeProperties(panelInfo: panelInfo);
+                                }
+                                else
+                                {
+                                    device = new BeadaPanelDevice()
+                                    {
+                                        DeviceLocation = deviceLocation,
+                                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty,
+                                        RuntimeProperties = new BeadaPanelDevice.BeadaPanelDeviceRuntimeProperties()
+                                        {
+                                            PanelInfo = panelInfo
+                                        }
+                                    };
+
+                                    settings.BeadaPanelDevices.Add(device);
+                                }
+                            });
                         }
                         else
                         {
-                            config.IdentificationMethod = DeviceIdentificationMethod.ModelFingerprint;
+                            // Skip devices that can't be queried - they are likely already running
+                            Trace.WriteLine($"Skipping device {deviceReg.DevicePath} - StatusLink unavailable (likely already running)");
                         }
-
-                        settings.BeadaPanelDevices.Add(config);
-                        Trace.WriteLine($"Added new BeadaPanel device: {config}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.WriteLine($"Error discovering BeadaPanel device: {ex.Message}");
                     }
                 }
-
-                if (button != null)
-                {
-                    button.Content = "Discover Devices";
-                    button.IsEnabled = true;
-                }
-
-                if (discoveredDevices.Count == 0)
-                {
-                    MessageBox.Show("No BeadaPanel devices found. Make sure your devices are connected and drivers are installed.",
-                        "Device Discovery", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-                else
-                {
-                    MessageBox.Show($"Found {discoveredDevices.Count} BeadaPanel device(s). Check the device list below for configuration.",
-                        "Device Discovery", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
             }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"Error discovering BeadaPanel devices: {ex.Message}");
-                MessageBox.Show($"Error discovering devices: {ex.Message}",
-                    "Discovery Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
 
-                if (sender is Button button)
-                {
-                    button.Content = "Discover Devices";
-                    button.IsEnabled = true;
-                }
+        private async void ButtonDiscoverBeadaPanelDevices_Click(object sender, RoutedEventArgs e)
+        {
+            if(sender is Button button)
+            {
+                button.IsEnabled = false;
+                await UpdateBeadaPanelDeviceList();
+                button.IsEnabled = true;
             }
         }
 
         private void ButtonRemoveBeadaPanelDevice_Click(object sender, RoutedEventArgs e)
         {
-            try
+            if (sender is Button button && button.Tag is BeadaPanelDevice runtimeDevice)
             {
-                if (sender is Button button && button.Tag is BeadaPanelDevice runtimeDevice)
+                // Find config by USB path (always unique and present)
+                var deviceConfig = ConfigModel.Instance.Settings.BeadaPanelDevices.FirstOrDefault(c => c.DeviceLocation == runtimeDevice.DeviceLocation);
+
+                if (deviceConfig != null)
                 {
-                    var displayName = !string.IsNullOrEmpty(runtimeDevice.Name)
-                        ? runtimeDevice.Name
-                        : "BeadaPanel Device";
-
-                    var result = MessageBox.Show($"Are you sure you want to remove the device '{displayName}'?",
-                        "Remove Device", MessageBoxButton.YesNo, MessageBoxImage.Question);
-
-                    if (result == MessageBoxResult.Yes)
+                    if (BeadaPanelTask.Instance.IsDeviceRunning(deviceConfig.DeviceLocation))
                     {
-                        var settings = ConfigModel.Instance.Settings;
-
-                        // Find config by USB path (always unique and present)
-                        var deviceConfig = settings.BeadaPanelDevices.FirstOrDefault(c => c.UsbPath == runtimeDevice.Config.UsbPath);
-
-                        if (deviceConfig != null)
-                        {
-                            Trace.WriteLine($"Before removal - Collection count: {settings.BeadaPanelDevices.Count}");
-                            Trace.WriteLine($"Removing device: {displayName} with USB path: {deviceConfig.UsbPath}");
-
-                            bool removed = settings.BeadaPanelDevices.Remove(deviceConfig);
-
-                            Trace.WriteLine($"Device removal result: {removed}, After removal - Collection count: {settings.BeadaPanelDevices.Count}");
-
-                            // Stop device if running
-                            var deviceId = deviceConfig.GetStableId();
-                            if (BeadaPanelTask.Instance.IsDeviceRunning(deviceId))
-                            {
-                                _ = BeadaPanelTask.Instance.StopDevice(deviceId);
-                            }
-
-                            // Force save settings to ensure removal is persisted
-                            ConfigModel.Instance.SaveSettings();
-
-                            Trace.WriteLine($"Removed BeadaPanel device: {displayName}");
-                        }
-                        else
-                        {
-                            Trace.WriteLine($"Could not find config object for runtime device: {displayName}");
-                        }
+                        _ = BeadaPanelTask.Instance.StopDevice(deviceConfig.DeviceLocation);
                     }
+                    
+                    ConfigModel.Instance.Settings.BeadaPanelDevices.Remove(deviceConfig);
+                    ConfigModel.Instance.SaveSettings();
                 }
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"Error removing BeadaPanel device: {ex.Message}");
-                MessageBox.Show($"Error removing device: {ex.Message}",
-                    "Remove Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
-        private BeadaPanelDeviceConfig? FindMatchingDeviceConfig(IEnumerable<BeadaPanelDeviceConfig> existingConfigs, string devicePath, BeadaPanelInfo panelInfo)
-        {
-            // Priority 1: Match by hardware serial number (most reliable)
-            if (!string.IsNullOrEmpty(panelInfo.SerialNumber))
-            {
-                var serialMatch = existingConfigs.FirstOrDefault(d =>
-                    !string.IsNullOrEmpty(d.SerialNumber) &&
-                    d.SerialNumber == panelInfo.SerialNumber);
-                if (serialMatch != null)
-                {
-                    Trace.WriteLine($"Device matched by hardware serial: {panelInfo.SerialNumber}");
-                    return serialMatch;
-                }
-            }
-
-            // Priority 2: Match by model fingerprint (model)
-            var fingerprintMatch = existingConfigs.FirstOrDefault(d =>
-                d.ModelType == panelInfo.Model);
-            if (fingerprintMatch != null)
-            {
-                Trace.WriteLine($"Device matched by model fingerprint: {panelInfo.Model}");
-                return fingerprintMatch;
-            }
-
-            // Priority 3: Match by USB path (fallback, unreliable across reboots)
-            if (!string.IsNullOrEmpty(devicePath))
-            {
-                var usbPathMatch = existingConfigs.FirstOrDefault(d => d.UsbPath == devicePath);
-                if (usbPathMatch != null)
-                {
-                    Trace.WriteLine($"Device matched by USB path: {devicePath}");
-                    return usbPathMatch;
-                }
-            }
-
-            Trace.WriteLine($"No matching device found for {devicePath}");
-            return null;
-        }
-
-
     }
 }
