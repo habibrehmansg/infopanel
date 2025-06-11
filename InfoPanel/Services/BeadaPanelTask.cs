@@ -32,10 +32,10 @@ namespace InfoPanel
 
         public async Task StartDevice(BeadaPanelDevice device)
         {
-            if (_deviceTasks.ContainsKey(device.DeviceLocation))
+            if(_deviceTasks.TryGetValue(device.DeviceLocation, out var task))
             {
-                Trace.WriteLine($"BeadaPanel device {device} is already running");
-                return;
+                await task.StopAsync();
+                _deviceTasks.TryRemove(device.DeviceLocation, out _);
             }
 
             var deviceTask = new BeadaPanelDeviceTask(device);
@@ -78,7 +78,11 @@ namespace InfoPanel
 
         public bool IsDeviceRunning(string deviceId)
         {
-            return _deviceTasks.ContainsKey(deviceId);
+            if(_deviceTasks.TryGetValue(deviceId, out var task)){
+                return task.IsRunning;
+            }
+
+            return false;
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
@@ -145,7 +149,7 @@ namespace InfoPanel
                         }
                     }
 
-                    await Task.Delay(250, token);
+                    await Task.Delay(1000, token);
                 }
                 catch (Exception ex)
                 {
@@ -162,11 +166,5 @@ namespace InfoPanel
             await StopAllDevices();
             await base.StopAsync(shutdown);
         }
-
-        //protected override async ValueTask DisposeAsync()
-        //{
-        //    await StopAllDevices();
-        //    await base.DisposeAsync();
-        //}
     }
 }

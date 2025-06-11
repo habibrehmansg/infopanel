@@ -37,7 +37,7 @@ namespace InfoPanel.Models
 
         public void UpdateRuntimeProperties(bool? isRunning = null, BeadaPanelInfo? panelInfo = null, int? frameRate = null, long? frameTime = null, string? errorMessage = null)
         {
-            if(System.Windows.Application.Current.Dispatcher is Dispatcher dispatcher)
+            if(System.Windows.Application.Current?.Dispatcher is Dispatcher dispatcher)
             {
                 dispatcher.BeginInvoke(() =>
                 {

@@ -9,9 +9,7 @@ using LibUsbDotNet.Main;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -89,7 +87,6 @@ namespace InfoPanel.Services
                 if (usbRegistry == null)
                 {
                     Trace.WriteLine($"BeadaPanelDevice {_device}: USB Device not found.");
-                    //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Device not found");
                     return;
                 }
 
@@ -97,7 +94,6 @@ namespace InfoPanel.Services
 
                 if(usbDevice == null)
                 {
-                    //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, "Unable to open device");
                     return;
                 }
 
@@ -182,11 +178,16 @@ namespace InfoPanel.Services
 
                     var frameBufferPool = new ConcurrentBag<byte[]>();
 
+                    var renderCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    var renderToken = renderCts.Token;
+
+                    _device.UpdateRuntimeProperties(isRunning: true);
+
                     var renderTask = Task.Run(async () =>
                     {
                         var stopwatch1 = new Stopwatch();
 
-                        while (!token.IsCancellationRequested)
+                        while (!renderToken.IsCancellationRequested)
                         {
                             stopwatch1.Restart();
                             var frame = GenerateLcdBuffer();
@@ -213,37 +214,51 @@ namespace InfoPanel.Services
                                 await Task.Delay(adaptiveFrameTime, token);
                             }
                         }
-                    }, token);
+                    }, renderToken);
 
                     var sendTask = Task.Run(() =>
                     {
-                        var stopwatch2 = new Stopwatch();
-
-                        while (!token.IsCancellationRequested)
+                        try
                         {
-                            if (brightness != _device.Brightness)
-                            {
-                                brightness = _device.Brightness;
-                                brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
-                                writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
-                            }
+                            var stopwatch2 = new Stopwatch();
 
-                            if (_frameAvailable.WaitOne(100))
+                            while (!token.IsCancellationRequested)
                             {
-                                var frame = Interlocked.Exchange(ref _latestFrame, null);
-                                if (frame != null)
+                                if (brightness != _device.Brightness)
                                 {
-                                    stopwatch2.Restart();
-                                    dataWriter.Write(frame, 2000, out int _);
+                                    brightness = _device.Brightness;
+                                    brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
+                                    writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
+                                }
 
-                                    fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
-                                    _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
+                                if (_frameAvailable.WaitOne(100))
+                                {
+                                    var frame = Interlocked.Exchange(ref _latestFrame, null);
+                                    if (frame != null)
+                                    {
+                                        stopwatch2.Restart();
+                                        var result = dataWriter.Write(frame, 2000, out int _);
+
+                                        if (result != 0)
+                                        {
+                                            throw new Exception($"Error writing to device: {result}");
+                                        }
+
+                                        fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
+                                        _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
+                                    }
                                 }
                             }
+                        }catch(Exception e)
+                        {
+                            Trace.WriteLine("Error " + e.Message);
+                        }
+                        finally
+                        {
+                            renderCts.Cancel();
                         }
                     }, token);
 
-                    _device.UpdateRuntimeProperties(isRunning: true);
                     await Task.WhenAll(renderTask, sendTask);
                 }
                 catch (TaskCanceledException)
@@ -253,7 +268,6 @@ namespace InfoPanel.Services
                 catch (Exception ex)
                 {
                     Trace.WriteLine($"BeadaPanelDevice {_device}: Exception during work: {ex.Message}");
-                    //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, ex.Message);
                 }
                 finally
                 {
@@ -277,11 +291,10 @@ namespace InfoPanel.Services
             catch (Exception e)
             {
                 Trace.WriteLine($"BeadaPanelDevice {_device}: Init error: {e.Message}");
-                //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false, 0, 0, e.Message);
             }
             finally
             {
-                //SharedModel.Instance.UpdateBeadaPanelDeviceStatus(_device.Id, false, false);
+                _device.UpdateRuntimeProperties(false);
             }
         }
     }
