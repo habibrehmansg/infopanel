@@ -1,255 +1,172 @@
-﻿using InfoPanel.BeadaPanel;
+using InfoPanel.BeadaPanel;
 using InfoPanel.BeadaPanel.PanelLink;
 using InfoPanel.BeadaPanel.StatusLink;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
+using InfoPanel.Services;
 using InfoPanel.Utils;
+using InfoPanel.ViewModels;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace InfoPanel
 {
     public sealed class BeadaPanelTask : BackgroundTask
     {
         private static readonly Lazy<BeadaPanelTask> _instance = new(() => new BeadaPanelTask());
-
-        private volatile int _panelWidth = 0;
-        private volatile int _panelHeight = 0;
+        
+        private readonly ConcurrentDictionary<string, BeadaPanelDeviceTask> _deviceTasks = new();
 
         public static BeadaPanelTask Instance => _instance.Value;
 
         private BeadaPanelTask() { }
 
-        public byte[]? GenerateLcdBuffer()
+        public async Task StartDevice(BeadaPanelDevice device)
         {
-            var profileGuid = ConfigModel.Instance.Settings.BeadaPanelProfile;
-
-            if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
+            if (_deviceTasks.ContainsKey(device.DeviceLocation))
             {
-                var rotation = ConfigModel.Instance.Settings.BeadaPanelRotation;
-                using var bitmap = PanelDrawTask.RenderSK(profile, false, colorType: SKColorType.Rgb565, alphaType: SKAlphaType.Opaque);
-
-                using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
-
-                return resizedBitmap.Bytes;
+                Trace.WriteLine($"BeadaPanel device {device} is already running");
+                return;
             }
 
-            return null;
+            var deviceTask = new BeadaPanelDeviceTask(device);
+            if (_deviceTasks.TryAdd(device.DeviceLocation, deviceTask))
+            {
+                await deviceTask.StartAsync();
+                Trace.WriteLine($"Started BeadaPanel device {device}");
+            }
+        }
+
+        public async Task StopDevice(string deviceId)
+        {
+            if (_deviceTasks.TryRemove(deviceId, out var deviceTask))
+            {
+                await deviceTask.StopAsync();
+                //deviceTask.Dispose();
+                Trace.WriteLine($"Stopped BeadaPanel device {deviceId}");
+            }
+        }
+
+        public async Task StopAllDevices()
+        {
+            var tasks = new List<Task>();
+            
+            foreach (var kvp in _deviceTasks.ToList())
+            {
+                if (_deviceTasks.TryRemove(kvp.Key, out var deviceTask))
+                {
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        await deviceTask.StopAsync();
+                        //deviceTask.Dispose();
+                    }));
+                }
+            }
+
+            await Task.WhenAll(tasks);
+            Trace.WriteLine("Stopped all BeadaPanel devices");
+        }
+
+        public bool IsDeviceRunning(string deviceId)
+        {
+            return _deviceTasks.ContainsKey(deviceId);
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
+
             try
             {
-                int vendorId = 0x4e58;
-                int productId = 0x1001;
+                var settings = ConfigModel.Instance.Settings;
+                
+                Trace.WriteLine($"BeadaPanel: DoWorkAsync starting - MultiDeviceMode: {settings.BeadaPanelMultiDeviceMode}");
 
-                var devices = UsbDevice.AllDevices;
-
-                UsbDeviceFinder finder = new(vendorId, productId);
-                using UsbDevice usbDevice = UsbDevice.OpenUsbDevice(finder);
-
-                if (usbDevice == null)
+                if (settings.BeadaPanelMultiDeviceMode)
                 {
-                    Trace.WriteLine("USB Device not found.");
-                    return;
+                    await RunMultiDeviceMode(token);
                 }
-
-                if (usbDevice is IUsbDevice wholeUsbDevice)
+                else
                 {
-                    wholeUsbDevice.SetConfiguration(1);
-                    wholeUsbDevice.ClaimInterface(0);
-                }
-
-                var infoMessage = new StatusLinkMessage
-                {
-                    Type = StatusLinkMessageType.GetPanelInfo
-                };
-
-                using UsbEndpointWriter writer = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep02);
-                writer.Write(infoMessage.ToBuffer(), 2000, out int _);
-
-                Trace.WriteLine("Sent infoTag");
-
-                byte[] responseBuffer = new byte[100]; // 20-byte header + 80-byte payload
-
-                using UsbEndpointReader reader = usbDevice.OpenEndpointReader(ReadEndpointID.Ep02);
-                reader.Read(responseBuffer, 2000, out int bytesRead);
-
-                var panelInfo = BeadaPanelParser.ParsePanelInfoResponse(responseBuffer);
-
-                if (panelInfo == null)
-                {
-                    Trace.WriteLine("Failed to parse panel info.");
-                    return;
-                }
-
-                Trace.WriteLine(panelInfo.ToString());
-
-                //only supported on i.mx6ul && i.mx6ull
-                bool writeThroughMode = panelInfo.Platform == 1 || panelInfo.Platform == 2;
-
-                _panelWidth = panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX;
-                _panelHeight = panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY;
-
-                SharedModel.Instance.BeadaPanelRunning = true;
-
-                var startTag = new PanelLinkMessage
-                {
-                    Type = panelInfo.PanelLinkVersion == 1 ? PanelLinkMessageType.LegacyCommand1 : PanelLinkMessageType.StartMediaStream,
-                    FormatString = PanelLinkMessage.BuildFormatString(panelInfo, writeThroughMode)
-                };
-
-                var endTag = new PanelLinkMessage
-                {
-                    Type = panelInfo.PanelLinkVersion == 1 ? PanelLinkMessageType.LegacyCommand2 : PanelLinkMessageType.EndMediaStream,
-                };
-
-                var resetTag = new StatusLinkMessage
-                {
-                    Type = StatusLinkMessageType.PanelLinkReset
-                };
-
-                var brightnessTag = new StatusLinkMessage
-                {
-                    Type = StatusLinkMessageType.SetBacklight,
-                    Payload = [100]
-                };
-
-                writer.Write(resetTag.ToBuffer(), 2000, out int _);
-
-                //wait for reset
-                await Task.Delay(1000, token);
-
-                //set brightness
-                var brightness = ConfigModel.Instance.Settings.BeadaPanelBrightness;
-
-                brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
-
-                writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
-
-                //start stream
-                using UsbEndpointWriter dataWriter = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep01);
-                dataWriter.Write(startTag.ToBuffer(), 2000, out int _);
-
-                Trace.WriteLine("Sent startTag");
-
-                try
-                {
-                    FpsCounter fpsCounter = new(60);
-                    byte[]? _latestFrame = null;
-                    AutoResetEvent _frameAvailable = new(false);
-
-                    var frameBufferPool = new ConcurrentBag<byte[]>();
-
-                    var renderTask = Task.Run(async () =>
-                    {
-                        var stopwatch1 = new Stopwatch();
-
-                        while (!token.IsCancellationRequested)
-                        {
-                            stopwatch1.Restart();
-                            var frame = GenerateLcdBuffer();
-
-                            if (frame != null)
-                            {
-                                var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
-                                _frameAvailable.Set();
-                            }
-
-                            var targetFrameTime = 1000 / ConfigModel.Instance.Settings.TargetFrameRate;
-                            var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
-                            var adaptiveFrameTime = 0;
-
-                            var elapsedMs = (int)stopwatch1.ElapsedMilliseconds;
-
-                            if (elapsedMs < desiredFrameTime)
-                            {
-                                adaptiveFrameTime = desiredFrameTime - elapsedMs;
-                            }
-
-                            if (adaptiveFrameTime > 0)
-                            {
-                                await Task.Delay(adaptiveFrameTime, token);
-                            }
-                        }
-                    }, token);
-
-                    var sendTask = Task.Run(() =>
-                    {
-                        var stopwatch2 = new Stopwatch();
-
-                        while (!token.IsCancellationRequested)
-                        {
-                            if (brightness != ConfigModel.Instance.Settings.BeadaPanelBrightness)
-                            {
-                                brightness = ConfigModel.Instance.Settings.BeadaPanelBrightness;
-                                brightnessTag.Payload = panelInfo.PanelLinkVersion == 1 ? [(byte)((brightness / 100.0 * 75) + 25)] : [(byte)brightness];
-                                writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
-                            }
-
-                            if (_frameAvailable.WaitOne(100))
-                            {
-                                var frame = Interlocked.Exchange(ref _latestFrame, null);
-                                if (frame != null)
-                                {
-                                    stopwatch2.Restart();
-                                    dataWriter.Write(frame, 2000, out int _);
-
-                                    fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
-                                    SharedModel.Instance.BeadaPanelFrameRate = fpsCounter.FramesPerSecond;
-                                    SharedModel.Instance.BeadaPanelFrameTime = fpsCounter.FrameTime;
-                                }
-                            }
-                        }
-                    }, token);
-
-                    await Task.WhenAll(renderTask, sendTask);
-                }
-                catch (TaskCanceledException)
-                {
-                    Trace.WriteLine("Task cancelled");
-                }
-                catch (Exception ex)
-                {
-                    Trace.WriteLine($"Exception during work: {ex.Message}");
-                }
-                finally
-                {
-                    try
-                    {
-                        brightnessTag.Payload = [0];
-                        writer.Write(brightnessTag.ToBuffer(), 2000, out int _);
-
-                        using var blankFrame = new SKBitmap(new SKImageInfo(_panelWidth, _panelHeight, SKColorType.Rgb565, SKAlphaType.Opaque));
-                        dataWriter.Write(blankFrame.Bytes, 2000, out int _);
-
-                        dataWriter.Write(endTag.ToBuffer(), 2000, out int _);
-                        Trace.WriteLine("Sent endTag");
-                    }
-                    catch (Exception ex)
-                    {
-                        Trace.WriteLine($"Exception when sending ResetTag: {ex.Message}");
-                    }
+                    Trace.WriteLine("BeadaPanel: Multi-device mode is disabled. No devices will be started.");
                 }
             }
             catch (Exception e)
             {
-                Trace.WriteLine("BeadaPanel: Init error");
-            }
-            finally
-            {
-                SharedModel.Instance.BeadaPanelRunning = false;
+                Trace.WriteLine($"BeadaPanel: Error in DoWorkAsync: {e.Message}");
             }
         }
+
+        private async Task RunMultiDeviceMode(CancellationToken token)
+        {
+            Trace.WriteLine("BeadaPanel: Starting multi-device mode");
+            
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    var settings = ConfigModel.Instance.Settings;
+                    
+                    // Exit if multi-device mode was turned off
+                    if (!settings.BeadaPanelMultiDeviceMode)
+                    {
+                        Trace.WriteLine("BeadaPanel: Multi-device mode turned off, exiting loop");
+                        break;
+                    }
+
+                    // Start enabled devices that aren't running
+                    var enabledConfigs = settings.BeadaPanelDevices.Where(d => d.Enabled).ToList();
+                    
+                    foreach (var config in enabledConfigs)
+                    {
+                        var configId = config.DeviceLocation;
+                        if (!IsDeviceRunning(configId))
+                        {
+                            await StartDevice(config);
+                        }
+                    }
+
+                    // Stop devices that are no longer enabled
+                    var runningDeviceIds = _deviceTasks.Keys.ToList();
+                    foreach (var deviceId in runningDeviceIds)
+                    {
+                        if (!enabledConfigs.Any(c => c.DeviceLocation == deviceId))
+                        {
+                            await StopDevice(deviceId);
+                        }
+                    }
+
+                    await Task.Delay(250, token);
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"BeadaPanel: Error in RunMultiDeviceMode: {ex.Message}");
+                    await Task.Delay(1000, token); // Wait longer on error
+                }
+            }
+        }
+
+
+
+        public override async Task StopAsync(bool shutdown = false)
+        {
+            await StopAllDevices();
+            await base.StopAsync(shutdown);
+        }
+
+        //protected override async ValueTask DisposeAsync()
+        //{
+        //    await StopAllDevices();
+        //    await base.DisposeAsync();
+        //}
     }
-
-
 }

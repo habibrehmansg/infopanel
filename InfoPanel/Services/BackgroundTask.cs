@@ -35,7 +35,7 @@ namespace InfoPanel
             }
         }
 
-        public async Task StopAsync(bool shutdown = false)
+        public virtual async Task StopAsync(bool shutdown = false)
         {
             Trace.WriteLine($"{this.GetType().Name} Task stopping");
 

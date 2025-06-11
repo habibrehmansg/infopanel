@@ -310,7 +310,7 @@ namespace InfoPanel
 
         private static async Task StartPanels()
         {
-            if (ConfigModel.Instance.Settings.BeadaPanel)
+            if (ConfigModel.Instance.Settings.BeadaPanelMultiDeviceMode)
             {
                 await BeadaPanelTask.Instance.StartAsync();
             }

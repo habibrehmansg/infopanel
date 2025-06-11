@@ -8,11 +8,13 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using System.Windows.Threading;
 using System.Xml;
 using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
@@ -63,7 +65,25 @@ namespace InfoPanel
             LoadProfiles();
         }
 
-        private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        public void AccessSettings(Action<Settings> action)
+        {
+            if (System.Windows.Application.Current.Dispatcher is Dispatcher dispatcher)
+            {
+                if (dispatcher.CheckAccess())
+                {
+                    action(Settings);
+                }
+                else
+                {
+                    dispatcher.Invoke(() =>
+                    {
+                        action(Settings);
+                    });
+                }
+            }
+        }
+
+        private void Profiles_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
             if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null)
             {
@@ -168,17 +188,6 @@ namespace InfoPanel
                     await LibreMonitor.Instance.StartAsync();
                 }
             }
-            else if (e.PropertyName == nameof(Settings.BeadaPanel))
-            {
-                if (Settings.BeadaPanel)
-                {
-                    await BeadaPanelTask.Instance.StartAsync();
-                }
-                else
-                {
-                    await BeadaPanelTask.Instance.StopAsync();
-                }
-            }
             else if (e.PropertyName == nameof(Settings.TuringPanel))
             {
                 if (Settings.TuringPanel)
@@ -231,7 +240,18 @@ namespace InfoPanel
                 }
                 else
                 {
-                   await WebServerTask.Instance.StopAsync();
+                    await WebServerTask.Instance.StopAsync();
+                }
+            }
+            else if (e.PropertyName == nameof(Settings.BeadaPanelMultiDeviceMode))
+            {
+                if (Settings.BeadaPanelMultiDeviceMode)
+                {
+                    await BeadaPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await BeadaPanelTask.Instance.StopAsync();
                 }
             }
 
@@ -282,42 +302,27 @@ namespace InfoPanel
             await _saveSemaphore.WaitAsync();
             try
             {
+                Trace.WriteLine("Saving settings...");  // Debug log for save operation
                 var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
                 Directory.CreateDirectory(folder);
-                
+
                 var fileName = Path.Combine(folder, "settings.xml");
                 var tempFileName = fileName + ".tmp";
                 var backupFileName = fileName + ".bak";
 
                 // Serialize settings to memory first to ensure it's valid
-                Settings settingsSnapshot;
+                using var ms = new MemoryStream();
                 lock (_settingsLock)
                 {
-                    // Create a copy of settings to avoid locking during I/O
                     var xs = new XmlSerializer(typeof(Settings));
-                    using var ms = new MemoryStream();
                     xs.Serialize(ms, Settings);
-                    ms.Position = 0;
-                    settingsSnapshot = (Settings)xs.Deserialize(ms)!;
                 }
 
-                // Write to temp file asynchronously
-                var xmlSettings = new XmlWriterSettings() 
-                { 
-                    Encoding = Encoding.UTF8, 
-                    Indent = true, 
-                    Async = true 
-                };
-                
+                ms.Position = 0;
                 await using var stream = new FileStream(tempFileName, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true);
-                await using var writer = XmlWriter.Create(stream, xmlSettings);
-                
-                var xs2 = new XmlSerializer(typeof(Settings));
-                xs2.Serialize(writer, settingsSnapshot);
-                
-                await writer.FlushAsync();
-                writer.Close();
 
+                // Copy memory stream directly to file stream
+                await ms.CopyToAsync(stream);
                 await stream.FlushAsync();
                 stream.Close();
 
@@ -337,7 +342,7 @@ namespace InfoPanel
             {
                 // Log error (consider adding proper logging)
                 System.Diagnostics.Debug.WriteLine($"Error saving settings: {ex.Message}");
-                
+
                 // Try to restore from backup if available
                 var backupFileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "settings.xml.bak");
                 if (File.Exists(backupFileName))
@@ -365,7 +370,7 @@ namespace InfoPanel
             var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
             var fileName = Path.Combine(folder, "settings.xml");
             var backupFileName = Path.Combine(folder, "settings.xml.bak");
-            
+
             bool loadedFromBackup = false;
             string fileToLoad = fileName;
 
@@ -377,7 +382,7 @@ namespace InfoPanel
                 {
                     loadedFromBackup = true;
                     fileToLoad = backupFileName;
-                    
+
                     // Try to restore the backup to the main file
                     try
                     {
@@ -421,10 +426,6 @@ namespace InfoPanel
                             Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
                             Settings.Version = settings.Version;
 
-                            Settings.BeadaPanel = settings.BeadaPanel;
-                            Settings.BeadaPanelProfile = settings.BeadaPanelProfile;
-                            Settings.BeadaPanelRotation = settings.BeadaPanelRotation;
-                            Settings.BeadaPanelBrightness = settings.BeadaPanelBrightness;
 
                             Settings.TuringPanel = settings.TuringPanel;
                             Settings.TuringPanelProfile = settings.TuringPanelProfile;
@@ -448,17 +449,27 @@ namespace InfoPanel
                             Settings.TuringPanelEPort = settings.TuringPanelEPort;
                             Settings.TuringPanelERotation = settings.TuringPanelERotation;
                             Settings.TuringPanelEBrightness = settings.TuringPanelEBrightness;
+
+                            // Load BeadaPanel multi-device settings
+                            Settings.BeadaPanelMultiDeviceMode = settings.BeadaPanelMultiDeviceMode;
+
+                            // Clear existing devices and add loaded ones
+                            Settings.BeadaPanelDevices.Clear();
+                            foreach (var device in settings.BeadaPanelDevices)
+                            {
+                                Settings.BeadaPanelDevices.Add(device);
+                            }
                         }
 
                         ValidateStartup();
-                        
+
                         if (loadedFromBackup)
                         {
                             System.Diagnostics.Debug.WriteLine("Settings loaded from backup file.");
                         }
                     }
                 }
-                catch (Exception ex) 
+                catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Error loading settings: {ex.Message}");
                 }
@@ -677,7 +688,7 @@ namespace InfoPanel
             // Dispose the debounce timer
             _saveDebounceTimer?.Dispose();
             _saveDebounceTimer = null;
-            
+
             // Ensure any pending saves are completed
             try
             {
@@ -687,7 +698,7 @@ namespace InfoPanel
             {
                 // Best effort - don't throw on shutdown
             }
-            
+
             // Dispose the semaphore
             _saveSemaphore?.Dispose();
         }

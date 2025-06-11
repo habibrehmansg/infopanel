@@ -1,6 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Models;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using Wpf.Ui.Common.Interfaces;
@@ -22,6 +25,7 @@ namespace InfoPanel.ViewModels
     public class SettingsViewModel : ObservableObject, INavigationAware
     {
         private ObservableCollection<string> _comPorts = new();
+
         public ObservableCollection<LCD_ROTATION> RotationValues { get; set; }
 
         public SettingsViewModel()
@@ -32,6 +36,11 @@ namespace InfoPanel.ViewModels
         public ObservableCollection<string> ComPorts
         {
             get { return _comPorts; }
+        }
+
+        public ObservableCollection<BeadaPanelDevice> RuntimeBeadaPanelDevices
+        {
+            get { return ConfigModel.Instance.Settings.BeadaPanelDevices; }
         }
 
         public void OnNavigatedFrom()

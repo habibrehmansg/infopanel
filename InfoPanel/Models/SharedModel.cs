@@ -1,4 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using ControlzEx.Standard;
+using InfoPanel.BeadaPanel;
 using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
@@ -38,38 +40,6 @@ namespace InfoPanel
                 SetProperty(ref _hwInfoAvailable, value);
             }
         }
-
-        private bool _beadaPanelRunning = false;
-
-        public bool BeadaPanelRunning
-        {
-            get { return _beadaPanelRunning; }
-            set
-            {
-                SetProperty(ref _beadaPanelRunning, value);
-            }
-        }
-
-        private int _beadaPanelFrameRate = 0;
-        public int BeadaPanelFrameRate
-        {
-            get { return _beadaPanelFrameRate; }
-            set
-            {
-                SetProperty(ref _beadaPanelFrameRate, value);
-            }
-        }
-
-        private long _beadaPanelFrameTime = 0;
-        public long BeadaPanelFrameTime
-        {
-            get { return _beadaPanelFrameTime; }
-            set
-            {
-                SetProperty(ref _beadaPanelFrameTime, value);
-            }
-        }
-
 
         private bool _turingPanelRunning = false;
 

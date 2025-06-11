@@ -1,4 +1,5 @@
 ﻿using InfoPanel.BeadaPanel.StatusLink;
+using InfoPanel.Extensions;
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -43,19 +44,29 @@ namespace InfoPanel.BeadaPanel
             byte platform = payload[4];
             byte modelByte = payload[5];
             string serialNumber = Encoding.ASCII.GetString(payload, 6, 64).Trim('\0').Trim();
+
+            if (!serialNumber.IsAlphanumeric())
+            {
+                serialNumber = string.Empty;
+            }
+
             ushort resX = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(70));
             ushort resY = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(72));
             uint storageSizeKB = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(74));
             byte maxBrightness = payload[78];
             byte currentBrightness = payload[79];
 
-            BeadaPanelModel? model = Enum.IsDefined(typeof(BeadaPanelModel), modelByte)
-                ? (BeadaPanelModel)modelByte
-                : null;
+            if(!Enum.TryParse<BeadaPanelModel>(modelByte.ToString(), out BeadaPanelModel model))
+            {
+                Trace.WriteLine($"Invalid model byte: {modelByte}");
+                return null;
+            }
 
-            BeadaPanelModelInfo? modelInfo = model.HasValue
-                ? BeadaPanelModelDatabase.GetInfo(model.Value)
-                : null;
+            if(!BeadaPanelModelDatabase.Models.TryGetValue(model, out BeadaPanelModelInfo? modelInfo))
+            {
+                Trace.WriteLine($"Model not recognized: {model}");
+                return null;
+            }
 
             return new BeadaPanelInfo
             {
@@ -69,7 +80,7 @@ namespace InfoPanel.BeadaPanel
                 StorageSizeKB = storageSizeKB,
                 MaxBrightness = maxBrightness,
                 CurrentBrightness = currentBrightness,
-                ModelId = model,
+                Model = model,
                 ModelInfo = modelInfo
             };
         }

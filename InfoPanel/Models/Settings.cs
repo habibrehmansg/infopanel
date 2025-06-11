@@ -1,36 +1,21 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.ViewModels;
-using SkiaSharp;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 
 namespace InfoPanel.Models
 {
     public partial class Settings : ObservableObject
     {
-        private bool _autostart = false;
-        public bool AutoStart
-        {
-            get { return _autostart; }
-            set { SetProperty(ref _autostart, value); }
-        }
+        [ObservableProperty]
+        private bool _autoStart = false;
 
+        [ObservableProperty]
         private bool _startMinimized = false;
-        public bool StartMinimized
-        {
-            get { return _startMinimized; }
-            set { SetProperty(ref _startMinimized, value); }
-        }
 
+        [ObservableProperty]
         private bool _minimizeToTray = true;
-        public bool MinimizeToTray
-        {
-            get { return _minimizeToTray; }
-            set { SetProperty(ref _minimizeToTray, value); }
-        }
 
         [ObservableProperty]
         private string _selectedItemColor = "#FF00FF00";
@@ -44,258 +29,133 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private string _gridLinesColor = "#1A808080";
 
+        [ObservableProperty]
         private bool _libreHardwareMonitor = true;
-        public bool LibreHardwareMonitor
-        {
-            get { return _libreHardwareMonitor; }
-            set { SetProperty(ref _libreHardwareMonitor, value); }
-        }
 
+        [ObservableProperty]
         private bool _libreHardMonitorRing0 = true;
-        public bool LibreHardMonitorRing0
+
+        private readonly ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = [];
+
+        public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices
         {
-            get { return _libreHardMonitorRing0; }
-            set { SetProperty(ref _libreHardMonitorRing0, value); }
+            get { return _beadaPanelDevices; }
         }
 
-        private bool _beadaPanel = false;
-        public bool BeadaPanel
-        {
-            get { return _beadaPanel; }
-            set { SetProperty(ref _beadaPanel, value); }
-        }
+        [ObservableProperty]
+        private bool _beadaPanelMultiDeviceMode = false;
 
-        private Guid _beadaPanelProfile = Guid.Empty;
-        public Guid BeadaPanelProfile
-        {
-            get { return _beadaPanelProfile; }
-            set { SetProperty(ref _beadaPanelProfile, value); }
-        }
-
-        private LCD_ROTATION _beadaPanelRotation = 0;
-        public LCD_ROTATION BeadaPanelRotation
-        {
-            get { return _beadaPanelRotation; }
-            set
-            {
-                SetProperty(ref _beadaPanelRotation, value);
-            }
-        }
-
-        private int _beadaPanelBrightness = 100;
-        public int BeadaPanelBrightness
-        {
-            get { return _beadaPanelBrightness; }
-            set
-            {
-                SetProperty(ref _beadaPanelBrightness, value);
-            }
-        }
-
+        [ObservableProperty]
         private bool _turingPanel = false;
-        public bool TuringPanel
-        {
-            get { return _turingPanel; }
-            set { SetProperty(ref _turingPanel, value); }
-        }
 
+        [ObservableProperty]
         private Guid _turingPanelProfile = Guid.Empty;
-        public Guid TuringPanelProfile
-        {
-            get { return _turingPanelProfile; }
-            set { SetProperty(ref _turingPanelProfile, value); }
-        }
 
+        [ObservableProperty]
         private LCD_ROTATION _turingPanelRotation = 0;
-        public LCD_ROTATION TuringPanelRotation
-        {
-            get { return _turingPanelRotation; }
-            set
-            {
-                SetProperty(ref _turingPanelRotation, value);
-            }
-        }
 
+        [ObservableProperty]
         private int _turingPanelBrightness = 100;
-        public int TuringPanelBrightness
-        {
-            get { return _turingPanelBrightness; }
-            set
-            {
-                SetProperty(ref _turingPanelBrightness, value);
-            }
-        }
 
+        [ObservableProperty]
         private bool _turingPanelA = false;
-        public bool TuringPanelA
-        {
-            get { return _turingPanelA; }
-            set { SetProperty(ref _turingPanelA, value); }
-        }
 
-        private string _turingPanelAPort = String.Empty;
-        public string TuringPanelAPort
-        {
-            get { return _turingPanelAPort; }
-            set { SetProperty(ref _turingPanelAPort, value); }
-        }
+        [ObservableProperty]
+        private string _turingPanelAPort = string.Empty;
 
+        [ObservableProperty]
         private Guid _turingPanelAProfile = Guid.Empty;
-        public Guid TuringPanelAProfile
-        {
-            get { return _turingPanelAProfile; }
-            set { SetProperty(ref _turingPanelAProfile, value); }
-        }
 
+        [ObservableProperty]
         private LCD_ROTATION _turingPanelARotation = 0;
-        public LCD_ROTATION TuringPanelARotation
-        {
-            get { return _turingPanelARotation; }
-            set
-            {
-                SetProperty(ref _turingPanelARotation, value);
-            }
-        }
 
+        [ObservableProperty]
         private int _turingPanelABrightness = 100;
-        public int TuringPanelABrightness
-        {
-            get { return _turingPanelABrightness; }
-            set
-            {
-                SetProperty(ref _turingPanelABrightness, value);
-            }
-        }
 
+        [ObservableProperty]
         private bool _turingPanelC = false;
-        public bool TuringPanelC
-        {
-            get { return _turingPanelC; }
-            set { SetProperty(ref _turingPanelC, value); }
-        }
 
-        private string _turingPanelCPort = String.Empty;
-        public string TuringPanelCPort
-        {
-            get { return _turingPanelCPort; }
-            set { SetProperty(ref _turingPanelCPort, value); }
-        }
+        [ObservableProperty]
+        private string _turingPanelCPort = string.Empty;
 
+        [ObservableProperty]
         private Guid _turingPanelCProfile = Guid.Empty;
-        public Guid TuringPanelCProfile
-        {
-            get { return _turingPanelCProfile; }
-            set { SetProperty(ref _turingPanelCProfile, value); }
-        }
 
+        [ObservableProperty]
         private LCD_ROTATION _turingPanelCRotation = 0;
-        public LCD_ROTATION TuringPanelCRotation
-        {
-            get { return _turingPanelCRotation; }
-            set
-            {
-                SetProperty(ref _turingPanelCRotation, value);
-            }
-        }
 
+        [ObservableProperty]
         private int _turingPanelCBrightness = 100;
-        public int TuringPanelCBrightness
-        {
-            get { return _turingPanelCBrightness; }
-            set
-            {
-                SetProperty(ref _turingPanelCBrightness, value);
-            }
-        }
 
+        [ObservableProperty]
         private bool _turingPanelE = false;
-        public bool TuringPanelE
-        {
-            get { return _turingPanelE; }
-            set { SetProperty(ref _turingPanelE, value); }
-        }
 
-        private string _turingPanelEPort = String.Empty;
-        public string TuringPanelEPort
-        {
-            get { return _turingPanelEPort; }
-            set { SetProperty(ref _turingPanelEPort, value); }
-        }
+        [ObservableProperty]
+        private string _turingPanelEPort = string.Empty;
 
+        [ObservableProperty]
         private Guid _turingPanelEProfile = Guid.Empty;
-        public Guid TuringPanelEProfile
-        {
-            get { return _turingPanelEProfile; }
-            set { SetProperty(ref _turingPanelEProfile, value); }
-        }
 
+        [ObservableProperty]
         private LCD_ROTATION _turingPanelERotation = LCD_ROTATION.Rotate90FlipNone;
-        public LCD_ROTATION TuringPanelERotation
-        {
-            get { return _turingPanelERotation; }
-            set
-            {
-                SetProperty(ref _turingPanelERotation, value);
-            }
-        }
 
+        [ObservableProperty]
         private int _turingPanelEBrightness = 100;
-        public int TuringPanelEBrightness
-        {
-            get { return _turingPanelEBrightness; }
-            set
-            {
-                SetProperty(ref _turingPanelEBrightness, value);
-            }
-        }
 
+        [ObservableProperty]
         private bool _webServer = false;
-        public bool WebServer
-        {
-            get { return _webServer; }
-            set { SetProperty(ref _webServer, value); }
-        }
 
+        [ObservableProperty]
         private string _webServerListenIp = "127.0.0.1";
-        public string WebServerListenIp
-        {
-            get { return _webServerListenIp; }
-            set { SetProperty(ref _webServerListenIp, value); }
-        }
 
+        [ObservableProperty]
         private int _webServerListenPort = 80;
-        public int WebServerListenPort
-        {
-            get { return _webServerListenPort; }
-            set { SetProperty(ref _webServerListenPort, value); }
-        }
 
+        [ObservableProperty]
         private int _webServerRefreshRate = 66;
-        public int WebServerRefreshRate
-        {
-            get { return _webServerRefreshRate; }
-            set { SetProperty(ref _webServerRefreshRate, value); }
-        }
 
+        [ObservableProperty]
         private int _targetFrameRate = 15;
-        public int TargetFrameRate
-        {
-            get { return _targetFrameRate; }
-            set { SetProperty(ref _targetFrameRate, value); }
-        }
 
+        [ObservableProperty]
         private int _targetGraphUpdateRate = 1000;
-        public int TargetGraphUpdateRate
+
+        [ObservableProperty]
+        private int _version = 114;
+
+        public Settings()
         {
-            get { return _targetGraphUpdateRate; }
-            set { SetProperty(ref _targetGraphUpdateRate, value); }
+            BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
         }
 
-        private int _version = 114;
-        public int Version
+        private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            get { return _version; }
-            set { SetProperty(ref _version, value); }
+            if(e.OldItems != null)
+            {
+                foreach(BeadaPanelDevice device in e.OldItems)
+                {
+                    device.PropertyChanged -= Device_PropertyChanged;
+                }
+            }
+
+            if(e.NewItems != null)
+            {
+                foreach(BeadaPanelDevice device in e.NewItems)
+                {
+                    device.PropertyChanged += Device_PropertyChanged; ;
+                }
+            }
+
+            OnPropertyChanged(nameof(BeadaPanelDevices));
+        }
+
+        private void Device_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(BeadaPanelDevice.RuntimeProperties))
+            {
+                OnPropertyChanged(nameof(BeadaPanelDevices));
+            }
         }
     }
+    
 }

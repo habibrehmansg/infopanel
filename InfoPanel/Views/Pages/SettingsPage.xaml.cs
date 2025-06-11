@@ -1,4 +1,8 @@
-﻿using InfoPanel.ViewModels;
+﻿using InfoPanel.BeadaPanel;
+using InfoPanel.Models;
+using InfoPanel.ViewModels;
+using LibUsbDotNet;
+using LibUsbDotNet.Main;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +10,7 @@ using System.IO.Ports;
 using System.Linq;
 using System.Management;
 using System.Net.NetworkInformation;
+using System.Threading.Tasks;
 using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
@@ -74,11 +79,6 @@ namespace InfoPanel.Views.Pages
 
             Loaded += (sender, args) =>
             {
-                if (ConfigModel.Instance.Settings.BeadaPanelProfile == Guid.Empty)
-                {
-                    ConfigModel.Instance.Settings.BeadaPanelProfile = ConfigModel.Instance.Profiles.First().Guid;
-                }
-
                 if (ConfigModel.Instance.Settings.TuringPanelAProfile == Guid.Empty)
                 {
                     ConfigModel.Instance.Settings.TuringPanelAProfile = ConfigModel.Instance.Profiles.First().Guid;
@@ -104,6 +104,13 @@ namespace InfoPanel.Views.Pages
             watcher.EventArrived += new EventArrivedEventHandler(HandleEvent);
             watcher.Query = query;
             watcher.Start();
+
+            Loaded += SettingsPage_Loaded;
+        }
+
+        private async void SettingsPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            await UpdateBeadaPanelDeviceList();
         }
 
         private void DebounceTimer_Elapsed(object? sender, ElapsedEventArgs e)
@@ -124,7 +131,7 @@ namespace InfoPanel.Views.Pages
                 ViewModel.ComPorts.Clear();
                 foreach (var name in SerialPort.GetPortNames())
                 {
-                    if(!ViewModel.ComPorts.Contains(name))
+                    if (!ViewModel.ComPorts.Contains(name))
                     {
                         ViewModel.ComPorts.Add(name);
                     }
@@ -133,7 +140,7 @@ namespace InfoPanel.Views.Pages
                 ComboBoxTuringPanelCPort.SelectedValue = ConfigModel.Instance.Settings.TuringPanelCPort;
                 ComboBoxTuringPanelEPort.SelectedValue = ConfigModel.Instance.Settings.TuringPanelEPort;
             }));
-          
+
         }
 
         private void HandleEvent(object sender, EventArrivedEventArgs e)
@@ -169,7 +176,7 @@ namespace InfoPanel.Views.Pages
 
         private void ComboBoxTuringPanelCPort_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if(ComboBoxTuringPanelCPort.SelectedValue is string value)
+            if (ComboBoxTuringPanelCPort.SelectedValue is string value)
             {
                 ConfigModel.Instance.Settings.TuringPanelCPort = value;
             }
@@ -180,6 +187,104 @@ namespace InfoPanel.Views.Pages
             if (ComboBoxTuringPanelEPort.SelectedValue is string value)
             {
                 ConfigModel.Instance.Settings.TuringPanelEPort = value;
+            }
+        }
+
+        private async Task UpdateBeadaPanelDeviceList()
+        {
+            int vendorId = 0x4e58;
+            int productId = 0x1001;
+
+            var allDevices = UsbDevice.AllDevices;
+            Trace.WriteLine($"BeadaPanel Discovery: Scanning {allDevices.Count} USB devices for VID={vendorId:X4} PID={productId:X4}");
+
+            foreach (UsbRegistry deviceReg in allDevices)
+            {
+                if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
+                {
+                    var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
+                    var deviceLocation = deviceReg.DeviceProperties["LocationInformation"] as string;
+
+                    if(string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
+                    {
+                        Trace.WriteLine($"BeadaPanel Discovery: Skipping device with missing properties - DeviceID: '{deviceId}', LocationInformation: '{deviceLocation}'");
+                        continue;
+                    }
+
+                    Trace.WriteLine($"BeadaPanel Discovery: Found matching device - FullName: '{deviceReg.FullName}', DevicePath: '{deviceReg.DevicePath}', SymbolicName: '{deviceReg.SymbolicName}'");
+
+                    try
+                    {
+                        // Try to query StatusLink for detailed device information
+                        var panelInfo = await BeadaPanelHelper.GetPanelInfoAsync(deviceReg);
+                        if (panelInfo != null && BeadaPanelModelDatabase.Models.ContainsKey(panelInfo.Model))
+                        {
+                            Trace.WriteLine($"Discovered BeadaPanel device: {panelInfo}");
+                            ConfigModel.Instance.AccessSettings(settings =>
+                            {
+                                var device = settings.BeadaPanelDevices.FirstOrDefault(d => d.DeviceLocation == deviceLocation);
+
+                                if(device != null)
+                                {
+                                    device.UpdateRuntimeProperties(panelInfo: panelInfo);
+                                }
+                                else
+                                {
+                                    device = new BeadaPanelDevice()
+                                    {
+                                        DeviceLocation = deviceLocation,
+                                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty,
+                                        RuntimeProperties = new BeadaPanelDevice.BeadaPanelDeviceRuntimeProperties()
+                                        {
+                                            PanelInfo = panelInfo
+                                        }
+                                    };
+
+                                    settings.BeadaPanelDevices.Add(device);
+                                }
+                            });
+                        }
+                        else
+                        {
+                            // Skip devices that can't be queried - they are likely already running
+                            Trace.WriteLine($"Skipping device {deviceReg.DevicePath} - StatusLink unavailable (likely already running)");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.WriteLine($"Error discovering BeadaPanel device: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        private async void ButtonDiscoverBeadaPanelDevices_Click(object sender, RoutedEventArgs e)
+        {
+            if(sender is Button button)
+            {
+                button.IsEnabled = false;
+                await UpdateBeadaPanelDeviceList();
+                button.IsEnabled = true;
+            }
+        }
+
+        private void ButtonRemoveBeadaPanelDevice_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is BeadaPanelDevice runtimeDevice)
+            {
+                // Find config by USB path (always unique and present)
+                var deviceConfig = ConfigModel.Instance.Settings.BeadaPanelDevices.FirstOrDefault(c => c.DeviceLocation == runtimeDevice.DeviceLocation);
+
+                if (deviceConfig != null)
+                {
+                    if (BeadaPanelTask.Instance.IsDeviceRunning(deviceConfig.DeviceLocation))
+                    {
+                        _ = BeadaPanelTask.Instance.StopDevice(deviceConfig.DeviceLocation);
+                    }
+                    
+                    ConfigModel.Instance.Settings.BeadaPanelDevices.Remove(deviceConfig);
+                    ConfigModel.Instance.SaveSettings();
+                }
             }
         }
     }
