@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
 using SkiaSharp;
 using System;
 using System.Data;
@@ -53,13 +54,8 @@ namespace InfoPanel.Models
 
         public override SKSize EvaluateSize()
         {
-            SKFontStyleWeight weight = Bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
-            SKFontStyleWidth widthStyle = SKFontStyleWidth.Normal;
-            SKFontStyleSlant slant = Italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright;
-
-            using var fontStyle = new SKFontStyle(weight, widthStyle, slant);
-            using var typeface = SKTypeface.FromFamilyName(Font, fontStyle);
-            using var font = new SKFont(typeface, size: FontSize * 1.33f);
+            var typeface = SkiaGraphics.CreateTypeface(Font, FontStyle, Bold, Italic);
+            using var font = new SKFont(typeface, size: FontSize * Profile.FontScale);
 
             var metrics = font.Metrics;
             var text = "A";

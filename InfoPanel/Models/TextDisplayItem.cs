@@ -152,7 +152,7 @@ namespace InfoPanel.Models
         public override SKSize EvaluateSize()
         {
             var typeface = SkiaGraphics.CreateTypeface(Font, FontStyle, Bold, Italic);
-            using var font = new SKFont(typeface, size: FontSize * 1.33f);
+            using var font = new SKFont(typeface, size: FontSize * Profile.FontScale);
 
             var text = EvaluateText();
             font.MeasureText(text, out var bounds);
