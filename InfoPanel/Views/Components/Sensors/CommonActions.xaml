@@ -8,69 +8,41 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     d:DesignWidth="400"
     mc:Ignorable="d">
-    <Grid>
-
-        <Grid Margin="0,0,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="auto" />
-                <ColumnDefinition Width="auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBlock
-                Grid.Column="0"
-                Margin="0,5,0,0"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Center">
-                <Bold FontSize="20" FontWeight="Medium">Non-Sensor Items</Bold>
-            </TextBlock>
-
-            <ui:Button
-                x:Name="ButtonNewText"
-                Grid.Column="1"
-                Margin="0,0,0,0"
-                Appearance="Success"
-                Click="ButtonNewText_Click"
-                Icon="Text16"
-                ToolTip="Add a customisable text item" />
-            <ui:Button
-                x:Name="ButtonNewImage"
-                Grid.Column="2"
-                Margin="10,0,0,0"
-                Appearance="Success"
-                Click="ButtonNewImage_Click"
-                Icon="Image20"
-                ToolTip="Add an image item" />
-            <ui:Button
-                x:Name="ButtonNewClock"
-                Grid.Column="3"
-                Margin="10,0,0,0"
-                Appearance="Success"
-                Click="ButtonNewClock_Click"
-                Icon="Clock20"
-                ToolTip="Add a dynamic clock item" />
-            <ui:Button
-                x:Name="ButtonNewCalendar"
-                Grid.Column="4"
-                Margin="10,0,0,0"
-                Appearance="Success"
-                Click="ButtonNewCalendar_Click"
-                Icon="Calendar3Day20"
-                ToolTip="Add a dynamic calendar item" />
-
-            <ui:Button
-                x:Name="ButtonNewShape"
-                Grid.Column="5"
-                Margin="10,0,0,0"
-                Appearance="Success"
-                Click="ButtonNewShape_Click"
-                Icon="DrawShape20"
-                ToolTip="Add a shape item" />
-
-        </Grid>
-
-    </Grid>
+    <StackPanel Orientation="Horizontal">
+        <ui:Button
+            x:Name="ButtonNewText"
+            Margin="0,0,0,0"
+            Appearance="Success"
+            Click="ButtonNewText_Click"
+            Icon="Text16"
+            ToolTip="Add a customisable text item" />
+        <ui:Button
+            x:Name="ButtonNewImage"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonNewImage_Click"
+            Icon="Image20"
+            ToolTip="Add an image item" />
+        <ui:Button
+            x:Name="ButtonNewClock"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonNewClock_Click"
+            Icon="Clock20"
+            ToolTip="Add a dynamic clock item" />
+        <ui:Button
+            x:Name="ButtonNewCalendar"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonNewCalendar_Click"
+            Icon="Calendar3Day20"
+            ToolTip="Add a dynamic calendar item" />
+        <ui:Button
+            x:Name="ButtonNewShape"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonNewShape_Click"
+            Icon="DrawShape20"
+            ToolTip="Add a shape item" />
+    </StackPanel>
 </UserControl>

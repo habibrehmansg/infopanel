@@ -484,30 +484,32 @@
 
         <Grid
             Grid.Row="4"
-            Margin="0,10,0,10"
-            HorizontalAlignment="Right">
+            Margin="0,10,0,10">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="auto" />
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="auto" />
             </Grid.ColumnDefinitions>
-            <ui:Button
-                x:Name="ButtonSave"
-                Grid.Column="0"
-                Width="140"
-                Margin="0,0,0,0"
-                Appearance="Primary"
-                Click="ButtonSave_Click"
-                Content="Save"
-                ToolTip="Make your changes permanent" />
-            <ui:Button
-                x:Name="ButtonReload"
-                Grid.Column="1"
-                Margin="10,0,0,0"
-                Appearance="Danger"
-                Click="ButtonReload_Click"
-                Content=""
-                Icon="ArrowUndo20"
-                ToolTip="Discard all changes and reload from disk" />
+            
+            <components:CommonActions Grid.Column="0" HorizontalAlignment="Left" />
+            
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <ui:Button
+                    x:Name="ButtonSave"
+                    Width="140"
+                    Margin="0,0,0,0"
+                    Appearance="Primary"
+                    Click="ButtonSave_Click"
+                    Content="Save"
+                    ToolTip="Make your changes permanent" />
+                <ui:Button
+                    x:Name="ButtonReload"
+                    Margin="10,0,0,0"
+                    Appearance="Danger"
+                    Click="ButtonReload_Click"
+                    Content=""
+                    Icon="ArrowUndo20"
+                    ToolTip="Discard all changes and reload from disk" />
+            </StackPanel>
         </Grid>
     </Grid>
 </UserControl>

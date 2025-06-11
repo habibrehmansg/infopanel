@@ -246,12 +246,6 @@
                     IsEnabled="{Binding SelectedItem.SensorReading, Converter={StaticResource IsPluginTableConverter}}"
                     ToolTip="Add selected sensor in table view" />
             </Grid>
-
-            <StackPanel Grid.Row="8" Margin="0,10,0,0">
-                <Separator />
-            </StackPanel>
-
-            <components:CommonActions Margin="0,10,0,0" />
         </StackPanel>
     </Grid>
 </UserControl>
