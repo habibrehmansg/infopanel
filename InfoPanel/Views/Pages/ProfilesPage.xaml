@@ -473,17 +473,17 @@
                                                         <TextBlock
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Direct2D Acceleration (GPU)" />
+                                                            Text="Use OpenGL (GPU) rendering" />
                                                     </StackPanel>
                                                 </ui:CardControl.Header>
                                                 <StackPanel>
-                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Direct2DMode}" />
+                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding OpenGL}" />
                                                 </StackPanel>
                                             </ui:CardControl>
                                         </Grid>
 
 
-                                        <Grid Margin="0,10,0,0" IsEnabled="{Binding Direct2DMode}">
+                                        <Grid Margin="0,10,0,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
@@ -495,48 +495,15 @@
                                                     LargeChange="0.1"
                                                     MaxDecimalPlaces="2"
                                                     Maximum="10"
-                                                    Minimum="0.01"
+                                                    Minimum="0.1"
                                                     SmallChange="0.01"
-                                                    Text="{Binding Direct2DFontScale}"
-                                                    Value="{Binding Direct2DFontScale}" />
+                                                    Text="{Binding FontScale}"
+                                                    Value="{Binding FontScale}" />
                                                 <TextBlock
                                                     Margin="5,0,0,0"
                                                     FontSize="12"
                                                     Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                    Text="Font Scale" />
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                                                <ui:NumberBox
-                                                    FontSize="14"
-                                                    LargeChange="10"
-                                                    MaxDecimalPlaces="0"
-                                                    Maximum="3840"
-                                                    Minimum="-3840"
-                                                    SmallChange="1"
-                                                    Text="{Binding Direct2DTextXOffset}"
-                                                    Value="{Binding Direct2DTextXOffset}" />
-                                                <TextBlock
-                                                    Margin="5,0,0,0"
-                                                    FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                    Text="Text X (Left) Offset" />
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Column="2" Margin="10,0,0,0">
-                                                <ui:NumberBox
-                                                    FontSize="14"
-                                                    MaxDecimalPlaces="0"
-                                                    Maximum="3840"
-                                                    Minimum="-3840"
-                                                    SmallChange="1"
-                                                    Text="{Binding Direct2DTextYOffset}"
-                                                    Value="{Binding Direct2DTextYOffset}" />
-                                                <TextBlock
-                                                    Margin="5,0,0,0"
-                                                    FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                    Text="Text Y (Top) Offset" />
+                                                    Text="Global Font Scale" />
                                             </StackPanel>
                                         </Grid>
 

@@ -17,13 +17,13 @@ namespace InfoPanel
 
         public DisplayWindow? Window => _window;
 
-        public bool Direct2DMode;
+        public bool OpenGL;
         public event EventHandler<Guid>? WindowClosed;
 
         public DisplayWindowThread(Profile profile)
         {
             _profile = profile;
-            Direct2DMode = profile.Direct2DMode;
+            OpenGL = profile.OpenGL;
         }
 
         public void Start()
@@ -67,11 +67,6 @@ namespace InfoPanel
         {
             _dispatcher?.BeginInvoke(() => _window?.Close());
             _thread?.Join(2000);
-        }
-
-        public void UpdateProfile(Profile profile)
-        {
-            //_dispatcher?.BeginInvoke(() => _window?.UpdateProfile(profile));
         }
     }
 }

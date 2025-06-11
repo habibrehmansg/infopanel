@@ -26,7 +26,7 @@ namespace InfoPanel.Drawing
             _selectionStopwatch.Start();
         }
 
-        public static void Run(Profile profile, MyGraphics g, bool preview = false, float scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
+        public static void Run(Profile profile, SkiaGraphics g, bool preview = false, float scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -177,7 +177,7 @@ namespace InfoPanel.Drawing
             return null;
         }
 
-        private static void Draw(MyGraphics g, bool preview, float scale, bool cache, string cacheHint, DisplayItem displayItem, List<SelectedRectangle> selectedRectangles)
+        private static void Draw(SkiaGraphics g, bool preview, float scale, bool cache, string cacheHint, DisplayItem displayItem, List<SelectedRectangle> selectedRectangles)
         {
             var x = (int)Math.Floor(displayItem.X * scale);
             var y = (int)Math.Floor(displayItem.Y * scale);
@@ -211,7 +211,7 @@ namespace InfoPanel.Drawing
 
                             if (formatParts.Length > 0)
                             {
-                                (float fWidth, float fHeight) = SkiaGraphics.MeasureString("A", textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, textDisplayItem.Bold,
+                                (float fWidth, float fHeight) = g.MeasureString("A", textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, textDisplayItem.Bold,
                                               textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
 
                                 var tWidth = 0;
@@ -418,7 +418,7 @@ namespace InfoPanel.Drawing
                         using var graphBitmap = new SKBitmap(chartDisplayItem.Width, chartDisplayItem.Height);
                         using var canvas = new SKCanvas(graphBitmap);
 
-                        using var g1 = new SkiaGraphics(canvas);
+                        using var g1 = new SkiaGraphics(canvas, g.FontScale);
                         GraphDraw.Run(chartDisplayItem, g1, preview);
 
                         if (chartDisplayItem.FlipX)

@@ -10,31 +10,31 @@ using System.Text.RegularExpressions;
 
 namespace InfoPanel.Drawing
 {
-    internal partial class SkiaGraphics(SKCanvas canvas) : MyGraphics
+    internal partial class SkiaGraphics(SKCanvas canvas, float fontScale): IDisposable
     {
         public readonly SKCanvas Canvas = canvas;
         private readonly GRContext? GRContext = canvas.Context as GRContext;
-        private static readonly float FontScale = 1.33f; //always scale fonts by 1.33x to match System.Drawing behavior
+        public readonly float FontScale = fontScale; 
 
         public bool OpenGL => GRContext != null;
 
-        public static SkiaGraphics FromBitmap(SKBitmap bitmap)
+        public static SkiaGraphics FromBitmap(SKBitmap bitmap, float fontScale)
         {
             var canvas = new SKCanvas(bitmap);
-            return new SkiaGraphics(canvas);
+            return new SkiaGraphics(canvas, fontScale);
         }
 
-        public override void Clear(SKColor color)
+        public void Clear(SKColor color)
         {
             this.Canvas.Clear(color);
         }
 
-        public override void Dispose()
+        public void Dispose()
         {
             this.Canvas.Dispose();
         }
 
-        public override void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
+        public void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
         {
             using var image = SKImage.FromBitmap(bitmap);
             DrawImage(image, x, y, width, height, rotation, rotationCenterX, rotationCenterY, flipX, flipY);
@@ -74,7 +74,7 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public override void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default")
+        public void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default")
         {
             if (lockedImage.Type == LockedImage.ImageType.SVG)
             {
@@ -94,7 +94,7 @@ namespace InfoPanel.Drawing
             }
         }
 
-        public override void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
+        public void DrawLine(float x1, float y1, float x2, float y2, string color, float strokeWidth)
         {
             using var paint = new SKPaint
             {
@@ -107,7 +107,7 @@ namespace InfoPanel.Drawing
             Canvas.DrawLine(x1, y1, x2, y2, paint);
         }
 
-        public override void DrawPath(SKPath path, SKColor color, float strokeWidth, SKColor? gradientColor = null, SKColor? gradientColor2 = null, float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
+        public void DrawPath(SKPath path, SKColor color, float strokeWidth, SKColor? gradientColor = null, SKColor? gradientColor2 = null, float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
         {
             using var paint = new SKPaint
             {
@@ -129,7 +129,7 @@ namespace InfoPanel.Drawing
             Canvas.DrawPath(path, paint);
         }
 
-        public override void DrawRectangle(SKColor color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
+        public void DrawRectangle(SKColor color, int strokeWidth, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             using var paint = new SKPaint
             {
@@ -154,7 +154,7 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public override void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0)
+        public void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0)
         {
             if (string.IsNullOrEmpty(text))
                 return;
@@ -398,7 +398,7 @@ namespace InfoPanel.Drawing
             return null;
         }
 
-        public override void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor)
+        public void FillDonut(int x, int y, int radius, int thickness, int rotation, int percentage, int span, string color, string backgroundColor, int strokeWidth, string strokeColor)
         {
             thickness = Math.Clamp(thickness, 0, radius);
             rotation = Math.Clamp(rotation, 0, 360);
@@ -728,7 +728,7 @@ namespace InfoPanel.Drawing
             return shader;
         }
 
-        public override void FillPath(SKPath path, SKColor color, SKColor? gradientColor = null, SKColor? gradientColor2 = null,
+        public void FillPath(SKPath path, SKColor color, SKColor? gradientColor = null, SKColor? gradientColor2 = null,
             float gradientAngle = 90f, GradientType gradientType = GradientType.Linear)
         {
             if (path == null || path.IsEmpty)
@@ -753,7 +753,7 @@ namespace InfoPanel.Drawing
             Canvas.DrawPath(path, paint);
         }
 
-        public override void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
+        public void FillRectangle(string color, int x, int y, int width, int height, string? gradientColor = null, bool gradientHorizontal = true, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0)
         {
             using var paint = new SKPaint
             {
@@ -798,7 +798,7 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public static (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        public (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
         {
             var typeface = CreateTypeface(fontName, fontStyle, bold, italic);
             using var font = new SKFont(typeface, size: fontSize * FontScale);

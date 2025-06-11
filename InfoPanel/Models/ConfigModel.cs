@@ -119,7 +119,7 @@ namespace InfoPanel
         {
             if (sender is Profile profile)
             {
-                if (e.PropertyName == nameof(Profile.Active) || e.PropertyName == nameof(Profile.Direct2DMode))
+                if (e.PropertyName == nameof(Profile.Active) || e.PropertyName == nameof(Profile.OpenGL))
                 {
                     if (profile.Active)
                     {

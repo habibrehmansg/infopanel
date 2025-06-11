@@ -73,7 +73,7 @@ namespace InfoPanel.Drawing
             return result;
         }
 
-        public static void Run(ChartDisplayItem chartDisplayItem, MyGraphics g, bool preview = false)
+        public static void Run(ChartDisplayItem chartDisplayItem, SkiaGraphics g, bool preview = false)
         {
             var elapsedMilliseconds = Stopwatch.ElapsedMilliseconds;
 

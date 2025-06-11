@@ -59,7 +59,7 @@ namespace InfoPanel
                     if (_windows.TryGetValue(profile.Guid, out var existingWindow))
                     {
                         // If Direct2D mode changed, close and recreate
-                        if (existingWindow.Direct2DMode != profile.Direct2DMode)
+                        if (existingWindow.OpenGL != profile.OpenGL)
                         {
                             existingWindow.Close();
                             _windows.Remove(profile.Guid);

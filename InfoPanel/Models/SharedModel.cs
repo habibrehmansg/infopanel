@@ -5,6 +5,7 @@ using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
+using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -700,10 +701,8 @@ namespace InfoPanel
                         Font = SelectedProfile.Font,
                         FontSize = SelectedProfile.FontSize,
                         Color = SelectedProfile.Color,
-                        Direct2DMode = SelectedProfile.Direct2DMode,
-                        Direct2DFontScale = SelectedProfile.Direct2DFontScale,
-                        Direct2DTextXOffset = SelectedProfile.Direct2DTextXOffset,
-                        Direct2DTextYOffset = SelectedProfile.Direct2DTextYOffset,
+                        OpenGL = SelectedProfile.OpenGL,
+                        FontScale = SelectedProfile.FontScale,
                     };
 
                     var entry = archive.CreateEntry("Profile.xml");
@@ -824,6 +823,9 @@ namespace InfoPanel
                 {
                     BackgroundColor = DecimalBgrToHex(SPBGCOLOR)
                 };
+
+                using var bitmap = new SKBitmap(1, 1);
+                using var graphics = SkiaGraphics.FromBitmap(bitmap, profile.FontScale);
 
                 List<DisplayItem> displayItems = [];
 
@@ -1214,11 +1216,11 @@ namespace InfoPanel
 
                                         if (BARPLC == "SEP" && SHWVAL == 1)
                                         {
-                                            var size2 = SkiaGraphics.MeasureString("HELLO WORLD", FNTNAM, "", TXTSIZ);
+                                            var size2 = graphics.MeasureString("HELLO WORLD", FNTNAM, "", TXTSIZ);
                                             offset = (int)size2.height;
                                         }
 
-                                        var size = SkiaGraphics.MeasureString(UNT, FNTNAM, "", TXTSIZ);
+                                        var size = graphics.MeasureString(UNT, FNTNAM, "", TXTSIZ);
 
                                         var frame = false;
                                         var gradient = false;

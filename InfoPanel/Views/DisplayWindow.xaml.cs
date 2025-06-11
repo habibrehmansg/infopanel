@@ -29,7 +29,7 @@ namespace InfoPanel.Views.Common
         SKGLElement? _skGlElement;
 
         public Profile Profile { get; }
-        public bool Direct2DMode { get; }
+        public bool OpenGL { get; }
 
         private bool _dragMove = false;
         private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
@@ -47,7 +47,7 @@ namespace InfoPanel.Views.Common
             Profile = profile;
             DataContext = this;
 
-            Direct2DMode = profile.Direct2DMode;
+            OpenGL = profile.OpenGL;
 
             InitializeComponent();
             InjectSkiaElement();
@@ -90,6 +90,8 @@ namespace InfoPanel.Views.Common
             SetWindowPositionRelativeToScreen();
 
             UpdateSkiaTimer();
+
+            Activate();
         }
 
         private void UpdateSkiaTimer()
@@ -155,7 +157,7 @@ namespace InfoPanel.Views.Common
             LocationChanged -= DisplayWindow_LocationChanged;
             SizeChanged -= DisplayWindow_SizeChanged;
 
-            if (Direct2DMode)
+            if (OpenGL)
             {
                 foreach (var item in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile))
                 {
@@ -190,7 +192,7 @@ namespace InfoPanel.Views.Common
 
             container.Children.Clear();
 
-            if (Direct2DMode)
+            if (OpenGL)
             {
                 AllowsTransparency = false;
                 var skGlElement = new SKGLElement
@@ -296,7 +298,7 @@ namespace InfoPanel.Views.Common
 
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
-            if (!Direct2DMode)
+            if (!OpenGL)
             {
                 Dispatcher.Invoke(() => _sKElement?.InvalidateVisual(), DispatcherPriority.Input);
             }
@@ -325,7 +327,7 @@ namespace InfoPanel.Views.Common
 
             canvas.Clear();
 
-            SkiaGraphics skiaGraphics = new(canvas);
+            SkiaGraphics skiaGraphics = new(canvas, Profile.FontScale);
             PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
         }
 

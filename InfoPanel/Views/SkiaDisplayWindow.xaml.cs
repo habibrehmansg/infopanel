@@ -65,7 +65,7 @@ namespace InfoPanel.Views
         private void RenderProfile(SKCanvas canvas)
         {
             var profile = ConfigModel.Instance.Profiles.First();
-            SkiaGraphics skiaGraphics = new(canvas);
+            SkiaGraphics skiaGraphics = new(canvas, profile.FontScale);
             PanelDraw.Run(profile, skiaGraphics);
 
         }

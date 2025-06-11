@@ -127,7 +127,7 @@ namespace InfoPanel.Views.Components
 
                     await Task.Run(() =>
                     {
-                        using var g = SkiaGraphics.FromBitmap(profile.PreviewBitmap);
+                        using var g = SkiaGraphics.FromBitmap(profile.PreviewBitmap, profile.FontScale);
                         PanelDraw.Run(profile, g, true, scale, true, $"PREVIEW-{profile.Guid}");
                     }, cancellationToken);
 

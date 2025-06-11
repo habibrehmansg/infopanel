@@ -13,7 +13,7 @@ namespace InfoPanel
         {
             var bitmap = new SKBitmap(profile.Width, profile.Height, colorType, alphaType);
             
-            using var g = SkiaGraphics.FromBitmap(bitmap) as MyGraphics;
+            using var g = SkiaGraphics.FromBitmap(bitmap, profile.FontScale);
             PanelDraw.Run(profile, g, preview, scale, cache, $"DISPLAY-{profile.Guid}");
 
             return bitmap;

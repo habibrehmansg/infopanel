@@ -138,48 +138,11 @@ namespace InfoPanel.Models
             }
         }
 
-        private bool _direct2DMode = false;
-        public bool Direct2DMode
-        {
-            get { return _direct2DMode; }
-            set
-            {
-                SetProperty(ref _direct2DMode, value);
-            }
-        }
+        [ObservableProperty]
+        private bool _openGL = false;
 
-        private float _direct2DFontScale = 1.33f;
-
-        public float Direct2DFontScale
-        {
-            get { return _direct2DFontScale; }
-            set
-            {
-                SetProperty(ref _direct2DFontScale, value);
-            }
-        }
-
-        private int _direct2DTextXOffset = 0;
-
-        public int Direct2DTextXOffset
-        {
-            get { return _direct2DTextXOffset; }
-            set
-            {
-                SetProperty(ref _direct2DTextXOffset, value);
-            }
-        }
-
-        private int _direct2DTextYOffset = 0;
-
-        public int Direct2DTextYOffset
-        {
-            get { return _direct2DTextYOffset; }
-            set
-            {
-                SetProperty(ref _direct2DTextYOffset, value);
-            }
-        }
+        [ObservableProperty]
+        private float _fontScale = 1.33f;
 
         private bool _topmost = false;
         public bool Topmost
