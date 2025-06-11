@@ -35,33 +35,58 @@ namespace InfoPanel.Models
             _runtimeProperties = new();
         }
 
+        private DateTime _lastUpdate = DateTime.MinValue;
+        private readonly TimeSpan _throttleInterval = TimeSpan.FromSeconds(1);
+
         public void UpdateRuntimeProperties(bool? isRunning = null, BeadaPanelInfo? panelInfo = null, int? frameRate = null, long? frameTime = null, string? errorMessage = null)
         {
-            if(System.Windows.Application.Current?.Dispatcher is Dispatcher dispatcher)
+            var now = DateTime.UtcNow;
+
+            // Always update critical properties immediately
+            if (isRunning != null || panelInfo != null || errorMessage != null)
+            {
+                _lastUpdate = now;
+                DispatchUpdate(isRunning, panelInfo, frameRate, frameTime, errorMessage);
+                return;
+            }
+
+            // Throttle frequent updates (frameRate, frameTime)
+            if (now - _lastUpdate < _throttleInterval)
+            {
+                return; // Skip this update
+            }
+
+            _lastUpdate = now;
+            DispatchUpdate(isRunning, panelInfo, frameRate, frameTime, errorMessage);
+        }
+
+        private void DispatchUpdate(bool? isRunning, BeadaPanelInfo? panelInfo, int? frameRate, long? frameTime, string? errorMessage)
+        {
+            if (System.Windows.Application.Current?.Dispatcher is Dispatcher dispatcher)
             {
                 dispatcher.BeginInvoke(() =>
                 {
-                    if(isRunning != null)
+                    if (isRunning != null)
                     {
                         RuntimeProperties.IsRunning = isRunning.Value;
                     }
 
-                    if(panelInfo != null)
+                    if (panelInfo != null)
                     {
                         RuntimeProperties.PanelInfo = panelInfo;
                     }
 
-                    if(frameRate != null)
+                    if (frameRate != null)
                     {
                         RuntimeProperties.FrameRate = frameRate.Value;
                     }
 
-                    if(frameTime != null)
+                    if (frameTime != null)
                     {
                         RuntimeProperties.FrameTime = frameTime.Value;
                     }
 
-                    if(errorMessage != null)
+                    if (errorMessage != null)
                     {
                         RuntimeProperties.ErrorMessage = errorMessage;
                     }
