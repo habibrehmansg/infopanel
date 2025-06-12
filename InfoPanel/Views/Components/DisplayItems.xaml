@@ -6,6 +6,7 @@
     xmlns:components="clr-namespace:InfoPanel.Views.Components"
     xmlns:converters="clr-namespace:InfoPanel.Views.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:dd="urn:gong-wpf-dragdrop"
     xmlns:local="clr-namespace:InfoPanel.Views.Components"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="clr-namespace:InfoPanel.Models"
@@ -102,6 +103,11 @@
                 <ListView
                     Margin="0,-10,0,-10"
                     HorizontalContentAlignment="Stretch"
+                    dd:DragDrop.DropHandler="{Binding RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    dd:DragDrop.IsDragSource="True"
+                    dd:DragDrop.IsDropTarget="True"
+                    dd:DragDrop.SelectDroppedItems="True"
+                    dd:DragDrop.UseDefaultDragAdorner="True"
                     Background="Transparent"
                     BorderThickness="0"
                     ItemTemplate="{StaticResource SimpleItemTemplate_MarginB}"
@@ -214,6 +220,11 @@
                     Grid.Row="1"
                     Width="auto"
                     HorizontalContentAlignment="Stretch"
+                    dd:DragDrop.DropHandler="{Binding}"
+                    dd:DragDrop.IsDragSource="True"
+                    dd:DragDrop.IsDropTarget="True"
+                    dd:DragDrop.SelectDroppedItems="True"
+                    dd:DragDrop.UseDefaultDragAdorner="True"
                     Background="Transparent"
                     ItemTemplateSelector="{StaticResource PanelItemsSelector}"
                     ItemsSource="{Binding Source={x:Static app:SharedModel.Instance}, Path=DisplayItems}"
@@ -482,17 +493,18 @@
 
         <Separator Grid.Row="2" Margin="0,5,0,0" />
 
-        <Grid
-            Grid.Row="4"
-            Margin="0,10,0,10">
+        <Grid Grid.Row="4" Margin="0,10,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="auto" />
             </Grid.ColumnDefinitions>
-            
+
             <components:CommonActions Grid.Column="0" HorizontalAlignment="Left" />
-            
-            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+
+            <StackPanel
+                Grid.Column="1"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal">
                 <ui:Button
                     x:Name="ButtonSave"
                     Width="140"
