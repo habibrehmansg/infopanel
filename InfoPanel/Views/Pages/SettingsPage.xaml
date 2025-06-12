@@ -392,7 +392,7 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="BeadaPanel" />
+                                        Text="BeadaPanel by NXElec" />
                                     <TextBlock
                                         Margin="0,5,0,0"
                                         FontSize="12"
@@ -406,18 +406,16 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <!--  Device Discovery Button  -->
-
                             <ui:ToggleSwitch
                                 Grid.Column="1"
                                 Margin="20,0,0,0"
                                 IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode}" />
-
                         </Grid>
                     </ui:CardControl>
 
                     <ui:CardExpander
                         Margin="0,10,0,0"
+                        Icon="Whiteboard24"
                         IsExpanded="True"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <ui:CardExpander.Header>
@@ -430,7 +428,7 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="BeadaPanel USB Displays" />
+                                        Text="BeadaPanel Displays" />
                                     <TextBlock
                                         Margin="0,5,0,0"
                                         FontSize="12"
@@ -440,20 +438,37 @@
                             </Grid>
                         </ui:CardExpander.Header>
                         <StackPanel>
-                            <ui:Button
-                                x:Name="ButtonDiscoverBeadaPanelDevices"
-                                Width="200"
-                                Margin="0,0,0,10"
-                                HorizontalAlignment="Right"
-                                Click="ButtonDiscoverBeadaPanelDevices_Click"
-                                Content="Discover Devices"
-                                Icon="Search20"
-                                Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:Anchor
+                                        Width="150"
+                                        Margin="0,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Appearance="Secondary"
+                                        Content="BeadaTools"
+                                        NavigateUri="https://www.nxelec.com/service/beadatools/" />
+                                </StackPanel>
+
+                                <ui:Button
+                                    Grid.Column="1"
+                                    Margin="0,0,0,0"
+                                    HorizontalAlignment="Right"
+                                    Appearance="Primary"
+                                    Click="ButtonDiscoverBeadaPanelDevices_Click"
+                                    Content="Discover Devices"
+                                    Icon="Search20"
+                                    Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </Grid>
+
                             <!--  BeadaPanel Device List  -->
                             <ItemsControl Margin="0,0,0,0" ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelDevices}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <ui:CardControl Margin="0,0,0,10" Icon="Whiteboard24">
+                                        <ui:CardControl Margin="0,0,0,10">
                                             <ui:CardControl.Header>
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -461,14 +476,19 @@
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                        <TextBlock
-                                                            FontSize="13"
-                                                            FontWeight="Medium"
-                                                            Text="{Binding RuntimeProperties.Name}" />
+                                                        <TextBlock FontSize="13" FontWeight="Medium">
+
+                                                            <TextBlock.Text>
+                                                                <MultiBinding StringFormat="{}{0}">
+                                                                    <Binding Path="RuntimeProperties.Name" />
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
+
                                                         <TextBlock
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                            Text="{Binding DeviceLocation}" />
+                                                            Text="{Binding DeviceId}" />
                                                         <TextBlock
                                                             Margin="0,0,0,0"
                                                             FontSize="12"
