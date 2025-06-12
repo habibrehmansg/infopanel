@@ -1,4 +1,5 @@
-﻿using InfoPanel.Models;
+﻿using GongSolutions.Wpf.DragDrop;
+using InfoPanel.Models;
 using System;
 using System.Diagnostics;
 using System.Linq;
@@ -12,11 +13,12 @@ namespace InfoPanel.Views.Components
     /// <summary>
     /// Interaction logic for DisplayItems.xaml
     /// </summary>
-    public partial class DisplayItems : System.Windows.Controls.UserControl
+    public partial class DisplayItems : UserControl, IDropTarget
     {
         private DisplayItem? SelectedItem { get { return SharedModel.Instance.SelectedItem; } }
         public DisplayItems()
         {
+            DataContext = this;
             InitializeComponent();
             Unloaded += DisplayItems_Unloaded;
             SharedModel.Instance.PropertyChanged += Instance_PropertyChanged;
@@ -494,6 +496,64 @@ namespace InfoPanel.Views.Components
                 }
 
                 parent?.RaiseEvent(eventArg);
+            }
+        }
+
+        void IDropTarget.DragOver(IDropInfo dropInfo)
+        {
+            if(dropInfo.Data is DisplayItem sourceItem && dropInfo.TargetItem is DisplayItem targetItem && sourceItem != targetItem)
+            {
+                // Check if we're dragging a group
+                if (sourceItem is GroupDisplayItem)
+                {
+                    // If target is also a group, prevent drop
+                    if (targetItem is GroupDisplayItem)
+                    {
+                        dropInfo.Effects = DragDropEffects.None;
+                        return;
+                    }
+                    
+                    // Check if the target collection is not the main collection
+                    // If it's not, then it must be a group's inner collection
+                    if (dropInfo.TargetCollection != SharedModel.Instance.DisplayItems)
+                    {
+                        // We're trying to drop a group inside another group
+                        dropInfo.Effects = DragDropEffects.None;
+                        return;
+                    }
+                }
+                
+                // Allow the drop for all other cases
+                dropInfo.DropTargetAdorner = DropTargetAdorners.Insert;
+                dropInfo.Effects = DragDropEffects.Move;
+            }
+        }
+
+        private readonly DefaultDropHandler dropHandler = new();
+
+        void IDropTarget.Drop(IDropInfo dropInfo)
+        {
+            if (dropInfo.Data is DisplayItem sourceItem && dropInfo.TargetItem is DisplayItem targetItem && sourceItem != targetItem)
+            {
+                // Check if we're dragging a group
+                if (sourceItem is GroupDisplayItem)
+                {
+                    // If target is also a group, prevent drop
+                    if (targetItem is GroupDisplayItem)
+                    {
+                        return;
+                    }
+                    
+                    // Check if the target collection is not the main collection
+                    // If it's not, then it must be a group's inner collection
+                    if (dropInfo.TargetCollection != SharedModel.Instance.DisplayItems)
+                    {
+                        // We're trying to drop a group inside another group
+                        return;
+                    }
+                }
+                
+                dropHandler.Drop(dropInfo);
             }
         }
     }
