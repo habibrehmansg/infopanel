@@ -32,16 +32,16 @@ namespace InfoPanel
 
         public async Task StartDevice(BeadaPanelDevice device)
         {
-            if(_deviceTasks.TryGetValue(device.DeviceLocation, out var task))
+            if(_deviceTasks.TryGetValue(device.Id, out var task))
             {
                 await task.StopAsync();
-                _deviceTasks.TryRemove(device.DeviceLocation, out _);
+                _deviceTasks.TryRemove(device.Id, out _);
             }
 
             var deviceTask = new BeadaPanelDeviceTask(device);
-            if (_deviceTasks.TryAdd(device.DeviceLocation, deviceTask))
+            if (_deviceTasks.TryAdd(device.Id, deviceTask))
             {
-                await deviceTask.StartAsync();
+                await deviceTask.StartAsync(CancellationToken);
                 Trace.WriteLine($"Started BeadaPanel device {device}");
             }
         }
@@ -132,7 +132,7 @@ namespace InfoPanel
                     
                     foreach (var config in enabledConfigs)
                     {
-                        var configId = config.DeviceLocation;
+                        var configId = config.Id;
                         if (!IsDeviceRunning(configId))
                         {
                             await StartDevice(config);
@@ -143,7 +143,7 @@ namespace InfoPanel
                     var runningDeviceIds = _deviceTasks.Keys.ToList();
                     foreach (var deviceId in runningDeviceIds)
                     {
-                        if (!enabledConfigs.Any(c => c.DeviceLocation == deviceId))
+                        if (!enabledConfigs.Any(c => c.Id == deviceId))
                         {
                             await StopDevice(deviceId);
                         }
@@ -157,14 +157,6 @@ namespace InfoPanel
                     await Task.Delay(1000, token); // Wait longer on error
                 }
             }
-        }
-
-
-
-        public override async Task StopAsync(bool shutdown = false)
-        {
-            await StopAllDevices();
-            await base.StopAsync(shutdown);
         }
     }
 }

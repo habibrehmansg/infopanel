@@ -205,7 +205,7 @@ namespace InfoPanel.Views.Pages
                     var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
                     var deviceLocation = deviceReg.DeviceProperties["LocationInformation"] as string;
 
-                    if(string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
+                    if (string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
                     {
                         Trace.WriteLine($"BeadaPanel Discovery: Skipping device with missing properties - DeviceID: '{deviceId}', LocationInformation: '{deviceLocation}'");
                         continue;
@@ -222,9 +222,9 @@ namespace InfoPanel.Views.Pages
                             Trace.WriteLine($"Discovered BeadaPanel device: {panelInfo}");
                             ConfigModel.Instance.AccessSettings(settings =>
                             {
-                                var device = settings.BeadaPanelDevices.FirstOrDefault(d => d.DeviceLocation == deviceLocation);
+                                var device = settings.BeadaPanelDevices.FirstOrDefault(d => d.IsMatching(deviceId, deviceLocation, panelInfo));
 
-                                if(device != null)
+                                if (device != null)
                                 {
                                     device.UpdateRuntimeProperties(panelInfo: panelInfo);
                                 }
@@ -232,7 +232,9 @@ namespace InfoPanel.Views.Pages
                                 {
                                     device = new BeadaPanelDevice()
                                     {
+                                        DeviceId = deviceId,
                                         DeviceLocation = deviceLocation,
+                                        Model = panelInfo.Model.ToString(),
                                         ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty,
                                         RuntimeProperties = new BeadaPanelDevice.BeadaPanelDeviceRuntimeProperties()
                                         {
@@ -260,7 +262,7 @@ namespace InfoPanel.Views.Pages
 
         private async void ButtonDiscoverBeadaPanelDevices_Click(object sender, RoutedEventArgs e)
         {
-            if(sender is Button button)
+            if (sender is Button button)
             {
                 button.IsEnabled = false;
                 await UpdateBeadaPanelDeviceList();
@@ -273,18 +275,21 @@ namespace InfoPanel.Views.Pages
             if (sender is Button button && button.Tag is BeadaPanelDevice runtimeDevice)
             {
                 // Find config by USB path (always unique and present)
-                var deviceConfig = ConfigModel.Instance.Settings.BeadaPanelDevices.FirstOrDefault(c => c.DeviceLocation == runtimeDevice.DeviceLocation);
-
-                if (deviceConfig != null)
+                ConfigModel.Instance.AccessSettings(settings =>
                 {
-                    if (BeadaPanelTask.Instance.IsDeviceRunning(deviceConfig.DeviceLocation))
+                    var deviceConfig = settings.BeadaPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                    if (deviceConfig != null)
                     {
-                        _ = BeadaPanelTask.Instance.StopDevice(deviceConfig.DeviceLocation);
+                        if (BeadaPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                        {
+                            _ = BeadaPanelTask.Instance.StopDevice(deviceConfig.Id);
+                        }
+
+                        ConfigModel.Instance.Settings.BeadaPanelDevices.Remove(deviceConfig);
+                        ConfigModel.Instance.SaveSettings();
                     }
-                    
-                    ConfigModel.Instance.Settings.BeadaPanelDevices.Remove(deviceConfig);
-                    ConfigModel.Instance.SaveSettings();
-                }
+                });
             }
         }
     }

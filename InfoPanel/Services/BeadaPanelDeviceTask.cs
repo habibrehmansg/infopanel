@@ -62,11 +62,17 @@ namespace InfoPanel.Services
                         continue; // Skip this device if we can't get info
                     }
 
+                    var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
                     var deviceLocation = deviceReg.DeviceProperties["LocationInformation"] as string;
 
-                    if (!string.IsNullOrEmpty(deviceLocation) && deviceLocation == _device.DeviceLocation)
+                    if(string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
                     {
-                        Trace.WriteLine($"BeadaPanelDevice {_device}: Found device");
+                        continue; // Skip if we can't get ID or location
+                    }
+
+                   if(_device.IsMatching(deviceId, deviceLocation, panelInfo))
+                    {
+                        Trace.WriteLine($"BeadaPanelDevice {_device}: Found matching device {deviceReg.DevicePath}");
                         return deviceReg;
                     }
                 }

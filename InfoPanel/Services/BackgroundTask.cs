@@ -14,11 +14,13 @@ namespace InfoPanel
 
         protected BackgroundTask() { }
 
+        protected CancellationToken? CancellationToken => _cts?.Token;
+
         public bool IsRunning => _task is not null && !_task.IsCompleted && _cts is not null && !_cts.IsCancellationRequested;
 
         protected bool _shutdown = false;
 
-        public async Task StartAsync()
+        public async Task StartAsync(CancellationToken? token = null)
         {
             await _startStopSemaphore.WaitAsync();
             _shutdown = false;
@@ -26,7 +28,14 @@ namespace InfoPanel
             {
                 if (IsRunning) return;
 
-                _cts = new CancellationTokenSource();
+                if (token == null)
+                {
+                    _cts = new CancellationTokenSource();
+                }
+                else
+                {
+                    _cts = CancellationTokenSource.CreateLinkedTokenSource(token.Value);
+                }
                 _task = Task.Run(() => DoWorkAsync(_cts.Token), _cts.Token);
             }
             finally
