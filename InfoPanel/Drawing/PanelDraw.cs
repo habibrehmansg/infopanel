@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
+using System.Linq;
 
 namespace InfoPanel.Drawing
 {
@@ -186,7 +187,7 @@ namespace InfoPanel.Drawing
             {
                 case GroupDisplayItem groupDisplayItem:
                     {
-                        foreach (var item in groupDisplayItem.DisplayItems)
+                        foreach (var item in groupDisplayItem.DisplayItems.ToList())
                         {
                             if (item.Hidden) continue;
                             Draw(g, preview, scale, cache, cacheHint, item, selectedRectangles);
