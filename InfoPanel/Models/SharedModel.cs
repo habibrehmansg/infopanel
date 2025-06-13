@@ -43,36 +43,6 @@ namespace InfoPanel
             }
         }
 
-        private bool _turingPanelRunning = false;
-
-        public bool TuringPanelRunning
-        {
-            get { return _turingPanelRunning; }
-            set
-            {
-                SetProperty(ref _turingPanelRunning, value);
-            }
-        }
-
-        private int _turingPanelFrameRate = 0;
-        public int TuringPanelFrameRate
-        {
-            get { return _turingPanelFrameRate; }
-            set
-            {
-                SetProperty(ref _turingPanelFrameRate, value);
-            }
-        }
-
-        private long _turingPanelFrameTime = 0;
-        public long TuringPanelFrameTime
-        {
-            get { return _turingPanelFrameTime; }
-            set
-            {
-                SetProperty(ref _turingPanelFrameTime, value);
-            }
-        }
 
         private bool _turingPanelARunning = false;
 

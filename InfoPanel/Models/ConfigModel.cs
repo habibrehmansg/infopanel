@@ -19,6 +19,7 @@ using System.Xml;
 using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
 using Timer = System.Threading.Timer;
+using InfoPanel.Services;
 
 namespace InfoPanel
 {
@@ -189,9 +190,9 @@ namespace InfoPanel
                     await LibreMonitor.Instance.StartAsync();
                 }
             }
-            else if (e.PropertyName == nameof(Settings.TuringPanel))
+            else if (e.PropertyName == nameof(Settings.TuringPanelMultiDeviceMode))
             {
-                if (Settings.TuringPanel)
+                if (Settings.TuringPanelMultiDeviceMode)
                 {
                     await TuringPanelTask.Instance.StartAsync();
                 }
@@ -427,12 +428,6 @@ namespace InfoPanel
                             Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
                             Settings.Version = settings.Version;
 
-
-                            Settings.TuringPanel = settings.TuringPanel;
-                            Settings.TuringPanelProfile = settings.TuringPanelProfile;
-                            Settings.TuringPanelRotation = settings.TuringPanelRotation;
-                            Settings.TuringPanelBrightness = settings.TuringPanelBrightness;
-
                             Settings.TuringPanelA = settings.TuringPanelA;
                             Settings.TuringPanelAProfile = settings.TuringPanelAProfile;
                             Settings.TuringPanelAPort = settings.TuringPanelAPort;
@@ -459,6 +454,14 @@ namespace InfoPanel
                             foreach (var device in settings.BeadaPanelDevices)
                             {
                                 Settings.BeadaPanelDevices.Add(device);
+                            }
+
+                            Settings.TuringPanelMultiDeviceMode = settings.TuringPanelMultiDeviceMode;
+
+                            Settings.TuringPanelDevices.Clear();
+                            foreach (var device in settings.TuringPanelDevices)
+                            {
+                                Settings.TuringPanelDevices.Add(device);
                             }
                         }
 

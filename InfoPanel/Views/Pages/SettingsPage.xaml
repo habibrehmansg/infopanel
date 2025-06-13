@@ -626,8 +626,8 @@
                         <!--  end BeadaPanel Device Management  -->
                     </ui:CardExpander>
 
-                    <!--  start TuringPanelUSB settings  -->
-                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
+                    <!--  start TuringPanel Multi-Device settings  -->
+                    <ui:CardControl Margin="0,10,0,0" Icon="WindowMultiple20">
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -638,109 +638,218 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="Turing Smart Screen 8.8&quot; REV 1.1 " />
+                                        Text="Turing Smart Screen 8.8&quot; REV 1.1" />
                                     <TextBlock
                                         Margin="0,5,0,0"
                                         FontSize="12"
                                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Non-serial model after April 2025" />
-                                    <!--  start display status  -->
-                                    <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanel, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel
-                                            Margin="0,5,0,0"
-                                            Orientation="Horizontal"
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="Panel is running:" />
-                                            <TextBlock
-                                                Margin="10,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelFrameRate, StringFormat={}{0} FPS}" />
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelFrameTime, StringFormat={} @ {0}ms}" />
-                                        </StackPanel>
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Orange"
-                                            Text="Display is not running. Check your usb connection and try again."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-                                    </StackPanel>
-                                    <!--  end display status  -->
+                                        Text="Non-serial model after April 2025. Enable for Multi-Device mode." />
                                 </StackPanel>
                             </Grid>
                         </ui:CardControl.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <StackPanel Margin="10,0,0,0">
-                                <!--  start profile  -->
-                                <ComboBox
-                                    Width="300"
-                                    Margin="0,0,0,0"
-                                    DisplayMemberPath="Name"
-                                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                                    SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelProfile}"
-                                    SelectedValuePath="Guid" />
-                                <!--  end profile  -->
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <!--  start rotation  -->
-                                    <ComboBox
-                                        Margin="0,0,10,0"
-                                        ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                        SelectedItem="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelRotation}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <!--  end rotation  -->
-                                    <!--  start brightness  -->
-                                    <StackPanel Grid.Column="1" Margin="0,0,0,0">
-                                        <Slider
-                                            Margin="0,0,0,0"
-                                            IsSnapToTickEnabled="True"
-                                            Maximum="100"
-                                            Minimum="0"
-                                            TickFrequency="1"
-                                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelBrightness}" />
-                                        <Grid Margin="0,0,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="Brightness" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelBrightness}" />
-                                        </Grid>
-                                    </StackPanel>
-                                    <!--  end brightness  -->
-                                </Grid>
-                            </StackPanel>
-                            <!--  start enable  -->
-                            <ui:ToggleSwitch Margin="20,0,0,0" IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanel}" />
-                            <!--  end enable  -->
-                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ui:ToggleSwitch
+                                Grid.Column="1"
+                                Margin="20,0,0,0"
+                                IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelMultiDeviceMode}" />
+                        </Grid>
                     </ui:CardControl>
-                    <!--  end TuringPanelUSB settings  -->
+
+                    <ui:CardExpander
+                        Margin="0,10,0,0"
+                        Icon="Whiteboard24"
+                        IsExpanded="True"
+                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ui:CardExpander.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        FontSize="13"
+                                        FontWeight="Medium"
+                                        Text="TuringPanel Displays" />
+                                    <TextBlock
+                                        Margin="0,5,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="Configure and run multiple TuringPanel devices simultaneously." />
+                                </StackPanel>
+                            </Grid>
+                        </ui:CardExpander.Header>
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <ui:Button
+                                    Grid.Column="1"
+                                    Margin="0,0,0,0"
+                                    HorizontalAlignment="Right"
+                                    Appearance="Primary"
+                                    Click="ButtonDiscoverTuringPanelDevices_Click"
+                                    Content="Discover Devices"
+                                    Icon="Search20"
+                                    Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </Grid>
+
+                            <!--  TuringPanel Device List  -->
+                            <ItemsControl Margin="0,0,0,0" ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelDevices}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <ui:CardControl Margin="0,0,0,10">
+                                            <ui:CardControl.Header>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock FontSize="13" FontWeight="Medium">
+                                                            <TextBlock.Text>
+                                                                <MultiBinding StringFormat="{}{0}">
+                                                                    <Binding Path="RuntimeProperties.Name" />
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
+
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                            Text="{Binding DeviceId}" />
+
+                                                        <!--  Panel status when enabled  -->
+                                                        <StackPanel Visibility="{Binding Enabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <!--  Show when running  -->
+                                                            <StackPanel
+                                                                Margin="0,5,0,0"
+                                                                Orientation="Horizontal"
+                                                                Visibility="{Binding RuntimeProperties.IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <TextBlock
+                                                                    Margin="0,0,0,0"
+                                                                    FontSize="12"
+                                                                    Foreground="LawnGreen"
+                                                                    Text="Panel is running:" />
+                                                                <TextBlock
+                                                                    Margin="10,0,0,0"
+                                                                    FontSize="12"
+                                                                    Foreground="LawnGreen"
+                                                                    Text="{Binding RuntimeProperties.FrameRate, StringFormat='{}{0} FPS'}" />
+                                                                <TextBlock
+                                                                    Margin="0,0,0,0"
+                                                                    FontSize="12"
+                                                                    Foreground="LawnGreen"
+                                                                    Text="{Binding RuntimeProperties.FrameTime, StringFormat=' @ {0}ms'}" />
+                                                            </StackPanel>
+
+                                                            <!--  Show when not running  -->
+                                                            <TextBlock
+                                                                Margin="0,5,0,0"
+                                                                FontSize="12"
+                                                                Foreground="Orange"
+                                                                Text="Display is not running. Check your USB connection and try again."
+                                                                Visibility="{Binding RuntimeProperties.IsRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </ui:CardControl.Header>
+                                            <StackPanel Orientation="Horizontal">
+                                                <StackPanel Margin="10,0,0,0">
+                                                    <!--  Profile selection  -->
+                                                    <ComboBox
+                                                        Width="300"
+                                                        Margin="0,0,0,0"
+                                                        DisplayMemberPath="Name"
+                                                        ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                                        SelectedValue="{Binding ProfileGuid}"
+                                                        SelectedValuePath="Guid" />
+                                                    <Grid Margin="0,10,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <!--  Rotation  -->
+                                                        <ComboBox
+                                                            Margin="0,0,10,0"
+                                                            ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
+                                                            SelectedItem="{Binding Rotation}">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
+                                                        <!--  Brightness  -->
+                                                        <StackPanel Grid.Column="1" Margin="0,0,0,0">
+                                                            <Slider
+                                                                Margin="0,0,0,0"
+                                                                IsSnapToTickEnabled="True"
+                                                                Maximum="100"
+                                                                Minimum="0"
+                                                                TickFrequency="1"
+                                                                Value="{Binding Brightness}" />
+                                                            <Grid Margin="0,0,0,0">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock
+                                                                    Margin="5,0,0,0"
+                                                                    FontSize="12"
+                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                    Text="Brightness" />
+                                                                <TextBlock
+                                                                    Grid.Column="1"
+                                                                    Margin="5,0,0,0"
+                                                                    FontSize="12"
+                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                    Text="{Binding Brightness}" />
+                                                            </Grid>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </StackPanel>
+                                                <Grid Margin="20,0,0,0">
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="*" />
+                                                        <RowDefinition Height="*" />
+                                                    </Grid.RowDefinitions>
+                                                    <!--  Enable toggle  -->
+                                                    <ui:ToggleSwitch
+                                                        Margin="0,0,0,0"
+                                                        VerticalAlignment="Center"
+                                                        IsChecked="{Binding Enabled}" />
+                                                    <!--  Remove button  -->
+                                                    <ui:Button
+                                                        Grid.Row="1"
+                                                        Width="32"
+                                                        Height="32"
+                                                        Margin="0,10,0,0"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Bottom"
+                                                        Appearance="Danger"
+                                                        BorderThickness="0"
+                                                        Click="ButtonRemoveTuringPanelDevice_Click"
+                                                        Icon="Delete20"
+                                                        Tag="{Binding}"
+                                                        ToolTip="Remove Device" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </ui:CardControl>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <!--  end TuringPanel Device Management  -->
+                    </ui:CardExpander>
+                    <!--  end TuringPanel Multi-Device settings  -->
 
                     <!--  start TuringPanelA settings  -->
                     <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">

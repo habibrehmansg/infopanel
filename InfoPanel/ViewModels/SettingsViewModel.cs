@@ -43,6 +43,11 @@ namespace InfoPanel.ViewModels
             get { return ConfigModel.Instance.Settings.BeadaPanelDevices; }
         }
 
+        public ObservableCollection<TuringPanelDevice> RuntimeTuringPanelDevices
+        {
+            get { return ConfigModel.Instance.Settings.TuringPanelDevices; }
+        }
+
         public void OnNavigatedFrom()
         {
         }

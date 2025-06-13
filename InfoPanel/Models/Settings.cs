@@ -45,17 +45,15 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _beadaPanelMultiDeviceMode = false;
 
-        [ObservableProperty]
-        private bool _turingPanel = false;
+        private readonly ObservableCollection<TuringPanelDevice> _turingPanelDevices = [];
+
+        public ObservableCollection<TuringPanelDevice> TuringPanelDevices
+        {
+            get { return _turingPanelDevices; }
+        }
 
         [ObservableProperty]
-        private Guid _turingPanelProfile = Guid.Empty;
-
-        [ObservableProperty]
-        private LCD_ROTATION _turingPanelRotation = 0;
-
-        [ObservableProperty]
-        private int _turingPanelBrightness = 100;
+        private bool _turingPanelMultiDeviceMode = false;
 
         [ObservableProperty]
         private bool _turingPanelA = false;
@@ -126,6 +124,7 @@ namespace InfoPanel.Models
         public Settings()
         {
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
+            TuringPanelDevices.CollectionChanged += TuringPanelDevices_CollectionChanged;
         }
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -149,11 +148,40 @@ namespace InfoPanel.Models
             OnPropertyChanged(nameof(BeadaPanelDevices));
         }
 
+        private void TuringPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if(e.OldItems != null)
+            {
+                foreach(TuringPanelDevice device in e.OldItems)
+                {
+                    device.PropertyChanged -= TuringDevice_PropertyChanged;
+                }
+            }
+
+            if(e.NewItems != null)
+            {
+                foreach(TuringPanelDevice device in e.NewItems)
+                {
+                    device.PropertyChanged += TuringDevice_PropertyChanged;
+                }
+            }
+
+            OnPropertyChanged(nameof(TuringPanelDevices));
+        }
+
         private void Device_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(BeadaPanelDevice.RuntimeProperties))
             {
                 OnPropertyChanged(nameof(BeadaPanelDevices));
+            }
+        }
+
+        private void TuringDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(TuringPanelDevice.RuntimeProperties))
+            {
+                OnPropertyChanged(nameof(TuringPanelDevices));
             }
         }
     }

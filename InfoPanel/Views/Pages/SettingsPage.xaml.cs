@@ -1,5 +1,6 @@
 ﻿using InfoPanel.BeadaPanel;
 using InfoPanel.Models;
+using InfoPanel.Services;
 using InfoPanel.ViewModels;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
@@ -113,6 +114,7 @@ namespace InfoPanel.Views.Pages
         private async void SettingsPage_Loaded(object sender, RoutedEventArgs e)
         {
             await UpdateBeadaPanelDeviceList();
+            await UpdateTuringPanelDeviceList();
         }
 
         private void DebounceTimer_Elapsed(object? sender, ElapsedEventArgs e)
@@ -288,8 +290,94 @@ namespace InfoPanel.Views.Pages
                             _ = BeadaPanelTask.Instance.StopDevice(deviceConfig.Id);
                         }
 
-                        ConfigModel.Instance.Settings.BeadaPanelDevices.Remove(deviceConfig);
-                        ConfigModel.Instance.SaveSettings();
+                        settings.BeadaPanelDevices.Remove(deviceConfig);
+                    }
+                });
+            }
+        }
+
+        private async Task UpdateTuringPanelDeviceList()
+        {
+            int vendorId = 0x1cbe;
+            int productId = 0x0088;
+
+            var allDevices = UsbDevice.AllDevices;
+            Logger.Information("TuringPanel Discovery: Scanning {Count} USB devices for VID={VendorId:X4} PID={ProductId:X4}", allDevices.Count, vendorId, productId);
+
+            foreach (UsbRegistry deviceReg in allDevices)
+            {
+                if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
+                {
+                    var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
+                    var deviceLocation = deviceReg.DeviceProperties["LocationInformation"] as string;
+
+                    if (string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
+                    {
+                        Log.Warning("TuringDevice Discovery: Skipping device with missing properties - DeviceID: '{DeviceId}', LocationInformation: '{DeviceLocation}'", deviceId, deviceLocation);
+                        continue;
+                    }
+
+                    Logger.Information("TuringPanel Discovery: Found matching device - DeviceId: '{DeviceId}', DevicePath: '{DevicePath}'", deviceId, deviceReg.DevicePath);
+
+                    try
+                    {
+                        ConfigModel.Instance.AccessSettings(settings =>
+                        {
+                            var device = settings.TuringPanelDevices.FirstOrDefault(d => d.IsMatching(deviceId));
+
+                            if (device == null)
+                            {
+                                device = new TuringPanelDevice()
+                                {
+                                    DeviceId = deviceId,
+                                    DeviceLocation = deviceLocation,
+                                    ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty,
+                                    RuntimeProperties = new TuringPanelDevice.TuringPanelDeviceRuntimeProperties()
+                                };
+
+                                settings.TuringPanelDevices.Add(device);
+                                Logger.Information("TuringPanel Discovery: Added new device with DeviceId '{DeviceId}'", deviceId);
+                            }
+                            else
+                            {
+                                Logger.Information("TuringPanel Discovery: Device with DeviceId '{DeviceId}' already exists", deviceId);
+                            }
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex, "Error discovering TuringPanel device");
+                    }
+                }
+            }
+        }
+
+        private async void ButtonDiscoverTuringPanelDevices_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button)
+            {
+                button.IsEnabled = false;
+                await UpdateTuringPanelDeviceList();
+                button.IsEnabled = true;
+            }
+        }
+
+        private void ButtonRemoveTuringPanelDevice_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is TuringPanelDevice runtimeDevice)
+            {
+                ConfigModel.Instance.AccessSettings(settings =>
+                {
+                    var deviceConfig = settings.TuringPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                    if (deviceConfig != null)
+                    {
+                        if (TuringPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                        {
+                            _ = TuringPanelTask.Instance.StopDevice(deviceConfig.Id);
+                        }
+
+                        settings.TuringPanelDevices.Remove(deviceConfig);
                     }
                 });
             }

@@ -1,252 +1,152 @@
-﻿using InfoPanel.Extensions;
 using InfoPanel.Models;
-using InfoPanel.TuringPanel;
-using InfoPanel.Utils;
-using SkiaSharp;
+using Serilog;
 using System;
 using System.Collections.Concurrent;
-using Serilog;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Diagnostics;
 
-namespace InfoPanel
+namespace InfoPanel.Services
 {
     public sealed class TuringPanelTask : BackgroundTask
     {
         private static readonly ILogger Logger = Log.ForContext<TuringPanelTask>();
         private static readonly Lazy<TuringPanelTask> _instance = new(() => new TuringPanelTask());
-
-        private readonly int _panelWidth = 480;
-        private readonly int _panelHeight = 1920;
+        
+        private readonly ConcurrentDictionary<string, TuringPanelDeviceTask> _deviceTasks = new();
 
         public static TuringPanelTask Instance => _instance.Value;
 
         private TuringPanelTask() { }
 
-        private static int _maxSize = 1024 * 1024; // 1MB
-        private DateTime _downgradeRenderingUntil = DateTime.MinValue;
-
-        public byte[]? GenerateLcdBuffer()
+        public async Task StartDevice(TuringPanelDevice device)
         {
-            var profileGuid = ConfigModel.Instance.Settings.TuringPanelProfile;
-
-            if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
+            if(_deviceTasks.TryGetValue(device.Id, out var task))
             {
-                var rotation = ConfigModel.Instance.Settings.TuringPanelRotation;
-                using var bitmap = PanelDrawTask.RenderSK(profile, false,
-                    colorType: DateTime.Now > _downgradeRenderingUntil ? SKColorType.Rgba8888 : SKColorType.Argb4444);
-
-                using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
-
-                var options = new SKPngEncoderOptions(
-                        filterFlags: SKPngEncoderFilterFlags.NoFilters,
-                        zLibLevel: 3
-                        );
-
-                using var pixmap = resizedBitmap.PeekPixels();
-                using var data = pixmap.Encode(options);
-
-                if (data == null || data.IsEmpty)
-                {
-                    Logger.Error("Failed to encode bitmap to PNG");
-                    return null;
-                }
-
-                //using var data = resizedBitmap.Encode(SKEncodedImageFormat.Png, 100);
-                var result = data.ToArray();
-
-                if (resizedBitmap.ColorType != SKColorType.Argb4444 && result.Length > _maxSize)
-                {
-                    Logger.Warning("Downgrading rendering to ARGB4444 due to size constraints. Size: {Size} bytes, max: {MaxSize} bytes", result.Length, _maxSize);
-                    DateTime now = DateTime.Now;
-                    DateTime targetTime = now.AddSeconds(10);
-                    _downgradeRenderingUntil = targetTime;
-                    return null;
-                }
-                else if (result.Length > _maxSize)
-                {
-                    result = DownscaleUpscaleAndEncode(resizedBitmap);
-                }
-
-                //Trace.WriteLine($"Size: {result.Length / 1024}kb");
-                return result;
+                await task.StopAsync();
+                _deviceTasks.TryRemove(device.Id, out _);
             }
 
-            return null;
+            var deviceTask = new TuringPanelDeviceTask(device);
+            if (_deviceTasks.TryAdd(device.Id, deviceTask))
+            {
+                await deviceTask.StartAsync(CancellationToken);
+                Logger.Information("Started TuringPanel device {Device}", device);
+            }
         }
 
-        private static byte[]? DownscaleUpscaleAndEncode(SKBitmap original, float scale = 0.5f)
+        public async Task StopDevice(string deviceId)
         {
-            int downWidth = (int)(original.Width * scale);
-            int downHeight = (int)(original.Height * scale);
-
-            using var downscaled = original.Resize(new SKImageInfo(downWidth, downHeight), SKSamplingOptions.Default);
-            using var upscaled = downscaled.Resize(new SKImageInfo(original.Width, original.Height), SKSamplingOptions.Default);
-
-            var options = new SKPngEncoderOptions(
-                      filterFlags: SKPngEncoderFilterFlags.NoFilters,
-                      zLibLevel: 3
-                      );
-
-            using var pixmap = upscaled.PeekPixels();
-            using var data = pixmap.Encode(options);
-
-            if (data == null || data.IsEmpty)
+            if (_deviceTasks.TryRemove(deviceId, out var deviceTask))
             {
-                Log.Error("Failed to encode bitmap to PNG");
-                return null;
+                await deviceTask.StopAsync();
+                Logger.Information("Stopped TuringPanel device {DeviceId}", deviceId);
             }
-            return data.ToArray();
+        }
+
+        public async Task StopAllDevices()
+        {
+            var tasks = new List<Task>();
+            
+            foreach (var kvp in _deviceTasks.ToList())
+            {
+                if (_deviceTasks.TryRemove(kvp.Key, out var deviceTask))
+                {
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        await deviceTask.StopAsync();
+                    }));
+                }
+            }
+
+            await Task.WhenAll(tasks);
+            Logger.Information("Stopped all TuringPanel devices");
+        }
+
+        public bool IsDeviceRunning(string deviceId)
+        {
+            if(_deviceTasks.TryGetValue(deviceId, out var task))
+            {
+                return task.IsRunning;
+            }
+
+            return false;
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
+
             try
             {
-                using var device = new TuringDevice();
-
-                if (!device.Initialize())
-                {
-                    Log.Error("Failed to initialize the Turing Panel device");
-                    return;
-                }
+                var settings = ConfigModel.Instance.Settings;
                 
-                Log.Information("TuringPanel device initialized successfully");
-                SharedModel.Instance.TuringPanelRunning = true;
+                Logger.Debug("TuringPanel: DoWorkAsync starting - MultiDeviceMode: {MultiDeviceMode}", 
+                    settings.TuringPanelMultiDeviceMode);
 
-                try
+                if (settings.TuringPanelMultiDeviceMode)
                 {
-                    device.DelaySync();
-                    device.DelaySync();
-
-                    //set brightness
-                    var brightness = ConfigModel.Instance.Settings.TuringPanelBrightness;
-                    device.SendBrightnessCommand((byte)brightness);
-
-                    device.DelaySync();
-
-                    FpsCounter fpsCounter = new(60);
-                    byte[]? _latestFrame = null;
-                    AutoResetEvent _frameAvailable = new(false);
-
-                    var frameBufferPool = new ConcurrentBag<byte[]>();
-
-                    var renderTask = Task.Run(async () =>
-                    {
-                        var stopwatch1 = new Stopwatch();
-
-                        while (!token.IsCancellationRequested)
-                        {
-                            stopwatch1.Restart();
-                            var frame = GenerateLcdBuffer();
-
-                            if (frame != null)
-                            {
-                                var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
-                                _frameAvailable.Set();
-                            }
-
-                            var targetFrameTime = 1000 / ConfigModel.Instance.Settings.TargetFrameRate;
-                            var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
-                            var adaptiveFrameTime = 0;
-
-                            var elapsedMs = (int)stopwatch1.ElapsedMilliseconds;
-
-                            //Trace.WriteLine($"elapsed={elapsedMs}ms");
-
-                            if (elapsedMs < desiredFrameTime)
-                            {
-                                adaptiveFrameTime = desiredFrameTime - elapsedMs;
-                            }
-
-                            if (adaptiveFrameTime > 0)
-                            {
-                                await Task.Delay(adaptiveFrameTime, token);
-                            }
-                        }
-                    }, token);
-
-                    var sendTask = Task.Run(() =>
-                    {
-                        var stopwatch2 = new Stopwatch();
-
-                        while (!token.IsCancellationRequested)
-                        {
-                            if (brightness != ConfigModel.Instance.Settings.TuringPanelBrightness)
-                            {
-                                brightness = ConfigModel.Instance.Settings.TuringPanelBrightness;
-                                device.SendBrightnessCommand((byte)brightness);
-                                device.DelaySync();
-                            }
-
-                            if (_frameAvailable.WaitOne(100))
-                            {
-                                var frame = Interlocked.Exchange(ref _latestFrame, null);
-                                if (frame != null)
-                                {
-                                    stopwatch2.Restart();
-                                    SendPngBytes(device, frame);
-                                    device.ReadFlush();
-
-                                    fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
-                                    SharedModel.Instance.TuringPanelFrameRate = fpsCounter.FramesPerSecond;
-                                    SharedModel.Instance.TuringPanelFrameTime = fpsCounter.FrameTime;
-                                }
-                            }
-                        }
-                    }, token);
-
-
-                    await Task.WhenAll(renderTask, sendTask);
+                    await RunMultiDeviceMode(token);
                 }
-                catch (TaskCanceledException)
+                else
                 {
-                    Log.Debug("TuringPanelTask cancelled");
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Exception during TuringPanelTask execution");
-                }
-                finally
-                {
-                    device.SendBrightnessCommand(0);
+                    Logger.Debug("TuringPanel: Multi-device mode is disabled. No devices will be started.");
                 }
             }
             catch (Exception e)
             {
-                Log.Error(e, "TuringPanel: Initialization error");
-            }
-            finally
-            {
-                SharedModel.Instance.TuringPanelRunning = false;
+                Logger.Error(e, "TuringPanel: Error in DoWorkAsync");
             }
         }
 
-        private static bool SendPngBytes(TuringDevice device, byte[] pngData)
+        private async Task RunMultiDeviceMode(CancellationToken token)
         {
-            int imgSize = pngData.Length;
-            byte[] cmdPacket = device.BuildCommandPacketHeader(102);
+            Logger.Debug("TuringPanel: Starting multi-device mode");
+            
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    var settings = ConfigModel.Instance.Settings;
+                    
+                    // Exit if multi-device mode was turned off
+                    if (!settings.TuringPanelMultiDeviceMode)
+                    {
+                        Logger.Debug("TuringPanel: Multi-device mode turned off, exiting loop");
+                        break;
+                    }
 
-            // Set image size in the packet (big-endian)
-            cmdPacket[8] = (byte)((imgSize >> 24) & 0xFF);
-            cmdPacket[9] = (byte)((imgSize >> 16) & 0xFF);
-            cmdPacket[10] = (byte)((imgSize >> 8) & 0xFF);
-            cmdPacket[11] = (byte)(imgSize & 0xFF);
+                    // Start enabled devices that aren't running
+                    var enabledConfigs = settings.TuringPanelDevices.Where(d => d.Enabled).ToList();
+                    
+                    foreach (var config in enabledConfigs)
+                    {
+                        var configId = config.Id;
+                        if (!IsDeviceRunning(configId))
+                        {
+                            await StartDevice(config);
+                        }
+                    }
 
-            // Encrypt the command packet
-            byte[] encryptedPacket = device.EncryptCommandPacket(cmdPacket);
+                    // Stop devices that are no longer enabled
+                    var runningDeviceIds = _deviceTasks.Keys.ToList();
+                    foreach (var deviceId in runningDeviceIds)
+                    {
+                        if (!enabledConfigs.Any(c => c.Id == deviceId))
+                        {
+                            await StopDevice(deviceId);
+                        }
+                    }
 
-            // Combine the encrypted packet with the image data
-            byte[] fullPayload = new byte[encryptedPacket.Length + pngData.Length];
-            Buffer.BlockCopy(encryptedPacket, 0, fullPayload, 0, encryptedPacket.Length);
-            Buffer.BlockCopy(pngData, 0, fullPayload, encryptedPacket.Length, pngData.Length);
-
-            // Write the payload to the device
-            return device.WriteToDevice(fullPayload);
+                    await Task.Delay(1000, token);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "TuringPanel: Error in RunMultiDeviceMode");
+                    await Task.Delay(1000, token); // Wait longer on error
+                }
+            }
         }
     }
-
-
 }

@@ -343,7 +343,7 @@ namespace InfoPanel
                 await BeadaPanelTask.Instance.StartAsync();
             }
 
-            if (ConfigModel.Instance.Settings.TuringPanel)
+            if (ConfigModel.Instance.Settings.TuringPanelMultiDeviceMode)
             {
                 await TuringPanelTask.Instance.StartAsync();
             }
