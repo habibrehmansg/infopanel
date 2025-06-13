@@ -8,6 +8,7 @@ using Svg.Skia;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Serilog;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -20,6 +21,8 @@ namespace InfoPanel.Models
 {
     public partial class LockedImage : IDisposable
     {
+        private static readonly ILogger Logger = Log.ForContext<LockedImage>();
+        
         public enum ImageType
         {
             SK, SVG, FFMPEG
@@ -174,7 +177,7 @@ namespace InfoPanel.Models
                     }
                     catch (Exception e)
                     {
-                        Trace.WriteLine(e.Message);
+                        Logger.Error(e, "Error loading image from URL");
                     }
                 }
                 else if (File.Exists(ImagePath))
@@ -187,11 +190,11 @@ namespace InfoPanel.Models
                         fileStream.Dispose();
                         _stream.Position = 0;
 
-                        Trace.WriteLine($"Image loaded from file: {ImagePath}");
+                        Logger.Debug("Image loaded from file: {ImagePath}", ImagePath);
                     }
                     catch (Exception e)
                     {
-                        Trace.WriteLine(e.Message);
+                        Logger.Error(e, "Error loading image from file");
                     }
                 }
 
@@ -222,7 +225,7 @@ namespace InfoPanel.Models
 
                     if (_codec == null)
                     {
-                        Trace.WriteLine($"Failed to create SKCodec for {ImagePath}");
+                        Log.Error("Failed to create SKCodec for {ImagePath}", ImagePath);
                         throw new ArgumentException("Unsupported image format or codec creation failed.", nameof(imagePath));
                     }
 
@@ -268,7 +271,7 @@ namespace InfoPanel.Models
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"Error initializing LockedImage: {e.Message}");
+                Log.Error(e, "Error initializing LockedImage for {ImagePath}", ImagePath);
             }
         }
 
@@ -391,13 +394,13 @@ namespace InfoPanel.Models
 
                             if (r != SKCodecResult.Success)
                             {
-                                Trace.WriteLine(r + $" i={i}");
+                                Log.Error("SKCodec error: {Result} at frame i={FrameIndex}", r, i);
                                 return null;
                             }
                         }
                         catch (Exception e)
                         {
-                            Trace.WriteLine(e.Message);
+                            Log.Error(e, "Error getting pixels from codec at frame {FrameIndex}", i);
                         }
                     }
 
@@ -503,7 +506,7 @@ namespace InfoPanel.Models
                             {
                                 EvictionCallback = (key, value, reason, state) =>
                                 {
-                                    Trace.WriteLine($"Cache entry '{key}' evicted due to {reason}.");
+                                    Log.Debug("Cache entry '{Key}' evicted due to {Reason}.", key, reason);
                                     if (value is SKImageFrameSlot[] slots)
                                     {
                                         foreach (var slot in slots)
@@ -656,7 +659,7 @@ namespace InfoPanel.Models
             {
                 foreach (var key in SKImageMemoryCache.Keys)
                 {
-                    Trace.WriteLine($"Clearing SKImageMemoryCache[{key}]");
+                    Log.Debug("Clearing SKImageMemoryCache[{Key}]", key);
                 }
                 SKImageMemoryCache.Clear();
             }
@@ -668,7 +671,7 @@ namespace InfoPanel.Models
             {
                 foreach (var key in SKGLImageMemoryCache.Keys)
                 {
-                    Trace.WriteLine($"Clearing SKGLImageMemoryCache[{key}]");
+                    Log.Debug("Clearing SKGLImageMemoryCache[{Key}]", key);
                 }
                 SKGLImageMemoryCache.Clear();
             }
@@ -706,7 +709,7 @@ namespace InfoPanel.Models
                     imageDisplayItems.Clear();
 
                     IsDisposed = true;
-                    Trace.WriteLine($"LockedImage {ImagePath} disposed.");
+                    Log.Debug("LockedImage {ImagePath} disposed.", ImagePath);
                 }
             }
 
@@ -762,7 +765,7 @@ namespace InfoPanel.Models
                 }
                 catch (Exception e)
                 {
-                    Trace.WriteLine($"Error disposing SKImage: {e.Message}");
+                    Log.Error(e, "Error disposing SKImage");
                 }
             }
 

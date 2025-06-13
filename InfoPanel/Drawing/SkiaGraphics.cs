@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Extensions;
 using InfoPanel.Models;
+using Serilog;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
@@ -12,6 +13,7 @@ namespace InfoPanel.Drawing
 {
     internal partial class SkiaGraphics(SKCanvas canvas, float fontScale): IDisposable
     {
+        private static readonly ILogger Logger = Log.ForContext<SkiaGraphics>();
         public readonly SKCanvas Canvas = canvas;
         private readonly GRContext? GRContext = canvas.Context as GRContext;
         public readonly float FontScale = fontScale; 
@@ -264,7 +266,7 @@ namespace InfoPanel.Drawing
                 return cached;
             }
 
-            Trace.WriteLine("Cache miss: " + cacheKey);
+            Logger.Debug("Typeface cache miss: {CacheKey}", cacheKey);
 
             SKTypeface? result = null;
 
@@ -327,7 +329,7 @@ namespace InfoPanel.Drawing
             if (typeface != null) return typeface;
 
             // Fallback to default
-            Console.WriteLine($"Warning: Font '{fontName}' not found, using fallback");
+            Logger.Warning("Font '{FontName}' not found, using fallback", fontName);
             return SKTypeface.FromFamilyName("Arial", fontStyle);
         }
 
@@ -388,7 +390,7 @@ namespace InfoPanel.Drawing
                     var typeface = SKTypeface.FromFamilyName(family, fontStyle);
                     if (typeface != null && !typeface.FamilyName.Equals("Segoe UI", StringComparison.OrdinalIgnoreCase))
                     {
-                        Trace.WriteLine($"Using similar font: '{family}' for requested '{requestedFont}'");
+                        Logger.Information("Using similar font: '{Family}' for requested '{RequestedFont}'", family, requestedFont);
                         return typeface;
                     }
                     typeface?.Dispose();

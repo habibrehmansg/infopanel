@@ -8,6 +8,7 @@ using InfoPanel.Utils;
 using InfoPanel.ViewModels;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
+using Serilog;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
@@ -22,6 +23,7 @@ namespace InfoPanel
 {
     public sealed class BeadaPanelTask : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<BeadaPanelTask>();
         private static readonly Lazy<BeadaPanelTask> _instance = new(() => new BeadaPanelTask());
         
         private readonly ConcurrentDictionary<string, BeadaPanelDeviceTask> _deviceTasks = new();
@@ -42,7 +44,7 @@ namespace InfoPanel
             if (_deviceTasks.TryAdd(device.Id, deviceTask))
             {
                 await deviceTask.StartAsync(CancellationToken);
-                Trace.WriteLine($"Started BeadaPanel device {device}");
+                Logger.Information("Started BeadaPanel device {Device}", device);
             }
         }
 
@@ -52,7 +54,7 @@ namespace InfoPanel
             {
                 await deviceTask.StopAsync();
                 //deviceTask.Dispose();
-                Trace.WriteLine($"Stopped BeadaPanel device {deviceId}");
+                Logger.Information("Stopped BeadaPanel device {DeviceId}", deviceId);
             }
         }
 
@@ -73,7 +75,7 @@ namespace InfoPanel
             }
 
             await Task.WhenAll(tasks);
-            Trace.WriteLine("Stopped all BeadaPanel devices");
+            Logger.Information("Stopped all BeadaPanel devices");
         }
 
         public bool IsDeviceRunning(string deviceId)
@@ -93,7 +95,7 @@ namespace InfoPanel
             {
                 var settings = ConfigModel.Instance.Settings;
                 
-                Trace.WriteLine($"BeadaPanel: DoWorkAsync starting - MultiDeviceMode: {settings.BeadaPanelMultiDeviceMode}");
+                Logger.Debug("BeadaPanel: DoWorkAsync starting - MultiDeviceMode: {MultiDeviceMode}", settings.BeadaPanelMultiDeviceMode);
 
                 if (settings.BeadaPanelMultiDeviceMode)
                 {
@@ -101,18 +103,18 @@ namespace InfoPanel
                 }
                 else
                 {
-                    Trace.WriteLine("BeadaPanel: Multi-device mode is disabled. No devices will be started.");
+                    Logger.Debug("BeadaPanel: Multi-device mode is disabled. No devices will be started.");
                 }
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"BeadaPanel: Error in DoWorkAsync: {e.Message}");
+                Logger.Error(e, "BeadaPanel: Error in DoWorkAsync");
             }
         }
 
         private async Task RunMultiDeviceMode(CancellationToken token)
         {
-            Trace.WriteLine("BeadaPanel: Starting multi-device mode");
+            Logger.Debug("BeadaPanel: Starting multi-device mode");
             
             while (!token.IsCancellationRequested)
             {
@@ -123,7 +125,7 @@ namespace InfoPanel
                     // Exit if multi-device mode was turned off
                     if (!settings.BeadaPanelMultiDeviceMode)
                     {
-                        Trace.WriteLine("BeadaPanel: Multi-device mode turned off, exiting loop");
+                        Logger.Debug("BeadaPanel: Multi-device mode turned off, exiting loop");
                         break;
                     }
 
@@ -153,7 +155,7 @@ namespace InfoPanel
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"BeadaPanel: Error in RunMultiDeviceMode: {ex.Message}");
+                    Logger.Error(ex, "BeadaPanel: Error in RunMultiDeviceMode");
                     await Task.Delay(1000, token); // Wait longer on error
                 }
             }

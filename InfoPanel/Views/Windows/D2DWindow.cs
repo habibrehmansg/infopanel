@@ -1,5 +1,5 @@
 ﻿//using System;
-//using System.Diagnostics;
+//using Serilog;
 //using System.Timers;
 //using System.Windows;
 //using System.Windows.Interop;
@@ -43,7 +43,7 @@
 //                Graphics = null;
 //            }
 
-//            Trace.WriteLine("D2DWindow closed");
+//            Log.Debug("D2DWindow closed");
 //        }
 
 //        private void D2DWindow_Loaded(object sender, RoutedEventArgs e)

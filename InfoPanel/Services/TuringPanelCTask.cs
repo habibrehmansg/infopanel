@@ -3,16 +3,18 @@ using InfoPanel.Models;
 using InfoPanel.Utils;
 using SkiaSharp;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.Threading;
 using System.Threading.Tasks;
 using TuringSmartScreenLib;
 using TuringSmartScreenLib.Helpers.SkiaSharp;
+using System.Diagnostics;
 
 namespace InfoPanel
 {
     public sealed class TuringPanelCTask : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<TuringPanelCTask>();
         private static readonly Lazy<TuringPanelCTask> _instance = new(() => new TuringPanelCTask());
         public static TuringPanelCTask Instance => _instance.Value;
 
@@ -53,11 +55,11 @@ namespace InfoPanel
 
                 if (screen == null)
                 {
-                    Trace.WriteLine("TuringPanelC: Screen not found");
+                    Logger.Warning("TuringPanelC: Screen not found on port {Port}", ConfigModel.Instance.Settings.TuringPanelCPort);
                     return;
                 }
 
-                Trace.WriteLine("TuringPanelC: Screen found");
+                Logger.Information("TuringPanelC: Screen found and initialized");
                 SharedModel.Instance.TuringPanelCRunning = true;
 
                 screen.Clear();
@@ -133,11 +135,11 @@ namespace InfoPanel
                 }
                 catch (TaskCanceledException)
                 {
-                    Trace.WriteLine("Task cancelled");
+                    Logger.Debug("TuringPanelC task cancelled");
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"Exception during work: {ex.Message}");
+                    Log.Error(ex, "Exception during TuringPanelC execution");
                 }
                 finally
                 {
@@ -147,7 +149,7 @@ namespace InfoPanel
             }
             catch (Exception e)
             {
-                Trace.WriteLine("TuringPanelC: Init error");
+                Log.Error(e, "TuringPanelC: Initialization error");
             }finally
             {
                 SharedModel.Instance.TuringPanelCRunning = false;

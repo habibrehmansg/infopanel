@@ -1,5 +1,6 @@
 ﻿using InfoPanel.BeadaPanel.StatusLink;
 using InfoPanel.Extensions;
+using Serilog;
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -9,11 +10,12 @@ namespace InfoPanel.BeadaPanel
 {
     class BeadaPanelParser
     {
+        private static readonly ILogger Logger = Log.ForContext<BeadaPanelParser>();
         public static BeadaPanelInfo? ParsePanelInfoResponse(byte[] responseBuffer)
         {
             if (responseBuffer == null || responseBuffer.Length < 100)
             {
-                Trace.WriteLine("Invalid or incomplete response buffer.");
+                Logger.Warning("Invalid or incomplete response buffer");
                 return null;
             }
 
@@ -21,7 +23,7 @@ namespace InfoPanel.BeadaPanel
             string protocol = Encoding.ASCII.GetString(responseBuffer, 0, 11);
             if (protocol != "STATUS-LINK")
             {
-                Trace.WriteLine("Invalid protocol header.");
+                Logger.Warning("Invalid protocol header in BeadaPanel response");
                 return null;
             }
 
@@ -29,7 +31,7 @@ namespace InfoPanel.BeadaPanel
             byte type = responseBuffer[12];
             if (type != (byte)StatusLinkMessageType.GetPanelInfo)
             {
-                Trace.WriteLine($"Unexpected message type: {type}");
+                Logger.Warning("Unexpected message type in BeadaPanel response: {Type}", type);
                 return null;
             }
 
@@ -58,13 +60,13 @@ namespace InfoPanel.BeadaPanel
 
             if(!Enum.TryParse<BeadaPanelModel>(modelByte.ToString(), out BeadaPanelModel model))
             {
-                Trace.WriteLine($"Invalid model byte: {modelByte}");
+                Log.Warning("Invalid model byte in BeadaPanel response: {ModelByte}", modelByte);
                 return null;
             }
 
             if(!BeadaPanelModelDatabase.Models.TryGetValue(model, out BeadaPanelModelInfo? modelInfo))
             {
-                Trace.WriteLine($"Model not recognized: {model}");
+                Log.Warning("BeadaPanel model not recognized: {Model}", model);
                 return null;
             }
 

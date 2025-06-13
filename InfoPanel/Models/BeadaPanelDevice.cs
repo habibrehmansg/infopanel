@@ -3,7 +3,7 @@ using InfoPanel.BeadaPanel;
 using InfoPanel.ViewModels;
 using Org.BouncyCastle.Bcpg.OpenPgp;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.Linq;
 using System.Windows.Threading;
 
@@ -11,6 +11,8 @@ namespace InfoPanel.Models
 {
     public partial class BeadaPanelDevice : ObservableObject
     {
+        private static readonly ILogger Logger = Log.ForContext<BeadaPanelDevice>();
+        
         // Configuration properties
         [ObservableProperty]
         private string _deviceId = string.Empty;
@@ -56,57 +58,53 @@ namespace InfoPanel.Models
 
         public bool IsMatching(string deviceId, string deviceLocation, BeadaPanelInfo panelInfo)
         {
+            string matchRule = "None";
+            bool matched = false;
+            
             // priority 1: match by serial
             if (!string.IsNullOrEmpty(panelInfo.SerialNumber) && DeviceId.EndsWith(panelInfo.SerialNumber)){
-                Trace.WriteLine($"BeadaPanel {panelInfo.ModelInfo.Name} device matched by SerialNumber: {panelInfo.SerialNumber}");
-                return true;
+                matchRule = "SerialNumber";
+                matched = true;
             }
-
             // priority 2: match by deviceId and location and model;
-            if (DeviceId.Equals(deviceId) && DeviceLocation.Equals(deviceLocation) && Model.Equals(panelInfo.Model))
+            else if (DeviceId.Equals(deviceId) && DeviceLocation.Equals(deviceLocation) && Model.Equals(panelInfo.Model))
             {
-                Trace.WriteLine($"BeadaPanel {panelInfo.ModelInfo.Name} device matched by DeviceId: {DeviceId} & DeviceLocation: {DeviceLocation} & model.");
-                return true;
+                matchRule = "DeviceId+Location+Model";
+                matched = true;
             }
-
             // priority 3: match by deviceId and port (location without hub) and model
-            string port = deviceLocation.Split('.').FirstOrDefault() ?? string.Empty;
-            if (DeviceId.Equals(deviceId) && DevicePort.Equals(port) && Model.Equals(panelInfo.Model))
+            else
             {
-                Trace.WriteLine($"BeadaPanel {panelInfo.ModelInfo.Name} device matched by DeviceId: {DeviceId} & Port: {DevicePort} & model");
-                return true;
+                string port = deviceLocation.Split('.').FirstOrDefault() ?? string.Empty;
+                if (DeviceId.Equals(deviceId) && DevicePort.Equals(port) && Model.Equals(panelInfo.Model))
+                {
+                    matchRule = "DeviceId+Port+Model";
+                    matched = true;
+                }
+                // priority 4: match by deviceId and port
+                else if (DeviceId.Equals(deviceId) && DevicePort.Equals(port))
+                {
+                    matchRule = "DeviceId+Port";
+                    matched = true;
+                }
+                // priority 5: match by deviceId and location
+                else if (DeviceId.Equals(deviceId) && DeviceLocation.Equals(deviceLocation))
+                {
+                    matchRule = "DeviceId+Location";
+                    matched = true;
+                }
+                // fallback: match by deviceId only
+                else if (DeviceId.Equals(deviceId))
+                {
+                    matchRule = "DeviceId";
+                    matched = true;
+                }
             }
-
-            // priority 4: match by deviceId and model
-            if (DeviceId.Equals(deviceId) && DevicePort.Equals(port))
-            {
-                Trace.WriteLine($"BeadaPanel {panelInfo.ModelInfo.Name} device matched by DeviceId: {DeviceId} & Port: {DevicePort} & model");
-                return true;
-            }
-
-            // priority 5: match by deviceId and location;
-            if (DeviceId.Equals(deviceId) && DeviceLocation.Equals(deviceLocation) && Model.Equals(panelInfo.Model))
-            {
-                Trace.WriteLine($"BeadaPanel {panelInfo.ModelInfo.Name} device matched by DeviceId: {DeviceId} & DeviceLocation: {DeviceLocation}");
-                return true;
-            }
-
-            // priority 6: match by deviceId and port (location without hub)
-            if (DeviceId.Equals(deviceId) && DevicePort.Equals(port))
-            {
-                Trace.WriteLine($"BeadaPanel {panelInfo.ModelInfo.Name} device matched by DeviceId: {DeviceId} & Port: {DevicePort}");
-                return true;
-            }
-
-            // fallback: match by deviceId only
-            if (DeviceId.Equals(deviceId))
-            {
-                Trace.WriteLine($"BeadaPanel {panelInfo.ModelInfo.Name} device matched by DeviceId: {DeviceId}");
-                return true;
-            }
-
-            Trace.WriteLine($"BeadaPanel device with DeviceId: {DeviceId} did not match.");
-            return false;
+            
+            Logger.Debug("BeadaPanel {PanelName} match result: {Matched}, Rule: {MatchRule}, DeviceId: {DeviceId}, Location: {Location}", 
+                panelInfo.ModelInfo.Name, matched, matchRule, DeviceId, deviceLocation);
+            
+            return matched;
         }
 
         private DateTime _lastUpdate = DateTime.MinValue;

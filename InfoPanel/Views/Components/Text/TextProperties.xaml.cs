@@ -2,7 +2,7 @@
 using InfoPanel.Models;
 using SkiaSharp;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
+using Serilog;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,6 +19,7 @@ namespace InfoPanel.Views.Components
 
     public partial class TextProperties : UserControl
     {
+        private static readonly ILogger Logger = Log.ForContext<TextProperties>();
         public static readonly DependencyProperty ItemProperty =
         DependencyProperty.Register("TextDisplayItem", typeof(TextDisplayItem), typeof(TextProperties));
 
@@ -75,7 +76,7 @@ namespace InfoPanel.Views.Components
 
         private static void OnCurrentFontChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            Trace.WriteLine($"OnCurrentFontChanged newValue: {e.NewValue}");
+            Logger.Debug("OnCurrentFontChanged newValue: {NewValue}", e.NewValue);
             var control = (TextProperties)d;
             var item = (TextDisplayItem)control.GetValue(ItemProperty);
 
@@ -145,7 +146,7 @@ namespace InfoPanel.Views.Components
 
         private static void OnCurrentFontStyleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            Trace.WriteLine($"OnCurrentFontStyleChanged newValue: {e.NewValue}");
+            Logger.Debug("OnCurrentFontStyleChanged newValue: {NewValue}", e.NewValue);
             var control = (TextProperties)d;
             var item = (TextDisplayItem)control.GetValue(ItemProperty);
 

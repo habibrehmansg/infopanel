@@ -10,7 +10,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
+using Serilog;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -27,6 +27,7 @@ namespace InfoPanel
 {
     public partial class SharedModel : ObservableObject
     {
+        private static readonly ILogger Logger = Log.ForContext<SharedModel>();
         private static readonly Lazy<SharedModel> lazy = new(() => new SharedModel());
 
         public static SharedModel Instance { get { return lazy.Value; } }
@@ -1395,7 +1396,7 @@ namespace InfoPanel
                                             sensorDisplayItem.Id = hash.ParentID;
                                             sensorDisplayItem.Instance = hash.ParentInstance;
                                             sensorDisplayItem.EntryId = hash.SensorID;
-                                            Trace.WriteLine("Smart imported " + hash.NameDefault);
+                                            Logger.Information("Smart imported {SensorName}", hash.NameDefault);
                                         }
                                     }
                                 }
@@ -1409,7 +1410,7 @@ namespace InfoPanel
                                             chartDisplayItem.Id = hash.ParentID;
                                             chartDisplayItem.Instance = hash.ParentInstance;
                                             chartDisplayItem.EntryId = hash.SensorID;
-                                            Trace.WriteLine("Smart imported " + hash.NameDefault);
+                                            Logger.Information("Smart imported {SensorName}", hash.NameDefault);
                                         }
                                     }
                                 }
@@ -1423,7 +1424,7 @@ namespace InfoPanel
                                             gaugeDisplayItem.Id = hash.ParentID;
                                             gaugeDisplayItem.Instance = hash.ParentInstance;
                                             gaugeDisplayItem.EntryId = hash.SensorID;
-                                            Trace.WriteLine("Smart imported " + hash.NameDefault);
+                                            Logger.Information("Smart imported {SensorName}", hash.NameDefault);
                                         }
                                     }
                                 }

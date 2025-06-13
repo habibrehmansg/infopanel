@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using SkiaSharp;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -13,6 +13,7 @@ namespace InfoPanel
 {
     public sealed class WebServerTask : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<WebServerTask>();
         private static readonly Lazy<WebServerTask> _instance = new(() => new WebServerTask());
 
         public static WebServerTask Instance => _instance.Value;
@@ -293,6 +294,7 @@ namespace InfoPanel
                 {
                     if (int.TryParse(context.Request.RouteValues["id"]?.ToString(), out int id) && id < ConfigModel.Instance.Profiles.Count)
                     {
+                        Logger.Debug("WebServer: Serving image for profile {ProfileId}", id);
                         var profile = ConfigModel.Instance.Profiles[id];
 
                         using var bitmap = PanelDrawTask.RenderSK(profile, false);
@@ -306,12 +308,15 @@ namespace InfoPanel
                         context.Response.StatusCode = 404;
                     }
                 });
+                
+                var urls = _webApplication.Urls;
+                Logger.Information("WebServer started. Listening on: {Urls}", string.Join(", ", urls));
 
                 await _webApplication.RunAsync(token);
             }
             catch (Exception e)
             {
-                Trace.WriteLine("WebServerTask: Init error");
+                Logger.Error(e, "WebServerTask: Initialization error");
             }
             finally
             {

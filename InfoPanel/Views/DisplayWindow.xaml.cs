@@ -6,7 +6,7 @@ using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Timers;
@@ -25,6 +25,7 @@ namespace InfoPanel.Views.Common
     /// </summary>
     public partial class DisplayWindow
     {
+        private static readonly ILogger Logger = Log.ForContext<DisplayWindow>();
         SKElement? _sKElement;
         SKGLElement? _skGlElement;
 
@@ -172,7 +173,7 @@ namespace InfoPanel.Views.Common
                 grContext.Submit(true);
 
                 grContext.GetResourceCacheUsage(out var maxResources, out var maxResourceBytes);
-                Trace.WriteLine($"Closing {maxResources} items, {maxResourceBytes / 1024 / 1024}mb");
+                Logger.Information("Closing {MaxResources} items, {MaxResourceMB}mb", maxResources, maxResourceBytes / 1024 / 1024);
 
                 _skGlElement.PaintSurface -= SkGlElement_PaintSurface;
 
@@ -181,7 +182,7 @@ namespace InfoPanel.Views.Common
 
                 _skGlElement = null;
 
-                Trace.WriteLine("Disposed _skGLElement");
+                Logger.Debug("Disposed _skGLElement");
             }
         }
 
@@ -333,7 +334,7 @@ namespace InfoPanel.Views.Common
 
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
         {
-            Trace.WriteLine("SystemEvents_DisplaySettingsChanged");
+            Logger.Information("SystemEvents_DisplaySettingsChanged");
             _dispatcher.BeginInvoke(() =>
             {
                 SetWindowPositionRelativeToScreen();
@@ -464,8 +465,8 @@ namespace InfoPanel.Views.Common
                 var x = targetScreen.Bounds.Left + Profile.WindowX;
                 var y = targetScreen.Bounds.Top + Profile.WindowY;
 
-                Trace.WriteLine($"SetWindowPositionRelativeToScreen targetScreen={targetScreen}");
-                Trace.WriteLine($"SetWindowPositionRelativeToScreen targetScreen={targetScreen.DeviceName} x={x} y={y}");
+                Log.Debug("SetWindowPositionRelativeToScreen targetScreen={TargetScreen}", targetScreen);
+                Log.Debug("SetWindowPositionRelativeToScreen targetScreen={DeviceName} x={X} y={Y}", targetScreen.DeviceName, x, y);
                 ScreenHelper.MoveWindowPhysical(this, (int)x, (int)y);
             }
             else if (this.IsVisible)
@@ -515,8 +516,8 @@ namespace InfoPanel.Views.Common
                             var position = ScreenHelper.GetWindowPositionPhysical(this);
                             var relativePosition = ScreenHelper.GetWindowRelativePosition(screen, position);
 
-                            Trace.WriteLine($"SetPosition screen={screen}");
-                            Trace.WriteLine($"SetPosition screen={screen.DeviceName} position={position} relativePosition={relativePosition}");
+                            Log.Debug("SetPosition screen={Screen}", screen);
+                            Log.Debug("SetPosition screen={DeviceName} position={Position} relativePosition={RelativePosition}", screen.DeviceName, position, relativePosition);
 
                             _dragMove = true;
 

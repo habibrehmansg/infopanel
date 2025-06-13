@@ -5,6 +5,7 @@ using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using System;
 using System.Diagnostics;
+using Serilog;
 using System.Linq;
 using System.Timers;
 using System.Windows;

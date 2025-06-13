@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Win32;
 using Sentry;
+using Serilog;
+using Serilog.Events;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -30,9 +32,30 @@ namespace InfoPanel
     /// </summary>
     public partial class App : System.Windows.Application
     {
+        private static readonly ILogger Logger = Log.ForContext<App>();
         private static readonly IHost _host = Host
        .CreateDefaultBuilder()
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
+       .UseSerilog((context, services, configuration) => configuration
+#if DEBUG
+           .MinimumLevel.Debug()
+#else
+           .MinimumLevel.Information()
+#endif
+           .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+           .Enrich.WithThreadId()
+           .Enrich.WithThreadName()
+           .Enrich.WithMachineName()
+           .Enrich.FromLogContext()
+           .WriteTo.Debug()
+           .WriteTo.File(
+               Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "logs", "infopanel-.log"),
+               rollingInterval: RollingInterval.Day,
+               retainedFileCountLimit: 7,
+               fileSizeLimitBytes: 104857600, // 100MB
+               rollOnFileSizeLimit: true,
+               outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{ThreadId}] [{ThreadName}] - [{SourceContext}] {Message:lj}{NewLine}{Exception}"
+           ))
        .ConfigureServices((context, services) =>
        {
            // App Host
@@ -127,10 +150,10 @@ namespace InfoPanel
             SentrySdk.CaptureException(e.Exception);
 
             // Log locally as well
-            Trace.WriteLine($"DispatcherUnhandledException: {e.Exception}");
+            Logger.Error(e.Exception, "DispatcherUnhandledException occurred");
 
             // Decide whether to crash or continue
-             e.Handled = true; // Uncomment to prevent crash
+            e.Handled = true; // Uncomment to prevent crash
         }
 
         void CurrentDomain_UnhandledException(object? sender, UnhandledExceptionEventArgs e)
@@ -140,8 +163,7 @@ namespace InfoPanel
             SentrySdk.AddBreadcrumb($"AppDomain unhandled exception (IsTerminating: {e.IsTerminating})", "error");
             SentrySdk.CaptureException(exception);
 
-            Trace.WriteLine($"CurrentDomain_UnhandledException: {exception}");
-            Trace.WriteLine($"IsTerminating: {e.IsTerminating}");
+            Logger.Fatal(exception, "CurrentDomain_UnhandledException occurred. IsTerminating: {IsTerminating}", e.IsTerminating);
 
             // Flush Sentry before potential termination
             SentrySdk.FlushAsync(TimeSpan.FromSeconds(5)).Wait();
@@ -157,13 +179,13 @@ namespace InfoPanel
                 foreach (var innerEx in agg.InnerExceptions)
                 {
                     SentrySdk.CaptureException(innerEx);
-                    Trace.WriteLine($"TaskScheduler_UnobservedTaskException: {innerEx}");
+                    Logger.Error(innerEx, "TaskScheduler_UnobservedTaskException: Unobserved task exception in aggregate");
                 }
             }
             else
             {
                 SentrySdk.CaptureException(e.Exception);
-                Trace.WriteLine($"TaskScheduler_UnobservedTaskException: {e.Exception}");
+                Logger.Error(e.Exception, "TaskScheduler_UnobservedTaskException: Unobserved task exception");
             }
 
             // Mark as observed to prevent app termination
@@ -172,11 +194,14 @@ namespace InfoPanel
 
         protected override void OnExit(ExitEventArgs e)
         {
+            Logger.Information("Application exiting");
+            Log.CloseAndFlush();
             base.OnExit(e);
         }
 
         protected override async void OnStartup(StartupEventArgs e)
         {
+            Logger.Information("InfoPanel starting up");
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
 
             Process proc = Process.GetCurrentProcess();
@@ -210,6 +235,7 @@ namespace InfoPanel
             }
 
             _host.Start();
+            Logger.Debug("Application host started");
 
 
 
@@ -223,8 +249,10 @@ namespace InfoPanel
                 PluginsPath = ":FlyleafPlugins",
                 FFmpegPath = ":FFmpeg",
             });
+            Logger.Debug("Flyleaf engine started");
 
             ConfigModel.Instance.Initialize();
+            Logger.Debug("Configuration initialized");
 
             if (ConfigModel.Instance.Profiles.Count == 0)
             {

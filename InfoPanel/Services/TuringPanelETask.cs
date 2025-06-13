@@ -3,16 +3,18 @@ using InfoPanel.Models;
 using InfoPanel.Utils;
 using SkiaSharp;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.Threading;
 using System.Threading.Tasks;
 using TuringSmartScreenLib;
 using TuringSmartScreenLib.Helpers.SkiaSharp;
+using System.Diagnostics;
 
 namespace InfoPanel
 {
     public sealed class TuringPanelETask : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<TuringPanelETask>();
         private static readonly Lazy<TuringPanelETask> _instance = new(() => new TuringPanelETask());
         public static TuringPanelETask Instance => _instance.Value;
 
@@ -53,11 +55,11 @@ namespace InfoPanel
 
                 if (screen == null)
                 {
-                    Trace.WriteLine("TuringPanelE: Screen not found");
+                    Logger.Warning("TuringPanelE: Screen not found on port {Port}", ConfigModel.Instance.Settings.TuringPanelEPort);
                     return;
                 }
 
-                Trace.WriteLine("TuringPanelE: Screen found");
+                Logger.Information("TuringPanelE: Screen found and initialized");
                 SharedModel.Instance.TuringPanelERunning = true;
 
                 screen.Clear();
@@ -133,11 +135,11 @@ namespace InfoPanel
                 }
                 catch (TaskCanceledException)
                 {
-                    Trace.WriteLine("Task cancelled");
+                    Logger.Debug("TuringPanelE task cancelled");
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"Exception during work: {ex.Message}");
+                    Log.Error(ex, "Exception during TuringPanelE execution");
                 }
                 finally
                 {
@@ -147,7 +149,7 @@ namespace InfoPanel
             }
             catch (Exception e)
             {
-                Trace.WriteLine("TuringPanelE: Init error");
+                Log.Error(e, "TuringPanelE: Initialization error");
             }
             finally
             {

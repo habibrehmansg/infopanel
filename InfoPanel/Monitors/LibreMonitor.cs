@@ -1,4 +1,5 @@
 ﻿using LibreHardwareMonitor.Hardware;
+using Serilog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -26,6 +27,7 @@ namespace InfoPanel.Monitors
 
     internal class LibreMonitor : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<LibreMonitor>();
         private static readonly Lazy<LibreMonitor> _instance = new(() => new LibreMonitor());
         public static LibreMonitor Instance => _instance.Value;
 
@@ -70,7 +72,7 @@ namespace InfoPanel.Monitors
                 }
 
                 stopwatch.Stop();
-                Trace.WriteLine($"Computer open: {stopwatch.ElapsedMilliseconds}ms");
+                Logger.Information("LibreHardwareMonitor computer opened in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
 
                 try
                 {
@@ -109,11 +111,11 @@ namespace InfoPanel.Monitors
                 }
                 catch (TaskCanceledException)
                 {
-                    Trace.WriteLine("Task cancelled");
+                    Logger.Debug("LibreMonitor task cancelled");
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"Exception during work: {ex.Message}");
+                    Logger.Error(ex, "Exception during LibreMonitor work");
                 }
                 finally
                 {
@@ -124,7 +126,7 @@ namespace InfoPanel.Monitors
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"LibreMonitor: Init error: {e.Message}");
+                Log.Error(e, "LibreMonitor initialization error");
             }
         }
 

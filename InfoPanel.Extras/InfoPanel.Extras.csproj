@@ -13,6 +13,7 @@
     <PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="OpenWeatherMap.Standard" Version="3.0.0" />
+    <PackageReference Include="Serilog" Version="4.1.0" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.2" />
   </ItemGroup>
 

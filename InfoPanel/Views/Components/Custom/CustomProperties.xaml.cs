@@ -1,7 +1,7 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Views.Components.Custom;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.IO;
 using System.Windows;
 using System.Windows.Forms;
@@ -14,6 +14,7 @@ namespace InfoPanel.Views.Components
     /// </summary>
     public partial class CustomProperties : System.Windows.Controls.UserControl
     {
+        private static readonly ILogger Logger = Log.ForContext<CustomProperties>();
         public static readonly DependencyProperty ItemProperty =
       DependencyProperty.Register("GaugeDisplayItem", typeof(GaugeDisplayItem), typeof(CustomProperties));
 
@@ -104,7 +105,7 @@ namespace InfoPanel.Views.Components
                             }
                             catch (Exception ex)
                             {
-                                Trace.WriteLine(ex.ToString());
+                                Logger.Error(ex, "Error copying file to assets folder");
                             }
                         }
                     }

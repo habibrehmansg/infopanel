@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Plugins;
+using Serilog;
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;

@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Enums;
+using Serilog;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
@@ -7,6 +8,7 @@ namespace InfoPanel.Models
 
     public static class VideoBackgroundHelper
     {
+        private static readonly ILogger Logger = Log.ForContext(typeof(VideoBackgroundHelper));
         private static async Task Rotate(string inputFile, string outputFile, Rotation rotation)
         {
             /**
@@ -76,7 +78,7 @@ namespace InfoPanel.Models
         {
             if (!string.IsNullOrWhiteSpace(data))
             {
-                Trace.WriteLine($"{data}");
+                Logger.Debug("{Data}", data);
             }
         }
     }

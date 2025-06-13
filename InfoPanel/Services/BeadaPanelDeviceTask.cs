@@ -6,6 +6,7 @@ using InfoPanel.Models;
 using InfoPanel.Utils;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
+using Serilog;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
@@ -17,6 +18,7 @@ namespace InfoPanel.Services
 {
     public sealed class BeadaPanelDeviceTask : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<BeadaPanelDeviceTask>();
         private readonly BeadaPanelDevice _device;
         private volatile int _panelWidth = 0;
         private volatile int _panelHeight = 0;
@@ -72,7 +74,7 @@ namespace InfoPanel.Services
 
                    if(_device.IsMatching(deviceId, deviceLocation, panelInfo))
                     {
-                        Trace.WriteLine($"BeadaPanelDevice {_device}: Found matching device {deviceReg.DevicePath}");
+                        Logger.Information("BeadaPanelDevice {Device}: Found matching device {DevicePath}", _device, deviceReg.DevicePath);
                         return deviceReg;
                     }
                 }
@@ -92,7 +94,7 @@ namespace InfoPanel.Services
 
                 if (usbRegistry == null)
                 {
-                    Trace.WriteLine($"BeadaPanelDevice {_device}: USB Device not found.");
+                    Logger.Warning("BeadaPanelDevice {Device}: USB Device not found.", _device);
                     return;
                 }
 
@@ -117,7 +119,7 @@ namespace InfoPanel.Services
                 using UsbEndpointWriter writer = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep02);
                 writer.Write(infoMessage.ToBuffer(), 2000, out int _);
 
-                Trace.WriteLine($"BeadaPanelDevice {_device}: Sent infoTag");
+                // Protocol message sent
 
                 byte[] responseBuffer = new byte[100];
 
@@ -131,7 +133,7 @@ namespace InfoPanel.Services
                     return;
                 }
 
-                Trace.WriteLine($"BeadaPanelDevice {_device}: {panelInfo}");
+                Logger.Information("BeadaPanelDevice {Device}: {PanelInfo}", _device, panelInfo);
                 _device.UpdateRuntimeProperties(panelInfo: panelInfo);
 
                 bool writeThroughMode = panelInfo.Platform == 1 || panelInfo.Platform == 2;
@@ -174,7 +176,7 @@ namespace InfoPanel.Services
                 using UsbEndpointWriter dataWriter = usbDevice.OpenEndpointWriter(WriteEndpointID.Ep01);
                 dataWriter.Write(startTag.ToBuffer(), 2000, out int _);
 
-                Trace.WriteLine($"BeadaPanelDevice {_device}: Sent startTag");
+                // Protocol message sent
 
                 try
                 {
@@ -191,6 +193,7 @@ namespace InfoPanel.Services
 
                     var renderTask = Task.Run(async () =>
                     {
+                        Thread.CurrentThread.Name ??= $"BeadaPanel-Render-{_device.DeviceLocation}";
                         var stopwatch1 = new Stopwatch();
 
                         while (!renderToken.IsCancellationRequested)
@@ -224,6 +227,7 @@ namespace InfoPanel.Services
 
                     var sendTask = Task.Run(() =>
                     {
+                        Thread.CurrentThread.Name ??= $"BeadaPanel-Send-{_device.DeviceLocation}";
                         try
                         {
                             var stopwatch2 = new Stopwatch();
@@ -257,7 +261,7 @@ namespace InfoPanel.Services
                             }
                         }catch(Exception e)
                         {
-                            Trace.WriteLine("Error " + e.Message);
+                            Logger.Error(e, "BeadaPanelDevice {Device}: Error in send task", _device);
                         }
                         finally
                         {
@@ -269,11 +273,11 @@ namespace InfoPanel.Services
                 }
                 catch (TaskCanceledException)
                 {
-                    Trace.WriteLine($"BeadaPanelDevice {_device}: Task cancelled");
+                    Logger.Debug("BeadaPanelDevice {Device}: Task cancelled", _device);
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"BeadaPanelDevice {_device}: Exception during work: {ex.Message}");
+                    Logger.Error(ex, "BeadaPanelDevice {Device}: Exception during work", _device);
                 }
                 finally
                 {
@@ -286,17 +290,17 @@ namespace InfoPanel.Services
                         dataWriter.Write(blankFrame.Bytes, 2000, out int _);
 
                         dataWriter.Write(endTag.ToBuffer(), 2000, out int _);
-                        Trace.WriteLine($"BeadaPanelDevice {_device}: Sent endTag");
+                        // Protocol message sent
                     }
                     catch (Exception ex)
                     {
-                        Trace.WriteLine($"BeadaPanelDevice {_device}: Exception when sending endTag: {ex.Message}");
+                        Logger.Error(ex, "BeadaPanelDevice {Device}: Exception when sending endTag", _device);
                     }
                 }
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"BeadaPanelDevice {_device}: Init error: {e.Message}");
+                Logger.Error(e, "BeadaPanelDevice {Device}: Init error", _device);
             }
             finally
             {

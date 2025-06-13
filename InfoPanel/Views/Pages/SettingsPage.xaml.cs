@@ -4,7 +4,7 @@ using InfoPanel.ViewModels;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
+using System.Diagnostics;
 
 namespace InfoPanel.Views.Pages
 {
@@ -22,6 +23,7 @@ namespace InfoPanel.Views.Pages
     /// </summary>
     public partial class SettingsPage : Page
     {
+        private static readonly ILogger Logger = Log.ForContext<SettingsPage>();
         public SettingsViewModel ViewModel { get; }
 
         private static readonly Timer debounceTimer = new Timer(500);  // 500 ms debounce period
@@ -117,12 +119,12 @@ namespace InfoPanel.Views.Pages
         {
             if (deviceInserted)
             {
-                Trace.WriteLine("A USB device was inserted.");
+                Logger.Information("A USB device was inserted.");
                 deviceInserted = false;
             }
             if (deviceRemoved)
             {
-                Trace.WriteLine("A USB device was removed.");
+                Logger.Information("A USB device was removed.");
                 deviceRemoved = false;
             }
 
@@ -196,7 +198,7 @@ namespace InfoPanel.Views.Pages
             int productId = 0x1001;
 
             var allDevices = UsbDevice.AllDevices;
-            Trace.WriteLine($"BeadaPanel Discovery: Scanning {allDevices.Count} USB devices for VID={vendorId:X4} PID={productId:X4}");
+            Logger.Information("BeadaPanel Discovery: Scanning {Count} USB devices for VID={VendorId:X4} PID={ProductId:X4}", allDevices.Count, vendorId, productId);
 
             foreach (UsbRegistry deviceReg in allDevices)
             {
@@ -207,11 +209,11 @@ namespace InfoPanel.Views.Pages
 
                     if (string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
                     {
-                        Trace.WriteLine($"BeadaPanel Discovery: Skipping device with missing properties - DeviceID: '{deviceId}', LocationInformation: '{deviceLocation}'");
+                        Log.Warning("BeadaPanel Discovery: Skipping device with missing properties - DeviceID: '{DeviceId}', LocationInformation: '{DeviceLocation}'", deviceId, deviceLocation);
                         continue;
                     }
 
-                    Trace.WriteLine($"BeadaPanel Discovery: Found matching device - FullName: '{deviceReg.FullName}', DevicePath: '{deviceReg.DevicePath}', SymbolicName: '{deviceReg.SymbolicName}'");
+                    Log.Information("BeadaPanel Discovery: Found matching device - FullName: '{FullName}', DevicePath: '{DevicePath}', SymbolicName: '{SymbolicName}'", deviceReg.FullName, deviceReg.DevicePath, deviceReg.SymbolicName);
 
                     try
                     {
@@ -219,7 +221,7 @@ namespace InfoPanel.Views.Pages
                         var panelInfo = await BeadaPanelHelper.GetPanelInfoAsync(deviceReg);
                         if (panelInfo != null && BeadaPanelModelDatabase.Models.ContainsKey(panelInfo.Model))
                         {
-                            Trace.WriteLine($"Discovered BeadaPanel device: {panelInfo}");
+                            Log.Information("Discovered BeadaPanel device: {PanelInfo}", panelInfo);
                             ConfigModel.Instance.AccessSettings(settings =>
                             {
                                 var device = settings.BeadaPanelDevices.FirstOrDefault(d => d.IsMatching(deviceId, deviceLocation, panelInfo));
@@ -249,12 +251,12 @@ namespace InfoPanel.Views.Pages
                         else
                         {
                             // Skip devices that can't be queried - they are likely already running
-                            Trace.WriteLine($"Skipping device {deviceReg.DevicePath} - StatusLink unavailable (likely already running)");
+                            Log.Information("Skipping device {DevicePath} - StatusLink unavailable (likely already running)", deviceReg.DevicePath);
                         }
                     }
                     catch (Exception ex)
                     {
-                        Trace.WriteLine($"Error discovering BeadaPanel device: {ex.Message}");
+                        Log.Error(ex, "Error discovering BeadaPanel device");
                     }
                 }
             }

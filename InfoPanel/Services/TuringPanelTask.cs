@@ -5,14 +5,16 @@ using InfoPanel.Utils;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using Serilog;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace InfoPanel
 {
     public sealed class TuringPanelTask : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<TuringPanelTask>();
         private static readonly Lazy<TuringPanelTask> _instance = new(() => new TuringPanelTask());
 
         private readonly int _panelWidth = 480;
@@ -47,7 +49,7 @@ namespace InfoPanel
 
                 if (data == null || data.IsEmpty)
                 {
-                    Trace.WriteLine("Failed to encode bitmap to PNG");
+                    Logger.Error("Failed to encode bitmap to PNG");
                     return null;
                 }
 
@@ -56,7 +58,7 @@ namespace InfoPanel
 
                 if (resizedBitmap.ColorType != SKColorType.Argb4444 && result.Length > _maxSize)
                 {
-                    Trace.WriteLine("Downgrading rendering to ARGB4444");
+                    Logger.Warning("Downgrading rendering to ARGB4444 due to size constraints. Size: {Size} bytes, max: {MaxSize} bytes", result.Length, _maxSize);
                     DateTime now = DateTime.Now;
                     DateTime targetTime = now.AddSeconds(10);
                     _downgradeRenderingUntil = targetTime;
@@ -92,7 +94,7 @@ namespace InfoPanel
 
             if (data == null || data.IsEmpty)
             {
-                Trace.WriteLine("Failed to encode bitmap to PNG");
+                Log.Error("Failed to encode bitmap to PNG");
                 return null;
             }
             return data.ToArray();
@@ -107,10 +109,11 @@ namespace InfoPanel
 
                 if (!device.Initialize())
                 {
-                    Trace.WriteLine("Failed to initialize the device.");
+                    Log.Error("Failed to initialize the Turing Panel device");
                     return;
                 }
-
+                
+                Log.Information("TuringPanel device initialized successfully");
                 SharedModel.Instance.TuringPanelRunning = true;
 
                 try
@@ -200,11 +203,11 @@ namespace InfoPanel
                 }
                 catch (TaskCanceledException)
                 {
-                    Trace.WriteLine("Task cancelled");
+                    Log.Debug("TuringPanelTask cancelled");
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"Exception during work: {ex.Message}");
+                    Log.Error(ex, "Exception during TuringPanelTask execution");
                 }
                 finally
                 {
@@ -213,7 +216,7 @@ namespace InfoPanel
             }
             catch (Exception e)
             {
-                Trace.WriteLine("BeadaPanel: Init error");
+                Log.Error(e, "TuringPanel: Initialization error");
             }
             finally
             {

@@ -3,16 +3,18 @@ using InfoPanel.Models;
 using InfoPanel.Utils;
 using SkiaSharp;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.Threading;
 using System.Threading.Tasks;
 using TuringSmartScreenLib;
 using TuringSmartScreenLib.Helpers.SkiaSharp;
+using System.Diagnostics;
 
 namespace InfoPanel
 {
     public sealed class TuringPanelATask : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<TuringPanelATask>();
         private static readonly Lazy<TuringPanelATask> _instance = new(() => new TuringPanelATask());
         public static TuringPanelATask Instance => _instance.Value;
 
@@ -54,11 +56,11 @@ namespace InfoPanel
 
                 if (screen == null)
                 {
-                    Trace.WriteLine("TuringPanelA: Screen not found");
+                    Logger.Warning("TuringPanelA: Screen not found on port {Port}", ConfigModel.Instance.Settings.TuringPanelAPort);
                     return;
                 }
 
-                Trace.WriteLine("TuringPanelA: Screen found");
+                Logger.Information("TuringPanelA: Screen found and initialized");
                 SharedModel.Instance.TuringPanelARunning = true;
 
                 screen.Clear();
@@ -131,11 +133,11 @@ namespace InfoPanel
                 }
                 catch (TaskCanceledException)
                 {
-                    Trace.WriteLine("Task cancelled");
+                    Logger.Debug("TuringPanelA task cancelled");
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"Exception during work: {ex.Message}");
+                    Log.Error(ex, "Exception during TuringPanelA execution");
                 }
                 finally
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             {
@@ -145,7 +147,7 @@ namespace InfoPanel
             }
             catch (Exception e)
             {
-                Trace.WriteLine("TuringPanelA: Init error");
+                Log.Error(e, "TuringPanelA: Initialization error");
             }
             finally
             {

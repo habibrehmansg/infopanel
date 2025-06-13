@@ -1,5 +1,6 @@
 ﻿using LibUsbDotNet.Main;
 using LibUsbDotNet;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,6 +19,7 @@ namespace InfoPanel.TuringPanel
 {
     public class TuringDevice : IDisposable
     {
+        private static readonly ILogger Logger = Log.ForContext<TuringDevice>();
         private const int VENDOR_ID = 0x1cbe;
         private const int PRODUCT_ID = 0x0088;
         private const int CMD_PACKET_SIZE = 500;
@@ -33,7 +35,7 @@ namespace InfoPanel.TuringPanel
 
         public bool Initialize()
         {
-            Trace.WriteLine("Initializing Turing Device...");
+            Logger.Information("Initializing Turing Device...");
 
             try
             {
@@ -43,11 +45,11 @@ namespace InfoPanel.TuringPanel
 
                 if (_device == null)
                 {
-                    Trace.WriteLine("Device not found.");
+                    Logger.Warning("Turing device not found");
                     return false;
                 }
 
-                Trace.WriteLine("Device found.");
+                Logger.Information("Turing device found");
                 // If this is a "whole" USB device (like a composite device), 
                 // it needs to be properly configured first
                 if (_device is IUsbDevice wholeUsbDevice)
@@ -63,16 +65,16 @@ namespace InfoPanel.TuringPanel
 
                 if (_reader == null || _writer == null)
                 {
-                    Console.WriteLine("Failed to open endpoints.");
+                    Log.Error("Failed to open Turing device endpoints");
                     return false;
                 }
 
-                Trace.WriteLine("Device initialized.");
+                Log.Information("Turing device initialized successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"Error initializing device: {ex.Message}");
+                Log.Error(ex, "Error initializing Turing device");
                 return false;
             }
         }
@@ -234,11 +236,11 @@ namespace InfoPanel.TuringPanel
 
                 if (ec != ErrorCode.None)
                 {
-                    Console.WriteLine($"Write Error: {ec}");
+                    Log.Error("Turing device write error: {ErrorCode}", ec);
                     return false;
                 }
 
-                Console.WriteLine($"Wrote {transferLength} bytes to device.");
+                // Write operation completed
 
                 // Read the response
                 byte[] readBuffer = new byte[512];
@@ -246,20 +248,17 @@ namespace InfoPanel.TuringPanel
 
                 if (ec != ErrorCode.None && ec != ErrorCode.IoTimedOut)
                 {
-                    Console.WriteLine($"Read Error: {ec}");
+                    Log.Error("Turing device read error: {ErrorCode}", ec);
                     return false;
                 }
 
-                if (transferLength > 0)
-                {
-                    Console.WriteLine($"Read {transferLength} bytes from device");
-                }
+                // Read operation completed
 
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error writing to device: {ex.Message}");
+                Log.Error(ex, "Error writing to Turing device");
                 return false;
             }
         }
@@ -279,7 +278,7 @@ namespace InfoPanel.TuringPanel
                     if (ec == ErrorCode.IoTimedOut || transferLength == 0)
                         break;
 
-                    Console.WriteLine($"Flushed {transferLength} bytes");
+                    Log.Debug("Flushed {ByteCount} bytes from Turing device", transferLength);
                 }
                 catch
                 {

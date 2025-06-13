@@ -1,7 +1,7 @@
 ﻿using GongSolutions.Wpf.DragDrop;
 using InfoPanel.Models;
 using System;
-using System.Diagnostics;
+using Serilog;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,6 +15,7 @@ namespace InfoPanel.Views.Components
     /// </summary>
     public partial class DisplayItems : UserControl, IDropTarget
     {
+        private static readonly ILogger Logger = Log.ForContext<DisplayItems>();
         private DisplayItem? SelectedItem { get { return SharedModel.Instance.SelectedItem; } }
         public DisplayItems()
         {
@@ -33,7 +34,7 @@ namespace InfoPanel.Views.Components
         {
             if (e.PropertyName == nameof(SharedModel.Instance.SelectedItem))
             {
-                Trace.WriteLine("SelectedItem changed");
+                Logger.Debug("SelectedItem changed");
                 if (SelectedItem != null)
                 {
                     var group = SharedModel.Instance.GetParent(SelectedItem);
@@ -298,7 +299,7 @@ namespace InfoPanel.Views.Components
             if (_isHandlingSelection || sender is not ListView listView)
                 return;
 
-            Trace.WriteLine($"ListViewItems_SelectionChanged - {listView.SelectedItems.Count} SelectedItems");
+            Logger.Debug("ListViewItems_SelectionChanged - {Count} SelectedItems", listView.SelectedItems.Count);
 
             _isHandlingSelection = true;
             try
@@ -352,7 +353,7 @@ namespace InfoPanel.Views.Components
             {
                 SharedModel.Instance.NotifySelectedItemChange();
                 _isHandlingSelection = false;
-                Trace.WriteLine("ListViewItems_SelectionChanged - finally");
+                Logger.Debug("ListViewItems_SelectionChanged - finally");
             }
         }
 
@@ -361,7 +362,7 @@ namespace InfoPanel.Views.Components
             if (_isHandlingSelection || sender is not ListView innerListView)
                 return;
 
-            Trace.WriteLine($"ListViewGroupItems_SelectionChanged - {innerListView.SelectedItems.Count} SelectedItems");
+            Log.Debug("ListViewGroupItems_SelectionChanged - {Count} SelectedItems", innerListView.SelectedItems.Count);
 
             _isHandlingSelection = true;
 
@@ -390,7 +391,7 @@ namespace InfoPanel.Views.Components
             {
                 SharedModel.Instance.NotifySelectedItemChange();
                 _isHandlingSelection = false;
-                Trace.WriteLine("ListViewGroupItems_SelectionChanged - finally");
+                Log.Debug("ListViewGroupItems_SelectionChanged - finally");
             }
         }
 

@@ -1,4 +1,5 @@
 ﻿using InfoPanel;
+using Serilog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -15,6 +16,7 @@ using System.Timers;
 
     public class HWHash
     {
+        private static readonly ILogger Logger = Log.ForContext<HWHash>();
 
         //Initially it was based on zipferot3000 implementation, but he was using NewtonsoftJSON which I avoid, so I modified it to use MsgPack
         //Since most users are not familiar with MsgPack I am using the default serializer without external dependencies and some minor tweaks.
@@ -126,7 +128,7 @@ using System.Timers;
                 }
                 else
                 {
-                    Trace.WriteLine("SHM DEAD");
+                    Logger.Warning("HWiNFO shared memory is dead");
                     HWINFO_RUNNING = false;
                     MEM_ACC?.Dispose();
                     MEM_ACC = null;
@@ -145,7 +147,7 @@ using System.Timers;
 
         private static bool ReadMem()
         {
-            Trace.WriteLine("ReadMem()");
+            Logger.Debug("Reading HWiNFO shared memory");
             HWINFO_MEMREGION = new HWINFO_MEM();
             try
             {
@@ -185,7 +187,7 @@ using System.Timers;
 
         private static void BuildHeaders()
         {
-            Trace.WriteLine("BuildHeaders()");
+            Logger.Debug("Building HWiNFO sensor headers");
             if (MEM_MAP != null)
             {
                 for (uint index = 0; index < HWINFO_MEMREGION.SS_SensorElements; ++index)

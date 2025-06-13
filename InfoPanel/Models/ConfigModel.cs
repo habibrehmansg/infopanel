@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Diagnostics;
+using Serilog;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -24,6 +24,7 @@ namespace InfoPanel
 {
     public sealed class ConfigModel : ObservableObject
     {
+        private static readonly ILogger Logger = Log.ForContext<ConfigModel>();
         private const int CurrentVersion = 123;
         private const string RegistryRunKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
         private static readonly Lazy<ConfigModel> lazy = new(() => new ConfigModel());
@@ -302,7 +303,7 @@ namespace InfoPanel
             await _saveSemaphore.WaitAsync();
             try
             {
-                Trace.WriteLine("Saving settings...");  // Debug log for save operation
+                Logger.Debug("Saving settings...");
                 var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
                 Directory.CreateDirectory(folder);
 
@@ -340,8 +341,8 @@ namespace InfoPanel
             }
             catch (Exception ex)
             {
-                // Log error (consider adding proper logging)
-                System.Diagnostics.Debug.WriteLine($"Error saving settings: {ex.Message}");
+                // Log error
+                Logger.Error(ex, "Error saving settings");
 
                 // Try to restore from backup if available
                 var backupFileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "settings.xml.bak");
@@ -387,11 +388,11 @@ namespace InfoPanel
                     try
                     {
                         File.Copy(backupFileName, fileName, overwrite: true);
-                        System.Diagnostics.Debug.WriteLine("Settings restored from backup file.");
+                        Logger.Information("Settings restored from backup file.");
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"Failed to restore backup: {ex.Message}");
+                        Log.Error(ex, "Failed to restore backup");
                     }
                 }
             }
@@ -465,13 +466,13 @@ namespace InfoPanel
 
                         if (loadedFromBackup)
                         {
-                            System.Diagnostics.Debug.WriteLine("Settings loaded from backup file.");
+                            Log.Information("Settings loaded from backup file.");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Error loading settings: {ex.Message}");
+                    Log.Error(ex, "Error loading settings");
                 }
             }
         }

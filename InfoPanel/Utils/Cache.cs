@@ -2,6 +2,7 @@
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
+using Serilog;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -12,6 +13,7 @@ namespace InfoPanel
 {
     internal static class Cache
     {
+        private static readonly ILogger Logger = Log.ForContext(typeof(Cache));
         private static readonly TypedMemoryCache<LockedImage> ImageCache = new(new MemoryCacheOptions()
         {
             ExpirationScanFrequency = TimeSpan.FromSeconds(10)
@@ -100,7 +102,7 @@ namespace InfoPanel
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"Failed to load image '{path}': {e}");
+                Logger.Error(e, "Failed to load image '{Path}'" , path);
             }
             finally
             {
@@ -134,7 +136,7 @@ namespace InfoPanel
                     {
                         EvictionCallback = (key, value, reason, state) =>
                         {
-                            Trace.WriteLine($"Cache entry '{key}' evicted due to {reason}.");
+                            Logger.Debug("Cache entry '{Key}' evicted due to {Reason}", key, reason);
                             if (value is LockedImage lockedImage)
                             {
                                 lockedImage.Dispose();
@@ -144,7 +146,7 @@ namespace InfoPanel
                 }
             });
 
-            Trace.WriteLine($"Image '{path}' loaded successfully");
+            Logger.Debug("Image '{Path}' loaded successfully", path);
         }
 
         public static void InvalidateImage(ImageDisplayItem imageDisplayItem)
@@ -170,7 +172,7 @@ namespace InfoPanel
                 }
                 catch (Exception e)
                 {
-                    Trace.WriteLine($"Failed to acquire lock for invalidating image '{path}': {e}");
+                    Log.Error(e, "Failed to acquire lock for invalidating image '{Path}'", path);
                 }
                 finally
                 {

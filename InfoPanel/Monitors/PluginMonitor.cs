@@ -4,6 +4,7 @@ using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
 using InfoPanel.ViewModels;
 using Microsoft.Win32.TaskScheduler.Fluent;
+using Serilog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -20,6 +21,7 @@ namespace InfoPanel.Monitors
 {
     internal class PluginMonitor : BackgroundTask
     {
+        private static readonly ILogger Logger = Log.ForContext<PluginMonitor>();
         private static readonly Lazy<PluginMonitor> _instance = new(() => new PluginMonitor());
         public static PluginMonitor Instance => _instance.Value;
 
@@ -116,7 +118,7 @@ namespace InfoPanel.Monitors
 
 
                 stopwatch.Stop();
-                Trace.WriteLine($"Plugins loaded: {stopwatch.ElapsedMilliseconds}ms");
+                Logger.Information("Plugins loaded in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
 
                 while (!token.IsCancellationRequested)
                 {
@@ -136,11 +138,11 @@ namespace InfoPanel.Monitors
             }
             catch (TaskCanceledException)
             {
-                Trace.WriteLine("Task cancelled");
+                Logger.Debug("PluginMonitor task cancelled");
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"Exception during work: {ex.Message}");
+                Logger.Error(ex, "Exception during PluginMonitor work");
             }
             finally
             {
@@ -211,7 +213,7 @@ namespace InfoPanel.Monitors
                 try
                 {
                     await wrapper.Initialize();
-                    Console.WriteLine($"Plugin {wrapper.Name} loaded successfully");
+                    Log.Information("Plugin {PluginName} loaded successfully", wrapper.Name);
 
                     int indexOrder = 0;
                     foreach (var container in wrapper.PluginContainers)
@@ -235,7 +237,7 @@ namespace InfoPanel.Monitors
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Plugin {wrapper.Name} failed to load: {ex.Message}");
+                    Log.Error(ex, "Plugin {PluginName} failed to load", wrapper.Name);
                 }
             }
         }
@@ -258,7 +260,7 @@ namespace InfoPanel.Monitors
             try
             {
                 await wrapper.Initialize();
-                Console.WriteLine($"Plugin {wrapper.Name} loaded successfully");
+                Log.Information("Plugin {PluginName} reloaded successfully", wrapper.Name);
 
                 int indexOrder = 0;
                 foreach (var container in wrapper.PluginContainers)
@@ -282,7 +284,7 @@ namespace InfoPanel.Monitors
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Plugin {wrapper.Name} failed to load: {ex.Message}");
+                Log.Error(ex, "Plugin {PluginName} failed to load", wrapper.Name);
             }
         }
 
@@ -291,7 +293,7 @@ namespace InfoPanel.Monitors
             try
             {
                 await wrapper.Initialize();
-                Console.WriteLine($"Plugin {wrapper.Name} loaded successfully");
+                Log.Information("Plugin {PluginName} loaded successfully", wrapper.Name);
 
                 int indexOrder = 0;
                 foreach (var container in wrapper.PluginContainers)
@@ -315,7 +317,7 @@ namespace InfoPanel.Monitors
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Plugin {wrapper.Name} failed to load: {ex.Message}");
+                Log.Error(ex, "Plugin {PluginName} failed to load", wrapper.Name);
             }
         }
 

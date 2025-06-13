@@ -3,6 +3,7 @@ using InfoPanel.Utils;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
 using Microsoft.Extensions.Caching.Memory;
+using Serilog;
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -12,6 +13,7 @@ namespace InfoPanel.BeadaPanel
 {
     internal static class BeadaPanelHelper
     {
+        private static readonly ILogger Logger = Log.ForContext(typeof(BeadaPanelHelper));
         private static readonly TypedMemoryCache<BeadaPanelInfo> _panelInfoCache = new();
         private static readonly SemaphoreSlim _semaphore = new(1, 1);
 
@@ -27,7 +29,7 @@ namespace InfoPanel.BeadaPanel
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"BeadaPanelHelper: Error claiming USB interface - {ex.Message}");
+                Logger.Error(ex, "BeadaPanelHelper: Error claiming USB interface");
             }
             finally
             {
@@ -49,7 +51,7 @@ namespace InfoPanel.BeadaPanel
 
             if (usbDevice == null)
             {
-                Trace.WriteLine($"StatusLink Query: Could not open USB device {usbRegistry.DevicePath}");
+                Logger.Warning("StatusLink Query: Could not open USB device {DevicePath}", usbRegistry.DevicePath);
                 return null;
             }
 
@@ -69,7 +71,7 @@ namespace InfoPanel.BeadaPanel
 
             if (writeResult != ErrorCode.None)
             {
-                Trace.WriteLine($"StatusLink Query: Write failed with error {writeResult}");
+                Logger.Error("StatusLink Query: Write failed with error {ErrorCode}", writeResult);
                 return null;
             }
 
@@ -80,7 +82,7 @@ namespace InfoPanel.BeadaPanel
 
             if (readResult != ErrorCode.None || bytesRead == 0)
             {
-                Trace.WriteLine($"StatusLink Query: Read failed with error {readResult}, bytes read: {bytesRead}");
+                Log.Error("StatusLink Query: Read failed with error {ErrorCode}, bytes read: {BytesRead}", readResult, bytesRead);
                 return null;
             }
 
@@ -94,7 +96,7 @@ namespace InfoPanel.BeadaPanel
                     AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(2)
                 });
 
-                Trace.WriteLine($"StatusLink Query: Successfully parsed panel info for serial {panelInfo.SerialNumber}");
+                Log.Information("StatusLink Query: Successfully parsed panel info for serial {SerialNumber}", panelInfo.SerialNumber);
             }
 
             return panelInfo;

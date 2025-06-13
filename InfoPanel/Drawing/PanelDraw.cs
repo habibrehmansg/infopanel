@@ -3,6 +3,7 @@ using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Plugins;
 using InfoPanel.Utils;
+using Serilog;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
@@ -20,6 +21,7 @@ namespace InfoPanel.Drawing
 
     internal class PanelDraw
     {
+        private static readonly ILogger Logger = Log.ForContext<PanelDraw>();
         private static readonly Stopwatch _selectionStopwatch = new();
 
         static PanelDraw()
@@ -91,7 +93,7 @@ namespace InfoPanel.Drawing
                 }
                 else
                 {
-                    Trace.WriteLine("Fail to parse color");
+                    Logger.Warning("Failed to parse selected item color: {Color}", ConfigModel.Instance.Settings.SelectedItemColor);
                 }
             }
 
