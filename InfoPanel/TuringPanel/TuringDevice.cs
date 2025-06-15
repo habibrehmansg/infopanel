@@ -4,6 +4,7 @@ using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Modes;
 using Org.BouncyCastle.Crypto.Parameters;
+using Serilog;
 using SkiaSharp;
 using System;
 using System.Buffers;
@@ -16,44 +17,10 @@ using System.Threading;
 
 namespace InfoPanel.TuringPanel
 {
-    public enum TuringDeviceError
+    public class TuringDeviceException : Exception
     {
-        None,
-        DeviceNotFound,
-        InitializationFailed,
-        CommunicationTimeout,
-        InvalidResponse,
-        FileNotFound,
-        UnsupportedFileType,
-        UploadFailed,
-        ConversionFailed
-    }
-
-    public class TuringDeviceConfig
-    {
-        public int CommandTimeout { get; set; } = 2000;
-        public int MaxRetries { get; set; } = 20;
-        public int ChunkSize { get; set; } = 1048576; // 1MB
-        public bool EnableLogging { get; set; } = true;
-        public string? FFmpegPath { get; set; } = null; // Auto-detect if null
-    }
-
-    public class TuringDeviceResult<T>
-    {
-        public bool Success { get; set; }
-        public T? Data { get; set; }
-        public TuringDeviceError Error { get; set; }
-        public string? ErrorMessage { get; set; }
-
-        public static TuringDeviceResult<T> CreateSuccess(T data)
-        {
-            return new TuringDeviceResult<T> { Success = true, Data = data, Error = TuringDeviceError.None };
-        }
-
-        public static TuringDeviceResult<T> CreateError(TuringDeviceError error, string? message = null)
-        {
-            return new TuringDeviceResult<T> { Success = false, Error = error, ErrorMessage = message };
-        }
+        public TuringDeviceException(string message) : base(message) { }
+        public TuringDeviceException(string message, Exception innerException) : base(message, innerException) { }
     }
 
     public class StorageInfo
@@ -77,15 +44,20 @@ namespace InfoPanel.TuringPanel
 
     public class TuringDevice : IDisposable
     {
+        private static readonly ILogger Logger = Log.ForContext<TuringDevice>();
+        
         private const int VENDOR_ID = 0x1cbe;
         private const int PRODUCT_ID = 0x0088;
         private const int CMD_PACKET_SIZE = 500;
         private const int FULL_PACKET_SIZE = 512;
+        private const int COMMAND_TIMEOUT = 2000;
+        private const int MAX_RETRIES = 20;
+        private const int CHUNK_SIZE = 1048576; // 1MB
         private static readonly byte[] DES_KEY_BYTES = Encoding.ASCII.GetBytes("slv3tuzx");
         private static readonly byte[] MAGIC_BYTES = { 161, 26 };
 
         private readonly BufferedBlockCipher _cipher;
-        private readonly TuringDeviceConfig _config;
+        private string? _ffmpegPath;
 
         private UsbDevice? _device;
         private UsbEndpointReader? _reader;
@@ -93,22 +65,16 @@ namespace InfoPanel.TuringPanel
         private bool _disposed = false;
 
         public bool IsConnected => _device != null && !_device.IsOpen == false;
-        public TuringDeviceConfig Config => _config;
 
-        public TuringDevice() : this(new TuringDeviceConfig())
+        public TuringDevice(string? ffmpegPath = null)
         {
-        }
-
-        public TuringDevice(TuringDeviceConfig config)
-        {
-            _config = config ?? new TuringDeviceConfig();
+            _ffmpegPath = ffmpegPath;
             _cipher = new BufferedBlockCipher(new CbcBlockCipher(new DesEngine()));
         }
 
-        public TuringDeviceResult<bool> Initialize()
+        public bool Initialize()
         {
-            if (_config.EnableLogging)
-                Debug.WriteLine("Initializing Turing Device...");
+            Logger.Debug("Initializing Turing Device...");
 
             try
             {
@@ -118,13 +84,11 @@ namespace InfoPanel.TuringPanel
                 if (_device == null)
                 {
                     var error = "Device not found. Please ensure the Turing device is connected.";
-                    if (_config.EnableLogging)
-                        Debug.WriteLine(error);
-                    return TuringDeviceResult<bool>.CreateError(TuringDeviceError.DeviceNotFound, error);
+                    Logger.Error(error);
+                    throw new TuringDeviceException(error);
                 }
 
-                if (_config.EnableLogging)
-                    Debug.WriteLine("Device found.");
+                Logger.Information("Device found.");
 
                 if (_device is IUsbDevice wholeUsbDevice)
                 {
@@ -138,28 +102,28 @@ namespace InfoPanel.TuringPanel
                 if (_reader == null || _writer == null)
                 {
                     var error = "Failed to open USB endpoints.";
-                    if (_config.EnableLogging)
-                        Debug.WriteLine(error);
-                    return TuringDeviceResult<bool>.CreateError(TuringDeviceError.InitializationFailed, error);
+                    Logger.Error(error);
+                    throw new TuringDeviceException(error);
                 }
 
-                if (_config.EnableLogging)
-                    Debug.WriteLine("Device initialized successfully.");
-                return TuringDeviceResult<bool>.CreateSuccess(true);
+                Logger.Information("Device initialized successfully.");
+                return true;
+            }
+            catch (TuringDeviceException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                var error = $"Error initializing device: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.InitializationFailed, error);
+                var error = "Error initializing device";
+                Logger.Error(ex, error);
+                throw new TuringDeviceException(error, ex);
             }
         }
 
-        public TuringDeviceResult<bool> Initialize(UsbRegistry usbRegistry)
+        public bool Initialize(UsbRegistry usbRegistry)
         {
-            if (_config.EnableLogging)
-                Debug.WriteLine("Initializing Turing Device from registry...");
+            Logger.Debug("Initializing Turing Device from registry...");
 
             try
             {
@@ -168,18 +132,14 @@ namespace InfoPanel.TuringPanel
                 if (_device == null)
                 {
                     var error = "Failed to open device from registry.";
-                    if (_config.EnableLogging)
-                        Debug.WriteLine(error);
-                    return TuringDeviceResult<bool>.CreateError(TuringDeviceError.DeviceNotFound, error);
+                    Logger.Error(error);
+                    throw new TuringDeviceException(error);
                 }
 
-                if (_config.EnableLogging)
-                {
-                    Debug.WriteLine("Device found from registry.");
-                    var deviceId = usbRegistry.DeviceProperties["DeviceID"] as string;
-                    if (!string.IsNullOrEmpty(deviceId))
-                        Debug.WriteLine($"Device ID: {deviceId}");
-                }
+                Logger.Information("Device found from registry.");
+                var deviceId = usbRegistry.DeviceProperties["DeviceID"] as string;
+                if (!string.IsNullOrEmpty(deviceId))
+                    Logger.Debug("Device ID: {DeviceId}", deviceId);
 
                 if (_device is IUsbDevice wholeUsbDevice)
                 {
@@ -193,21 +153,22 @@ namespace InfoPanel.TuringPanel
                 if (_reader == null || _writer == null)
                 {
                     var error = "Failed to open USB endpoints.";
-                    if (_config.EnableLogging)
-                        Debug.WriteLine(error);
-                    return TuringDeviceResult<bool>.CreateError(TuringDeviceError.InitializationFailed, error);
+                    Logger.Error(error);
+                    throw new TuringDeviceException(error);
                 }
 
-                if (_config.EnableLogging)
-                    Debug.WriteLine("Device initialized successfully.");
-                return TuringDeviceResult<bool>.CreateSuccess(true);
+                Logger.Information("Device initialized successfully.");
+                return true;
+            }
+            catch (TuringDeviceException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                var error = $"Error initializing device: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.InitializationFailed, error);
+                var error = "Error initializing device";
+                Logger.Error(ex, error);
+                throw new TuringDeviceException(error, ex);
             }
         }
 
@@ -298,60 +259,50 @@ namespace InfoPanel.TuringPanel
             ArrayPool<byte>.Shared.Return(finalPacket);
             return result;
         }
-        public TuringDeviceResult<bool> SendSyncCommand()
+        public bool SendSyncCommand()
         {
-            if (_config.EnableLogging)
-                Debug.WriteLine("Sending Sync Command (ID 10)...");
+            Logger.Debug("Sending Sync Command (ID 10)...");
 
             byte[] cmdPacket = BuildCommandPacketHeader(10);
             bool success = WriteToDevice(EncryptCommandPacket(cmdPacket));
 
-            return success
-                ? TuringDeviceResult<bool>.CreateSuccess(true)
-                : TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, "Failed to send sync command");
+            if (!success)
+                throw new TuringDeviceException("Failed to send sync command");
+
+            return true;
         }
 
-        public TuringDeviceResult<bool> SendRestartDeviceCommand()
+        public bool SendRestartDeviceCommand()
         {
-            if (_config.EnableLogging)
-                Debug.WriteLine("Sending Restart Command (ID 11)...");
+            Logger.Debug("Sending Restart Command (ID 11)...");
 
             byte[] cmdPacket = BuildCommandPacketHeader(11);
             bool success = WriteToDevice(EncryptCommandPacket(cmdPacket));
 
-            return success
-                ? TuringDeviceResult<bool>.CreateSuccess(true)
-                : TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, "Failed to send restart command");
+            if (!success)
+                throw new TuringDeviceException("Failed to send restart command");
+
+            return true;
         }
 
-        public TuringDeviceResult<bool> SendBrightnessCommand(byte brightness)
+        public bool SendBrightnessCommand(byte brightness)
         {
-            if (_config.EnableLogging)
-            {
-                Debug.WriteLine($"Sending Brightness Command (ID 14)...");
-                Debug.WriteLine($"  Brightness = {brightness}");
-            }
+            Logger.Debug("Sending Brightness Command (ID 14) with brightness {Brightness}", brightness);
 
             byte[] cmdPacket = BuildCommandPacketHeader(14);
             cmdPacket[8] = brightness;
             bool success = WriteToDevice(EncryptCommandPacket(cmdPacket));
 
-            return success
-                ? TuringDeviceResult<bool>.CreateSuccess(true)
-                : TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, "Failed to send brightness command");
+            if (!success)
+                throw new TuringDeviceException("Failed to send brightness command");
+
+            return true;
         }
 
-        public TuringDeviceResult<bool> SendSaveSettingsCommand(byte brightness = 102, byte startup = 0, byte rotation = 0, byte sleep = 0, byte offline = 0)
+        public bool SendSaveSettingsCommand(byte brightness = 102, byte startup = 0, byte rotation = 0, byte sleep = 0, byte offline = 0)
         {
-            if (_config.EnableLogging)
-            {
-                Debug.WriteLine($"Sending Save Settings Command (ID 125)...");
-                Debug.WriteLine($"  Brightness:     {brightness}");
-                Debug.WriteLine($"  Startup Mode:   {startup}");
-                Debug.WriteLine($"  Rotation:       {rotation}");
-                Debug.WriteLine($"  Sleep Timeout:  {sleep}");
-                Debug.WriteLine($"  Offline Mode:   {offline}");
-            }
+            Logger.Debug("Sending Save Settings Command (ID 125) with Brightness={Brightness}, StartupMode={Startup}, Rotation={Rotation}, Sleep={Sleep}, Offline={Offline}", 
+                brightness, startup, rotation, sleep, offline);
 
             byte[] cmdPacket = BuildCommandPacketHeader(125);
             cmdPacket[8] = brightness;
@@ -363,9 +314,10 @@ namespace InfoPanel.TuringPanel
 
             bool success = WriteToDevice(EncryptCommandPacket(cmdPacket));
 
-            return success
-                ? TuringDeviceResult<bool>.CreateSuccess(true)
-                : TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, "Failed to send save settings command");
+            if (!success)
+                throw new TuringDeviceException("Failed to send save settings command");
+
+            return true;
         }
         public void SendClearImageCommand()
         {
@@ -410,11 +362,11 @@ namespace InfoPanel.TuringPanel
 
                 if (ec != ErrorCode.None)
                 {
-                    Debug.WriteLine($"Write Error: {ec}");
+                    Logger.Warning("Write Error: {ErrorCode}", ec);
                     return false;
                 }
 
-                // Debug.WriteLine($"Wrote {transferLength} bytes to device.");
+                // Logger.Debug($"Wrote {transferLength} bytes to device.");
 
                 // Read the response with improved error handling
                 byte[] readBuffer = new byte[512];
@@ -423,18 +375,18 @@ namespace InfoPanel.TuringPanel
                 // Handle different error conditions
                 if (ec == ErrorCode.IoTimedOut)
                 {
-                    Debug.WriteLine("USB read operation timed out - device may not be responding");
+                    Logger.Warning("USB read operation timed out - device may not be responding");
                     return false;
                 }
                 else if (ec != ErrorCode.None)
                 {
-                    Debug.WriteLine($"Read Error: {ec}");
+                    Logger.Warning("Read Error: {ErrorCode}", ec);
                     return false;
                 }
 
                 if (transferLength > 0)
                 {
-                    // Debug.WriteLine($"Read {transferLength} bytes from device");
+                    // Logger.Debug($"Read {transferLength} bytes from device");
 
                     // Copy only the actual data received
                     response = new byte[transferLength];
@@ -443,12 +395,12 @@ namespace InfoPanel.TuringPanel
                     // Log the raw response for debugging purposes if length is small
                     if (transferLength <= 32)
                     {
-                        Debug.WriteLine($"Response bytes: {BitConverter.ToString(response)}");
+                        Logger.Verbose("Response bytes: {ResponseBytes}", BitConverter.ToString(response));
                     }
                 }
                 else
                 {
-                    Debug.WriteLine("No data received from device");
+                    Logger.Warning("No data received from device");
                     return false;  // Changed: Treat zero-length responses as failures
                 }
 
@@ -460,7 +412,7 @@ namespace InfoPanel.TuringPanel
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error writing to device: {ex.Message}");
+                Logger.Error(ex, "Error writing to device");
                 return false;
             }
         }
@@ -482,7 +434,7 @@ namespace InfoPanel.TuringPanel
 
                     if (ec == ErrorCode.None && transferLength > 0)
                     {
-                        Debug.WriteLine($"Flushed {transferLength} bytes from device buffer");
+                        Logger.Verbose("Flushed {ByteCount} bytes from device buffer", transferLength);
                     }
                     else
                     {
@@ -492,40 +444,31 @@ namespace InfoPanel.TuringPanel
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Error during read flush: {ex.Message}");
+                    Logger.Warning(ex, "Error during read flush");
                     break;
                 }
             }
         }
 
-        // Convenience methods
-        public void DelaySync()
-        {
-            SendSyncCommand();
-            Thread.Sleep(200);
-        }
 
-        public TuringDeviceResult<bool> ClearScreen()
+        public bool ClearScreen()
         {
             try
             {
                 SendClearImageCommand();
-                return TuringDeviceResult<bool>.CreateSuccess(true);
+                return true;
             }
             catch (Exception ex)
             {
-                var error = $"Failed to clear screen: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, error);
+                Logger.Error(ex, "Failed to clear screen");
+                throw new TuringDeviceException("Failed to clear screen", ex);
             }
         }
 
         // File listing method with improved return type
-        public TuringDeviceResult<List<string>> ListFiles(string path)
+        public List<string> ListFiles(string path)
         {
-            if (_config.EnableLogging)
-                Debug.WriteLine($"Sending List Storage Command (ID 99) for path: {path}");
+            Logger.Debug("Sending List Storage Command (ID 99) for path: {Path}", path);
 
             byte[] pathBytes = Encoding.ASCII.GetBytes(path);
             int length = pathBytes.Length;
@@ -547,10 +490,10 @@ namespace InfoPanel.TuringPanel
             byte[] receiveBuffer = new byte[10240];
             int receiveOffset = 0;
 
-            for (int i = 0; i < _config.MaxRetries; i++)
+            for (int i = 0; i < MAX_RETRIES; i++)
             {
                 byte[] response;
-                if (WriteToDevice(encryptedPacket, _config.CommandTimeout, out response))
+                if (WriteToDevice(encryptedPacket, COMMAND_TIMEOUT, out response))
                 {
                     if (response != null && response.Length > 0)
                     {
@@ -562,8 +505,7 @@ namespace InfoPanel.TuringPanel
                         }
                         else
                         {
-                            if (_config.EnableLogging)
-                                Debug.WriteLine("Buffer overflow prevented. Increase buffer size for larger directory listings.");
+                            Logger.Warning("Buffer overflow prevented. Increase buffer size for larger directory listings.");
                             break;
                         }
                     }
@@ -581,53 +523,74 @@ namespace InfoPanel.TuringPanel
             if (receiveOffset == 0)
             {
                 var error = "No data received from device";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<List<string>>.CreateError(TuringDeviceError.InvalidResponse, error);
+                Logger.Debug(error);
+                throw new TuringDeviceException(error);
             }
 
             try
             {
-                string decodedString = Encoding.UTF8.GetString(receiveBuffer, 0, receiveOffset);
-                string[] files = decodedString.Split(new string[] { "file:" }, StringSplitOptions.None);
-
+                // Remove null bytes from the response
+                string decodedString = Encoding.UTF8.GetString(receiveBuffer, 0, receiveOffset).TrimEnd('\0');
+                
                 var fileList = new List<string>();
-                if (files.Length > 1)
+                
+                // Check for the expected format "result:dir:file:"
+                if (decodedString.Contains("result:dir:file:"))
                 {
-                    string[] filenames = files[files.Length - 1].TrimEnd('/').Split('/');
-                    foreach (string filename in filenames)
+                    // Extract the file list part after "result:dir:file:"
+                    int startIndex = decodedString.IndexOf("result:dir:file:") + "result:dir:file:".Length;
+                    if (startIndex < decodedString.Length)
                     {
-                        if (!string.IsNullOrWhiteSpace(filename))
+                        string filesPart = decodedString.Substring(startIndex).TrimEnd('/');
+                        string[] filenames = filesPart.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                        
+                        foreach (string filename in filenames)
                         {
-                            fileList.Add(filename);
+                            string trimmedFilename = filename.Trim();
+                            if (!string.IsNullOrWhiteSpace(trimmedFilename))
+                            {
+                                fileList.Add(trimmedFilename);
+                            }
+                        }
+                    }
+                }
+                else if (decodedString.Contains("file:"))
+                {
+                    // Fallback to old format for compatibility
+                    string[] files = decodedString.Split(new string[] { "file:" }, StringSplitOptions.None);
+                    if (files.Length > 1)
+                    {
+                        string[] filenames = files[files.Length - 1].TrimEnd('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+                        foreach (string filename in filenames)
+                        {
+                            string trimmedFilename = filename.Trim();
+                            if (!string.IsNullOrWhiteSpace(trimmedFilename))
+                            {
+                                fileList.Add(trimmedFilename);
+                            }
                         }
                     }
                 }
 
-                if (_config.EnableLogging)
+                if (fileList.Count > 0)
                 {
-                    if (fileList.Count > 0)
+                    Logger.Debug("Files found:");
+                    foreach (string file in fileList)
                     {
-                        Debug.WriteLine("Files found:");
-                        foreach (string file in fileList)
-                        {
-                            Debug.WriteLine($"  {file}");
-                        }
-                    }
-                    else
-                    {
-                        Debug.WriteLine("No files found or format unexpected");
+                        Logger.Debug("  Found file: {FileName}", file);
                     }
                 }
+                else
+                {
+                    Logger.Debug("No files found or format unexpected");
+                }
 
-                return TuringDeviceResult<List<string>>.CreateSuccess(fileList);
+                return fileList;
             }
             catch (Exception ex)
             {
-                var error = $"Failed to decode received data: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<List<string>>.CreateError(TuringDeviceError.InvalidResponse, error);
+                Logger.Debug(ex, "Failed to decode received data");
+                throw new TuringDeviceException("Failed to decode received data", ex);
             }
         }
 
@@ -670,8 +633,7 @@ namespace InfoPanel.TuringPanel
                 }
                 catch (Exception ex)
                 {
-                    if (_config.EnableLogging)
-                        Debug.WriteLine($"Error during disposal: {ex.Message}");
+                    Logger.Warning(ex, "Error during disposal");
                 }
                 finally
                 {
@@ -679,29 +641,26 @@ namespace InfoPanel.TuringPanel
                 }
             }
         }
-        public TuringDeviceResult<StorageInfo> GetStorageInfo()
+        public StorageInfo GetStorageInfo()
         {
-            if (_config.EnableLogging)
-                Debug.WriteLine("Sending Refresh Storage Command (ID 100)...");
+            Logger.Debug("Sending Refresh Storage Command (ID 100)...");
 
             byte[] cmdPacket = BuildCommandPacketHeader(100);
             byte[] encryptedPacket = EncryptCommandPacket(cmdPacket);
 
             byte[] response;
-            if (!WriteToDevice(encryptedPacket, _config.CommandTimeout, out response))
+            if (!WriteToDevice(encryptedPacket, COMMAND_TIMEOUT, out response))
             {
                 var error = "Invalid or incomplete response from device";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<StorageInfo>.CreateError(TuringDeviceError.InvalidResponse, error);
+                Logger.Error(error);
+                throw new TuringDeviceException(error);
             }
 
             if (response == null || response.Length < 20)
             {
                 var error = "Invalid or incomplete response from device";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<StorageInfo>.CreateError(TuringDeviceError.InvalidResponse, error);
+                Logger.Error(error);
+                throw new TuringDeviceException(error);
             }
 
             try
@@ -717,153 +676,37 @@ namespace InfoPanel.TuringPanel
                     ValidBytes = valid
                 };
 
-                if (_config.EnableLogging)
-                {
-                    Debug.WriteLine($"  Card Total: {storageInfo.FormattedTotal}");
-                    Debug.WriteLine($"  Card Used:  {storageInfo.FormattedUsed}");
-                    Debug.WriteLine($"  Card Valid: {storageInfo.FormattedValid}");
-                }
+                Logger.Information("Storage info: Total={Total}, Used={Used}, Valid={Valid}", 
+                    storageInfo.FormattedTotal, storageInfo.FormattedUsed, storageInfo.FormattedValid);
 
-                return TuringDeviceResult<StorageInfo>.CreateSuccess(storageInfo);
+                return storageInfo;
             }
             catch (Exception ex)
             {
-                var error = $"Error parsing storage information: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<StorageInfo>.CreateError(TuringDeviceError.InvalidResponse, error);
+                Logger.Error(ex, "Error parsing storage information");
+                throw new TuringDeviceException("Error parsing storage information", ex);
             }
         }
-        public void SendListStorageCommand(string path)
-        {
-            Debug.WriteLine($"Sending List Storage Command (ID 99) for path: {path}");
-
-            byte[] pathBytes = Encoding.ASCII.GetBytes(path);
-            int length = pathBytes.Length;
-
-            byte[] packet = BuildCommandPacketHeader(99);
-
-            packet[8] = (byte)((length >> 24) & 0xFF);
-            packet[9] = (byte)((length >> 16) & 0xFF);
-            packet[10] = (byte)((length >> 8) & 0xFF);
-            packet[11] = (byte)(length & 0xFF);
-
-            // Zero out bytes 12-15
-            for (int i = 12; i < 16; i++)
-                packet[i] = 0;
-
-            // Copy the path bytes starting at position 16
-            Buffer.BlockCopy(pathBytes, 0, packet, 16, length);
-
-            byte[] encryptedPacket = EncryptCommandPacket(packet);
-
-            // Buffer for receiving chunked responses
-            byte[] receiveBuffer = new byte[10240];
-            int receiveOffset = 0;
-            const int maxTries = 20; // Matching Python implementation
-
-            for (int i = 0; i < maxTries; i++)
-            {
-                byte[] response;
-                if (WriteToDevice(encryptedPacket, 2000, out response))
-                {
-                    if (response != null && response.Length > 0)
-                    {
-                        int chunkSize = response.Length;
-                        if (receiveOffset + chunkSize <= receiveBuffer.Length)
-                        {
-                            Buffer.BlockCopy(response, 0, receiveBuffer, receiveOffset, chunkSize);
-                            receiveOffset += chunkSize;
-                        }
-                        else
-                        {
-                            Debug.WriteLine("Buffer overflow prevented. Increase buffer size for larger directory listings.");
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        if (i > 0) // Only log warning if we've received some data
-                        {
-                            Debug.WriteLine($"No response in chunk {i}");
-                        }
-                        break;
-                    }
-                }
-                else
-                {
-                    if (i > 0) // Only log warning if we've received some data
-                    {
-                        Debug.WriteLine($"No response in chunk {i}");
-                    }
-                    break;
-                }
-            }
-
-            if (receiveOffset == 0)
-            {
-                Debug.WriteLine("No data received.");
-                return;
-            }
-
-            try
-            {
-                // Decode received data as UTF-8, matching Python implementation
-                string decodedString = Encoding.UTF8.GetString(receiveBuffer, 0, receiveOffset);
-                string[] files = decodedString.Split(new string[] { "file:" }, StringSplitOptions.None);
-
-                if (files.Length > 1)
-                {
-                    Debug.WriteLine("Files found:");
-                    string[] filenames = files[files.Length - 1].TrimEnd('/').Split('/');
-                    foreach (string filename in filenames)
-                    {
-                        if (!string.IsNullOrWhiteSpace(filename))
-                        {
-                            Debug.WriteLine($"  {filename}");
-                        }
-                    }
-                }
-                else
-                {
-                    Debug.WriteLine("No files found or format unexpected");
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to decode received data: {ex.Message}");
-            }
-        }
-        private string FormatBytes(uint bytes)
-        {
-            if (bytes > 1024 * 1024)
-                return $"{bytes / (1024.0 * 1024.0):F2} GB";
-            else
-                return $"{bytes / 1024.0:F2} MB";
-        }
-        private TuringDeviceResult<string> ConvertMp4ToH264(string mp4Path)
+        public string ConvertMp4ToH264(string mp4Path)
         {
             string inputPath = Path.GetFullPath(mp4Path);
             string outputPath = inputPath + ".h264"; // Match Python: filename.mp4.h264
 
             if (File.Exists(outputPath))
             {
-                if (_config.EnableLogging)
-                    Debug.WriteLine($"{Path.GetFileName(outputPath)} already exists. Skipping extraction.");
-                return TuringDeviceResult<string>.CreateSuccess(outputPath);
+                Logger.Debug("{FileName} already exists. Skipping extraction.", Path.GetFileName(outputPath));
+                return outputPath;
             }
 
-            string ffmpegPath = _config.FFmpegPath ?? Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg.exe");
+            string ffmpegPath = _ffmpegPath ?? Path.Combine(Directory.GetCurrentDirectory(), "FFmpeg", "ffmpeg.exe");
             if (!File.Exists(ffmpegPath))
             {
                 var error = "ffmpeg.exe not found. Please ensure ffmpeg is available.";
-                if (_config.EnableLogging)
-                    Debug.WriteLine($"Error: {error}");
-                return TuringDeviceResult<string>.CreateError(TuringDeviceError.ConversionFailed, error);
+                Logger.Debug("Error: {Error}", error);
+                throw new TuringDeviceException(error);
             }
 
-            if (_config.EnableLogging)
-                Debug.WriteLine($"Extracting H.264 from {Path.GetFileName(inputPath)}...");
+            Logger.Information("Extracting H.264 from {FileName}...", Path.GetFileName(inputPath));
 
             try
             {
@@ -878,75 +721,70 @@ namespace InfoPanel.TuringPanel
                     CreateNoWindow = true
                 };
 
-                using (var process = Process.Start(startInfo))
+                using var process = Process.Start(startInfo);
+                if (process != null)
                 {
-                    if (process != null)
+                    process.WaitForExit();
+
+                    if (process.ExitCode == 0)
                     {
-                        process.WaitForExit();
+                        Logger.Information("Done. Saved as {FileName} (stream copied)", Path.GetFileName(outputPath));
+                        return outputPath;
+                    }
+                    else
+                    {
+                        // If copy failed, try re-encoding with quality settings
+                        Logger.Debug("Stream copy failed, trying re-encode with quality settings...");
 
-                        if (process.ExitCode == 0)
+                        if (File.Exists(outputPath))
+                            File.Delete(outputPath);
+
+                        startInfo.Arguments = $"-y -i \"{inputPath}\" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -an -f h264 \"{outputPath}\"";
+
+                        using (var process2 = Process.Start(startInfo))
                         {
-                            if (_config.EnableLogging)
-                                Debug.WriteLine($"Done. Saved as {Path.GetFileName(outputPath)} (stream copied)");
-                            return TuringDeviceResult<string>.CreateSuccess(outputPath);
-                        }
-                        else
-                        {
-                            // If copy failed, try re-encoding with quality settings
-                            if (_config.EnableLogging)
-                                Debug.WriteLine("Stream copy failed, trying re-encode with quality settings...");
-
-                            if (File.Exists(outputPath))
-                                File.Delete(outputPath);
-
-                            startInfo.Arguments = $"-y -i \"{inputPath}\" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -an -f h264 \"{outputPath}\"";
-
-                            using (var process2 = Process.Start(startInfo))
+                            if (process2 != null)
                             {
-                                if (process2 != null)
-                                {
-                                    process2.WaitForExit();
+                                process2.WaitForExit();
 
-                                    if (process2.ExitCode == 0)
-                                    {
-                                        if (_config.EnableLogging)
-                                            Debug.WriteLine($"Done. Saved as {Path.GetFileName(outputPath)} (re-encoded)");
-                                        return TuringDeviceResult<string>.CreateSuccess(outputPath);
-                                    }
-                                    else
-                                    {
-                                        var error = $"FFmpeg re-encode failed with exit code {process2.ExitCode}";
-                                        if (_config.EnableLogging)
-                                            Debug.WriteLine(error);
-                                        return TuringDeviceResult<string>.CreateError(TuringDeviceError.ConversionFailed, error);
-                                    }
+                                if (process2.ExitCode == 0)
+                                {
+                                    Logger.Information("Done. Saved as {FileName} (re-encoded)", Path.GetFileName(outputPath));
+                                    return outputPath;
+                                }
+                                else
+                                {
+                                    var error = $"FFmpeg re-encode failed with exit code {process2.ExitCode}";
+                                    Logger.Error(error);
+                                    throw new TuringDeviceException(error);
                                 }
                             }
                         }
                     }
-
-                    var processError = "Failed to start ffmpeg process.";
-                    if (_config.EnableLogging)
-                        Debug.WriteLine($"Error: {processError}");
-                    return TuringDeviceResult<string>.CreateError(TuringDeviceError.ConversionFailed, processError);
                 }
+
+                var processError = "Failed to start ffmpeg process.";
+                Logger.Debug("Error: {Error}", processError);
+                throw new TuringDeviceException(processError);
+            }
+            catch (TuringDeviceException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                var error = $"Error running ffmpeg: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<string>.CreateError(TuringDeviceError.ConversionFailed, error);
+                Logger.Error(ex, "Error running ffmpeg");
+                throw new TuringDeviceException("Error running ffmpeg", ex);
             }
         }
-        public TuringDeviceResult<bool> UploadFile(string filePath)
+
+        public bool UploadFile(string filePath)
         {
             if (!File.Exists(filePath))
             {
                 var error = $"File '{filePath}' not found.";
-                if (_config.EnableLogging)
-                    Debug.WriteLine($"Error: {error}");
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.FileNotFound, error);
+                Logger.Debug("Error: {Error}", error);
+                throw new TuringDeviceException(error);
             }
 
             string devicePath;
@@ -961,12 +799,7 @@ namespace InfoPanel.TuringPanel
             {
                 if (extension == ".mp4")
                 {
-                    var conversionResult = ConvertMp4ToH264(filePath);
-                    if (!conversionResult.Success)
-                    {
-                        return TuringDeviceResult<bool>.CreateError(conversionResult.Error, conversionResult.ErrorMessage);
-                    }
-                    actualFilePath = conversionResult.Data!;
+                    actualFilePath = ConvertMp4ToH264(filePath);
                 }
 
                 devicePath = $"/tmp/sdcard/mmcblk0p1/video/{Path.GetFileName(actualFilePath)}";
@@ -974,38 +807,32 @@ namespace InfoPanel.TuringPanel
             else
             {
                 var error = $"Unsupported file type: {extension}. Supported types: .png, .mp4, .h264";
-                if (_config.EnableLogging)
-                {
-                    Debug.WriteLine($"Error: Unsupported file type: {extension}");
-                    Debug.WriteLine("Supported file types: .png, .mp4, .h264");
-                }
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.UnsupportedFileType, error);
+                Logger.Debug("Error: Unsupported file type: {Extension}", extension);
+                Logger.Debug("Supported file types: .png, .mp4, .h264");
+                throw new TuringDeviceException(error);
             }
 
             if (!OpenFileForWriting(devicePath))
             {
                 var error = "Failed to open file on device for writing.";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.UploadFailed, error);
+                Logger.Error(error);
+                throw new TuringDeviceException(error);
             }
 
             if (!WriteFileContents(actualFilePath))
             {
                 var error = "Failed to write file contents to device.";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.UploadFailed, error);
+                Logger.Error(error);
+                throw new TuringDeviceException(error);
             }
 
-            if (_config.EnableLogging)
-                Debug.WriteLine("Upload completed successfully.");
-            return TuringDeviceResult<bool>.CreateSuccess(true);
+            Logger.Information("Upload completed successfully.");
+            return true;
         }
 
         private bool OpenFileForWriting(string devicePath)
         {
-            Debug.WriteLine($"Opening file for writing: {devicePath}");
+            Logger.Debug("Opening file for writing: {DevicePath}", devicePath);
 
             byte[] pathBytes = Encoding.ASCII.GetBytes(devicePath);
             int length = pathBytes.Length;
@@ -1028,7 +855,7 @@ namespace InfoPanel.TuringPanel
         }
         private bool WriteFileContents(string filePath)
         {
-            Debug.WriteLine($"Writing file contents from: {filePath}");
+            Logger.Debug("Writing file contents from: {FilePath}", filePath);
 
             const int CHUNK_SIZE = 1048576; // 1MB chunks
             const int HEADER_SIZE = 512;
@@ -1082,7 +909,7 @@ namespace InfoPanel.TuringPanel
                         // Send the chunk
                         if (!WriteToDevice(fullPayload))
                         {
-                            Debug.WriteLine("Failed to write chunk to device.");
+                            Logger.Error("Failed to write chunk to device.");
                             return false;
                         }
 
@@ -1091,22 +918,22 @@ namespace InfoPanel.TuringPanel
                         int progress = (int)((totalSent * 100) / fileSize);
                         if (progress != lastProgress)
                         {
-                            Debug.WriteLine($"Upload progress: {progress}%");
+                            Logger.Verbose("Upload progress: {Progress}%", progress);
                             lastProgress = progress;
                         }
                     }
                 }
 
-                Debug.WriteLine("File upload complete.");
+                Logger.Information("File upload complete.");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error writing file contents: {ex.Message}");
+                Logger.Error(ex, "Error writing file contents");
                 return false;
             }
         }// Updated play methods with better naming and automatic content type detection
-        public TuringDeviceResult<bool> PlayFile(string filePath)
+        public bool PlayFile(string filePath)
         {
             // Automatically select the appropriate play method based on file type
             string extension = Path.GetExtension(filePath).ToLower();
@@ -1115,14 +942,16 @@ namespace InfoPanel.TuringPanel
             {
                 // Match Python's play-select implementation
                 // First, stop any existing playback
-                var stopResult = StopPlay();
-                if (!stopResult.Success && _config.EnableLogging)
-                    Debug.WriteLine($"Warning: Failed to stop playback: {stopResult.ErrorMessage}");
+                try
+                {
+                    StopPlay();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Failed to stop playback");
+                }
 
-                // Set brightness to 32
-                var brightnessResult = SendBrightnessCommand(32);
-                if (!brightnessResult.Success && _config.EnableLogging)
-                    Debug.WriteLine($"Warning: Failed to set brightness: {brightnessResult.ErrorMessage}");
+                // Don't change brightness during playback - respect user's setting
 
                 if (extension == ".h264")
                 {
@@ -1154,27 +983,26 @@ namespace InfoPanel.TuringPanel
                 else
                 {
                     var error = $"Unsupported file type: {extension}. Supported types: .png, .h264";
-                    if (_config.EnableLogging)
-                    {
-                        Debug.WriteLine($"Unsupported file type: {extension}");
-                        Debug.WriteLine("Supported file types: .png, .h264");
-                    }
-                    return TuringDeviceResult<bool>.CreateError(TuringDeviceError.UnsupportedFileType, error);
+                    Logger.Debug("Unsupported file type: {Extension}", extension);
+                    Logger.Debug("Supported file types: .png, .h264");
+                    throw new TuringDeviceException(error);
                 }
 
-                if (_config.EnableLogging)
-                    Debug.WriteLine("File playback complete.");
+                Logger.Information("File playback complete.");
 
-                return finalSuccess
-                    ? TuringDeviceResult<bool>.CreateSuccess(true)
-                    : TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, "Failed to play file");
+                if (!finalSuccess)
+                    throw new TuringDeviceException("Failed to play file");
+
+                return true;
+            }
+            catch (TuringDeviceException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                var error = $"Error playing file: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, error);
+                Logger.Error(ex, "Error playing file");
+                throw new TuringDeviceException("Error playing file", ex);
             }
         }
 
@@ -1207,28 +1035,28 @@ namespace InfoPanel.TuringPanel
             }
             else
             {
-                Debug.WriteLine($"Unsupported file type: {extension}");
-                Debug.WriteLine("Supported file types: .png, .h264");
+                Logger.Debug($"Unsupported file type: {extension}");
+                Logger.Debug("Supported file types: .png, .h264");
                 return false;
             }
         }
         private bool PlayImageWithCommand(string filePath, byte commandId)
         {
             string devicePath = $"/tmp/sdcard/mmcblk0p1/img/{Path.GetFileName(filePath)}";
-            Debug.WriteLine($"Playing image with command ID {commandId}: {devicePath}");
+            Logger.Debug("Playing image with command ID {CommandId}: {DevicePath}", commandId, devicePath);
             return SendPlayCommand(devicePath, commandId);
         }
 
         private bool PlayVideoWithCommand(string filePath, byte commandId)
         {
             string devicePath = $"/tmp/sdcard/mmcblk0p1/video/{Path.GetFileName(filePath)}";
-            Debug.WriteLine($"Playing video with command ID {commandId}: {devicePath}");
+            Logger.Debug("Playing video with command ID {CommandId}: {DevicePath}", commandId, devicePath);
             return SendPlayCommand(devicePath, commandId);
         }
 
         private bool SendPlayCommand(string devicePath, byte commandId)
         {
-            Debug.WriteLine($"Sending Play Command (ID {commandId}) for path: {devicePath}");
+            Logger.Debug("Sending Play Command (ID {CommandId}) for path: {DevicePath}", commandId, devicePath);
 
             byte[] pathBytes = Encoding.ASCII.GetBytes(devicePath);
             int length = pathBytes.Length;
@@ -1249,12 +1077,11 @@ namespace InfoPanel.TuringPanel
 
             return WriteToDevice(EncryptCommandPacket(packet));
         }
-        public TuringDeviceResult<bool> StopPlay()
+        public bool StopPlay()
         {
             try
             {
-                if (_config.EnableLogging)
-                    Debug.WriteLine("Sending Stop Play Commands (ID 111 and 114)");
+                Logger.Debug("Sending Stop Play Commands (ID 111 and 114)");
 
                 // Send first stop command (ID 111)
                 byte[] cmdPacket1 = BuildCommandPacketHeader(111);
@@ -1265,24 +1092,26 @@ namespace InfoPanel.TuringPanel
                 bool success2 = WriteToDevice(EncryptCommandPacket(cmdPacket2));
 
                 bool success = success1 && success2;
-                return success
-                    ? TuringDeviceResult<bool>.CreateSuccess(true)
-                    : TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, "Failed to send stop play commands");
+                if (!success)
+                    throw new TuringDeviceException("Failed to send stop play commands");
+
+                return true;
+            }
+            catch (TuringDeviceException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                var error = $"Error stopping playback: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, error);
+                Logger.Error(ex, "Error stopping playback");
+                throw new TuringDeviceException("Error stopping playback", ex);
             }
         }
-        public TuringDeviceResult<bool> DeleteFile(string filePath)
+        public bool DeleteFile(string filePath)
         {
             try
             {
-                if (_config.EnableLogging)
-                    Debug.WriteLine($"Deleting file: {filePath}");
+                Logger.Information("Deleting file: {FilePath}", filePath);
 
                 string devicePath;
                 string extension = Path.GetExtension(filePath).ToLower();
@@ -1298,11 +1127,8 @@ namespace InfoPanel.TuringPanel
                 else
                 {
                     var error = $"Unsupported file type for deletion: {extension}. Supported types: .png, .h264";
-                    if (_config.EnableLogging)
-                    {
-                        Debug.WriteLine($"Error: {error}");
-                    }
-                    return TuringDeviceResult<bool>.CreateError(TuringDeviceError.UnsupportedFileType, error);
+                    Logger.Debug("Error: {Error}", error);
+                    throw new TuringDeviceException(error);
                 }
 
                 byte[] pathBytes = Encoding.ASCII.GetBytes(devicePath);
@@ -1323,16 +1149,19 @@ namespace InfoPanel.TuringPanel
                 Buffer.BlockCopy(pathBytes, 0, packet, 16, length);
 
                 bool success = WriteToDevice(EncryptCommandPacket(packet));
-                return success
-                    ? TuringDeviceResult<bool>.CreateSuccess(true)
-                    : TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, "Failed to delete file");
+                if (!success)
+                    throw new TuringDeviceException("Failed to delete file");
+
+                return true;
+            }
+            catch (TuringDeviceException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                var error = $"Error deleting file: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.CommunicationTimeout, error);
+                Logger.Error(ex, "Error deleting file");
+                throw new TuringDeviceException("Error deleting file", ex);
             }
         }
 
@@ -1358,58 +1187,54 @@ namespace InfoPanel.TuringPanel
             return WriteToDevice(fullPayload);
         }
 
-        public TuringDeviceResult<bool> SendImage(string imagePath)
+        public bool SendImage(string imagePath)
         {
             if (!File.Exists(imagePath))
             {
                 var error = $"Image file '{imagePath}' not found.";
-                if (_config.EnableLogging)
-                    Debug.WriteLine($"Error: {error}");
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.FileNotFound, error);
+                Logger.Debug("Error: {Error}", error);
+                throw new TuringDeviceException(error);
             }
 
             try
             {
-                if (_config.EnableLogging)
-                    Debug.WriteLine($"Loading image: {imagePath}");
+                Logger.Debug("Loading image: {ImagePath}", imagePath);
 
                 using (SKBitmap bitmap = SKBitmap.Decode(imagePath))
                 {
                     if (bitmap == null)
                     {
                         var error = "Failed to load image.";
-                        if (_config.EnableLogging)
-                            Debug.WriteLine($"Error: {error}");
-                        return TuringDeviceResult<bool>.CreateError(TuringDeviceError.UnsupportedFileType, error);
+                        Logger.Debug("Error: {Error}", error);
+                        throw new TuringDeviceException(error);
                     }
 
-                    if (_config.EnableLogging)
-                        Debug.WriteLine($"Image loaded: {bitmap.Width}x{bitmap.Height}");
+                    Logger.Debug("Image loaded: {Width}x{Height}", bitmap.Width, bitmap.Height);
 
                     byte[] pngData = EncodePng(bitmap);
                     if (!SendPngBytes(pngData))
                     {
                         var error = "Failed to send image data to device.";
-                        if (_config.EnableLogging)
-                            Debug.WriteLine($"Error: {error}");
-                        return TuringDeviceResult<bool>.CreateError(TuringDeviceError.UploadFailed, error);
+                        Logger.Debug("Error: {Error}", error);
+                        throw new TuringDeviceException(error);
                     }
 
-                    if (_config.EnableLogging)
-                        Debug.WriteLine("Image sent successfully.");
-                    return TuringDeviceResult<bool>.CreateSuccess(true);
+                    Logger.Information("Image sent successfully.");
+                    return true;
                 }
+            }
+            catch (TuringDeviceException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                var error = $"Error sending image: {ex.Message}";
-                if (_config.EnableLogging)
-                    Debug.WriteLine(error);
-                return TuringDeviceResult<bool>.CreateError(TuringDeviceError.UploadFailed, error);
+                Logger.Error(ex, "Error sending image");
+                throw new TuringDeviceException("Error sending image", ex);
             }
         }
 
-        public TuringDeviceResult<bool> ClearImage()
+        public bool ClearImage()
         {
             byte[] imgData = new byte[] {
                 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
@@ -1438,8 +1263,7 @@ namespace InfoPanel.TuringPanel
             Buffer.BlockCopy(footer, 0, fullImgData, imgData.Length + paddingZeros.Length, footer.Length);
 
             int imgSize = fullImgData.Length;
-            if (_config.EnableLogging)
-                Debug.WriteLine($"Sending Clear Image Command (ID 102) - {imgSize} bytes");
+            Logger.Debug("Sending Clear Image Command (ID 102) - {ImageSize} bytes", imgSize);
 
             byte[] cmdPacket = BuildCommandPacketHeader(102);
             cmdPacket[8] = (byte)((imgSize >> 24) & 0xFF);
@@ -1453,9 +1277,10 @@ namespace InfoPanel.TuringPanel
             Buffer.BlockCopy(fullImgData, 0, fullPayload, encryptedPacket.Length, fullImgData.Length);
 
             bool success = WriteToDevice(fullPayload);
-            return success
-                ? TuringDeviceResult<bool>.CreateSuccess(true)
-                : TuringDeviceResult<bool>.CreateError(TuringDeviceError.UploadFailed, "Failed to send clear image command to device");
+            if (!success)
+                throw new TuringDeviceException("Failed to send clear image command to device");
+
+            return true;
         }
 
         private byte[] EncodePng(SKBitmap bitmap)
@@ -1467,41 +1292,5 @@ namespace InfoPanel.TuringPanel
             }
         }
 
-        // Wrapper methods to match Program.cs expectations
-        public TuringDeviceResult<bool> RestartDevice()
-        {
-            return SendRestartDeviceCommand();
-        }
-
-        public TuringDeviceResult<bool> SetBrightness(byte brightness)
-        {
-            return SendBrightnessCommand(brightness);
-        }
-
-        public TuringDeviceResult<StorageInfo> RefreshStorageInfo()
-        {
-            return GetStorageInfo();
-        }
-
-        public TuringDeviceResult<List<string>> ListStorageFiles(string type)
-        {
-            string path = type.ToLower() switch
-            {
-                "image" => "/tmp/sdcard/mmcblk0p1/img/",
-                "video" => "/tmp/sdcard/mmcblk0p1/video/",
-                _ => throw new ArgumentException($"Unsupported storage type: {type}")
-            };
-            return ListFiles(path);
-        }
-
-        public TuringDeviceResult<bool> PlayVideoFile(string filePath)
-        {
-            return PlayFile(filePath);
-        }
-
-        public TuringDeviceResult<bool> StopPlayback()
-        {
-            return StopPlay();
-        }
     }
 }

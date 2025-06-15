@@ -145,11 +145,14 @@ namespace InfoPanel.Services
 
                 using var device = new TuringDevice();
                 
-                var initResult = device.Initialize(usbRegistry);
-                if (!initResult.Success)
+                try
                 {
-                    Logger.Error("TuringPanelDevice {Device}: Failed to initialize - {Error}", _device, initResult.ErrorMessage);
-                    _device.UpdateRuntimeProperties(errorMessage: initResult.ErrorMessage);
+                    device.Initialize(usbRegistry);
+                }
+                catch (TuringDeviceException ex)
+                {
+                    Logger.Error("TuringPanelDevice {Device}: Failed to initialize - {Error}", _device, ex.Message);
+                    _device.UpdateRuntimeProperties(errorMessage: ex.Message);
                     return;
                 }
                 
@@ -158,14 +161,18 @@ namespace InfoPanel.Services
 
                 try
                 {
-                    device.DelaySync();
-                    device.DelaySync();
+                    // Delay for sync
+                    device.SendSyncCommand();
+                    Thread.Sleep(200);
+                    device.SendSyncCommand();
+                    Thread.Sleep(200);
 
                     // Set brightness
                     var brightness = _device.Brightness;
                     device.SendBrightnessCommand((byte)brightness);
 
-                    device.DelaySync();
+                    device.SendSyncCommand();
+                    Thread.Sleep(200);
 
                     FpsCounter fpsCounter = new(60);
                     byte[]? _latestFrame = null;
@@ -223,7 +230,8 @@ namespace InfoPanel.Services
                                 {
                                     brightness = _device.Brightness;
                                     device.SendBrightnessCommand((byte)brightness);
-                                    device.DelaySync();
+                                    device.SendSyncCommand();
+                    Thread.Sleep(200);
                                 }
 
                                 if (_frameAvailable.WaitOne(100))

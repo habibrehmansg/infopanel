@@ -841,6 +841,16 @@
                                                         Tag="{Binding}"
                                                         ToolTip="Remove Device" />
                                                 </Grid>
+                                                <!--  Manage button  -->
+                                                <ui:Button
+                                                    Grid.Column="1"
+                                                    Margin="10,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    Content="Manage"
+                                                    Icon="Settings24"
+                                                    Click="ButtonManageTuringDevice_Click"
+                                                    Tag="{Binding}"
+                                                    ToolTip="Manage device storage, videos, and settings" />
                                             </StackPanel>
                                         </ui:CardControl>
                                     </DataTemplate>

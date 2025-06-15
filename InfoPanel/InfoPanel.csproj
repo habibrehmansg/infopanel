@@ -277,6 +277,9 @@
 		<None Update="FFmpeg\avutil-59.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
+		<None Update="FFmpeg\ffmpeg.exe">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
 		<None Update="FFmpeg\postproc-58.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>

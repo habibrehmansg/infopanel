@@ -2,6 +2,7 @@
 using InfoPanel.Models;
 using InfoPanel.Services;
 using InfoPanel.ViewModels;
+using InfoPanel.Views.Windows;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
 using System;
@@ -380,6 +381,15 @@ namespace InfoPanel.Views.Pages
                         settings.TuringPanelDevices.Remove(deviceConfig);
                     }
                 });
+            }
+        }
+
+        private void ButtonManageTuringDevice_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is TuringPanelDevice device)
+            {
+                var window = new TuringDeviceWindow(device);
+                window.ShowDialog();
             }
         }
     }
