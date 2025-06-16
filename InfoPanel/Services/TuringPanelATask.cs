@@ -21,6 +21,7 @@ namespace InfoPanel
         private readonly int _panelWidth = 480;
         private readonly int _panelHeight = 320;
 
+
         private TuringPanelATask()
         { }
 

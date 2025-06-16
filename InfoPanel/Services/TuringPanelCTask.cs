@@ -15,14 +15,17 @@ namespace InfoPanel
     public sealed class TuringPanelCTask : BackgroundTask
     {
         private static readonly ILogger Logger = Log.ForContext<TuringPanelCTask>();
-        private static readonly Lazy<TuringPanelCTask> _instance = new(() => new TuringPanelCTask());
-        public static TuringPanelCTask Instance => _instance.Value;
+
+        private readonly TuringPanelDevice _device;
 
         private readonly int _panelWidth = 800;
         private readonly int _panelHeight = 480;
 
-        private TuringPanelCTask()
-        { }
+        public TuringPanelDevice Device => _device;
+        public TuringPanelCTask(TuringPanelDevice device)
+        {
+            _device = device ?? throw new ArgumentNullException(nameof(device));
+        }
 
         public SKBitmap? GenerateLcdBitmap()
         {
@@ -51,11 +54,11 @@ namespace InfoPanel
 
             try
             {
-                using var screen = ScreenFactory.Create(ScreenType.RevisionC, ConfigModel.Instance.Settings.TuringPanelCPort);
+                using var screen = ScreenFactory.Create(ScreenType.RevisionE, _device.DeviceLocation);
 
                 if (screen == null)
                 {
-                    Logger.Warning("TuringPanelC: Screen not found on port {Port}", ConfigModel.Instance.Settings.TuringPanelCPort);
+                    Logger.Warning("TuringPanelC: Screen not found on port {Port}", _device.DeviceLocation);
                     return;
                 }
 

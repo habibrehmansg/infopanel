@@ -307,9 +307,7 @@ namespace InfoPanel
             Task.Run(async () =>
             {
                 await BeadaPanelTask.Instance.StopAsync(true);
-                await TuringPanelATask.Instance.StopAsync(true);
-                await TuringPanelCTask.Instance.StopAsync(true);
-                await TuringPanelETask.Instance.StopAsync(true);
+                await TuringPanelTask.Instance.StopAsync(true);
             }).ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
@@ -328,9 +326,7 @@ namespace InfoPanel
                     Task.Run(async () =>
                     {
                         await BeadaPanelTask.Instance.StopAsync(true);
-                        await TuringPanelATask.Instance.StopAsync(true);
-                        await TuringPanelCTask.Instance.StopAsync(true);
-                        await TuringPanelETask.Instance.StopAsync(true);
+                        await TuringPanelTask.Instance.StopAsync(true);
                     }).ConfigureAwait(false).GetAwaiter().GetResult();
                     break;
             }
@@ -348,21 +344,6 @@ namespace InfoPanel
                 await TuringPanelTask.Instance.StartAsync();
             }
 
-            if (ConfigModel.Instance.Settings.TuringPanelA)
-            {
-                await TuringPanelATask.Instance.StartAsync();
-            }
-
-            if (ConfigModel.Instance.Settings.TuringPanelC)
-            {
-                await TuringPanelCTask.Instance.StartAsync();
-            }
-
-            if (ConfigModel.Instance.Settings.TuringPanelE)
-            {
-                await TuringPanelETask.Instance.StartAsync();
-            }
-
             if (ConfigModel.Instance.Settings.WebServer)
             {
                 await WebServerTask.Instance.StartAsync();
@@ -374,9 +355,6 @@ namespace InfoPanel
         {
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelTask.Instance.StopAsync();
-            await TuringPanelATask.Instance.StopAsync();
-            await TuringPanelCTask.Instance.StopAsync();
-            await TuringPanelETask.Instance.StopAsync();
         }
 
         private void App_Exit(object sender, ExitEventArgs e)

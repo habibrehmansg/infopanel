@@ -1,7 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.TuringPanel;
 using InfoPanel.ViewModels;
 using Serilog;
 using System;
+using System.Drawing.Text;
 using System.Windows.Threading;
 
 namespace InfoPanel.Models
@@ -18,7 +20,31 @@ namespace InfoPanel.Models
         private string _deviceLocation = string.Empty;
 
         [ObservableProperty]
-        private string _model = "CT88INCH"; // Default model for TuringPanel
+        private string _model = string.Empty;
+
+        public string Name => GetName();
+
+        private string GetName()
+        {
+            if(Enum.TryParse<TuringPanelModel>(Model, out var model))
+            {
+                return TuringPanelModelDatabase.Models[model].Name;
+            }
+
+            return "Unknown Model";
+        }
+
+        public TuringPanelModelInfo? ModelInfo => GetModelInfo();
+
+        private TuringPanelModelInfo? GetModelInfo()
+        {
+            if (Enum.TryParse<TuringPanelModel>(Model, out var model))
+            {
+                return TuringPanelModelDatabase.Models[model];
+            }
+            
+            return null;
+        }
 
         [ObservableProperty]
         private bool _enabled = false;
@@ -120,8 +146,6 @@ namespace InfoPanel.Models
         {
             [ObservableProperty]
             private bool _isRunning = false;
-
-            public string Name => "TuringPanel 8.8\" Rev 1.1";
 
             [ObservableProperty]
             private int _frameRate = 0;

@@ -17,6 +17,8 @@ using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
 using System.Diagnostics;
+using InfoPanel.TuringPanel;
+using System.Collections.Generic;
 
 namespace InfoPanel.Views.Pages
 {
@@ -299,57 +301,32 @@ namespace InfoPanel.Views.Pages
 
         private async Task UpdateTuringPanelDeviceList()
         {
-            int vendorId = 0x1cbe;
-            int productId = 0x0088;
+            var serialDeviceTask = TuringPanelHelper.GetSerialDevices();
+            var usbDeviceTask = TuringPanelHelper.GetUsbDevices();
 
-            var allDevices = UsbDevice.AllDevices;
-            Logger.Information("TuringPanel Discovery: Scanning {Count} USB devices for VID={VendorId:X4} PID={ProductId:X4}", allDevices.Count, vendorId, productId);
+            await Task.WhenAll(serialDeviceTask, usbDeviceTask);
 
-            foreach (UsbRegistry deviceReg in allDevices)
-            {
-                if (deviceReg.Vid == vendorId && deviceReg.Pid == productId)
+            List<TuringPanelDevice> discoveredDevices = [.. usbDeviceTask.Result, ..serialDeviceTask.Result];
+
+            foreach(var discoveredDevice in discoveredDevices){
+
+                ConfigModel.Instance.AccessSettings(settings =>
                 {
-                    var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
-                    var deviceLocation = deviceReg.DeviceProperties["LocationInformation"] as string;
+                    var device = settings.TuringPanelDevices.FirstOrDefault(d => d.IsMatching(discoveredDevice.DeviceId));
 
-                    if (string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
+                    if (device == null)
                     {
-                        Log.Warning("TuringDevice Discovery: Skipping device with missing properties - DeviceID: '{DeviceId}', LocationInformation: '{DeviceLocation}'", deviceId, deviceLocation);
-                        continue;
+                        discoveredDevice.ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
+                        settings.TuringPanelDevices.Add(discoveredDevice);
+                        Logger.Information("TuringPanel Discovery: Added new device with DeviceId '{DeviceId}'", discoveredDevice.DeviceId);
                     }
-
-                    Logger.Information("TuringPanel Discovery: Found matching device - DeviceId: '{DeviceId}', DevicePath: '{DevicePath}'", deviceId, deviceReg.DevicePath);
-
-                    try
+                    else
                     {
-                        ConfigModel.Instance.AccessSettings(settings =>
-                        {
-                            var device = settings.TuringPanelDevices.FirstOrDefault(d => d.IsMatching(deviceId));
-
-                            if (device == null)
-                            {
-                                device = new TuringPanelDevice()
-                                {
-                                    DeviceId = deviceId,
-                                    DeviceLocation = deviceLocation,
-                                    ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty,
-                                    RuntimeProperties = new TuringPanelDevice.TuringPanelDeviceRuntimeProperties()
-                                };
-
-                                settings.TuringPanelDevices.Add(device);
-                                Logger.Information("TuringPanel Discovery: Added new device with DeviceId '{DeviceId}'", deviceId);
-                            }
-                            else
-                            {
-                                Logger.Information("TuringPanel Discovery: Device with DeviceId '{DeviceId}' already exists", deviceId);
-                            }
-                        });
+                        //update location
+                        device.DeviceLocation = discoveredDevice.DeviceLocation;
+                        Logger.Information("TuringPanel Discovery: Device with DeviceId '{DeviceId}' already exists", discoveredDevice.DeviceId);
                     }
-                    catch (Exception ex)
-                    {
-                        Logger.Error(ex, "Error discovering TuringPanel device");
-                    }
-                }
+                });
             }
         }
 

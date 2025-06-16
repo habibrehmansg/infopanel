@@ -716,15 +716,34 @@
                                                         <TextBlock FontSize="13" FontWeight="Medium">
                                                             <TextBlock.Text>
                                                                 <MultiBinding StringFormat="{}{0}">
-                                                                    <Binding Path="RuntimeProperties.Name" />
+                                                                    <Binding Path="Name" />
                                                                 </MultiBinding>
                                                             </TextBlock.Text>
                                                         </TextBlock>
 
                                                         <TextBlock
+                                                            Margin="0,0,0,0"
                                                             FontSize="12"
-                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                            Text="{Binding DeviceId}" />
+                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                            <TextBlock.Text>
+                                                                <MultiBinding StringFormat="{}{0} - {1}">
+                                                                    <Binding Path="DeviceId" />
+                                                                    <Binding Path="DeviceLocation" />
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
+
+                                                        <TextBlock
+                                                            Margin="0,0,0,0"
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                            <TextBlock.Text>
+                                                                <MultiBinding StringFormat="{}Dimensions: {0}×{1}">
+                                                                    <Binding Path="ModelInfo.Width" />
+                                                                    <Binding Path="ModelInfo.Height" />
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
 
                                                         <!--  Panel status when enabled  -->
                                                         <StackPanel Visibility="{Binding Enabled, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -846,9 +865,9 @@
                                                     Grid.Column="1"
                                                     Margin="10,0,0,0"
                                                     VerticalAlignment="Center"
+                                                    Click="ButtonManageTuringDevice_Click"
                                                     Content="Manage"
                                                     Icon="Settings24"
-                                                    Click="ButtonManageTuringDevice_Click"
                                                     Tag="{Binding}"
                                                     ToolTip="Manage device storage, videos, and settings" />
                                             </StackPanel>
@@ -860,391 +879,6 @@
                         <!--  end TuringPanel Device Management  -->
                     </ui:CardExpander>
                     <!--  end TuringPanel Multi-Device settings  -->
-
-                    <!--  start TuringPanelA settings  -->
-                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
-                        <ui:CardControl.Header>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock
-                                        FontSize="13"
-                                        FontWeight="Medium"
-                                        Text="Turing Smart Screen 3.5&quot;" />
-                                    <TextBlock
-                                        Margin="0,5,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Also known as Revision A." />
-                                    <!--  start display status  -->
-                                    <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelA, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel
-                                            Margin="0,5,0,0"
-                                            Orientation="Horizontal"
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelARunning, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="Panel is running." />
-                                            <TextBlock
-                                                Margin="10,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelAFrameRate, StringFormat={}{0} FPS}" />
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelAFrameTime, StringFormat={} @ {0}ms}" />
-                                        </StackPanel>
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Orange"
-                                            Text="Display is not running. Check your COM port settings and try again."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelARunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-                                    </StackPanel>
-                                    <!--  end display status  -->
-                                </StackPanel>
-                            </Grid>
-                        </ui:CardControl.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <!--  start com port  -->
-                            <ComboBox
-                                Name="ComboBoxTuringPanelAPort"
-                                Width="150"
-                                IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelARunning, Converter={StaticResource InverseBooleanConverter}}"
-                                ItemsSource="{Binding ViewModel.ComPorts, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelAPort, Mode=OneWay}"
-                                SelectionChanged="ComboBoxTuringPanelAPort_SelectionChanged" />
-                            <!--  end com port  -->
-                            <StackPanel Margin="10,0,0,0">
-                                <!--  start profile  -->
-                                <ComboBox
-                                    Width="300"
-                                    Margin="0,0,0,0"
-                                    DisplayMemberPath="Name"
-                                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                                    SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelAProfile}"
-                                    SelectedValuePath="Guid" />
-                                <!--  end profile  -->
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <!--  start rotation  -->
-                                    <ComboBox
-                                        Margin="0,0,10,0"
-                                        ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                        SelectedItem="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelARotation}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <!--  end rotation  -->
-                                    <!--  start brightness  -->
-                                    <StackPanel Grid.Column="1" Margin="0,0,0,0">
-                                        <Slider
-                                            Margin="0,0,0,0"
-                                            IsSnapToTickEnabled="True"
-                                            Maximum="100"
-                                            Minimum="0"
-                                            TickFrequency="1"
-                                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelABrightness}" />
-                                        <Grid Margin="0,0,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="Brightness" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelABrightness}" />
-                                        </Grid>
-                                    </StackPanel>
-                                    <!--  end brightness  -->
-                                </Grid>
-                            </StackPanel>
-                            <!--  start enable  -->
-                            <ui:ToggleSwitch
-                                Margin="20,0,0,0"
-                                IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelA}"
-                                IsEnabled="{Binding ElementName=ComboBoxTuringPanelAPort, Path=SelectedValue, Converter={StaticResource NullToBooleanConverter}}" />
-                            <!--  end enable  -->
-                        </StackPanel>
-                    </ui:CardControl>
-                    <!--  end TuringPanelA settings  -->
-
-                    <!--  start TuringPanelC settings  -->
-                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
-                        <ui:CardControl.Header>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock
-                                        FontSize="13"
-                                        FontWeight="Medium"
-                                        Text="Turing Smart Screen 5&quot;" />
-                                    <TextBlock
-                                        Margin="0,5,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Also known as Revision C." />
-                                    <!--  start display status  -->
-                                    <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelC, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel
-                                            Margin="0,5,0,0"
-                                            Orientation="Horizontal"
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="Panel is running." />
-                                            <TextBlock
-                                                Margin="10,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCFrameRate, StringFormat={}{0} FPS}" />
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCFrameTime, StringFormat={} @ {0}ms}" />
-                                        </StackPanel>
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Orange"
-                                            Text="Display is not running. Check your COM port settings and try again."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-                                    </StackPanel>
-                                    <!--  end display status  -->
-                                </StackPanel>
-                            </Grid>
-                        </ui:CardControl.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <!--  start com port  -->
-                            <ComboBox
-                                Name="ComboBoxTuringPanelCPort"
-                                Width="150"
-                                IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelCRunning, Converter={StaticResource InverseBooleanConverter}}"
-                                ItemsSource="{Binding ViewModel.ComPorts, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelCPort, Mode=OneWay}"
-                                SelectionChanged="ComboBoxTuringPanelCPort_SelectionChanged" />
-                            <!--  end com port  -->
-                            <StackPanel Margin="10,0,0,0">
-                                <!--  start profile  -->
-                                <ComboBox
-                                    Width="300"
-                                    Margin="0,0,0,0"
-                                    DisplayMemberPath="Name"
-                                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                                    SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelCProfile}"
-                                    SelectedValuePath="Guid" />
-                                <!--  end profile  -->
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <!--  start rotation  -->
-                                    <ComboBox
-                                        Margin="0,0,10,0"
-                                        ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                        SelectedItem="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelCRotation}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <!--  end rotation  -->
-                                    <!--  start brightness  -->
-                                    <StackPanel Grid.Column="1" Margin="0,0,0,0">
-                                        <Slider
-                                            Margin="0,0,0,0"
-                                            IsSnapToTickEnabled="True"
-                                            Maximum="100"
-                                            Minimum="0"
-                                            TickFrequency="1"
-                                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelCBrightness}" />
-                                        <Grid Margin="0,0,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="Brightness" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelCBrightness}" />
-                                        </Grid>
-                                    </StackPanel>
-                                    <!--  end brightness  -->
-                                </Grid>
-                            </StackPanel>
-                            <!--  start enable  -->
-                            <ui:ToggleSwitch
-                                Margin="20,0,0,0"
-                                IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelC}"
-                                IsEnabled="{Binding ElementName=ComboBoxTuringPanelCPort, Path=SelectedValue, Converter={StaticResource NullToBooleanConverter}}" />
-                            <!--  end enable  -->
-                        </StackPanel>
-                    </ui:CardControl>
-                    <!--  end TuringPanelC settings  -->
-
-
-                    <!--  start TuringPanelE settings  -->
-                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
-                        <ui:CardControl.Header>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock
-                                        FontSize="13"
-                                        FontWeight="Medium"
-                                        Text="Turing Smart Screen 8.8&quot;" />
-                                    <TextBlock
-                                        Margin="0,5,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Also known as Revision E." />
-                                    <!--  start display status  -->
-                                    <StackPanel Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelE, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel
-                                            Margin="0,5,0,0"
-                                            Orientation="Horizontal"
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelERunning, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="Panel is running." />
-                                            <TextBlock
-                                                Margin="10,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelEFrameRate, StringFormat={}{0} FPS}" />
-                                            <TextBlock
-                                                Margin="0,0,0,0"
-                                                FontSize="12"
-                                                Foreground="LawnGreen"
-                                                Text="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelEFrameTime, StringFormat={} @ {0}ms}" />
-                                        </StackPanel>
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="Orange"
-                                            Text="Display is not running. Check your COM port settings and try again."
-                                            Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelERunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-                                    </StackPanel>
-                                    <!--  end display status  -->
-                                </StackPanel>
-                            </Grid>
-                        </ui:CardControl.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <!--  start com port  -->
-                            <ComboBox
-                                Name="ComboBoxTuringPanelEPort"
-                                Width="150"
-                                IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=TuringPanelERunning, Converter={StaticResource InverseBooleanConverter}}"
-                                ItemsSource="{Binding ViewModel.ComPorts, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelEPort, Mode=OneWay}"
-                                SelectionChanged="ComboBoxTuringPanelEPort_SelectionChanged" />
-                            <!--  end com port  -->
-                            <StackPanel Margin="10,0,0,0">
-                                <!--  start profile  -->
-                                <ComboBox
-                                    Width="300"
-                                    Margin="0,0,0,0"
-                                    DisplayMemberPath="Name"
-                                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                                    SelectedValue="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelEProfile}"
-                                    SelectedValuePath="Guid" />
-                                <!--  end profile  -->
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <!--  start rotation  -->
-                                    <ComboBox
-                                        Margin="0,0,10,0"
-                                        ItemsSource="{Binding Path=ViewModel.RotationValues, RelativeSource={RelativeSource AncestorType=pages:SettingsPage}}"
-                                        SelectedItem="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelERotation}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <!--  end rotation  -->
-                                    <!--  start brightness  -->
-                                    <StackPanel Grid.Column="1" Margin="0,0,0,0">
-                                        <Slider
-                                            Margin="0,0,0,0"
-                                            IsSnapToTickEnabled="True"
-                                            Maximum="100"
-                                            Minimum="0"
-                                            TickFrequency="1"
-                                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelEBrightness}" />
-                                        <Grid Margin="0,0,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="Brightness" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                Margin="5,0,0,0"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelEBrightness}" />
-                                        </Grid>
-                                    </StackPanel>
-                                    <!--  end brightness  -->
-                                </Grid>
-                            </StackPanel>
-                            <!--  start enable  -->
-                            <ui:ToggleSwitch
-                                Margin="20,0,0,0"
-                                IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelE}"
-                                IsEnabled="{Binding ElementName=ComboBoxTuringPanelEPort, Path=SelectedValue, Converter={StaticResource NullToBooleanConverter}}" />
-                            <!--  end enable  -->
-                        </StackPanel>
-                    </ui:CardControl>
-                    <!--  end panel e settings  -->
                 </StackPanel>
 
                 <StackPanel Grid.Row="3" Margin="0,40,0,0">

@@ -1,4 +1,5 @@
 using InfoPanel.Models;
+using InfoPanel.TuringPanel;
 using Serilog;
 using System;
 using System.Collections.Concurrent;
@@ -13,8 +14,8 @@ namespace InfoPanel.Services
     {
         private static readonly ILogger Logger = Log.ForContext<TuringPanelTask>();
         private static readonly Lazy<TuringPanelTask> _instance = new(() => new TuringPanelTask());
-        
-        private readonly ConcurrentDictionary<string, TuringPanelDeviceTask> _deviceTasks = new();
+
+        private readonly ConcurrentDictionary<string, BackgroundTask> _deviceTasks = new();
 
         public static TuringPanelTask Instance => _instance.Value;
 
@@ -22,17 +23,44 @@ namespace InfoPanel.Services
 
         public async Task StartDevice(TuringPanelDevice device)
         {
-            if(_deviceTasks.TryGetValue(device.Id, out var task))
+            if (_deviceTasks.TryGetValue(device.Id, out var task))
             {
                 await task.StopAsync();
                 _deviceTasks.TryRemove(device.Id, out _);
             }
 
-            var deviceTask = new TuringPanelDeviceTask(device);
-            if (_deviceTasks.TryAdd(device.Id, deviceTask))
+            var modelInfo = device.ModelInfo;
+
+            if (modelInfo != null)
             {
-                await deviceTask.StartAsync(CancellationToken);
-                Logger.Information("Started TuringPanel device {Device}", device);
+                BackgroundTask deviceTask;
+                switch (modelInfo.Model)
+                {
+                    case TuringPanelModel.REV_8INCH_USB:
+                        deviceTask = new TuringPanelUsbDeviceTask(device);
+                        break;
+                    case TuringPanelModel.TURING_3_5:
+                    case TuringPanelModel.REV_2INCH:
+                    case TuringPanelModel.REV_5INCH:
+                    case TuringPanelModel.REV_8INCH:
+                        deviceTask = new TuringPanelSerialTask(device);
+                        break;
+                    default:
+                        Logger.Error("TuringPanel: Unsupported model {Model} for device {DeviceId}", modelInfo.Model, device.Id);
+                        return;
+                }
+
+                if (_deviceTasks.TryAdd(device.Id, deviceTask))
+                {
+                    await deviceTask.StartAsync(CancellationToken);
+                    Logger.Information("Started TuringPanel device {Device}", device);
+                }
+            }
+            else
+            {
+                Logger.Error("TuringPanel: Unknown device model {Model} for device {DeviceId}",
+                    device.Model, device.Id);
+                return;
             }
         }
 
@@ -48,7 +76,7 @@ namespace InfoPanel.Services
         public async Task StopAllDevices()
         {
             var tasks = new List<Task>();
-            
+
             foreach (var kvp in _deviceTasks.ToList())
             {
                 if (_deviceTasks.TryRemove(kvp.Key, out var deviceTask))
@@ -66,7 +94,7 @@ namespace InfoPanel.Services
 
         public bool IsDeviceRunning(string deviceId)
         {
-            if(_deviceTasks.TryGetValue(deviceId, out var task))
+            if (_deviceTasks.TryGetValue(deviceId, out var task))
             {
                 return task.IsRunning;
             }
@@ -81,8 +109,8 @@ namespace InfoPanel.Services
             try
             {
                 var settings = ConfigModel.Instance.Settings;
-                
-                Logger.Debug("TuringPanel: DoWorkAsync starting - MultiDeviceMode: {MultiDeviceMode}", 
+
+                Logger.Debug("TuringPanel: DoWorkAsync starting - MultiDeviceMode: {MultiDeviceMode}",
                     settings.TuringPanelMultiDeviceMode);
 
                 if (settings.TuringPanelMultiDeviceMode)
@@ -103,13 +131,13 @@ namespace InfoPanel.Services
         private async Task RunMultiDeviceMode(CancellationToken token)
         {
             Logger.Debug("TuringPanel: Starting multi-device mode");
-            
+
             while (!token.IsCancellationRequested)
             {
                 try
                 {
                     var settings = ConfigModel.Instance.Settings;
-                    
+
                     // Exit if multi-device mode was turned off
                     if (!settings.TuringPanelMultiDeviceMode)
                     {
@@ -119,7 +147,7 @@ namespace InfoPanel.Services
 
                     // Start enabled devices that aren't running
                     var enabledConfigs = settings.TuringPanelDevices.Where(d => d.Enabled).ToList();
-                    
+
                     foreach (var config in enabledConfigs)
                     {
                         var configId = config.Id;

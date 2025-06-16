@@ -15,9 +15,9 @@ using System.Threading.Tasks;
 
 namespace InfoPanel.Services
 {
-    public sealed class TuringPanelDeviceTask : BackgroundTask
+    public sealed class TuringPanelUsbDeviceTask : BackgroundTask
     {
-        private static readonly ILogger Logger = Log.ForContext<TuringPanelDeviceTask>();
+        private static readonly ILogger Logger = Log.ForContext<TuringPanelUsbDeviceTask>();
         private readonly TuringPanelDevice _device;
         private readonly int _panelWidth = 480;
         private readonly int _panelHeight = 1920;
@@ -26,7 +26,7 @@ namespace InfoPanel.Services
 
         public TuringPanelDevice Device => _device;
 
-        public TuringPanelDeviceTask(TuringPanelDevice device)
+        public TuringPanelUsbDeviceTask(TuringPanelDevice device)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
         }

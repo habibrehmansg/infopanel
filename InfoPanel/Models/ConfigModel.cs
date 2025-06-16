@@ -201,39 +201,6 @@ namespace InfoPanel
                     await TuringPanelTask.Instance.StopAsync();
                 }
             }
-            else if (e.PropertyName == nameof(Settings.TuringPanelA))
-            {
-                if (Settings.TuringPanelA)
-                {
-                    await TuringPanelATask.Instance.StartAsync();
-                }
-                else
-                {
-                    await TuringPanelATask.Instance.StopAsync();
-                }
-            }
-            else if (e.PropertyName == nameof(Settings.TuringPanelC))
-            {
-                if (Settings.TuringPanelC)
-                {
-                    await TuringPanelCTask.Instance.StartAsync();
-                }
-                else
-                {
-                    await TuringPanelCTask.Instance.StopAsync();
-                }
-            }
-            else if (e.PropertyName == nameof(Settings.TuringPanelE))
-            {
-                if (Settings.TuringPanelE)
-                {
-                    await TuringPanelETask.Instance.StartAsync();
-                }
-                else
-                {
-                    await TuringPanelETask.Instance.StopAsync();
-                }
-            }
             else if (e.PropertyName == nameof(Settings.WebServer))
             {
                 if (Settings.WebServer)
