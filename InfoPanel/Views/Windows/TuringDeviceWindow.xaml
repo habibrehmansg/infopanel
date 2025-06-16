@@ -137,6 +137,7 @@
                                 CanUserAddRows="False"
                                 GridLinesVisibility="Horizontal"
                                 HeadersVisibility="Column"
+                                IsReadOnly="True"
                                 ItemsSource="{Binding DeviceFiles}"
                                 SelectedItem="{Binding SelectedFile}">
                                 <DataGrid.Columns>
@@ -180,7 +181,10 @@
                     </ui:Card>
 
                     <!--  Status Bar Container with fixed height  -->
-                    <Grid Grid.Row="3" Height="60" Margin="0,10,0,0">
+                    <Grid
+                        Grid.Row="3"
+                        Height="60"
+                        Margin="0,10,0,0">
                         <ui:InfoBar
                             Title="{Binding StatusTitle}"
                             VerticalAlignment="Top"
@@ -228,25 +232,25 @@
                                     <TextBlock Margin="0,0,0,5" Text="Default Orientation:" />
                                     <ComboBox
                                         Width="200"
-                                        HorizontalAlignment="Left"
                                         Margin="0,0,0,15"
+                                        HorizontalAlignment="Left"
                                         ItemsSource="{Binding OrientationOptions}"
                                         SelectedItem="{Binding SelectedOrientation}" />
 
                                     <TextBlock Margin="0,0,0,5" Text="Startup Mode:" />
                                     <ComboBox
                                         Width="200"
-                                        HorizontalAlignment="Left"
                                         Margin="0,0,0,10"
+                                        HorizontalAlignment="Left"
                                         ItemsSource="{Binding StartupModeOptions}"
                                         SelectedItem="{Binding SelectedStartupMode}" />
-                                    
-                                    <TextBlock 
+
+                                    <TextBlock
                                         Margin="0,0,0,10"
                                         FontSize="12"
                                         FontStyle="Italic"
-                                        TextWrapping="Wrap"
-                                        Text="Note: When 'Video' is selected as startup mode, the currently playing video will be set as the auto-play video." />
+                                        Text="Note: When 'Video' is selected as startup mode, the currently playing video will be set as the auto-play video."
+                                        TextWrapping="Wrap" />
                                 </StackPanel>
                             </ui:Card>
 

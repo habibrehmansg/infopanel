@@ -232,7 +232,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         var dialog = new OpenFileDialog
         {
             Title = "Select Video File",
-            Filter = "Video Files|*.mp4;*.h264|MP4 Files|*.mp4|H264 Files|*.h264|All Files|*.*",
+            Filter = "MP4 Files|*.mp4|All Files|*.*",
             Multiselect = false
         };
 
@@ -247,7 +247,10 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
 
                 try
                 {
-                    _turingDevice.UploadFile(dialog.FileName);
+                    await Task.Run(() => { 
+                        _turingDevice.UploadFile(dialog.FileName);
+                    });
+
                     ShowStatus("Success", $"Video '{fileName}' uploaded successfully.", InfoBarSeverity.Success);
                     await RefreshStorage();
                 }
@@ -405,18 +408,8 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
                 _turingDevice.SendSaveSettingsCommand(
                     brightness: (byte)Brightness,
                     startup: startupMode,
-                    rotation: rotation,
-                    sleep: 0,  // Not configurable in this UI
-                    offline: 0  // Not configurable in this UI
+                    rotation: rotation
                 );
-
-                // Update local device model
-                _device.Brightness = Brightness;
-                _device.Rotation = SelectedOrientation switch
-                {
-                    "180°" => LCD_ROTATION.Rotate180FlipNone,
-                    _ => LCD_ROTATION.RotateNone
-                };
 
                 string startupModeText = startupMode == 2 && !string.IsNullOrEmpty(CurrentlyPlaying) && CurrentlyPlaying != "Nothing"
                     ? $"Video mode with '{CurrentlyPlaying}' set as auto-play"

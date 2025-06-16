@@ -153,7 +153,7 @@ namespace InfoPanel
                                 if (sectors.Count > _maxSectors)
                                 {
                                     canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
-                                    Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
+                                    //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                                 }
                                 else
                                 {
@@ -162,7 +162,7 @@ namespace InfoPanel
                                         canDisplayPartialBitmap = screen.DisplayBuffer(sector.Left, sector.Top, screen.CreateBufferFrom(bitmap, sector.Left, sector.Top, sector.Width, sector.Height));
                                     }
 
-                                    Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
+                                    //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
                                 }
                                 sentBitmap?.Dispose();
                                 sentBitmap = bitmap;
@@ -183,11 +183,11 @@ namespace InfoPanel
                 }
                 catch (TaskCanceledException)
                 {
-                    Logger.Debug("TuringPanelE task cancelled");
+                    Logger.Debug("Task cancelled");
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, "Exception during TuringPanelE execution");
+                    Log.Error(ex, "Exception during execution");
                 }
                 finally
                 {
@@ -198,7 +198,7 @@ namespace InfoPanel
             }
             catch (Exception e)
             {
-                Log.Error(e, "TuringPanelE: Initialization error");
+                Log.Error(e, "Initialization error");
             }
             finally
             {

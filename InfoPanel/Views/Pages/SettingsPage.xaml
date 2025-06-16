@@ -381,43 +381,11 @@
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                     <!--  start BeadaPanel Multi-Device settings  -->
-                    <ui:CardControl Margin="0,10,0,0" Icon="WindowMultiple20">
-                        <ui:CardControl.Header>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock
-                                        FontSize="13"
-                                        FontWeight="Medium"
-                                        Text="BeadaPanel by NXElec" />
-                                    <TextBlock
-                                        Margin="0,5,0,0"
-                                        FontSize="12"
-                                        Foreground="Orange"
-                                        Text="Legacy single-device mode has been removed. Enable for BeadaPanel Multi-Device mode." />
-                                </StackPanel>
-                            </Grid>
-                        </ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <ui:ToggleSwitch
-                                Grid.Column="1"
-                                Margin="20,0,0,0"
-                                IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode}" />
-                        </Grid>
-                    </ui:CardControl>
 
                     <ui:CardExpander
                         Margin="0,10,0,0"
                         Icon="Whiteboard24"
-                        IsExpanded="True"
-                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        IsExpanded="True">
                         <ui:CardExpander.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -435,6 +403,16 @@
                                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                         Text="Configure and run multiple BeadaPanel devices simultaneously." />
                                 </StackPanel>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <StackPanel Margin="0,0,10,0" Orientation="Horizontal">
+                                        <ui:ToggleSwitch
+                                            Grid.Column="1"
+                                            Margin="0,0,10,0"
+                                            IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode}" />
+                                    </StackPanel>
+                                </StackPanel>
+
                             </Grid>
                         </ui:CardExpander.Header>
                         <StackPanel>
@@ -484,11 +462,17 @@
                                                                 </MultiBinding>
                                                             </TextBlock.Text>
                                                         </TextBlock>
-
                                                         <TextBlock
+                                                            Margin="0,0,0,0"
                                                             FontSize="12"
-                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                            Text="{Binding DeviceId}" />
+                                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                            <TextBlock.Text>
+                                                                <MultiBinding StringFormat="{}{0} - {1}">
+                                                                    <Binding Path="DeviceId" />
+                                                                    <Binding Path="DeviceLocation" />
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
                                                         <TextBlock
                                                             Margin="0,0,0,0"
                                                             FontSize="12"
@@ -627,43 +611,10 @@
                     </ui:CardExpander>
 
                     <!--  start TuringPanel Multi-Device settings  -->
-                    <ui:CardControl Margin="0,10,0,0" Icon="WindowMultiple20">
-                        <ui:CardControl.Header>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock
-                                        FontSize="13"
-                                        FontWeight="Medium"
-                                        Text="Turing Smart Screen 8.8&quot; REV 1.1" />
-                                    <TextBlock
-                                        Margin="0,5,0,0"
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Non-serial model after April 2025. Enable for Multi-Device mode." />
-                                </StackPanel>
-                            </Grid>
-                        </ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <ui:ToggleSwitch
-                                Grid.Column="1"
-                                Margin="20,0,0,0"
-                                IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelMultiDeviceMode}" />
-                        </Grid>
-                    </ui:CardControl>
-
                     <ui:CardExpander
                         Margin="0,10,0,0"
                         Icon="Whiteboard24"
-                        IsExpanded="True"
-                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        IsExpanded="True">
                         <ui:CardExpander.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -681,6 +632,16 @@
                                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                         Text="Configure and run multiple TuringPanel devices simultaneously." />
                                 </StackPanel>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <StackPanel Margin="0,0,10,0" Orientation="Horizontal">
+                                        <ui:ToggleSwitch
+                                            Grid.Column="1"
+                                            Margin="0,0,10,0"
+                                            IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelMultiDeviceMode}" />
+                                    </StackPanel>
+                                </StackPanel>
+
                             </Grid>
                         </ui:CardExpander.Header>
                         <StackPanel>
@@ -781,6 +742,18 @@
                                                 </Grid>
                                             </ui:CardControl.Header>
                                             <StackPanel Orientation="Horizontal">
+                                                <!--  Manage button  -->
+                                                <ui:Button
+                                                    Grid.Column="1"
+                                                    Margin="10,0,0,0"
+                                                    VerticalAlignment="Top"
+                                                    Click="ButtonManageTuringDevice_Click"
+                                                    Content="Manage Storage"
+                                                    Icon="Settings24"
+                                                    IsEnabled="{Binding Enabled, Converter={StaticResource InverseBooleanConverter}}"
+                                                    Tag="{Binding}"
+                                                    ToolTip="Manage device storage, videos, and settings"
+                                                    Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <StackPanel Margin="10,0,0,0">
                                                     <!--  Profile selection  -->
                                                     <ComboBox
@@ -860,16 +833,6 @@
                                                         Tag="{Binding}"
                                                         ToolTip="Remove Device" />
                                                 </Grid>
-                                                <!--  Manage button  -->
-                                                <ui:Button
-                                                    Grid.Column="1"
-                                                    Margin="10,0,0,0"
-                                                    VerticalAlignment="Center"
-                                                    Click="ButtonManageTuringDevice_Click"
-                                                    Content="Manage"
-                                                    Icon="Settings24"
-                                                    Tag="{Binding}"
-                                                    ToolTip="Manage device storage, videos, and settings" />
                                             </StackPanel>
                                         </ui:CardControl>
                                     </DataTemplate>

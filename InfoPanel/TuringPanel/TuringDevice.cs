@@ -714,10 +714,10 @@ namespace InfoPanel.TuringPanel
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-y -i \"{inputPath}\" -c:v copy -bsf:v h264_mp4toannexb -an -f h264 \"{outputPath}\"",
+                    Arguments = $"-y -i \"{inputPath}\" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -an -f h264 \"{outputPath}\"",
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
+                    RedirectStandardOutput = false,
+                    RedirectStandardError = false,
                     CreateNoWindow = true
                 };
 
@@ -730,36 +730,6 @@ namespace InfoPanel.TuringPanel
                     {
                         Logger.Information("Done. Saved as {FileName} (stream copied)", Path.GetFileName(outputPath));
                         return outputPath;
-                    }
-                    else
-                    {
-                        // If copy failed, try re-encoding with quality settings
-                        Logger.Debug("Stream copy failed, trying re-encode with quality settings...");
-
-                        if (File.Exists(outputPath))
-                            File.Delete(outputPath);
-
-                        startInfo.Arguments = $"-y -i \"{inputPath}\" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -an -f h264 \"{outputPath}\"";
-
-                        using (var process2 = Process.Start(startInfo))
-                        {
-                            if (process2 != null)
-                            {
-                                process2.WaitForExit();
-
-                                if (process2.ExitCode == 0)
-                                {
-                                    Logger.Information("Done. Saved as {FileName} (re-encoded)", Path.GetFileName(outputPath));
-                                    return outputPath;
-                                }
-                                else
-                                {
-                                    var error = $"FFmpeg re-encode failed with exit code {process2.ExitCode}";
-                                    Logger.Error(error);
-                                    throw new TuringDeviceException(error);
-                                }
-                            }
-                        }
                     }
                 }
 

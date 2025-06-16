@@ -395,24 +395,6 @@ namespace InfoPanel
                             Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
                             Settings.Version = settings.Version;
 
-                            Settings.TuringPanelA = settings.TuringPanelA;
-                            Settings.TuringPanelAProfile = settings.TuringPanelAProfile;
-                            Settings.TuringPanelAPort = settings.TuringPanelAPort;
-                            Settings.TuringPanelARotation = settings.TuringPanelARotation;
-                            Settings.TuringPanelABrightness = settings.TuringPanelABrightness;
-
-                            Settings.TuringPanelC = settings.TuringPanelC;
-                            Settings.TuringPanelCProfile = settings.TuringPanelCProfile;
-                            Settings.TuringPanelCPort = settings.TuringPanelCPort;
-                            Settings.TuringPanelCRotation = settings.TuringPanelCRotation;
-                            Settings.TuringPanelCBrightness = settings.TuringPanelCBrightness;
-
-                            Settings.TuringPanelE = settings.TuringPanelE;
-                            Settings.TuringPanelEProfile = settings.TuringPanelEProfile;
-                            Settings.TuringPanelEPort = settings.TuringPanelEPort;
-                            Settings.TuringPanelERotation = settings.TuringPanelERotation;
-                            Settings.TuringPanelEBrightness = settings.TuringPanelEBrightness;
-
                             // Load BeadaPanel multi-device settings
                             Settings.BeadaPanelMultiDeviceMode = settings.BeadaPanelMultiDeviceMode;
 

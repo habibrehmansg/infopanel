@@ -78,29 +78,6 @@ namespace InfoPanel.Views.Pages
             ComboBoxRefreshRate.Items.Add(500);
             ComboBoxRefreshRate.Items.Add(1000);
 
-            foreach (var name in SerialPort.GetPortNames())
-            {
-                ViewModel.ComPorts.Add(name);
-            }
-
-            Loaded += (sender, args) =>
-            {
-                if (ConfigModel.Instance.Settings.TuringPanelAProfile == Guid.Empty)
-                {
-                    ConfigModel.Instance.Settings.TuringPanelAProfile = ConfigModel.Instance.Profiles.First().Guid;
-                }
-
-                if (ConfigModel.Instance.Settings.TuringPanelCProfile == Guid.Empty)
-                {
-                    ConfigModel.Instance.Settings.TuringPanelCProfile = ConfigModel.Instance.Profiles.First().Guid;
-                }
-
-                if (ConfigModel.Instance.Settings.TuringPanelEProfile == Guid.Empty)
-                {
-                    ConfigModel.Instance.Settings.TuringPanelEProfile = ConfigModel.Instance.Profiles.First().Guid;
-                }
-            };
-
             debounceTimer.Elapsed += DebounceTimer_Elapsed;
             debounceTimer.AutoReset = false;
 
@@ -133,21 +110,6 @@ namespace InfoPanel.Views.Pages
                 deviceRemoved = false;
             }
 
-            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                ViewModel.ComPorts.Clear();
-                foreach (var name in SerialPort.GetPortNames())
-                {
-                    if (!ViewModel.ComPorts.Contains(name))
-                    {
-                        ViewModel.ComPorts.Add(name);
-                    }
-                }
-                ComboBoxTuringPanelAPort.SelectedValue = ConfigModel.Instance.Settings.TuringPanelAPort;
-                ComboBoxTuringPanelCPort.SelectedValue = ConfigModel.Instance.Settings.TuringPanelCPort;
-                ComboBoxTuringPanelEPort.SelectedValue = ConfigModel.Instance.Settings.TuringPanelEPort;
-            }));
-
         }
 
         private void HandleEvent(object sender, EventArrivedEventArgs e)
@@ -171,30 +133,6 @@ namespace InfoPanel.Views.Pages
         {
             string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
             Process.Start(new ProcessStartInfo("explorer.exe", path));
-        }
-
-        private void ComboBoxTuringPanelAPort_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (ComboBoxTuringPanelAPort.SelectedValue is string value)
-            {
-                ConfigModel.Instance.Settings.TuringPanelAPort = value;
-            }
-        }
-
-        private void ComboBoxTuringPanelCPort_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (ComboBoxTuringPanelCPort.SelectedValue is string value)
-            {
-                ConfigModel.Instance.Settings.TuringPanelCPort = value;
-            }
-        }
-
-        private void ComboBoxTuringPanelEPort_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (ComboBoxTuringPanelEPort.SelectedValue is string value)
-            {
-                ConfigModel.Instance.Settings.TuringPanelEPort = value;
-            }
         }
 
         private async Task UpdateBeadaPanelDeviceList()
@@ -233,6 +171,7 @@ namespace InfoPanel.Views.Pages
 
                                 if (device != null)
                                 {
+                                    device.DeviceLocation = deviceLocation;
                                     device.UpdateRuntimeProperties(panelInfo: panelInfo);
                                 }
                                 else

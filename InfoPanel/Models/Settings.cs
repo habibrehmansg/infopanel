@@ -56,51 +56,6 @@ namespace InfoPanel.Models
         private bool _turingPanelMultiDeviceMode = false;
 
         [ObservableProperty]
-        private bool _turingPanelA = false;
-
-        [ObservableProperty]
-        private string _turingPanelAPort = string.Empty;
-
-        [ObservableProperty]
-        private Guid _turingPanelAProfile = Guid.Empty;
-
-        [ObservableProperty]
-        private LCD_ROTATION _turingPanelARotation = 0;
-
-        [ObservableProperty]
-        private int _turingPanelABrightness = 100;
-
-        [ObservableProperty]
-        private bool _turingPanelC = false;
-
-        [ObservableProperty]
-        private string _turingPanelCPort = string.Empty;
-
-        [ObservableProperty]
-        private Guid _turingPanelCProfile = Guid.Empty;
-
-        [ObservableProperty]
-        private LCD_ROTATION _turingPanelCRotation = 0;
-
-        [ObservableProperty]
-        private int _turingPanelCBrightness = 100;
-
-        [ObservableProperty]
-        private bool _turingPanelE = false;
-
-        [ObservableProperty]
-        private string _turingPanelEPort = string.Empty;
-
-        [ObservableProperty]
-        private Guid _turingPanelEProfile = Guid.Empty;
-
-        [ObservableProperty]
-        private LCD_ROTATION _turingPanelERotation = LCD_ROTATION.Rotate90FlipNone;
-
-        [ObservableProperty]
-        private int _turingPanelEBrightness = 100;
-
-        [ObservableProperty]
         private bool _webServer = false;
 
         [ObservableProperty]
