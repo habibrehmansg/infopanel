@@ -717,10 +717,55 @@ namespace InfoPanel.Drawing
             // Draw progress
             if (isLive || progress > 0)
             {
-                using var progressPaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
                 var progressWidth = isLive ? progressBarWidth : (float)(progressBarWidth * Math.Min(progress, 1.0));
                 var progressRect = SKRect.Create(progressBarLeft, progressBarY, progressWidth, progressBarHeight);
-                overlayCanvas.DrawRoundRect(progressRect, 1.5f, 1.5f, progressPaint);
+                
+                if (isLive && playerStatus == Status.Playing)
+                {
+                    // Create animated gradient for live content
+                    var animationTime = (float)(DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond % 3000) / 3000f;
+                    
+                    using var liveProgressPaint = new SKPaint { IsAntialias = true };
+                    
+                    // Create a smoother pulsing effect using sine wave
+                    var pulse = (float)(Math.Sin(animationTime * Math.PI * 2) * 0.2 + 0.8);
+                    
+                    // YouTube Live style gradient - red to orange/yellow
+                    var gradientColors = new SKColor[] {
+                        SKColor.Parse("#CC0000"),  // Dark red
+                        SKColor.Parse("#FF0000"),  // Red
+                        SKColor.Parse("#FF3333"),  // Light red
+                        SKColor.Parse("#FF6600"),  // Red-orange
+                        SKColor.Parse("#FF9900"),  // Orange
+                        SKColor.Parse("#FF6600"),  // Red-orange
+                        SKColor.Parse("#FF3333"),  // Light red
+                        SKColor.Parse("#FF0000"),  // Red
+                        SKColor.Parse("#CC0000")   // Dark red
+                    };
+                    
+                    // Fixed gradient positions for 9 colors
+                    var gradientPositions = new float[] { 0f, 0.125f, 0.25f, 0.375f, 0.5f, 0.625f, 0.75f, 0.875f, 1f };
+                    
+                    // Create a wider gradient that moves across the bar
+                    var gradientWidth = progressWidth * 2f;
+                    var gradientOffset = -gradientWidth + (animationTime * gradientWidth * 2f);
+                    
+                    liveProgressPaint.Shader = SKShader.CreateLinearGradient(
+                        new SKPoint(progressBarLeft + gradientOffset, progressBarY),
+                        new SKPoint(progressBarLeft + gradientOffset + gradientWidth, progressBarY),
+                        gradientColors,
+                        gradientPositions,
+                        SKShaderTileMode.Repeat
+                    );
+                    
+                    overlayCanvas.DrawRoundRect(progressRect, 1.5f, 1.5f, liveProgressPaint);
+                }
+                else
+                {
+                    // Standard red bar for non-live or non-playing content
+                    using var progressPaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
+                    overlayCanvas.DrawRoundRect(progressRect, 1.5f, 1.5f, progressPaint);
+                }
 
                 // Draw progress circle (only for non-live content)
                 if (!isLive && progress <= 1.0)
