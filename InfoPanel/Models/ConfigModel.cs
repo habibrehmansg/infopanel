@@ -160,7 +160,7 @@ namespace InfoPanel
                 using var taskDefinition = taskService.NewTask();
                 taskDefinition.RegistrationInfo.Description = "Runs InfoPanel on startup.";
                 taskDefinition.RegistrationInfo.Author = "Habib Rehman";
-                taskDefinition.Triggers.Add(new LogonTrigger());
+                taskDefinition.Triggers.Add(new LogonTrigger { Delay = TimeSpan.FromSeconds(Settings.AutoStartDelay) });
                 taskDefinition.Actions.Add(new ExecAction(Application.ExecutablePath));
                 taskDefinition.Principal.RunLevel = TaskRunLevel.Highest;
                 taskDefinition.Settings.DisallowStartIfOnBatteries = false;
@@ -377,6 +377,7 @@ namespace InfoPanel
                         lock (_settingsLock)
                         {
                             Settings.AutoStart = settings.AutoStart;
+                            Settings.AutoStartDelay = settings.AutoStartDelay;
                             Settings.StartMinimized = settings.StartMinimized;
                             Settings.MinimizeToTray = settings.MinimizeToTray;
 

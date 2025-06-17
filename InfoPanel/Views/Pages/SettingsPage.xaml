@@ -45,7 +45,34 @@
                                 </StackPanel>
                             </Grid>
                         </ui:CardControl.Header>
-                        <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutoStart}" />
+                        <StackPanel Orientation="Horizontal">
+                            <StackPanel
+                                Grid.Column="0"
+                                Margin="0,0,10,0"
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal"
+                                Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutoStart, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock
+                                    Margin="0,0,5,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                    Text="Startup delay (secs):" />
+                                <ui:NumberBox
+                                    Width="150"
+                                    Margin="0,0,0,0"
+                                    FontSize="14"
+                                    LargeChange="5"
+                                    MaxDecimalPlaces="0"
+                                    Minimum="0"
+                                    SmallChange="1"
+                                    Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutoStartDelay}"
+                                    Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutoStartDelay}" />
+
+                            </StackPanel>
+                            <ui:ToggleSwitch HorizontalAlignment="Right" IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutoStart}" />
+
+                        </StackPanel>
                     </ui:CardControl>
                     <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
                         <ui:CardControl.Header>

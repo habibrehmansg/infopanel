@@ -12,6 +12,9 @@ namespace InfoPanel.Models
         private bool _autoStart = false;
 
         [ObservableProperty]
+        private int _autoStartDelay = 5;
+
+        [ObservableProperty]
         private bool _startMinimized = false;
 
         [ObservableProperty]
