@@ -152,21 +152,28 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock
                     Grid.Column="0"
                     HorizontalAlignment="Left"
-                    VerticalAlignment="Center"
                     TextAlignment="Right">
                     <Bold FontSize="20" FontWeight="Medium">Panel Items</Bold><LineBreak />
                 </TextBlock>
 
+                <ui:AutoSuggestBox
+                    Name="TextBoxSearch"
+                    Grid.Column="1"
+                    PlaceholderText="Search items..."
+                    PreviewKeyDown="TextBoxSearch_PreviewKeyDown"
+                    SuggestionChosen="TextBoxSearch_SuggestionChosen"
+                    TextChanged="TextBoxSearch_TextChanged" />
+
                 <ComboBox
                     Name="ComboBoxSelectedProfile"
-                    Grid.Column="1"
+                    Grid.Column="2"
                     Margin="5,0,5,0"
                     HorizontalAlignment="Stretch"
-                    VerticalAlignment="Top"
                     DisplayMemberPath="Name"
                     ItemsSource="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Profiles}"
                     SelectedItem="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile}" />
@@ -227,7 +234,7 @@
                     dd:DragDrop.UseDefaultDragAdorner="True"
                     Background="Transparent"
                     ItemTemplateSelector="{StaticResource PanelItemsSelector}"
-                    ItemsSource="{Binding Source={x:Static app:SharedModel.Instance}, Path=DisplayItems}"
+                    ItemsSource="{Binding FilteredDisplayItems}"
                     ScrollViewer.CanContentScroll="False"
                     ScrollViewer.VerticalScrollBarVisibility="Visible"
                     SelectionChanged="ListViewItems_SelectionChanged"

@@ -625,12 +625,12 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="TuringPanel Displays" />
+                                        Text="Turzx Displays" />
                                     <TextBlock
                                         Margin="0,5,0,0"
                                         FontSize="12"
                                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                        Text="Configure and run multiple TuringPanel devices simultaneously." />
+                                        Text="Configure and run multiple Turzx devices simultaneously." />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">

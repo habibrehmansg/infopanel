@@ -184,6 +184,10 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
                localY >= -bounds.Height / 2.0 && localY <= bounds.Height / 2.0;
     }
 
+    public override string ToString()
+    {
+        return Name;
+    }
 }
 
 

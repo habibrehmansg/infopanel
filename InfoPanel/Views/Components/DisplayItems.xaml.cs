@@ -7,6 +7,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using Wpf.Ui.Controls;
+using System.Collections.Generic;
+using System.Xml.Serialization;
 
 namespace InfoPanel.Views.Components
 {
@@ -17,12 +23,24 @@ namespace InfoPanel.Views.Components
     {
         private static readonly ILogger Logger = Log.ForContext<DisplayItems>();
         private DisplayItem? SelectedItem { get { return SharedModel.Instance.SelectedItem; } }
+
+        private readonly ObservableCollection<DisplayItem> _filteredDisplayItems = [];
+        public ObservableCollection<DisplayItem> FilteredDisplayItems
+        {
+            get => _filteredDisplayItems;
+        }
+
+        private string _searchText = string.Empty;
+
         public DisplayItems()
         {
             DataContext = this;
             InitializeComponent();
             Unloaded += DisplayItems_Unloaded;
             SharedModel.Instance.PropertyChanged += Instance_PropertyChanged;
+
+            // Initialize with all display items
+            UpdateFilteredItems();
         }
 
         private void DisplayItems_Unloaded(object sender, RoutedEventArgs e)
@@ -48,6 +66,160 @@ namespace InfoPanel.Views.Components
                         }
                     }
                 }
+            }
+            else if (e.PropertyName == nameof(SharedModel.Instance.DisplayItems) ||
+                     e.PropertyName == nameof(SharedModel.Instance.SelectedProfile))
+            {
+                // Update filtered items when display items or profile changes
+                UpdateFilteredItems();
+            }
+        }
+
+        private void UpdateFilteredItems()
+        {
+            if (SharedModel.Instance.DisplayItems == null)
+            {
+                FilteredDisplayItems.Clear();
+                return;
+            }
+
+            // Use the dispatcher to update UI on a background thread for large lists
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (string.IsNullOrWhiteSpace(_searchText))
+                {
+                    // Reuse existing collection to avoid recreating
+                    FilteredDisplayItems.Clear();
+                    foreach (var item in SharedModel.Instance.DisplayItems)
+                    {
+                        FilteredDisplayItems.Add(item);
+
+                        // Reset expanded state to default for groups (collapsed by default)
+                        if (item is GroupDisplayItem group && !group.DisplayItems.Any(child => child.Selected))
+                        {
+                            group.IsExpanded = false;
+                        }
+                    }
+                }
+                else
+                {
+                    // Filter items based on search text
+                    var searchLower = _searchText.ToLower();
+                    var searchTerms = searchLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    
+                    FilteredDisplayItems.Clear();
+
+                    foreach (var item in SharedModel.Instance.DisplayItems)
+                    {
+                        if (item is GroupDisplayItem group)
+                        {
+                            // Check if group name matches all search terms
+                            bool groupMatches = MatchesAllTerms(group.Name, searchTerms);
+
+                            // Only check children if group doesn't match
+                            bool hasMatchingChildren = false;
+                            if (!groupMatches)
+                            {
+                                hasMatchingChildren = group.DisplayItems.Any(child =>
+                                    MatchesAllTerms(child.Name, searchTerms) ||
+                                    MatchesAllTerms(child.Kind, searchTerms));
+                            }
+
+                            if (groupMatches || hasMatchingChildren)
+                            {
+                                FilteredDisplayItems.Add(group);
+                                // Expand the group to show matching items
+                                group.IsExpanded = true;
+                            }
+                        }
+                        else
+                        {
+                            // Regular item - check name and kind
+                            if (MatchesAllTerms(item.Name, searchTerms) ||
+                                MatchesAllTerms(item.Kind, searchTerms))
+                            {
+                                FilteredDisplayItems.Add(item);
+                            }
+                        }
+                    }
+                }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        private static bool MatchesAllTerms(string text, string[] searchTerms)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            var textLower = text.ToLower();
+            return searchTerms.All(term => textLower.Contains(term));
+        }
+
+        private void TextBoxSearch_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is AutoSuggestBox autoSuggestBox)
+            {
+                var currentText = autoSuggestBox.Text ?? string.Empty;
+
+                // If text is cleared, reset the filter immediately
+                if (string.IsNullOrWhiteSpace(currentText))
+                {
+                    if (!string.IsNullOrWhiteSpace(_searchText))
+                    {
+                        _searchText = string.Empty;
+                        UpdateFilteredItems();
+                    }
+                    autoSuggestBox.ItemsSource = null;
+                    return;
+                }
+
+                // Provide suggestions based on item names (but don't filter the list)
+                var suggestions = new List<string>();
+                var searchLower = currentText.ToLower();
+
+                // Add matching item names as suggestions
+                foreach (var item in SharedModel.Instance.DisplayItems)
+                {
+                    if (item is GroupDisplayItem group)
+                    {
+                        if (group.Name?.ToLowerInvariant().Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
+                            suggestions.Add(group.Name);
+
+                        foreach (var child in group.DisplayItems)
+                        {
+                            if (child.Name?.ToLowerInvariant().Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
+                                suggestions.Add(child.Name);
+                        }
+                    }
+                    else
+                    {
+                        if (item.Name?.ToLower().Contains(searchLower) ?? false)
+                            suggestions.Add(item.Name);
+                    }
+                }
+
+                autoSuggestBox.ItemsSource = [.. suggestions.Distinct().Take(5)];
+            }
+        }
+
+        private void TextBoxSearch_SuggestionChosen(object sender, RoutedEventArgs e)
+        {
+            // The AutoSuggestBox automatically updates its Text property when a suggestion is chosen
+            // We just need to update our search
+            if (sender is AutoSuggestBox autoSuggestBox)
+            {
+                _searchText = autoSuggestBox.Text ?? string.Empty;
+                UpdateFilteredItems();
+            }
+        }
+
+        private void TextBoxSearch_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && sender is AutoSuggestBox autoSuggestBox)
+            {
+                _searchText = autoSuggestBox.Text ?? string.Empty;
+                UpdateFilteredItems();
+                e.Handled = true;
             }
         }
 
@@ -101,7 +273,7 @@ namespace InfoPanel.Views.Components
                     SharedModel.Instance.PushDisplayItemBy(item, -1);
                     ScrollToView(item);
 
-                   
+
                 }
                 finally
                 {
@@ -112,7 +284,7 @@ namespace InfoPanel.Views.Components
 
         private void ButtonPushDown_Click(object sender, RoutedEventArgs e)
         {
-            if(SelectedItem is DisplayItem item)
+            if (SelectedItem is DisplayItem item)
             {
                 _isHandlingSelection = true;
 
@@ -207,7 +379,7 @@ namespace InfoPanel.Views.Components
 
             SharedModel.Instance.AddDisplayItem(groupDisplayItem);
 
-            if(selectedItem is DisplayItem)
+            if (selectedItem is DisplayItem)
             {
                 SharedModel.Instance.PushDisplayItemTo(groupDisplayItem, selectedItem);
             }
@@ -228,7 +400,7 @@ namespace InfoPanel.Views.Components
 
         private void ButtonNewText_Click(object sender, RoutedEventArgs e)
         {
-            if(SharedModel.Instance.SelectedProfile is Profile selectedProfile)
+            if (SharedModel.Instance.SelectedProfile is Profile selectedProfile)
             {
                 var item = new TextDisplayItem("Custom Text", selectedProfile)
                 {
@@ -238,7 +410,7 @@ namespace InfoPanel.Views.Components
                 };
                 SharedModel.Instance.AddDisplayItem(item);
             }
-      
+
 
         }
 
@@ -333,7 +505,7 @@ namespace InfoPanel.Views.Components
 
                 foreach (var item in SharedModel.Instance.DisplayItems)
                 {
-                    if(item != listView.SelectedItem)
+                    if (item != listView.SelectedItem)
                     {
                         if (item is GroupDisplayItem group)
                         {
@@ -502,9 +674,9 @@ namespace InfoPanel.Views.Components
 
         private GroupDisplayItem? GetGroupFromCollection(object? collection)
         {
-            if (collection == null || collection == SharedModel.Instance.DisplayItems)
+            if (collection == null || collection == SharedModel.Instance.DisplayItems || collection == FilteredDisplayItems)
                 return null;
-                
+
             foreach (var item in SharedModel.Instance.DisplayItems)
             {
                 if (item is GroupDisplayItem group && group.DisplayItems == collection)
@@ -518,18 +690,18 @@ namespace InfoPanel.Views.Components
             if (dropInfo.Data is DisplayItem sourceItem)
             {
                 var targetItem = dropInfo.TargetItem as DisplayItem;
-                
+
                 // Don't allow dropping an item onto itself
                 if (targetItem != null && sourceItem == targetItem)
                 {
                     dropInfo.Effects = DragDropEffects.None;
                     return;
                 }
-                
+
                 // Get parent groups
                 var sourceParent = SharedModel.Instance.GetParent(sourceItem);
                 var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
-                
+
                 // Check if source item is from a locked group
                 if (sourceParent is GroupDisplayItem sourceGroup && sourceGroup.IsLocked)
                 {
@@ -540,12 +712,12 @@ namespace InfoPanel.Views.Components
                         dropInfo.Effects = DragDropEffects.Move;
                         return;
                     }
-                    
+
                     // Don't allow dragging items out of locked groups
                     dropInfo.Effects = DragDropEffects.None;
                     return;
                 }
-                
+
                 // Check if target is in a locked group
                 if (targetParentGroup != null && targetParentGroup.IsLocked)
                 {
@@ -553,7 +725,7 @@ namespace InfoPanel.Views.Components
                     dropInfo.Effects = DragDropEffects.None;
                     return;
                 }
-                
+
                 // Check if we're dragging a group
                 if (sourceItem is GroupDisplayItem)
                 {
@@ -563,10 +735,12 @@ namespace InfoPanel.Views.Components
                         dropInfo.Effects = DragDropEffects.None;
                         return;
                     }
-                    
+
                     // Check if the target collection is not the main collection
                     // If it's not, then it must be a group's inner collection
-                    if (dropInfo.TargetCollection != null && dropInfo.TargetCollection != SharedModel.Instance.DisplayItems)
+                    if (dropInfo.TargetCollection != null &&
+                        dropInfo.TargetCollection != SharedModel.Instance.DisplayItems &&
+                        dropInfo.TargetCollection != FilteredDisplayItems)
                     {
                         // We're trying to drop a group inside another group
                         dropInfo.Effects = DragDropEffects.None;
@@ -585,14 +759,14 @@ namespace InfoPanel.Views.Components
                             dropInfo.Effects = DragDropEffects.None;
                             return;
                         }
-                        
+
                         // Allow dropping items into groups
                         dropInfo.DropTargetAdorner = DropTargetAdorners.Highlight;
                         dropInfo.Effects = DragDropEffects.Move;
                         return;
                     }
                 }
-                
+
                 // Allow the drop for all other cases
                 dropInfo.DropTargetAdorner = DropTargetAdorners.Insert;
                 dropInfo.Effects = DragDropEffects.Move;
@@ -606,17 +780,17 @@ namespace InfoPanel.Views.Components
             if (dropInfo.Data is DisplayItem sourceItem)
             {
                 var targetItem = dropInfo.TargetItem as DisplayItem;
-                
+
                 // Don't allow dropping an item onto itself
                 if (targetItem != null && sourceItem == targetItem)
                 {
                     return;
                 }
-                
+
                 // Get parent groups
                 var sourceParent = SharedModel.Instance.GetParent(sourceItem);
                 var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
-                
+
                 // Check if source item is from a locked group
                 if (sourceParent is GroupDisplayItem sourceGroup && sourceGroup.IsLocked)
                 {
@@ -626,18 +800,18 @@ namespace InfoPanel.Views.Components
                         dropHandler.Drop(dropInfo);
                         return;
                     }
-                    
+
                     // Don't allow dragging items out of locked groups
                     return;
                 }
-                
+
                 // Check if target is in a locked group
                 if (targetParentGroup != null && targetParentGroup.IsLocked)
                 {
                     // Don't allow dropping items into locked groups
                     return;
                 }
-                
+
                 // Check if we're dragging a group
                 if (sourceItem is GroupDisplayItem)
                 {
@@ -646,10 +820,12 @@ namespace InfoPanel.Views.Components
                     {
                         return;
                     }
-                    
+
                     // Check if the target collection is not the main collection
                     // If it's not, then it must be a group's inner collection
-                    if (dropInfo.TargetCollection != null && dropInfo.TargetCollection != SharedModel.Instance.DisplayItems)
+                    if (dropInfo.TargetCollection != null &&
+                        dropInfo.TargetCollection != SharedModel.Instance.DisplayItems &&
+                        dropInfo.TargetCollection != FilteredDisplayItems)
                     {
                         // We're trying to drop a group inside another group
                         return;
@@ -666,14 +842,14 @@ namespace InfoPanel.Views.Components
                         {
                             return;
                         }
-                        
+
                         // Move the item into the group
                         SharedModel.Instance.RemoveDisplayItem(sourceItem);
                         groupItem.DisplayItems.Add(sourceItem);
                         return;
                     }
                 }
-                
+
                 // Use the default drop handler for all other cases
                 dropHandler.Drop(dropInfo);
             }
