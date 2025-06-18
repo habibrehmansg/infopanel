@@ -22,7 +22,7 @@ namespace InfoPanel.Views.Components
     public partial class DisplayItems : UserControl, IDropTarget
     {
         private static readonly ILogger Logger = Log.ForContext<DisplayItems>();
-        private DisplayItem? SelectedItem { get { return SharedModel.Instance.SelectedItem; } }
+        private static DisplayItem? SelectedItem { get { return SharedModel.Instance.SelectedItem; } }
 
         private readonly ObservableCollection<DisplayItem> _filteredDisplayItems = [];
         public ObservableCollection<DisplayItem> FilteredDisplayItems
@@ -36,16 +36,15 @@ namespace InfoPanel.Views.Components
         {
             DataContext = this;
             InitializeComponent();
-            Unloaded += DisplayItems_Unloaded;
-            SharedModel.Instance.PropertyChanged += Instance_PropertyChanged;
+            Loaded += DisplayItems_Loaded;
 
             // Initialize with all display items
             UpdateFilteredItems();
         }
 
-        private void DisplayItems_Unloaded(object sender, RoutedEventArgs e)
+        private void DisplayItems_Loaded(object sender, RoutedEventArgs e)
         {
-            SharedModel.Instance.PropertyChanged -= Instance_PropertyChanged;
+            SharedModel.Instance.PropertyChanged += Instance_PropertyChanged;
         }
 
         private void Instance_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -67,8 +66,7 @@ namespace InfoPanel.Views.Components
                     }
                 }
             }
-            else if (e.PropertyName == nameof(SharedModel.Instance.DisplayItems) ||
-                     e.PropertyName == nameof(SharedModel.Instance.SelectedProfile))
+            else if (e.PropertyName == nameof(SharedModel.Instance.SelectedProfile))
             {
                 // Update filtered items when display items or profile changes
                 UpdateFilteredItems();
