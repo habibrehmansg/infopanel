@@ -37,7 +37,7 @@ namespace InfoPanel.Views.Pages
         public SettingsPage(SettingsViewModel viewModel)
         {
             ViewModel = viewModel;
-
+            DataContext = this;
             InitializeComponent();
             ComboBoxListenIp.Items.Add("127.0.0.1");
             NetworkInterface[] interfaces = NetworkInterface.GetAllNetworkInterfaces();
@@ -245,9 +245,10 @@ namespace InfoPanel.Views.Pages
 
             await Task.WhenAll(serialDeviceTask, usbDeviceTask);
 
-            List<TuringPanelDevice> discoveredDevices = [.. usbDeviceTask.Result, ..serialDeviceTask.Result];
+            List<TuringPanelDevice> discoveredDevices = [.. usbDeviceTask.Result, .. serialDeviceTask.Result];
 
-            foreach(var discoveredDevice in discoveredDevices){
+            foreach (var discoveredDevice in discoveredDevices)
+            {
 
                 ConfigModel.Instance.AccessSettings(settings =>
                 {

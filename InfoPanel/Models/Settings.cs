@@ -9,6 +9,9 @@ namespace InfoPanel.Models
     public partial class Settings : ObservableObject
     {
         [ObservableProperty]
+        private float _uiScale = 1.0f;
+
+        [ObservableProperty]
         private bool _autoStart = false;
 
         [ObservableProperty]

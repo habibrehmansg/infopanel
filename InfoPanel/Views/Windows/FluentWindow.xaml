@@ -24,6 +24,9 @@
     WindowStartupLocation="CenterScreen"
     mc:Ignorable="d">
     <Grid>
+        <Grid.LayoutTransform>
+            <ScaleTransform x:Name="MainScaleTransform" ScaleX="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.UiScale}" ScaleY="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.UiScale}" />
+        </Grid.LayoutTransform>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />

@@ -1,15 +1,19 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using Wpf.Ui.Common.Interfaces;
 
 namespace InfoPanel.ViewModels
 {
+    public class UiScaleOption
+    {
+        public string Display { get; set; } = string.Empty;
+        public float Value { get; set; }
+    }
+
     public enum LCD_ROTATION
     {
         [Description("No rotation")]
@@ -22,9 +26,18 @@ namespace InfoPanel.ViewModels
         Rotate270FlipNone = 3,
     }
 
-    public class SettingsViewModel : ObservableObject, INavigationAware
+    public partial class SettingsViewModel : ObservableObject, INavigationAware
     {
-        private ObservableCollection<string> _comPorts = new();
+        private ObservableCollection<string> _comPorts = [];
+
+        [ObservableProperty]
+        private ObservableCollection<UiScaleOption> _scaleOptions = [
+                new UiScaleOption { Display = "80%", Value = 0.8f },
+                new UiScaleOption { Display = "90%", Value = 0.9f },
+                new UiScaleOption { Display = "100%", Value = 1.0f },
+                new UiScaleOption { Display = "110%", Value = 1.1f },
+                new UiScaleOption { Display = "120%", Value = 1.2f }
+            ];
 
         public ObservableCollection<LCD_ROTATION> RotationValues { get; set; }
 

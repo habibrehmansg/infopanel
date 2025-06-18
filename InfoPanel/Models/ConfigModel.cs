@@ -376,6 +376,7 @@ namespace InfoPanel
                     {
                         lock (_settingsLock)
                         {
+                            Settings.UiScale = settings.UiScale;
                             Settings.AutoStart = settings.AutoStart;
                             Settings.AutoStartDelay = settings.AutoStartDelay;
                             Settings.StartMinimized = settings.StartMinimized;
