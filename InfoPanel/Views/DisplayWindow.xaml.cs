@@ -392,18 +392,11 @@ namespace InfoPanel.Views.Common
                     }
                 });
             }
-            else if (e.PropertyName == nameof(Profile.Width))
+            else if (e.PropertyName == nameof(Profile.Width) || e.PropertyName == nameof(Profile.Height))
             {
                 _dispatcher.BeginInvoke(() =>
                 {
-                    Width = Profile.Width;
-                });
-            }
-            else if (e.PropertyName == nameof(Profile.Height))
-            {
-                _dispatcher.BeginInvoke(() =>
-                {
-                    Height = Profile.Height;
+                    MaintainPixelSize();
                 });
             }
         }
