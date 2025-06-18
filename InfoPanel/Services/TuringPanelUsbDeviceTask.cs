@@ -200,7 +200,7 @@ namespace InfoPanel.Services
                             }
 
                             var targetFrameTime = 1000 / ConfigModel.Instance.Settings.TargetFrameRate;
-                            var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
+                            var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime), targetFrameTime);
                             var adaptiveFrameTime = 0;
 
                             var elapsedMs = (int)stopwatch1.ElapsedMilliseconds;
