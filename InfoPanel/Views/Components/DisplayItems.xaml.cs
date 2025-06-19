@@ -1,18 +1,15 @@
 ﻿using GongSolutions.Wpf.DragDrop;
 using InfoPanel.Models;
-using System;
 using Serilog;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using Wpf.Ui.Controls;
-using System.Collections.Generic;
-using System.Xml.Serialization;
 
 namespace InfoPanel.Views.Components
 {
@@ -153,60 +150,66 @@ namespace InfoPanel.Views.Components
             return searchTerms.All(term => textLower.Contains(term));
         }
 
-        private void TextBoxSearch_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
+        private void TextBoxSearch_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
         {
-            if (sender is AutoSuggestBox autoSuggestBox)
+            var currentText = args.Text ?? string.Empty;
+
+            // If text is cleared, reset the filter immediately (regardless of reason)
+            if (string.IsNullOrWhiteSpace(currentText))
             {
-                var currentText = autoSuggestBox.Text ?? string.Empty;
-
-                // If text is cleared, reset the filter immediately
-                if (string.IsNullOrWhiteSpace(currentText))
+                if (!string.IsNullOrWhiteSpace(_searchText))
                 {
-                    if (!string.IsNullOrWhiteSpace(_searchText))
-                    {
-                        _searchText = string.Empty;
-                        UpdateFilteredItems();
-                    }
-                    autoSuggestBox.ItemsSource = null;
-                    return;
+                    _searchText = string.Empty;
+                    UpdateFilteredItems();
                 }
-
-                // Provide suggestions based on item names (but don't filter the list)
-                var suggestions = new List<string>();
-                var searchLower = currentText.ToLower();
-
-                // Add matching item names as suggestions
-                foreach (var item in SharedModel.Instance.DisplayItems)
-                {
-                    if (item is GroupDisplayItem group)
-                    {
-                        if (group.Name?.ToLowerInvariant().Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
-                            suggestions.Add(group.Name);
-
-                        foreach (var child in group.DisplayItems)
-                        {
-                            if (child.Name?.ToLowerInvariant().Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
-                                suggestions.Add(child.Name);
-                        }
-                    }
-                    else
-                    {
-                        if (item.Name?.ToLower().Contains(searchLower) ?? false)
-                            suggestions.Add(item.Name);
-                    }
-                }
-
-                autoSuggestBox.ItemsSource = suggestions.Distinct().Take(5).ToList();
+                sender.ItemsSource = null;
+                args.Handled = true;
+                return;
             }
+
+            // Only process UserInput changes for suggestions
+            if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+            {
+                return;
+            }
+
+            // Provide suggestions based on item names (but don't filter the list)
+            var suggestions = new List<string>();
+            var searchLower = currentText.ToLower();
+
+            // Add matching item names as suggestions
+            foreach (var item in SharedModel.Instance.DisplayItems)
+            {
+                if (item is GroupDisplayItem group)
+                {
+                    if (group.Name?.Contains(searchLower, StringComparison.CurrentCultureIgnoreCase) ?? false)
+                        suggestions.Add(group.Name);
+
+                    foreach (var child in group.DisplayItems)
+                    {
+                        if (child.Name?.Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
+                            suggestions.Add(child.Name);
+                    }
+                }
+                else
+                {
+                    if (item.Name?.Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
+                        suggestions.Add(item.Name);
+                }
+            }
+
+            // Set suggestions and mark event as handled to prevent default filtering
+            sender.ItemsSource = suggestions.Distinct().Take(5).ToList();
+            args.Handled = true;
         }
 
-        private void TextBoxSearch_SuggestionChosen(object sender, RoutedEventArgs e)
+        private void TextBoxSearch_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
         {
-            // The AutoSuggestBox automatically updates its Text property when a suggestion is chosen
-            // We just need to update our search
-            if (sender is AutoSuggestBox autoSuggestBox)
+            // Update the search text with the chosen suggestion
+            if (args.SelectedItem is string selectedText)
             {
-                _searchText = autoSuggestBox.Text ?? string.Empty;
+                _searchText = selectedText;
+                sender.Text = selectedText;
                 UpdateFilteredItems();
             }
         }
