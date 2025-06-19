@@ -22,8 +22,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Wpf.Ui.Mvvm.Contracts;
-using Wpf.Ui.Mvvm.Services;
+using Wpf.Ui;
 
 namespace InfoPanel
 {
@@ -71,7 +70,7 @@ namespace InfoPanel
            services.AddSingleton<ISnackbarService, SnackbarService>();
 
            // Dialog service
-           services.AddSingleton<IDialogService, DialogService>();
+           services.AddSingleton<IContentDialogService, ContentDialogService>();
 
            //// Page resolver service
            services.AddSingleton<IPageService, PageService>();
@@ -83,7 +82,7 @@ namespace InfoPanel
            services.AddSingleton<INavigationService, NavigationService>();
 
            // Main window container with navigation
-           services.AddScoped<INavigationWindow, FluentWindow>();
+           services.AddScoped<INavigationWindow, MainWindow>();
            //services.AddScoped<ContainerViewModel>();
 
            // Views and ViewModels
@@ -379,7 +378,7 @@ namespace InfoPanel
         public void ShowDesign(Profile profile)
         {
             SharedModel.Instance.SelectedProfile = profile;
-            var window = _host.Services.GetRequiredService<INavigationWindow>() as FluentWindow;
+            var window = _host.Services.GetRequiredService<INavigationWindow>() as MainWindow;
             window?.RestoreWindow();
             window?.Navigate(typeof(Views.Pages.DesignPage));
         }

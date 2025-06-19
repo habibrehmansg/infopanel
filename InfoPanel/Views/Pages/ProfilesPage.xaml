@@ -14,6 +14,7 @@
     Title="DesignPage"
     d:DesignHeight="450"
     d:DesignWidth="800"
+    ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Page.Resources>
         <DataTemplate x:Key="ProfilePreviewTemplate">
@@ -62,13 +63,11 @@
             ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
             SelectedItem="{Binding ViewModel.Profile}"
             SelectionMode="Single"
-            VirtualizingPanel.ScrollUnit="Pixel">
+            VirtualizingPanel.ScrollUnit="Pixel"
+            ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListView.ItemsPanel>
                 <ItemsPanelTemplate>
-                    <ui:VirtualizingWrapPanel
-                        Orientation="Vertical"
-                        SpacingMode="StartAndEndOnly"
-                        StretchItems="False" />
+                    <WrapPanel Orientation="Horizontal" />
                 </ItemsPanelTemplate>
             </ListView.ItemsPanel>
             <ListView.ItemContainerStyle>
@@ -304,7 +303,7 @@
                                             Appearance="Caution"
                                             Click="ButtonMaximise_Click"
                                             Content=""
-                                            Icon="Maximize20"
+                                            Icon="{ui:SymbolIcon Maximize20}"
                                             ToolTip="Fill screen" />
                                     </Grid>
 
@@ -351,7 +350,7 @@
                                             Appearance="Caution"
                                             Click="ButtonResetPosition_Click"
                                             Content=""
-                                            Icon="ArrowReset20"
+                                            Icon="{ui:SymbolIcon ArrowReset20}"
                                             ToolTip="Reset window position" />
 
                                     </Grid>

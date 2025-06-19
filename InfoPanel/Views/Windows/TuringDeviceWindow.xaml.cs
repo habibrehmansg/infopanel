@@ -5,7 +5,7 @@ using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Windows;
 
-public partial class TuringDeviceWindow : UiWindow
+public partial class TuringDeviceWindow : FluentWindow
 {
     public TuringDeviceWindow(TuringPanelDevice device)
     {

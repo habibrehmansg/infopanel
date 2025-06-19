@@ -295,14 +295,14 @@
                     Appearance="Success"
                     Click="ButtonGroup_Click"
                     Content=""
-                    Icon="Group20"
+                    Icon="{ui:SymbolIcon Group20}"
                     ToolTip="New Group" />
                 <ui:Button
                     x:Name="ButtonPushBack"
                     Margin="0,10,0,0"
                     Click="ButtonPushBack_Click"
                     Content=""
-                    Icon="ArrowUpload20"
+                    Icon="{ui:SymbolIcon ArrowUpload20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Push selected item to the top (overlapped by items below)" />
                 <ui:Button
@@ -310,7 +310,7 @@
                     Margin="0,10,0,0"
                     Click="ButtonPushUp_Click"
                     Content=""
-                    Icon="ArrowUp20"
+                    Icon="{ui:SymbolIcon ArrowUp20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Push selected item up (overlapped by items below)" />
                 <ui:Button
@@ -318,7 +318,7 @@
                     Margin="0,10,0,0"
                     Click="ButtonPushDown_Click"
                     Content=""
-                    Icon="ArrowDown20"
+                    Icon="{ui:SymbolIcon ArrowDown20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Bring selected item down (overlap items above)" />
                 <ui:Button
@@ -326,7 +326,7 @@
                     Margin="0,10,0,0"
                     Click="ButtonPushFront_Click"
                     Content=""
-                    Icon="ArrowDownload20"
+                    Icon="{ui:SymbolIcon ArrowDownload20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Bring selected item to bottom (overlap items above)" />
                 <ui:Button
@@ -334,7 +334,7 @@
                     Margin="0,10,0,0"
                     Click="ButtonDuplicate_Click"
                     Content=""
-                    Icon="Copy20"
+                    Icon="{ui:SymbolIcon Copy20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Duplicate selected item" />
                 <ui:Button
@@ -343,7 +343,7 @@
                     Appearance="Danger"
                     Click="ButtonDelete_Click"
                     Content=""
-                    Icon="Delete20"
+                    Icon="{ui:SymbolIcon Delete20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Delete selected item" />
             </StackPanel>
@@ -526,7 +526,7 @@
                     Appearance="Danger"
                     Click="ButtonReload_Click"
                     Content=""
-                    Icon="ArrowUndo20"
+                    Icon="{ui:SymbolIcon ArrowUndo20}"
                     ToolTip="Discard all changes and reload from disk" />
             </StackPanel>
         </Grid>

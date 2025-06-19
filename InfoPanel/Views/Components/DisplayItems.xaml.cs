@@ -153,7 +153,7 @@ namespace InfoPanel.Views.Components
             return searchTerms.All(term => textLower.Contains(term));
         }
 
-        private void TextBoxSearch_TextChanged(object sender, TextChangedEventArgs e)
+        private void TextBoxSearch_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
         {
             if (sender is AutoSuggestBox autoSuggestBox)
             {
@@ -196,7 +196,7 @@ namespace InfoPanel.Views.Components
                     }
                 }
 
-                autoSuggestBox.ItemsSource = [.. suggestions.Distinct().Take(5)];
+                autoSuggestBox.ItemsSource = suggestions.Distinct().Take(5).ToList();
             }
         }
 
@@ -230,7 +230,7 @@ namespace InfoPanel.Views.Components
                 group.IsExpanded = true;
 
                 // Get the ListViewItem container for the group
-                var groupContainer = ListViewItems.ItemContainerGenerator.ContainerFromItem(groupItem) as ListViewItem;
+                var groupContainer = ListViewItems.ItemContainerGenerator.ContainerFromItem(groupItem) as System.Windows.Controls.ListViewItem;
                 if (groupContainer == null)
                     return;
 
@@ -240,7 +240,7 @@ namespace InfoPanel.Views.Components
                     return;
 
                 // Search inside the Expander for the inner ListView
-                var innerListView = FindVisualChild<ListView>(expander);
+                var innerListView = FindVisualChild<System.Windows.Controls.ListView>(expander);
                 if (innerListView != null)
                 {
                     innerListView.ScrollIntoView(displayItem);
@@ -466,7 +466,7 @@ namespace InfoPanel.Views.Components
 
         private void ListViewItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_isHandlingSelection || sender is not ListView listView)
+            if (_isHandlingSelection || sender is not System.Windows.Controls.ListView listView)
                 return;
 
             Logger.Debug("ListViewItems_SelectionChanged - {Count} SelectedItems", listView.SelectedItems.Count);
@@ -529,7 +529,7 @@ namespace InfoPanel.Views.Components
 
         private void ListViewGroupItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_isHandlingSelection || sender is not ListView innerListView)
+            if (_isHandlingSelection || sender is not System.Windows.Controls.ListView innerListView)
                 return;
 
             Log.Debug("ListViewGroupItems_SelectionChanged - {Count} SelectedItems", innerListView.SelectedItems.Count);
@@ -576,11 +576,11 @@ namespace InfoPanel.Views.Components
                 return;
 
             var dataItem = border.DataContext;
-            var listViewItem = FindAncestor<ListViewItem>(border);
+            var listViewItem = FindAncestor<System.Windows.Controls.ListViewItem>(border);
             if (listViewItem == null)
                 return;
 
-            var listView = ItemsControl.ItemsControlFromItemContainer(listViewItem) as ListView;
+            var listView = ItemsControl.ItemsControlFromItemContainer(listViewItem) as System.Windows.Controls.ListView;
             if (listView == null)
                 return;
 
@@ -602,7 +602,7 @@ namespace InfoPanel.Views.Components
                     listView.SelectedItems.Clear();
                     for (int i = start; i <= end; i++)
                     {
-                        if (listView.ItemContainerGenerator.ContainerFromIndex(i) is ListViewItem item)
+                        if (listView.ItemContainerGenerator.ContainerFromIndex(i) is System.Windows.Controls.ListViewItem item)
                             item.IsSelected = true;
                     }
                 }

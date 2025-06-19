@@ -13,13 +13,7 @@
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
 
-    <Grid Margin="0,80,0,20">
-        <Grid.RowDefinitions>
-            <RowDefinition />
-        </Grid.RowDefinitions>
-
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel MaxWidth="1360" Margin="20,0,20,0">
+    <StackPanel MaxWidth="1360" Margin="20,80,20,20">
                 <Border
                     Grid.Row="0"
                     Height="400"
@@ -301,8 +295,4 @@
 
 
             </StackPanel>
-
-        </ScrollViewer>
-
-    </Grid>
 </Page>
