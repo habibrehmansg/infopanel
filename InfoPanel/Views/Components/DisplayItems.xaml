@@ -15,8 +15,12 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
+
         <converters:LockSymbolConverter x:Key="LockSymbolConverter" />
         <converters:LockColorConverter x:Key="LockColorConverter" />
+
+        <!--  CollectionViewSource for filtering display items  -->
+        <CollectionViewSource x:Key="DisplayItemsViewSource" Source="{Binding Source={x:Static app:SharedModel.Instance}, Path=DisplayItems}" />
 
         <DataTemplate x:Key="SimpleItemTemplate_MarginA">
             <local:DisplayItemView Width="375" Margin="10,0,30,0" />
@@ -234,7 +238,7 @@
                     dd:DragDrop.UseDefaultDragAdorner="True"
                     Background="Transparent"
                     ItemTemplateSelector="{StaticResource PanelItemsSelector}"
-                    ItemsSource="{Binding FilteredDisplayItems}"
+                    ItemsSource="{Binding Source={StaticResource DisplayItemsViewSource}}"
                     ScrollViewer.CanContentScroll="False"
                     ScrollViewer.VerticalScrollBarVisibility="Visible"
                     SelectionChanged="ListViewItems_SelectionChanged"
