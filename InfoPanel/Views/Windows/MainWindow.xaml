@@ -46,9 +46,11 @@
             Grid.Row="1"
             IsBackButtonVisible="Collapsed"
             IsPaneOpen="True"
-            PaneDisplayMode="LeftFluent">
+            PaneDisplayMode="LeftFluent"
+            BreadcrumbBar="{Binding ElementName=BreadcrumbBar}">
             <ui:NavigationView.Header>
                 <ui:BreadcrumbBar
+                    x:Name="BreadcrumbBar"
                     Margin="42,32,0,0"
                     FontSize="24"
                     FontWeight="DemiBold" />
