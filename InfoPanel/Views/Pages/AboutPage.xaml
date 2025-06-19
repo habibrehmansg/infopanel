@@ -14,9 +14,12 @@
     d:DesignWidth="800"
     mc:Ignorable="d">
 
-    <StackPanel MaxWidth="1360" Margin="20,70,20,20">
+    <StackPanel MaxWidth="1360" Margin="20,20,20,20">
                 <StackPanel Grid.Row="0" Margin="0,0,0,0">
-                    <ui:CardControl Icon="Whiteboard24">
+                    <ui:CardControl>
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="Whiteboard24" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -53,7 +56,10 @@
                     <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding ViewModel.InfoLinks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <ui:CardControl Margin="0,0,0,10" Icon="{Binding Icon}">
+                                <ui:CardControl Margin="0,0,0,10">
+                                    <ui:CardControl.Icon>
+                                        <ui:SymbolIcon Symbol="{Binding Icon}" />
+                                    </ui:CardControl.Icon>
                                     <ui:CardControl.Header>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -94,7 +100,10 @@
                     <ui:CardExpander
                         Margin="0,0,0,10"
                         HorizontalContentAlignment="Left"
-                        Icon="People20">
+                        >
+                        <ui:CardExpander.Icon>
+                            <ui:SymbolIcon Symbol="People20" />
+                        </ui:CardExpander.Icon>
                         <ui:CardExpander.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -146,7 +155,10 @@
                     <ui:CardExpander
                         Margin="0,0,0,10"
                         HorizontalContentAlignment="Left"
-                        Icon="Code20">
+                        >
+                        <ui:CardExpander.Icon>
+                            <ui:SymbolIcon Symbol="Code20" />
+                        </ui:CardExpander.Icon>
                         <ui:CardExpander.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>

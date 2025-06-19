@@ -13,7 +13,7 @@
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
 
-    <StackPanel MaxWidth="1360" Margin="20,80,20,20">
+    <StackPanel MaxWidth="1360" Margin="20,20,20,20">
                 <Border
                     Grid.Row="0"
                     Height="400"
@@ -46,7 +46,7 @@
                     </Border>
                 </Border>
 
-                <Grid Grid.Row="1" Margin="50,50,50,0">
+                <Grid Grid.Row="1" Margin="50,30,50,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto" />
                         <ColumnDefinition Width="*" />

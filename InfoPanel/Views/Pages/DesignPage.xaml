@@ -29,7 +29,7 @@
 
             <Border
                 Grid.Column="0"
-                Margin="0,50,10,0"
+                Margin="0,20,10,0"
                 CornerRadius="8,8,8,8">
                 <TabControl TabStripPlacement="Top">
                     <TabItem Width="140">

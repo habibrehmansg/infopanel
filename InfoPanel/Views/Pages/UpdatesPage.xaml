@@ -14,9 +14,12 @@
     d:DesignWidth="800"
     mc:Ignorable="d">
 
-    <StackPanel MaxWidth="1360" Margin="20,70,20,20">
+    <StackPanel MaxWidth="1360" Margin="20,20,20,20">
                 <StackPanel Grid.Row="0" Margin="0,0,0,0">
-                    <ui:CardControl Icon="PhoneUpdate20">
+                    <ui:CardControl>
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="PhoneUpdate20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>

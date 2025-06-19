@@ -14,7 +14,7 @@
     d:DesignWidth="800"
     mc:Ignorable="d">
 
-    <StackPanel MaxWidth="1340" Margin="20,70,20,20">
+    <StackPanel MaxWidth="1340" Margin="20,20,20,20">
 
                 <StackPanel Grid.Row="0" Margin="0,0,0,0">
                     <Label
@@ -24,7 +24,10 @@
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
 
-                    <ui:CardControl Icon="ScreenPerson20">
+                    <ui:CardControl>
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="ScreenPerson20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -57,7 +60,10 @@
                     </ui:CardControl>
 
 
-                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
+                    <ui:CardControl Margin="0,10,0,0">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="Whiteboard24" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -106,7 +112,10 @@
 
                         </StackPanel>
                     </ui:CardControl>
-                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
+                    <ui:CardControl Margin="0,10,0,0">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="Whiteboard24" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -128,7 +137,10 @@
                         </ui:CardControl.Header>
                         <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.MinimizeToTray}" />
                     </ui:CardControl>
-                    <ui:CardControl Margin="0,10,0,0" Icon="Whiteboard24">
+                    <ui:CardControl Margin="0,10,0,0">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="Whiteboard24" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -160,7 +172,10 @@
                         FontSize="14"
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                    <ui:CardControl Icon="SelectAllOff20">
+                    <ui:CardControl>
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="SelectAllOff20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -189,7 +204,10 @@
                             SelectedColor="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.SelectedItemColor}" />
                     </ui:CardControl>
 
-                    <ui:CardControl Margin="0,10,0,0" Icon="Grid20">
+                    <ui:CardControl Margin="0,10,0,0">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="Grid20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -214,8 +232,10 @@
 
                     <ui:CardControl
                         Margin="0,10,0,0"
-                        Icon="SubGrid20"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ShowGridLines, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="SubGrid20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -276,7 +296,10 @@
                         FontSize="14"
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                    <ui:CardControl Icon="HardDrive20">
+                    <ui:CardControl>
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="HardDrive20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -301,8 +324,10 @@
 
                     <ui:CardControl
                         Margin="0,10,0,0"
-                        Icon="HardDrive20"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitor, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="HardDrive20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -333,7 +358,10 @@
                         FontSize="14"
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                    <ui:CardExpander Icon="Whiteboard24">
+                    <ui:CardExpander>
+                        <ui:CardExpander.Icon>
+                            <ui:SymbolIcon Symbol="Whiteboard24" />
+                        </ui:CardExpander.Icon>
                         <ui:CardExpander.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -443,8 +471,10 @@
 
                     <ui:CardExpander
                         Margin="0,10,0,0"
-                        Icon="Whiteboard24"
                         IsExpanded="True">
+                        <ui:CardExpander.Icon>
+                            <ui:SymbolIcon Symbol="Whiteboard24" />
+                        </ui:CardExpander.Icon>
                         <ui:CardExpander.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -672,8 +702,10 @@
                     <!--  start TuringPanel Multi-Device settings  -->
                     <ui:CardExpander
                         Margin="0,10,0,0"
-                        Icon="Whiteboard24"
                         IsExpanded="True">
+                        <ui:CardExpander.Icon>
+                            <ui:SymbolIcon Symbol="Whiteboard24" />
+                        </ui:CardExpander.Icon>
                         <ui:CardExpander.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -910,7 +942,10 @@
                         FontSize="14"
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                    <ui:CardControl Icon="WebAsset20">
+                    <ui:CardControl>
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="WebAsset20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -934,8 +969,10 @@
                     </ui:CardControl>
                     <ui:CardControl
                         Margin="0,10,0,0"
-                        Icon="VirtualNetwork20"
                         IsEnabled="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.WebServer, Converter={StaticResource InverseBooleanConverter}}">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="VirtualNetwork20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -962,8 +999,10 @@
                     </ui:CardControl>
                     <ui:CardControl
                         Margin="0,10,0,0"
-                        Icon="VirtualNetworkToolbox20"
                         IsEnabled="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.WebServer, Converter={StaticResource InverseBooleanConverter}}">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="VirtualNetworkToolbox20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -990,8 +1029,10 @@
                     </ui:CardControl>
                     <ui:CardControl
                         Margin="0,10,0,0"
-                        Icon="Whiteboard24"
                         IsEnabled="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.WebServer, Converter={StaticResource InverseBooleanConverter}}">
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="Whiteboard24" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -1025,7 +1066,10 @@
                         FontSize="14"
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                    <ui:CardControl Icon="HardDrive20">
+                    <ui:CardControl>
+                        <ui:CardControl.Icon>
+                            <ui:SymbolIcon Symbol="HardDrive20" />
+                        </ui:CardControl.Icon>
                         <ui:CardControl.Header>
                             <Grid>
                                 <Grid.ColumnDefinitions>
