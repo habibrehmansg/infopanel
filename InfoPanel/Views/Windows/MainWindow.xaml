@@ -44,14 +44,14 @@
         <ui:NavigationView
             x:Name="RootNavigation"
             Grid.Row="1"
+            BreadcrumbBar="{Binding ElementName=BreadcrumbBar}"
             IsBackButtonVisible="Collapsed"
             IsPaneOpen="True"
-            PaneDisplayMode="LeftFluent"
-            BreadcrumbBar="{Binding ElementName=BreadcrumbBar}">
+            PaneDisplayMode="LeftFluent">
             <ui:NavigationView.Header>
                 <ui:BreadcrumbBar
                     x:Name="BreadcrumbBar"
-                    Margin="42,32,0,0"
+                    Margin="20,20,20,20"
                     FontSize="24"
                     FontWeight="DemiBold" />
             </ui:NavigationView.Header>
@@ -124,7 +124,10 @@
             </ui:NavigationView.ContentOverlay>
         </ui:NavigationView>
 
-        <ContentPresenter x:Name="RootContentDialog" Grid.Row="0" />
+        <ContentPresenter
+            x:Name="RootContentDialog"
+            Grid.Row="0"
+            Grid.RowSpan="2" />
 
     </Grid>
 

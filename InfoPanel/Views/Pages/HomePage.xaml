@@ -13,286 +13,286 @@
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
 
-    <StackPanel MaxWidth="1360" Margin="20,20,20,20">
-                <Border
-                    Grid.Row="0"
-                    Height="400"
-                    Margin="0,0,0,0"
-                    CornerRadius="8,8,8,8">
-                    <Border.Background>
-                        <ImageBrush ImageSource="/InfoPanel;component/Resources/Images/home.jpg" Stretch="UniformToFill" />
-                    </Border.Background>
-                    <Border CornerRadius="8,8,8,8">
-                        <Border.Background>
-                            <RadialGradientBrush>
-                                <GradientStop Offset="0" Color="#2F000000" />
-                                <GradientStop Offset="1" Color="#8F000000" />
-                            </RadialGradientBrush>
-                        </Border.Background>
-                        <StackPanel
-                            Margin="16"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Center"
-                            Background="Transparent">
-                            <TextBlock
-                                FontSize="28"
-                                FontWeight="Bold"
-                                Text="Welcome to InfoPanel." />
-                            <TextBlock
-                                FontSize="18"
-                                Opacity=".8"
-                                Text="Level up your desktop." />
-                        </StackPanel>
-                    </Border>
-                </Border>
+    <StackPanel MaxWidth="1360" Margin="20,0,20,20">
+        <Border
+            Grid.Row="0"
+            Height="400"
+            Margin="0,0,0,0"
+            CornerRadius="8,8,8,8">
+            <Border.Background>
+                <ImageBrush ImageSource="/InfoPanel;component/Resources/Images/home.jpg" Stretch="UniformToFill" />
+            </Border.Background>
+            <Border CornerRadius="8,8,8,8">
+                <Border.Background>
+                    <RadialGradientBrush>
+                        <GradientStop Offset="0" Color="#2F000000" />
+                        <GradientStop Offset="1" Color="#8F000000" />
+                    </RadialGradientBrush>
+                </Border.Background>
+                <StackPanel
+                    Margin="16"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    Background="Transparent">
+                    <TextBlock
+                        FontSize="28"
+                        FontWeight="Bold"
+                        Text="Welcome to InfoPanel." />
+                    <TextBlock
+                        FontSize="18"
+                        Opacity=".8"
+                        Text="Level up your desktop." />
+                </StackPanel>
+            </Border>
+        </Border>
 
-                <Grid Grid.Row="1" Margin="50,30,50,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+        <Grid Grid.Row="1" Margin="50,30,50,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-                    <!--  Start left grid  -->
-                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                        <ui:CardAction
-                            Command="{Binding ViewModel.NavigateCommand}"
-                            CommandParameter="navigate_to_profiles"
-                            Icon="List20">
-                            <StackPanel>
-                                <TextBlock
-                                    Margin="0"
-                                    FontSize="13"
-                                    FontWeight="Medium"
-                                    Text="Profiles" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="Create and manage your profiles." />
-                            </StackPanel>
-                        </ui:CardAction>
-                        <ui:CardAction
-                            Margin="0,10,0,0"
-                            Command="{Binding ViewModel.NavigateCommand}"
-                            CommandParameter="navigate_to_design"
-                            Icon="DesktopCursor20">
-                            <StackPanel>
-                                <TextBlock
-                                    Margin="0"
-                                    FontSize="13"
-                                    FontWeight="Medium"
-                                    Text="Design" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="Customisation and design." />
-                            </StackPanel>
-                        </ui:CardAction>
-                        <ui:CardAction
-                            Margin="0,10,0,0"
-                            Command="{Binding ViewModel.NavigateCommand}"
-                            CommandParameter="navigate_to_updates"
-                            Icon="PhoneUpdate20">
-                            <StackPanel>
-                                <TextBlock
-                                    Margin="0"
-                                    FontSize="13"
-                                    FontWeight="Medium"
-                                    Text="Updates" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="Check for updates and view version history." />
-                            </StackPanel>
-                        </ui:CardAction>
-                        <ui:CardAction
-                            Margin="0,10,0,0"
-                            Command="{Binding ViewModel.NavigateCommand}"
-                            CommandParameter="navigate_to_plugins"
-                            Icon="PlugConnected20">
-                            <StackPanel>
-                                <TextBlock
-                                    Margin="0"
-                                    FontSize="13"
-                                    FontWeight="Medium"
-                                    Text="Plugins" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="View activated plugins." />
-                            </StackPanel>
-                        </ui:CardAction>
-                        <ui:CardAction
-                            Margin="0,10,0,0"
-                            Command="{Binding ViewModel.NavigateCommand}"
-                            CommandParameter="navigate_to_settings"
-                            Icon="Settings20">
-                            <StackPanel>
-                                <TextBlock
-                                    Margin="0"
-                                    FontSize="13"
-                                    FontWeight="Medium"
-                                    Text="Settings" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="Manage settings." />
-                            </StackPanel>
-                        </ui:CardAction>
-                        <ui:CardAction
-                            Margin="0,10,0,0"
-                            Command="{Binding ViewModel.NavigateCommand}"
-                            CommandParameter="navigate_to_about"
-                            Icon="ChatHelp20">
-                            <StackPanel>
-                                <TextBlock
-                                    Margin="0"
-                                    FontSize="13"
-                                    FontWeight="Medium"
-                                    Text="About" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="Resource links, donations and acknowledgments." />
-                            </StackPanel>
-                        </ui:CardAction>
-
+            <!--  Start left grid  -->
+            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                <ui:CardAction
+                    Command="{Binding ViewModel.NavigateCommand}"
+                    CommandParameter="navigate_to_profiles"
+                    Icon="List20">
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Profiles" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="Create and manage your profiles." />
                     </StackPanel>
-
-                    <!--  Start right grid  -->
-                    <StackPanel
-                        Grid.Column="1"
-                        Margin="10,0,0,0"
-                        VerticalAlignment="Center">
-                        <ui:CardControl Margin="0,0,0,0" Icon="Heart20">
-                            <ui:CardControl.Header>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="auto" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock
-                                            FontSize="13"
-                                            FontWeight="Medium"
-                                            Text="Love InfoPanel?" />
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Text="Leave a review for others to see and help InfoPanel grow." />
-                                    </StackPanel>
-                                    <ui:Anchor
-                                        Grid.Column="2"
-                                        Width="150"
-                                        Margin="0,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Appearance="Secondary"
-                                        Content="Review"
-                                        NavigateUri="ms-windows-store://review/?ProductId=XPFP7C8H5446ZD" />
-                                </Grid>
-                            </ui:CardControl.Header>
-                        </ui:CardControl>
-
-                        <ui:CardControl Margin="0,10,0,0" Icon="DrinkCoffee20">
-                            <ui:CardControl.Header>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock
-                                            FontSize="13"
-                                            FontWeight="Medium"
-                                            Text="Support Development" />
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Text="Show appreciation and help to offset costs incurred such web and certificate fees." />
-                                    </StackPanel>
-                                    <ui:Anchor
-                                        Grid.Column="2"
-                                        Width="150"
-                                        Margin="0,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Appearance="Secondary"
-                                        Content="Donate"
-                                        NavigateUri="https://www.buymeacoffee.com/urfath3r" />
-                                </Grid>
-                            </ui:CardControl.Header>
-                        </ui:CardControl>
-
-                        <ui:CardControl Margin="0,10,0,0" Icon="Chat20">
-                            <ui:CardControl.Header>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="auto" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock
-                                            FontSize="13"
-                                            FontWeight="Medium"
-                                            Text="Discord" />
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Text="Join in conversations with others regarding InfoPanel." />
-                                    </StackPanel>
-                                    <ui:Anchor
-                                        Grid.Column="2"
-                                        Width="150"
-                                        Margin="0,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Appearance="Secondary"
-                                        Content="Join"
-                                        NavigateUri="https://discord.gg/cQnjdMC7Qc" />
-                                </Grid>
-                            </ui:CardControl.Header>
-                        </ui:CardControl>
-
-                        <ui:CardControl Margin="0,10,0,0" Icon="WebAsset20">
-                            <ui:CardControl.Header>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="auto" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock
-                                            FontSize="13"
-                                            FontWeight="Medium"
-                                            Text="Reddit" />
-                                        <TextBlock
-                                            Margin="0,5,0,0"
-                                            FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                            Text="Help grow the /r/InfoPanel community." />
-                                    </StackPanel>
-                                    <ui:Anchor
-                                        Grid.Column="2"
-                                        Width="150"
-                                        Margin="0,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Appearance="Secondary"
-                                        Content="Launch"
-                                        NavigateUri="https://www.reddit.com/r/InfoPanel/" />
-                                </Grid>
-                            </ui:CardControl.Header>
-                        </ui:CardControl>
+                </ui:CardAction>
+                <ui:CardAction
+                    Margin="0,10,0,0"
+                    Command="{Binding ViewModel.NavigateCommand}"
+                    CommandParameter="navigate_to_design"
+                    Icon="DesktopCursor20">
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Design" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="Customisation and design." />
                     </StackPanel>
-                </Grid>
-
-
+                </ui:CardAction>
+                <ui:CardAction
+                    Margin="0,10,0,0"
+                    Command="{Binding ViewModel.NavigateCommand}"
+                    CommandParameter="navigate_to_updates"
+                    Icon="PhoneUpdate20">
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Updates" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="Check for updates and view version history." />
+                    </StackPanel>
+                </ui:CardAction>
+                <ui:CardAction
+                    Margin="0,10,0,0"
+                    Command="{Binding ViewModel.NavigateCommand}"
+                    CommandParameter="navigate_to_plugins"
+                    Icon="PlugConnected20">
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Plugins" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="View activated plugins." />
+                    </StackPanel>
+                </ui:CardAction>
+                <ui:CardAction
+                    Margin="0,10,0,0"
+                    Command="{Binding ViewModel.NavigateCommand}"
+                    CommandParameter="navigate_to_settings"
+                    Icon="Settings20">
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Settings" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="Manage settings." />
+                    </StackPanel>
+                </ui:CardAction>
+                <ui:CardAction
+                    Margin="0,10,0,0"
+                    Command="{Binding ViewModel.NavigateCommand}"
+                    CommandParameter="navigate_to_about"
+                    Icon="ChatHelp20">
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="About" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Text="Resource links, donations and acknowledgments." />
+                    </StackPanel>
+                </ui:CardAction>
 
             </StackPanel>
+
+            <!--  Start right grid  -->
+            <StackPanel
+                Grid.Column="1"
+                Margin="10,0,0,0"
+                VerticalAlignment="Center">
+                <ui:CardControl Margin="0,0,0,0" Icon="Heart20">
+                    <ui:CardControl.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock
+                                    FontSize="13"
+                                    FontWeight="Medium"
+                                    Text="Love InfoPanel?" />
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Leave a review for others to see and help InfoPanel grow." />
+                            </StackPanel>
+                            <ui:Anchor
+                                Grid.Column="2"
+                                Width="150"
+                                Margin="0,0,0,0"
+                                VerticalAlignment="Center"
+                                Appearance="Secondary"
+                                Content="Review"
+                                NavigateUri="ms-windows-store://review/?ProductId=XPFP7C8H5446ZD" />
+                        </Grid>
+                    </ui:CardControl.Header>
+                </ui:CardControl>
+
+                <ui:CardControl Margin="0,10,0,0" Icon="DrinkCoffee20">
+                    <ui:CardControl.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock
+                                    FontSize="13"
+                                    FontWeight="Medium"
+                                    Text="Support Development" />
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Show appreciation and help to offset costs incurred such web and certificate fees." />
+                            </StackPanel>
+                            <ui:Anchor
+                                Grid.Column="2"
+                                Width="150"
+                                Margin="0,0,0,0"
+                                VerticalAlignment="Center"
+                                Appearance="Secondary"
+                                Content="Donate"
+                                NavigateUri="https://www.buymeacoffee.com/urfath3r" />
+                        </Grid>
+                    </ui:CardControl.Header>
+                </ui:CardControl>
+
+                <ui:CardControl Margin="0,10,0,0" Icon="Chat20">
+                    <ui:CardControl.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock
+                                    FontSize="13"
+                                    FontWeight="Medium"
+                                    Text="Discord" />
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Join in conversations with others regarding InfoPanel." />
+                            </StackPanel>
+                            <ui:Anchor
+                                Grid.Column="2"
+                                Width="150"
+                                Margin="0,0,0,0"
+                                VerticalAlignment="Center"
+                                Appearance="Secondary"
+                                Content="Join"
+                                NavigateUri="https://discord.gg/cQnjdMC7Qc" />
+                        </Grid>
+                    </ui:CardControl.Header>
+                </ui:CardControl>
+
+                <ui:CardControl Margin="0,10,0,0" Icon="WebAsset20">
+                    <ui:CardControl.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock
+                                    FontSize="13"
+                                    FontWeight="Medium"
+                                    Text="Reddit" />
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Help grow the /r/InfoPanel community." />
+                            </StackPanel>
+                            <ui:Anchor
+                                Grid.Column="2"
+                                Width="150"
+                                Margin="0,0,0,0"
+                                VerticalAlignment="Center"
+                                Appearance="Secondary"
+                                Content="Launch"
+                                NavigateUri="https://www.reddit.com/r/InfoPanel/" />
+                        </Grid>
+                    </ui:CardControl.Header>
+                </ui:CardControl>
+            </StackPanel>
+        </Grid>
+
+
+
+    </StackPanel>
 </Page>
