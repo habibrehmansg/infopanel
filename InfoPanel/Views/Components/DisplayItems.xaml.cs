@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Data;
 using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Components
@@ -21,12 +22,7 @@ namespace InfoPanel.Views.Components
         private static readonly ILogger Logger = Log.ForContext<DisplayItems>();
         private static DisplayItem? SelectedItem { get { return SharedModel.Instance.SelectedItem; } }
 
-        private readonly ObservableCollection<DisplayItem> _filteredDisplayItems = [];
-        public ObservableCollection<DisplayItem> FilteredDisplayItems
-        {
-            get => _filteredDisplayItems;
-        }
-
+        private CollectionViewSource? _displayItemsViewSource;
         private string _searchText = string.Empty;
 
         public DisplayItems()
@@ -34,14 +30,30 @@ namespace InfoPanel.Views.Components
             DataContext = this;
             InitializeComponent();
             Loaded += DisplayItems_Loaded;
-
-            // Initialize with all display items
-            UpdateFilteredItems();
+            Unloaded += DisplayItems_Unloaded;
         }
 
         private void DisplayItems_Loaded(object sender, RoutedEventArgs e)
         {
             SharedModel.Instance.PropertyChanged += Instance_PropertyChanged;
+            
+            // Get the CollectionViewSource from resources
+            _displayItemsViewSource = FindResource("DisplayItemsViewSource") as CollectionViewSource;
+            if (_displayItemsViewSource != null)
+            {
+                _displayItemsViewSource.Filter += DisplayItemsViewSource_Filter;
+            }
+        }
+
+        private void DisplayItems_Unloaded(object sender, RoutedEventArgs e)
+        {
+            SharedModel.Instance.PropertyChanged -= Instance_PropertyChanged;
+            
+            // Unsubscribe from filter
+            if (_displayItemsViewSource != null)
+            {
+                _displayItemsViewSource.Filter -= DisplayItemsViewSource_Filter;
+            }
         }
 
         private void Instance_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -53,7 +65,7 @@ namespace InfoPanel.Views.Components
                 {
                     var group = SharedModel.Instance.GetParent(SelectedItem);
 
-                    if (group is GroupDisplayItem)
+                    if (group is not null)
                     {
                         if (!group.IsExpanded)
                         {
@@ -65,81 +77,56 @@ namespace InfoPanel.Views.Components
             }
             else if (e.PropertyName == nameof(SharedModel.Instance.SelectedProfile))
             {
-                // Update filtered items when display items or profile changes
-                UpdateFilteredItems();
+                // Refresh the view when profile changes
+                _displayItemsViewSource?.View?.Refresh();
             }
         }
 
-        private void UpdateFilteredItems()
+        private void DisplayItemsViewSource_Filter(object sender, FilterEventArgs e)
         {
-            if (SharedModel.Instance.DisplayItems == null)
+            if (e.Item is not DisplayItem item)
             {
-                FilteredDisplayItems.Clear();
+                e.Accepted = false;
                 return;
             }
 
-            // Use the dispatcher to update UI on a background thread for large lists
-            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            // If no search text, accept all items
+            if (string.IsNullOrWhiteSpace(_searchText))
             {
-                if (string.IsNullOrWhiteSpace(_searchText))
+                e.Accepted = true;
+                return;
+            }
+
+            // Apply search filter
+            var searchLower = _searchText.ToLower();
+            var searchTerms = searchLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            if (item is GroupDisplayItem groupItem)
+            {
+                // Check if group name matches all search terms
+                bool groupMatches = MatchesAllTerms(groupItem.Name, searchTerms);
+
+                // Check if any children match
+                bool hasMatchingChildren = !groupMatches && groupItem.DisplayItems.Any(child =>
+                    MatchesAllTerms(child.Name, searchTerms) ||
+                    MatchesAllTerms(child.Kind, searchTerms));
+
+                e.Accepted = groupMatches || hasMatchingChildren;
+                
+                // Expand groups that match the search
+                if (e.Accepted)
                 {
-                    // Reuse existing collection to avoid recreating
-                    FilteredDisplayItems.Clear();
-                    foreach (var item in SharedModel.Instance.DisplayItems)
-                    {
-                        FilteredDisplayItems.Add(item);
-
-                        // Reset expanded state to default for groups (collapsed by default)
-                        if (item is GroupDisplayItem group && !group.DisplayItems.Any(child => child.Selected))
-                        {
-                            group.IsExpanded = false;
-                        }
-                    }
+                    groupItem.IsExpanded = true;
                 }
-                else
-                {
-                    // Filter items based on search text
-                    var searchLower = _searchText.ToLower();
-                    var searchTerms = searchLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    
-                    FilteredDisplayItems.Clear();
-
-                    foreach (var item in SharedModel.Instance.DisplayItems)
-                    {
-                        if (item is GroupDisplayItem group)
-                        {
-                            // Check if group name matches all search terms
-                            bool groupMatches = MatchesAllTerms(group.Name, searchTerms);
-
-                            // Only check children if group doesn't match
-                            bool hasMatchingChildren = false;
-                            if (!groupMatches)
-                            {
-                                hasMatchingChildren = group.DisplayItems.Any(child =>
-                                    MatchesAllTerms(child.Name, searchTerms) ||
-                                    MatchesAllTerms(child.Kind, searchTerms));
-                            }
-
-                            if (groupMatches || hasMatchingChildren)
-                            {
-                                FilteredDisplayItems.Add(group);
-                                // Expand the group to show matching items
-                                group.IsExpanded = true;
-                            }
-                        }
-                        else
-                        {
-                            // Regular item - check name and kind
-                            if (MatchesAllTerms(item.Name, searchTerms) ||
-                                MatchesAllTerms(item.Kind, searchTerms))
-                            {
-                                FilteredDisplayItems.Add(item);
-                            }
-                        }
-                    }
-                }
-            }), System.Windows.Threading.DispatcherPriority.Background);
+            }
+            else
+            {
+                // Regular item - check name and kind
+                e.Accepted = MatchesAllTerms(item.Name, searchTerms) ||
+                           MatchesAllTerms(item.Kind, searchTerms);
+            }
         }
+
 
         private static bool MatchesAllTerms(string text, string[] searchTerms)
         {
@@ -160,7 +147,7 @@ namespace InfoPanel.Views.Components
                 if (!string.IsNullOrWhiteSpace(_searchText))
                 {
                     _searchText = string.Empty;
-                    UpdateFilteredItems();
+                    _displayItemsViewSource?.View?.Refresh();
                 }
                 sender.ItemsSource = null;
                 args.Handled = true;
@@ -210,7 +197,7 @@ namespace InfoPanel.Views.Components
             {
                 _searchText = selectedText;
                 sender.Text = selectedText;
-                UpdateFilteredItems();
+                _displayItemsViewSource?.View?.Refresh();
             }
         }
 
@@ -219,7 +206,7 @@ namespace InfoPanel.Views.Components
             if (e.Key == Key.Enter && sender is AutoSuggestBox autoSuggestBox)
             {
                 _searchText = autoSuggestBox.Text ?? string.Empty;
-                UpdateFilteredItems();
+                _displayItemsViewSource?.View?.Refresh();
                 e.Handled = true;
             }
         }
@@ -373,14 +360,14 @@ namespace InfoPanel.Views.Components
         {
             var groupDisplayItem = new GroupDisplayItem
             {
-                Name = "New Group"
+                Name = "New Group",
             };
 
             var selectedItem = SharedModel.Instance.SelectedItem;
 
             SharedModel.Instance.AddDisplayItem(groupDisplayItem);
 
-            if (selectedItem is DisplayItem)
+            if (selectedItem is not null)
             {
                 SharedModel.Instance.PushDisplayItemTo(groupDisplayItem, selectedItem);
             }
@@ -391,6 +378,7 @@ namespace InfoPanel.Views.Components
         private void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
             SharedModel.Instance.LoadDisplayItems();
+            _displayItemsViewSource?.View?.Refresh();
         }
 
         private void ButtonSave_Click(object sender, RoutedEventArgs e)
@@ -675,7 +663,11 @@ namespace InfoPanel.Views.Components
 
         private GroupDisplayItem? GetGroupFromCollection(object? collection)
         {
-            if (collection == null || collection == SharedModel.Instance.DisplayItems || collection == FilteredDisplayItems)
+            if (collection == null || collection == SharedModel.Instance.DisplayItems)
+                return null;
+
+            // Check if the collection is a view of the main collection
+            if (collection is ListCollectionView view && view.SourceCollection == SharedModel.Instance.DisplayItems)
                 return null;
 
             foreach (var item in SharedModel.Instance.DisplayItems)
@@ -741,7 +733,7 @@ namespace InfoPanel.Views.Components
                     // If it's not, then it must be a group's inner collection
                     if (dropInfo.TargetCollection != null &&
                         dropInfo.TargetCollection != SharedModel.Instance.DisplayItems &&
-                        dropInfo.TargetCollection != FilteredDisplayItems)
+                        !(dropInfo.TargetCollection is ListCollectionView view && view.SourceCollection == SharedModel.Instance.DisplayItems))
                     {
                         // We're trying to drop a group inside another group
                         dropInfo.Effects = DragDropEffects.None;
@@ -826,7 +818,7 @@ namespace InfoPanel.Views.Components
                     // If it's not, then it must be a group's inner collection
                     if (dropInfo.TargetCollection != null &&
                         dropInfo.TargetCollection != SharedModel.Instance.DisplayItems &&
-                        dropInfo.TargetCollection != FilteredDisplayItems)
+                        !(dropInfo.TargetCollection is ListCollectionView view && view.SourceCollection == SharedModel.Instance.DisplayItems))
                     {
                         // We're trying to drop a group inside another group
                         return;
