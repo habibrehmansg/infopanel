@@ -8,8 +8,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="clr-namespace:InfoPanel.Models"
     xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
-    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:tray="http://schemas.lepo.co/wpfui/2022/xaml/tray"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="InfoPanel"
     Width="1300"
     Height="900"
@@ -100,6 +100,14 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
+                    Content="USB Panels"
+                    Tag="usbpanels"
+                    TargetPageType="{x:Type pages:UsbPanelsPage}">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="UsbPlug20" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+                <ui:NavigationViewItem
                     Content="Settings"
                     Tag="settings"
                     TargetPageType="{x:Type pages:SettingsPage}">
@@ -133,50 +141,74 @@
             Grid.Row="0"
             FocusOnLeftClick="True"
             Icon="/InfoPanel;component/Resources/Images/favicon.ico"
+            LeftClick="TrayIcon_LeftClick"
             MenuOnRightClick="True"
-            TooltipText="InfoPanel"
-            LeftClick="TrayIcon_LeftClick">
+            TooltipText="InfoPanel">
             <tray:NotifyIcon.Menu>
                 <ContextMenu>
-                    <MenuItem Header="Open" Click="TrayMenuItem_OnClick" Tag="open">
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="Open"
+                        Tag="open">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="Open24" />
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem Header="Profiles" Click="TrayMenuItem_OnClick" Tag="profiles">
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="Profiles"
+                        Tag="profiles">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="List20" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="Design" Click="TrayMenuItem_OnClick" Tag="design">
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="Design"
+                        Tag="design">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="DesktopCursor20" />
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem Header="Plugins" Click="TrayMenuItem_OnClick" Tag="plugins">
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="Plugins"
+                        Tag="plugins">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="PlugConnected20" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="Settings" Click="TrayMenuItem_OnClick" Tag="settings">
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="Settings"
+                        Tag="settings">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="Settings20" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="Updates" Click="TrayMenuItem_OnClick" Tag="updates">
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="Updates"
+                        Tag="updates">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="PhoneUpdate20" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="About" Click="TrayMenuItem_OnClick" Tag="about">
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="About"
+                        Tag="about">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="ChatHelp20" />
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem Header="Exit" Click="TrayMenuItem_OnClick" Tag="close">
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="Exit"
+                        Tag="close">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="Power20" />
                         </MenuItem.Icon>
