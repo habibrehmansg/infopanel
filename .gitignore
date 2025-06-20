@@ -195,3 +195,5 @@ InfoPanel/Bin/*
 InfoPanel/obj/*
 InnoSetup/Output/
 .vs
+/.claude
+/.serena
