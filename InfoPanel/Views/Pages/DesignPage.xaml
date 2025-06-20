@@ -15,7 +15,7 @@
     ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
 
-    <Grid Margin="20,-40,20,10" Grid.IsSharedSizeScope="True">
+    <Grid Margin="20,-60,20,10" Grid.IsSharedSizeScope="True">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="auto" />
@@ -29,157 +29,189 @@
 
             <Border
                 Grid.Column="0"
-                Margin="0,40,10,0"
-                CornerRadius="8,8,8,8">
-                <TabControl TabStripPlacement="Top">
-                    <TabItem Width="140">
-                        <TabItem.Header>
-                            <StackPanel
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Orientation="Horizontal">
-                                <Image
-                                    Width="30"
-                                    Height="30"
-                                    Source="/InfoPanel;component/Resources/Images/hwinfo_icon.ico" />
-                                <TextBlock
-                                    Grid.Column="0"
-                                    Margin="10,0,0,0"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center">
-                                    <Bold FontSize="16" FontWeight="SemiBold">HWiNFO</Bold>
-                                </TextBlock>
-                            </StackPanel>
-                        </TabItem.Header>
-                        <Grid>
-                            <StackPanel
-                                Margin="10,10,10,10"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center">
-                                <Image
-                                    Width="300"
-                                    Height="80"
-                                    Source="/InfoPanel;component/Resources/Images/hwinfo_logo_white.png" />
-                                <ui:HyperlinkButton
-                                    Margin="0,10,0,0"
+                Margin="0,0,10,0"
+                CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="0,10,0,0" HorizontalAlignment="Right">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="225" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox
+                            Name="ComboBoxSelectedProfile"
+                            Grid.Column="0"
+                            MinWidth="225"
+                            MaxWidth="225"
+                            Margin="0,0,0,0"
+                            DisplayMemberPath="Name"
+                            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                            SelectedItem="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedProfile}" />
+                        <ui:ToggleSwitch
+                            Grid.Column="1"
+                            Margin="10,0,10,0"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedProfile.Active}" />
+                    </Grid>
+
+
+                    <TabControl
+                        Grid.Row="1"
+                        Margin="0,10,0,0"
+                        TabStripPlacement="Top">
+                        <TabItem Width="140">
+                            <TabItem.Header>
+                                <StackPanel
                                     HorizontalAlignment="Center"
-                                    Content="https://www.hwinfo.com/download/"
-                                    FontSize="14"
-                                    NavigateUri="https://www.hwinfo.com/download/" />
-                                <TextBlock
-                                    Margin="50,20,50,0"
-                                    HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    FontSize="14"
-                                    TextAlignment="Justify"
-                                    TextWrapping="Wrap">
-                                    If you are seeing this, InfoPanel is &#32;<Bold Foreground="Orange">unable</Bold>
-                                    &#32; to communicate with HWiNFO via the Shared Memory Interface (SHM).<LineBreak /><LineBreak />
-                                    Ensure that HWiNFO is installed, running and the following are set in settings:<LineBreak /><LineBreak />
-                                    1. 'Show sensors on startup' is enabled.<LineBreak />
-                                    2. 'Shared Memory Support' is enabled.</TextBlock>
-                            </StackPanel>
-                            <Border
-                                Background="#1D1D1D"
-                                CornerRadius="0,4,4,4"
-                                Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=HwInfoAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <components:HwInfoSensors Margin="0,0,0,10" />
-                            </Border>
-                        </Grid>
-                    </TabItem>
-                    <TabItem Width="140">
-                        <TabItem.Header>
-                            <StackPanel
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Orientation="Horizontal">
-                                <Image
-                                    Width="30"
-                                    Height="30"
-                                    Source="/InfoPanel;component/Resources/Images/libre_icon.ico" />
-                                <TextBlock
-                                    Grid.Column="0"
-                                    Margin="10,0,0,0"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center">
-                                    <Bold FontSize="16" FontWeight="SemiBold">Libre</Bold>
-                                </TextBlock>
-                            </StackPanel>
-                        </TabItem.Header>
-                        <Grid>
-                            <StackPanel
-                                Margin="10,10,10,10"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center">
-                                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                    <Image Height="80" Source="/InfoPanel;component/Resources/Images/libre_icon.png" />
+                                    Orientation="Horizontal">
+                                    <Image
+                                        Width="30"
+                                        Height="30"
+                                        Source="/InfoPanel;component/Resources/Images/hwinfo_icon.ico" />
                                     <TextBlock
+                                        Grid.Column="0"
                                         Margin="10,0,0,0"
-                                        VerticalAlignment="Center"
-                                        FontSize="24">
-                                        LibreHardwareMonitor
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center">
+                                        <Bold FontSize="16" FontWeight="SemiBold">HWiNFO</Bold>
                                     </TextBlock>
                                 </StackPanel>
-                                <ui:HyperlinkButton
-                                    Margin="0,10,0,0"
+                            </TabItem.Header>
+                            <Grid>
+                                <StackPanel
+                                    Margin="10,10,10,10"
                                     HorizontalAlignment="Center"
-                                    Content="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor"
-                                    FontSize="14"
-                                    NavigateUri="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor" />
-                                <TextBlock
-                                    Margin="50,20,50,0"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    FontSize="14"
-                                    TextAlignment="Justify"
-                                    TextWrapping="Wrap">
-                                    You don't have to download LibreHardwareMonitor. If you are seeing this, it is &#32;<Bold Foreground="Orange">disabled</Bold>
-                                    in settings.<LineBreak /><LineBreak />
-                                    Enable Libre to get started.</TextBlock>
-                                <Button
-                                    Width="150"
-                                    Margin="0,50,0,0"
-                                    HorizontalAlignment="Center"
-                                    Command="{Binding ViewModel.NavigateCommand}"
-                                    CommandParameter="navigate_to_settings"
-                                    Content="Settings" />
-                            </StackPanel>
-                            <Border
-                                Background="#1D1D1D"
-                                CornerRadius="0,4,4,4"
-                                Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitor, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <components:LibreSensors Margin="0,0,0,10" />
-                            </Border>
-                        </Grid>
-                    </TabItem>
-                    <TabItem>
-                        <TabItem.Header>
-                            <StackPanel
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Orientation="Horizontal">
-                                <Image
-                                    Width="30"
-                                    Height="30"
-                                    Source="/InfoPanel;component/Resources/Images/logo.ico" />
-                                <TextBlock
-                                    Grid.Column="0"
-                                    Margin="10,0,0,0"
-                                    HorizontalAlignment="Left"
                                     VerticalAlignment="Center">
-                                    <Bold FontSize="16" FontWeight="SemiBold">Plugins</Bold>
-                                </TextBlock>
-                            </StackPanel>
-                        </TabItem.Header>
-                        <Grid>
-                            <Border Background="#1D1D1D" CornerRadius="0,4,4,4">
-                                <components:PluginSensors Margin="0,0,0,10" />
-                            </Border>
-                        </Grid>
-                    </TabItem>
-                </TabControl>
+                                    <Image
+                                        Width="300"
+                                        Height="80"
+                                        Source="/InfoPanel;component/Resources/Images/hwinfo_logo_white.png" />
+                                    <ui:HyperlinkButton
+                                        Margin="0,10,0,0"
+                                        HorizontalAlignment="Center"
+                                        Content="https://www.hwinfo.com/download/"
+                                        FontSize="14"
+                                        NavigateUri="https://www.hwinfo.com/download/" />
+                                    <TextBlock
+                                        Margin="50,20,50,0"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        FontSize="14"
+                                        TextAlignment="Justify"
+                                        TextWrapping="Wrap">
+                                        If you are seeing this, InfoPanel is &#32;<Bold Foreground="Orange">unable</Bold>
+                                        &#32; to communicate with HWiNFO via the Shared Memory Interface (SHM).<LineBreak /><LineBreak />
+                                        Ensure that HWiNFO is installed, running and the following are set in settings:<LineBreak /><LineBreak />
+                                        1. 'Show sensors on startup' is enabled.<LineBreak />
+                                        2. 'Shared Memory Support' is enabled.</TextBlock>
+                                </StackPanel>
+                                <Border
+                                    Background="#1D1D1D"
+                                    CornerRadius="0,4,4,4"
+                                    Visibility="{Binding Source={x:Static local:SharedModel.Instance}, Path=HwInfoAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <components:HwInfoSensors Margin="0,0,0,10" />
+                                </Border>
+                            </Grid>
+                        </TabItem>
+                        <TabItem Width="140">
+                            <TabItem.Header>
+                                <StackPanel
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal">
+                                    <Image
+                                        Width="30"
+                                        Height="30"
+                                        Source="/InfoPanel;component/Resources/Images/libre_icon.ico" />
+                                    <TextBlock
+                                        Grid.Column="0"
+                                        Margin="10,0,0,0"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center">
+                                        <Bold FontSize="16" FontWeight="SemiBold">Libre</Bold>
+                                    </TextBlock>
+                                </StackPanel>
+                            </TabItem.Header>
+                            <Grid>
+                                <StackPanel
+                                    Margin="10,10,10,10"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                                    <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                                        <Image Height="80" Source="/InfoPanel;component/Resources/Images/libre_icon.png" />
+                                        <TextBlock
+                                            Margin="10,0,0,0"
+                                            VerticalAlignment="Center"
+                                            FontSize="24">
+                                            LibreHardwareMonitor
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <ui:HyperlinkButton
+                                        Margin="0,10,0,0"
+                                        HorizontalAlignment="Center"
+                                        Content="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor"
+                                        FontSize="14"
+                                        NavigateUri="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor" />
+                                    <TextBlock
+                                        Margin="50,20,50,0"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        FontSize="14"
+                                        TextAlignment="Justify"
+                                        TextWrapping="Wrap">
+                                        You don't have to download LibreHardwareMonitor. If you are seeing this, it is &#32;<Bold Foreground="Orange">disabled</Bold>
+                                        in settings.<LineBreak /><LineBreak />
+                                        Enable Libre to get started.</TextBlock>
+                                    <Button
+                                        Width="150"
+                                        Margin="0,50,0,0"
+                                        HorizontalAlignment="Center"
+                                        Command="{Binding ViewModel.NavigateCommand}"
+                                        CommandParameter="navigate_to_settings"
+                                        Content="Settings" />
+                                </StackPanel>
+                                <Border
+                                    Background="#1D1D1D"
+                                    CornerRadius="0,4,4,4"
+                                    Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitor, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <components:LibreSensors Margin="0,0,0,10" />
+                                </Border>
+                            </Grid>
+                        </TabItem>
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal">
+                                    <Image
+                                        Width="30"
+                                        Height="30"
+                                        Source="/InfoPanel;component/Resources/Images/logo.ico" />
+                                    <TextBlock
+                                        Grid.Column="0"
+                                        Margin="10,0,0,0"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center">
+                                        <Bold FontSize="16" FontWeight="SemiBold">Plugins</Bold>
+                                    </TextBlock>
+                                </StackPanel>
+                            </TabItem.Header>
+                            <Grid>
+                                <Border Background="#1D1D1D" CornerRadius="0,4,4,4">
+                                    <components:PluginSensors Margin="0,0,0,10" />
+                                </Border>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
 
 
+                </Grid>
             </Border>
 
             <Border
@@ -197,7 +229,7 @@
              Margin="0,10,0,0">-->
         <Expander
             Grid.Row="1"
-            MaxWidth="1000"
+            MaxWidth="1400"
             Margin="0,10,0,10"
             Background="#601A1a1a"
             IsExpanded="True">
@@ -229,9 +261,10 @@
 
             </Expander.Header>
 
-            <Grid Grid.Row="1" Height="300">
+            <Grid Height="320">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="auto" />
                 </Grid.ColumnDefinitions>
 
                 <ContentControl
@@ -396,6 +429,10 @@
                         </DataTemplate>
                     </ContentControl.Resources>
                 </ContentControl>
+
+                <StackPanel Grid.Column="1">
+                    <components:CommonProperties Margin="10,10,10,10" HorizontalAlignment="Center" />
+                </StackPanel>
             </Grid>
         </Expander>
     </Grid>

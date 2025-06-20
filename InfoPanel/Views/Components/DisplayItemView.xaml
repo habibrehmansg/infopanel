@@ -10,7 +10,7 @@
     <Grid HorizontalAlignment="Stretch" VerticalAlignment="Center">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="25" />
-            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="250" />
             <ColumnDefinition Width="30" />
             <ColumnDefinition Width="80" />
             <ColumnDefinition Width="Auto" />

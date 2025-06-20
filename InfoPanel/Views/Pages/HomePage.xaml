@@ -212,7 +212,7 @@
                                     Margin="0,5,0,0"
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="Show appreciation and help to offset costs incurred such web and certificate fees." />
+                                    Text="Show your appreciation and buy me a coffee." />
                             </StackPanel>
                             <ui:Anchor
                                 Grid.Column="2"

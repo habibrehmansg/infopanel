@@ -45,8 +45,9 @@
             Grid.Row="1"
             BreadcrumbBar="{Binding ElementName=BreadcrumbBar}"
             IsBackButtonVisible="Collapsed"
-            IsPaneOpen="True"
-            PaneDisplayMode="LeftFluent">
+            IsPaneOpen="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.IsPaneOpen, Mode=TwoWay}"
+            OpenPaneLength="150"
+            PaneDisplayMode="Left">
             <ui:NavigationView.Header>
                 <ui:BreadcrumbBar
                     x:Name="BreadcrumbBar"

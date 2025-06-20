@@ -154,37 +154,75 @@
         <StackPanel Grid.Row="0">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="auto" />
+                    <ColumnDefinition Width="auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock
-                    Grid.Column="0"
-                    HorizontalAlignment="Left"
-                    TextAlignment="Right">
-                    <Bold FontSize="20" FontWeight="Medium">Panel Items</Bold><LineBreak />
-                </TextBlock>
-
                 <ui:AutoSuggestBox
                     Name="TextBoxSearch"
-                    Grid.Column="1"
-                    PlaceholderText="Search items..."
+                    Grid.Column="0"
+                    Width="225"
+                    Margin="10,0,0,0"
+                    PlaceholderText="Search Items"
                     PreviewKeyDown="TextBoxSearch_PreviewKeyDown"
                     SuggestionChosen="TextBoxSearch_SuggestionChosen"
                     TextChanged="TextBoxSearch_TextChanged" />
-
-                <ComboBox
-                    Name="ComboBoxSelectedProfile"
+                <StackPanel
                     Grid.Column="2"
-                    Margin="5,0,5,0"
-                    HorizontalAlignment="Stretch"
-                    DisplayMemberPath="Name"
-                    ItemsSource="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Profiles}"
-                    SelectedItem="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile}" />
+                    Margin="0,0,0,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}"
+                    Orientation="Horizontal">
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.OpenGL}"
+                        ToolTip="OpenGL">
+                        <ui:SymbolIcon Symbol="FastAcceleration20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.ShowFps}"
+                        ToolTip="Show Panel Overlay">
+                        <ui:SymbolIcon Symbol="Info20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.StrictWindowMatching}"
+                        ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
+                        <ui:SymbolIcon Symbol="WindowInprivate20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Topmost}"
+                        ToolTip="Keep panel visible on top of all other windows.">
+                        <ui:SymbolIcon Symbol="ShareScreenStart20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Drag}"
+                        ToolTip="Enables drag and drop placement of panel.">
+                        <ui:SymbolIcon Symbol="Drag20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Resize}"
+                        ToolTip="Enables drag resizing of panel.">
+                        <ui:SymbolIcon Symbol="Resize20" />
+                    </ToggleButton>
+
+                </StackPanel>
             </Grid>
+
+            <Separator Grid.Row="2" Margin="0,5,0,0" />
         </StackPanel>
 
-        <Grid Grid.Row="1" Margin="0,0,0,0">
+        <Grid Grid.Row="1" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="auto" />
                 <ColumnDefinition Width="auto" />
@@ -194,37 +232,8 @@
 
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-
-                <StackPanel
-                    Margin="5"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal">
-
-                    <!--  Name  -->
-                    <TextBlock
-                        Width="200"
-                        Margin="35,0,0,0"
-                        VerticalAlignment="Center"
-                        Text="Name"
-                        TextTrimming="CharacterEllipsis" />
-
-                    <!--  Coordinates  -->
-                    <TextBlock
-                        Width="80"
-                        Margin="25,0,5,0"
-                        VerticalAlignment="Center"
-                        Text="Location" />
-
-                    <!--  Visibility Checkbox  -->
-                    <TextBlock
-                        Width="80"
-                        Margin="0,0,5,0"
-                        VerticalAlignment="Center"
-                        Text="Enabled" />
-                </StackPanel>
 
                 <ListView
                     x:Name="ListViewItems"
@@ -352,7 +361,7 @@
                     ToolTip="Delete selected item" />
             </StackPanel>
 
-            <Grid Grid.Column="2" Margin="0,0,0,0">
+            <!--<Grid Grid.Column="2" Margin="0,0,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="auto" />
                     <RowDefinition Height="*" />
@@ -420,13 +429,6 @@
 
                     </StackPanel>
                 </StackPanel>
-
-                <components:CommonProperties
-                    Grid.Row="1"
-                    Margin="10,10,0,0"
-                    VerticalAlignment="Center"
-                    HorizontalContentAlignment="Center"
-                    VerticalContentAlignment="Center" />
 
                 <StackPanel Grid.Row="2" Margin="10,10,0,0">
 
@@ -498,13 +500,13 @@
 
                 </StackPanel>
 
-            </Grid>
+            </Grid>-->
 
         </Grid>
 
         <Separator Grid.Row="2" Margin="0,5,0,0" />
 
-        <Grid Grid.Row="4" Margin="0,10,0,10">
+        <Grid Grid.Row="4" Margin="0,8,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="auto" />
