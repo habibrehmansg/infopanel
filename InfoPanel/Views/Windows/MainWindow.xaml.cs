@@ -61,7 +61,12 @@ namespace InfoPanel.Views.Windows
         {
             if (WindowState == WindowState.Minimized)
             {
-               SharedModel.Instance.SelectedItem = null;
+                SharedModel.Instance.SelectedItem = null;
+                
+                if (ConfigModel.Instance.Settings.MinimizeToTray)
+                {
+                    Hide();
+                }
             }
         }
 
@@ -89,13 +94,16 @@ namespace InfoPanel.Views.Windows
 
         private void TrayMenuItem_OnClick(object sender, RoutedEventArgs e)
         {
-            if (sender is not Wpf.Ui.Controls.MenuItem menuItem)
+            if (sender is not System.Windows.Controls.MenuItem menuItem)
                 return;
 
             if(menuItem.Tag is string tag)
             {
                 switch(tag)
                 {
+                    case "open":
+                        RestoreWindow();
+                        break;
                     case "profiles":
                         RestoreWindow();
                         Navigate(typeof(Pages.ProfilesPage));
@@ -132,16 +140,9 @@ namespace InfoPanel.Views.Windows
             System.Diagnostics.Debug.WriteLine($"DEBUG | WPF UI Tray clicked: {menuItem.Tag}", "Wpf.Ui.Demo");
         }
 
-        private void RootTitleBar_OnNotifyIconClick(object sender, RoutedEventArgs e)
+        private void TrayIcon_LeftClick(object sender, RoutedEventArgs e)
         {
-            // TODO: Re-enable when NotifyIcon is restored
-            /*
-            System.Diagnostics.Debug.WriteLine($"DEBUG | WPF UI Tray double clicked", "Wpf.Ui.Demo");
-
-
-            this.RestoreWindow();
-            //RootNavigation.Navigate(typeof(Pages.HomePage));
-            */
+            RestoreWindow();
         }
 
         public void RestoreWindow()

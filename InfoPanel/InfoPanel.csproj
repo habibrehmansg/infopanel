@@ -210,6 +210,7 @@
 		<PackageReference Include="System.Management" Version="9.0.2" />
 		<PackageReference Include="TaskScheduler" Version="2.12.1" />
 		<PackageReference Include="WPF-UI" Version="3.1.1" />
+		<PackageReference Include="WPF-UI.Tray" Version="3.1.1" />
 	</ItemGroup>
 
 	<ItemGroup>

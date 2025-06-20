@@ -9,6 +9,7 @@
     xmlns:models="clr-namespace:InfoPanel.Models"
     xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:tray="http://schemas.lepo.co/wpfui/2022/xaml/tray"
     Title="InfoPanel"
     Width="1300"
     Height="900"
@@ -38,8 +39,6 @@
             Title="InfoPanel"
             Grid.Row="0"
             Icon="/InfoPanel;component/Resources/Images/favicon.ico" />
-
-        <!--  TODO: NotifyIcon requires separate WPF-UI.Tray package in v3  -->
 
         <ui:NavigationView
             x:Name="RootNavigation"
@@ -128,6 +127,63 @@
             x:Name="RootContentDialog"
             Grid.Row="0"
             Grid.RowSpan="2" />
+
+        <tray:NotifyIcon
+            x:Name="TrayIcon"
+            Grid.Row="0"
+            FocusOnLeftClick="True"
+            Icon="/InfoPanel;component/Resources/Images/favicon.ico"
+            MenuOnRightClick="True"
+            TooltipText="InfoPanel"
+            LeftClick="TrayIcon_LeftClick">
+            <tray:NotifyIcon.Menu>
+                <ContextMenu>
+                    <MenuItem Header="Open" Click="TrayMenuItem_OnClick" Tag="open">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="Open24" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="Profiles" Click="TrayMenuItem_OnClick" Tag="profiles">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="List20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="Design" Click="TrayMenuItem_OnClick" Tag="design">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="DesktopCursor20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="Plugins" Click="TrayMenuItem_OnClick" Tag="plugins">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="PlugConnected20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="Settings" Click="TrayMenuItem_OnClick" Tag="settings">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="Settings20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="Updates" Click="TrayMenuItem_OnClick" Tag="updates">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="PhoneUpdate20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="About" Click="TrayMenuItem_OnClick" Tag="about">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="ChatHelp20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="Exit" Click="TrayMenuItem_OnClick" Tag="close">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="Power20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                </ContextMenu>
+            </tray:NotifyIcon.Menu>
+        </tray:NotifyIcon>
 
     </Grid>
 
