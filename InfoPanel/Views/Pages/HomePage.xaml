@@ -57,7 +57,7 @@
                 <ui:CardAction
                     Command="{Binding ViewModel.NavigateCommand}"
                     CommandParameter="navigate_to_profiles"
-                    Icon="List20">
+                    Icon="{ui:SymbolIcon List20}">
                     <StackPanel>
                         <TextBlock
                             Margin="0"
@@ -74,7 +74,7 @@
                     Margin="0,10,0,0"
                     Command="{Binding ViewModel.NavigateCommand}"
                     CommandParameter="navigate_to_design"
-                    Icon="DesktopCursor20">
+                    Icon="{ui:SymbolIcon DesktopCursor20}">
                     <StackPanel>
                         <TextBlock
                             Margin="0"
@@ -91,7 +91,7 @@
                     Margin="0,10,0,0"
                     Command="{Binding ViewModel.NavigateCommand}"
                     CommandParameter="navigate_to_updates"
-                    Icon="PhoneUpdate20">
+                    Icon="{ui:SymbolIcon PhoneUpdate20}">
                     <StackPanel>
                         <TextBlock
                             Margin="0"
@@ -108,7 +108,7 @@
                     Margin="0,10,0,0"
                     Command="{Binding ViewModel.NavigateCommand}"
                     CommandParameter="navigate_to_plugins"
-                    Icon="PlugConnected20">
+                    Icon="{ui:SymbolIcon PlugConnected20}">
                     <StackPanel>
                         <TextBlock
                             Margin="0"
@@ -125,7 +125,7 @@
                     Margin="0,10,0,0"
                     Command="{Binding ViewModel.NavigateCommand}"
                     CommandParameter="navigate_to_settings"
-                    Icon="Settings20">
+                    Icon="{ui:SymbolIcon Settings20}">
                     <StackPanel>
                         <TextBlock
                             Margin="0"
@@ -142,7 +142,7 @@
                     Margin="0,10,0,0"
                     Command="{Binding ViewModel.NavigateCommand}"
                     CommandParameter="navigate_to_about"
-                    Icon="ChatHelp20">
+                    Icon="{ui:SymbolIcon ChatHelp20}">
                     <StackPanel>
                         <TextBlock
                             Margin="0"
@@ -163,7 +163,7 @@
                 Grid.Column="1"
                 Margin="10,0,0,0"
                 VerticalAlignment="Center">
-                <ui:CardControl Margin="0,0,0,0" Icon="Heart20">
+                <ui:CardControl Margin="0,0,0,0" Icon="{ui:SymbolIcon Heart20}">
                     <ui:CardControl.Header>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -195,7 +195,7 @@
                     </ui:CardControl.Header>
                 </ui:CardControl>
 
-                <ui:CardControl Margin="0,10,0,0" Icon="DrinkCoffee20">
+                <ui:CardControl Margin="0,10,0,0" Icon="{ui:SymbolIcon DrinkCoffee20}">
                     <ui:CardControl.Header>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -226,7 +226,7 @@
                     </ui:CardControl.Header>
                 </ui:CardControl>
 
-                <ui:CardControl Margin="0,10,0,0" Icon="Chat20">
+                <ui:CardControl Margin="0,10,0,0" Icon="{ui:SymbolIcon Chat20}">
                     <ui:CardControl.Header>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -258,7 +258,7 @@
                     </ui:CardControl.Header>
                 </ui:CardControl>
 
-                <ui:CardControl Margin="0,10,0,0" Icon="WebAsset20">
+                <ui:CardControl Margin="0,10,0,0" Icon="{ui:SymbolIcon WebAsset20}">
                     <ui:CardControl.Header>
                         <Grid>
                             <Grid.ColumnDefinitions>
