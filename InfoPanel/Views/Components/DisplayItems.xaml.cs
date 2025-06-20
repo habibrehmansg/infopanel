@@ -137,79 +137,17 @@ namespace InfoPanel.Views.Components
             return searchTerms.All(term => textLower.Contains(term));
         }
 
-        private void TextBoxSearch_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        private void TextBoxSearch_TextChanged(object sender, TextChangedEventArgs e)
         {
-            var currentText = args.Text ?? string.Empty;
-
-            // If text is cleared, reset the filter immediately (regardless of reason)
-            if (string.IsNullOrWhiteSpace(currentText))
-            {
-                if (!string.IsNullOrWhiteSpace(_searchText))
-                {
-                    _searchText = string.Empty;
-                    _displayItemsViewSource?.View?.Refresh();
-                }
-                sender.ItemsSource = null;
-                args.Handled = true;
+            if (sender is not System.Windows.Controls.TextBox textBox)
                 return;
-            }
 
-            // Only process UserInput changes for suggestions
-            if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
-            {
-                return;
-            }
-
-            // Provide suggestions based on item names (but don't filter the list)
-            var suggestions = new List<string>();
-            var searchLower = currentText.ToLower();
-
-            // Add matching item names as suggestions
-            foreach (var item in SharedModel.Instance.DisplayItems)
-            {
-                if (item is GroupDisplayItem group)
-                {
-                    if (group.Name?.Contains(searchLower, StringComparison.CurrentCultureIgnoreCase) ?? false)
-                        suggestions.Add(group.Name);
-
-                    foreach (var child in group.DisplayItems)
-                    {
-                        if (child.Name?.Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
-                            suggestions.Add(child.Name);
-                    }
-                }
-                else
-                {
-                    if (item.Name?.Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
-                        suggestions.Add(item.Name);
-                }
-            }
-
-            // Set suggestions and mark event as handled to prevent default filtering
-            sender.ItemsSource = suggestions.Distinct().Take(5).ToList();
-            args.Handled = true;
+            // Update the search text and refresh the view for live filtering
+            _searchText = textBox.Text ?? string.Empty;
+            _displayItemsViewSource?.View?.Refresh();
         }
 
-        private void TextBoxSearch_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
-        {
-            // Update the search text with the chosen suggestion
-            if (args.SelectedItem is string selectedText)
-            {
-                _searchText = selectedText;
-                sender.Text = selectedText;
-                _displayItemsViewSource?.View?.Refresh();
-            }
-        }
 
-        private void TextBoxSearch_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter && sender is AutoSuggestBox autoSuggestBox)
-            {
-                _searchText = autoSuggestBox.Text ?? string.Empty;
-                _displayItemsViewSource?.View?.Refresh();
-                e.Handled = true;
-            }
-        }
 
         private void ScrollToView(DisplayItem displayItem)
         {

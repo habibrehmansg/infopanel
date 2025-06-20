@@ -158,14 +158,12 @@
                     <ColumnDefinition Width="auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <ui:AutoSuggestBox
+                <ui:TextBox
                     Name="TextBoxSearch"
                     Grid.Column="0"
                     Width="225"
                     Margin="10,0,0,0"
                     PlaceholderText="Search Items"
-                    PreviewKeyDown="TextBoxSearch_PreviewKeyDown"
-                    SuggestionChosen="TextBoxSearch_SuggestionChosen"
                     TextChanged="TextBoxSearch_TextChanged" />
                 <StackPanel
                     Grid.Column="2"
