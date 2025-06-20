@@ -87,7 +87,7 @@ namespace InfoPanel.Utils
 
         public static async Task CleanupAssets()
         {
-            await Task.Run(() =>
+            await Task.Run(async () =>
             {
                 //load from file as there may be unsaved changes
                 if (ConfigModel.LoadProfilesFromFile() is List<Profile> profiles)
@@ -112,13 +112,12 @@ namespace InfoPanel.Utils
                             {
                                 var assetFiles = Directory.GetFiles(assetFolder).ToList();
 
+                                var displayItems = await SharedModel.LoadDisplayItemsAsync(profile);
+
                                 //load from file as there may be unsaved changes
-                                if (SharedModel.LoadDisplayItemsFromFile(profile) is List<DisplayItem> displayItems)
+                                foreach (var item in displayItems)
                                 {
-                                    foreach (var item in displayItems)
-                                    {
-                                        FilterAssetFiles(item, assetFiles);
-                                    }
+                                    FilterAssetFiles(item, assetFiles);
                                 }
 
                                 //clean up removed files

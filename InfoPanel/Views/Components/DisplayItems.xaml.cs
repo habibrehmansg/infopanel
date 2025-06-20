@@ -375,9 +375,9 @@ namespace InfoPanel.Views.Components
             ListViewItems.ScrollIntoView(groupDisplayItem);
         }
 
-        private void ButtonReload_Click(object sender, RoutedEventArgs e)
+        private async void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
-            SharedModel.Instance.LoadDisplayItems();
+            await SharedModel.Instance.ReloadDisplayItems();
             _displayItemsViewSource?.View?.Refresh();
         }
 
