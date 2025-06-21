@@ -551,7 +551,7 @@ namespace InfoPanel.Views.Common
 
                 DisplayItem? clickedItem = null;
 
-                var displayItems = SharedModel.Instance.DisplayItems.ToList();
+                var displayItems = SharedModel.Instance.GetProfileDisplayItemsCopy();
                 displayItems.Reverse();
 
                 foreach (var item in displayItems)

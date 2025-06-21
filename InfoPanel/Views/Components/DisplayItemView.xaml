@@ -10,7 +10,7 @@
     <Grid HorizontalAlignment="Stretch" VerticalAlignment="Center">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="25" />
-            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="250" />
             <ColumnDefinition Width="30" />
             <ColumnDefinition Width="80" />
             <ColumnDefinition Width="Auto" />
@@ -24,7 +24,7 @@
             Margin="0,4,5,0"
             VerticalAlignment="Center">
             <ui:SymbolIcon.Style>
-                <Style BasedOn="{StaticResource {x:Type ui:SymbolIcon}}" TargetType="{x:Type ui:SymbolIcon}">
+                <Style TargetType="{x:Type ui:SymbolIcon}">
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding Kind}" Value="Text">
                             <Setter Property="Symbol" Value="Text16" />

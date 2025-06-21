@@ -154,77 +154,83 @@
         <StackPanel Grid.Row="0">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="auto" />
+                    <ColumnDefinition Width="auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock
-                    Grid.Column="0"
-                    HorizontalAlignment="Left"
-                    TextAlignment="Right">
-                    <Bold FontSize="20" FontWeight="Medium">Panel Items</Bold><LineBreak />
-                </TextBlock>
-
-                <ui:AutoSuggestBox
+                <ui:TextBox
                     Name="TextBoxSearch"
-                    Grid.Column="1"
-                    PlaceholderText="Search items..."
-                    PreviewKeyDown="TextBoxSearch_PreviewKeyDown"
-                    SuggestionChosen="TextBoxSearch_SuggestionChosen"
+                    Grid.Column="0"
+                    Width="200"
+                    Margin="0,0,0,0"
+                    PlaceholderText="Search Items"
                     TextChanged="TextBoxSearch_TextChanged" />
-
-                <ComboBox
-                    Name="ComboBoxSelectedProfile"
+                <StackPanel
                     Grid.Column="2"
-                    Margin="5,0,5,0"
-                    HorizontalAlignment="Stretch"
-                    DisplayMemberPath="Name"
-                    ItemsSource="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Profiles}"
-                    SelectedItem="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile}" />
+                    Margin="0,0,0,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}"
+                    Orientation="Horizontal">
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.OpenGL}"
+                        ToolTip="OpenGL">
+                        <ui:SymbolIcon Symbol="FastAcceleration20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.ShowFps}"
+                        ToolTip="Show Panel Overlay">
+                        <ui:SymbolIcon Symbol="Info20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.StrictWindowMatching}"
+                        ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
+                        <ui:SymbolIcon Symbol="WindowInprivate20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Topmost}"
+                        ToolTip="Keep panel visible on top of all other windows.">
+                        <ui:SymbolIcon Symbol="ShareScreenStart20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Drag}"
+                        ToolTip="Enables drag and drop placement of panel.">
+                        <ui:SymbolIcon Symbol="Drag20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Resize}"
+                        ToolTip="Enables drag resizing of panel.">
+                        <ui:SymbolIcon Symbol="Resize20" />
+                    </ToggleButton>
+
+                </StackPanel>
             </Grid>
+
+            <Separator Grid.Row="2" Margin="0,5,0,0" />
         </StackPanel>
 
-        <Grid Grid.Row="1" Margin="0,0,0,0">
+        <Grid Grid.Row="1" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="auto" />
-                <ColumnDefinition Width="auto" />
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="auto" />
 
             </Grid.ColumnDefinitions>
 
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-
-                <StackPanel
-                    Margin="5"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal">
-
-                    <!--  Name  -->
-                    <TextBlock
-                        Width="200"
-                        Margin="35,0,0,0"
-                        VerticalAlignment="Center"
-                        Text="Name"
-                        TextTrimming="CharacterEllipsis" />
-
-                    <!--  Coordinates  -->
-                    <TextBlock
-                        Width="80"
-                        Margin="25,0,5,0"
-                        VerticalAlignment="Center"
-                        Text="Location" />
-
-                    <!--  Visibility Checkbox  -->
-                    <TextBlock
-                        Width="80"
-                        Margin="0,0,5,0"
-                        VerticalAlignment="Center"
-                        Text="Enabled" />
-                </StackPanel>
 
                 <ListView
                     x:Name="ListViewItems"
@@ -290,23 +296,15 @@
 
             <StackPanel
                 Grid.Column="1"
-                Margin="10,0,0,0"
+                Margin="5,0,0,0"
                 VerticalAlignment="Bottom">
 
-                <ui:Button
-                    x:Name="ButtonGroup"
-                    Margin="0,10,0,0"
-                    Appearance="Success"
-                    Click="ButtonGroup_Click"
-                    Content=""
-                    Icon="Group20"
-                    ToolTip="New Group" />
                 <ui:Button
                     x:Name="ButtonPushBack"
                     Margin="0,10,0,0"
                     Click="ButtonPushBack_Click"
                     Content=""
-                    Icon="ArrowUpload20"
+                    Icon="{ui:SymbolIcon ArrowUpload20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Push selected item to the top (overlapped by items below)" />
                 <ui:Button
@@ -314,7 +312,7 @@
                     Margin="0,10,0,0"
                     Click="ButtonPushUp_Click"
                     Content=""
-                    Icon="ArrowUp20"
+                    Icon="{ui:SymbolIcon ArrowUp20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Push selected item up (overlapped by items below)" />
                 <ui:Button
@@ -322,7 +320,7 @@
                     Margin="0,10,0,0"
                     Click="ButtonPushDown_Click"
                     Content=""
-                    Icon="ArrowDown20"
+                    Icon="{ui:SymbolIcon ArrowDown20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Bring selected item down (overlap items above)" />
                 <ui:Button
@@ -330,7 +328,7 @@
                     Margin="0,10,0,0"
                     Click="ButtonPushFront_Click"
                     Content=""
-                    Icon="ArrowDownload20"
+                    Icon="{ui:SymbolIcon ArrowDownload20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Bring selected item to bottom (overlap items above)" />
                 <ui:Button
@@ -338,7 +336,7 @@
                     Margin="0,10,0,0"
                     Click="ButtonDuplicate_Click"
                     Content=""
-                    Icon="Copy20"
+                    Icon="{ui:SymbolIcon Copy20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Duplicate selected item" />
                 <ui:Button
@@ -347,164 +345,16 @@
                     Appearance="Danger"
                     Click="ButtonDelete_Click"
                     Content=""
-                    Icon="Delete20"
+                    Icon="{ui:SymbolIcon Delete20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Delete selected item" />
             </StackPanel>
-
-            <Grid Grid.Column="2" Margin="0,0,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="auto" />
-                </Grid.RowDefinitions>
-                <StackPanel Grid.Column="2" Margin="10,5,5,0">
-                    <ui:CardControl Grid.Column="1" Margin="0,0,0,0">
-                        <ui:CardControl.Header>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="12" Text="Active" />
-                            </StackPanel>
-                        </ui:CardControl.Header>
-                        <StackPanel>
-                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}" />
-                        </StackPanel>
-                    </ui:CardControl>
-                    <ui:CardControl
-                        Grid.Column="1"
-                        Margin="0,10,0,0"
-                        IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}">
-                        <ui:CardControl.Header>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="12" Text="Panel Overlay" />
-                            </StackPanel>
-                        </ui:CardControl.Header>
-                        <StackPanel>
-                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.ShowFps}" />
-                        </StackPanel>
-                    </ui:CardControl>
-
-                    <StackPanel
-                        Grid.Column="1"
-                        Margin="0,10,0,0"
-                        HorizontalAlignment="Center"
-                        IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}"
-                        Orientation="Horizontal">
-
-                        <ToggleButton
-                            Margin="0,0,0,0"
-                            IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.StrictWindowMatching}"
-                            ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
-                            <ui:SymbolIcon Symbol="WindowInprivate20" />
-                        </ToggleButton>
-
-                        <ToggleButton
-                            Margin="10,0,0,0"
-                            IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Topmost}"
-                            ToolTip="Keep panel visible on top of all other windows.">
-                            <ui:SymbolIcon Symbol="ShareScreenStart20" />
-                        </ToggleButton>
-
-                        <ToggleButton
-                            Margin="10,0,0,0"
-                            IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Drag}"
-                            ToolTip="Enables drag and drop placement of panel.">
-                            <ui:SymbolIcon Symbol="Drag20" />
-                        </ToggleButton>
-
-                        <ToggleButton
-                            Margin="10,0,0,0"
-                            IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Resize}"
-                            ToolTip="Enables drag resizing of panel.">
-                            <ui:SymbolIcon Symbol="Resize20" />
-                        </ToggleButton>
-
-                    </StackPanel>
-                </StackPanel>
-
-                <components:CommonProperties
-                    Grid.Row="1"
-                    Margin="10,10,0,0"
-                    VerticalAlignment="Center"
-                    HorizontalContentAlignment="Center"
-                    VerticalContentAlignment="Center" />
-
-                <StackPanel Grid.Row="2" Margin="10,10,0,0">
-
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Bottom">
-                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorDisabledBrush}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}W: {0}, H: {1}">
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.Width"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.Height"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorDisabledBrush}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}X: {0}, Y: {1}">
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.WindowX"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.WindowY"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                        </StackPanel>
-
-
-                        <StackPanel Grid.Column="1">
-                            <TextBlock
-                                HorizontalAlignment="Right"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.TargetWindow.DeviceName, Mode=OneWay}"
-                                TextTrimming="CharacterEllipsis" />
-
-                            <TextBlock
-                                Margin="5,0,0,0"
-                                HorizontalAlignment="Right"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}{0}x{1}">
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.TargetWindow.Width"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.TargetWindow.Height"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                        </StackPanel>
-                    </Grid>
-
-
-                </StackPanel>
-
-            </Grid>
 
         </Grid>
 
         <Separator Grid.Row="2" Margin="0,5,0,0" />
 
-        <Grid Grid.Row="4" Margin="0,10,0,10">
+        <Grid Grid.Row="4" Margin="0,8,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="auto" />
@@ -530,7 +380,7 @@
                     Appearance="Danger"
                     Click="ButtonReload_Click"
                     Content=""
-                    Icon="ArrowUndo20"
+                    Icon="{ui:SymbolIcon ArrowUndo20}"
                     ToolTip="Discard all changes and reload from disk" />
             </StackPanel>
         </Grid>

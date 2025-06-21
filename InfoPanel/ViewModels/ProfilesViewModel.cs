@@ -3,7 +3,7 @@ using InfoPanel.Models;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using Wpf.Ui.Common.Interfaces;
+using Wpf.Ui.Controls;
 
 namespace InfoPanel.ViewModels
 {

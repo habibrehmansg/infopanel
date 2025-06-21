@@ -233,18 +233,18 @@
                 Orientation="Vertical">
                 <ui:Button
                     Click="ButtonAddStep_Click"
-                    Icon="SaveCopy20"
+                    Icon="{ui:SymbolIcon SaveCopy20}"
                     ToolTip="Select new images" />
                 <ui:Button
                     Margin="0,10,0,0"
                     Click="ButtonStepUp_Click"
-                    Icon="ArrowUp20"
+                    Icon="{ui:SymbolIcon ArrowUp20}"
                     IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"
                     ToolTip="Move up" />
                 <ui:Button
                     Margin="0,10,0,0"
                     Click="ButtonStepDown_Click"
-                    Icon="ArrowDown20"
+                    Icon="{ui:SymbolIcon ArrowDown20}"
                     IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"
                     ToolTip="Move down" />
                 <ui:Button
@@ -252,7 +252,7 @@
                     Margin="0,10,0,0"
                     Appearance="Danger"
                     Click="ButtonDelete_Click"
-                    Icon="Delete20"
+                    Icon="{ui:SymbolIcon Delete20}"
                     IsEnabled="{Binding ViewModel.ItemSelected, RelativeSource={RelativeSource AncestorType=local:CustomProperties}}"
                     ToolTip="Delete selected item" />
             </StackPanel>

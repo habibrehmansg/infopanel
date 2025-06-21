@@ -1,9 +1,9 @@
 ﻿using System.Reflection;
 using System;
 using System.Windows;
-using Wpf.Ui.Mvvm.Contracts;
+using Wpf.Ui;
 using System.Windows.Controls;
-using Wpf.Ui.Controls.Interfaces;
+using Wpf.Ui.Controls;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using InfoPanel.Utils;
@@ -11,13 +11,13 @@ using InfoPanel.Utils;
 namespace InfoPanel.Views.Windows
 {
     /// <summary>
-    /// Interaction logic for FluentWindow.xaml
+    /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class FluentWindow: INavigationWindow
+    public partial class MainWindow: FluentWindow, INavigationWindow
     {
         private readonly ITaskBarService _taskBarService;
 
-        public FluentWindow(INavigationService navigationService, IPageService pageService, ITaskBarService taskBarService, ISnackbarService snackbarService, IDialogService dialogService)
+        public MainWindow(INavigationService navigationService, IPageService pageService, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
             // Assign the view model
             //ViewModel = viewModel;
@@ -34,11 +34,8 @@ namespace InfoPanel.Views.Windows
             // If you want to use INavigationService instead of INavigationWindow you can define its navigation here.
             navigationService.SetNavigationControl(RootNavigation);
 
-            // Allows you to use the Snackbar control defined in this window in other pages or windows
-            snackbarService.SetSnackbarControl(RootSnackbar);
-
-            // Allows you to use the Dialog control defined in this window in other pages or windows
-            dialogService.SetDialogControl(RootDialog);
+            snackbarService.SetSnackbarPresenter(RootSnackbar);
+            contentDialogService.SetDialogHost(RootContentDialog);
 
             var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
 
@@ -47,8 +44,8 @@ namespace InfoPanel.Views.Windows
                 RootTitleBar.Title = $"InfoPanel - v{version}";
             }
 
-            Loaded += FluentWindow_Loaded;
-            StateChanged += FluentWindow_StateChanged;
+            Loaded += MainWindow_Loaded;
+            StateChanged += MainWindow_StateChanged;
 
             var screenHeight = SystemParameters.PrimaryScreenHeight;
             var desiredHeight = screenHeight * 0.80;
@@ -60,15 +57,20 @@ namespace InfoPanel.Views.Windows
 
         }
 
-        private void FluentWindow_StateChanged(object? sender, EventArgs e)
+        private void MainWindow_StateChanged(object? sender, EventArgs e)
         {
             if (WindowState == WindowState.Minimized)
             {
-               SharedModel.Instance.SelectedItem = null;
+                SharedModel.Instance.SelectedItem = null;
+                
+                if (ConfigModel.Instance.Settings.MinimizeToTray)
+                {
+                    Hide();
+                }
             }
         }
 
-        private void FluentWindow_Loaded(object sender, RoutedEventArgs e)
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             if (ConfigModel.Instance.Settings.StartMinimized)
             {
@@ -89,21 +91,19 @@ namespace InfoPanel.Views.Windows
             }
         }
 
-        private void RootDialog_ButtonClick(object sender, RoutedEventArgs e)
-        {
-            var dialogControl = (IDialogControl)sender;
-            dialogControl.Hide();
-        }
 
         private void TrayMenuItem_OnClick(object sender, RoutedEventArgs e)
         {
-            if (sender is not Wpf.Ui.Controls.MenuItem menuItem)
+            if (sender is not System.Windows.Controls.MenuItem menuItem)
                 return;
 
             if(menuItem.Tag is string tag)
             {
                 switch(tag)
                 {
+                    case "open":
+                        RestoreWindow();
+                        break;
                     case "profiles":
                         RestoreWindow();
                         Navigate(typeof(Pages.ProfilesPage));
@@ -115,6 +115,10 @@ namespace InfoPanel.Views.Windows
                     case "plugins":
                         RestoreWindow();
                         Navigate(typeof(Pages.PluginsPage));
+                        break;
+                    case "usb":
+                        RestoreWindow();
+                        Navigate(typeof(Pages.UsbPanelsPage));
                         break;
                     case "settings":
                         RestoreWindow();
@@ -140,13 +144,9 @@ namespace InfoPanel.Views.Windows
             System.Diagnostics.Debug.WriteLine($"DEBUG | WPF UI Tray clicked: {menuItem.Tag}", "Wpf.Ui.Demo");
         }
 
-        private void RootTitleBar_OnNotifyIconClick(object sender, RoutedEventArgs e)
+        private void TrayIcon_LeftClick(object sender, RoutedEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine($"DEBUG | WPF UI Tray double clicked", "Wpf.Ui.Demo");
-
-
-            this.RestoreWindow();
-            //RootNavigation.Navigate(typeof(Pages.HomePage));
+            RestoreWindow();
         }
 
         public void RestoreWindow()
@@ -160,16 +160,26 @@ namespace InfoPanel.Views.Windows
         #region INavigationWindow methods
 
         public Frame GetFrame()
-            => RootFrame;
+        {
+            // In WPF-UI v3, NavigationView manages its own internal frame
+            // We need to return a Frame for compatibility, so we'll create one if needed
+            if (_navigationFrame == null)
+            {
+                _navigationFrame = new Frame();
+            }
+            return _navigationFrame;
+        }
+        
+        private Frame? _navigationFrame;
 
-        public INavigation GetNavigation()
+        public INavigationView GetNavigation()
             => RootNavigation;
 
         public bool Navigate(Type pageType)
-            => RootNavigation.Navigate(pageType);
+            => RootNavigation.Navigate(pageType) != null;
 
         public void SetPageService(IPageService pageService)
-            => RootNavigation.PageService = pageService;
+            => RootNavigation.SetPageService(pageService);
 
         public void ShowWindow()
             => Show();
@@ -177,9 +187,15 @@ namespace InfoPanel.Views.Windows
         public void CloseWindow()
             => Close();
 
+        public void SetServiceProvider(IServiceProvider serviceProvider)
+        {
+            // This is used to provide services to the navigation window
+            // Implementation depends on your specific needs
+        }
+
         #endregion INavigationWindow methods
 
-        private async void UiWindow_Closing(object sender, CancelEventArgs e)
+        private async void MainWindow_Closing(object sender, CancelEventArgs e)
         {
             e.Cancel = true;
             //perform shutdown operations here

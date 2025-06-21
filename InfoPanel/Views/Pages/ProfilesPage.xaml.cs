@@ -6,9 +6,8 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Forms;
-using Wpf.Ui.Common.Interfaces;
-using Wpf.Ui.Controls.Interfaces;
-using Wpf.Ui.Mvvm.Contracts;
+using Wpf.Ui.Controls;
+using Wpf.Ui;
 
 namespace InfoPanel.Views.Pages
 {
@@ -17,20 +16,20 @@ namespace InfoPanel.Views.Pages
     /// </summary>
     public partial class ProfilesPage : INavigableView<ProfilesViewModel>
     {
-        private readonly IDialogControl _dialogControl;
-        private readonly ISnackbarControl _snackbarControl;
+        private readonly IContentDialogService _contentDialogService;
+        private readonly ISnackbarService _snackbarService;
 
         public ObservableCollection<string> InstalledFonts { get; } = [];
         public ProfilesViewModel ViewModel { get; }
 
-        public ProfilesPage(ProfilesViewModel viewModel, IDialogService dialogService, ISnackbarService snackbarService)
+        public ProfilesPage(ProfilesViewModel viewModel, IContentDialogService contentDialogService, ISnackbarService snackbarService)
         {
             ViewModel = viewModel;
             DataContext = this;
 
             LoadAllFonts();
-            _dialogControl = dialogService.GetDialogControl();
-            _snackbarControl = snackbarService.GetSnackbarControl();
+            _contentDialogService = contentDialogService;
+            _snackbarService = snackbarService;
 
             InitializeComponent();
 
@@ -84,23 +83,23 @@ namespace InfoPanel.Views.Pages
                 if (openFileDialog.FileName.EndsWith(".infopanel"))
                 {
                     SharedModel.Instance.ImportProfile(openFileDialog.FileName);
-                    await _snackbarControl.ShowAsync("Profile Imported", $"{openFileDialog.FileName}");
+                    _snackbarService.Show("Profile Imported", $"{openFileDialog.FileName}", ControlAppearance.Success, null, TimeSpan.FromSeconds(3));
                 }
                 else if (openFileDialog.FileName.EndsWith(".sensorpanel") || openFileDialog.FileName.EndsWith(".rslcd"))
                 {
                    await SharedModel.ImportSensorPanel(openFileDialog.FileName);
-                   await _snackbarControl.ShowAsync("Profile Imported", $"{openFileDialog.FileName}");
+                   _snackbarService.Show("Profile Imported", $"{openFileDialog.FileName}", ControlAppearance.Success, null, TimeSpan.FromSeconds(3));
                 }
             }
         }
 
-        private void ButtonSave_Click(object sender, System.Windows.RoutedEventArgs e)
+        private async void ButtonSave_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             if(ViewModel.Profile is Profile profile)
             {
                 ConfigModel.Instance.SaveProfiles();
                 SharedModel.Instance.SaveDisplayItems(profile);
-                _snackbarControl.ShowAsync("Profile Saved", $"{profile.Name}");
+                _snackbarService.Show("Profile Saved", $"{profile.Name}", ControlAppearance.Success, null, TimeSpan.FromSeconds(3));
             }
         }
 

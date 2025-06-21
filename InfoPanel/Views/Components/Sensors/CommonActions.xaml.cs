@@ -74,5 +74,22 @@ namespace InfoPanel.Views.Components
                 SharedModel.Instance.AddDisplayItem(item);
             }
         }
+
+        private void ButtonGroup_Click(object sender, RoutedEventArgs e)
+        {
+            var groupDisplayItem = new GroupDisplayItem
+            {
+                Name = "New Group",
+            };
+
+            var selectedItem = SharedModel.Instance.SelectedItem;
+
+            SharedModel.Instance.AddDisplayItem(groupDisplayItem);
+
+            if (selectedItem is not null)
+            {
+                SharedModel.Instance.PushDisplayItemTo(groupDisplayItem, selectedItem);
+            }
+        }
     }
 }

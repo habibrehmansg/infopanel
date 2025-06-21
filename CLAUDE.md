@@ -2,165 +2,107 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
-
-InfoPanel is a Windows desktop visualization software that displays hardware information on desktop overlays or external displays (USB LCD panels, Turing Smart Screens). It's built with C# WPF using .NET 8.0 and features a plugin system for extensibility.
-
 ## Build Commands
-- **Main application build**: `dotnet-win build InfoPanel.sln -c Debug` or `dotnet-win build InfoPanel.sln -c Release`
-- **Plugin Simulator build**: `dotnet-win build InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj`
-- **Publish for deployment**: `dotnet-win publish InfoPanel/InfoPanel.csproj -c Release -r win-x64 --self-contained false`
-- **Build specific project**: `dotnet-win build InfoPanel/InfoPanel.csproj` or `dotnet-win build InfoPanel.Extras/InfoPanel.Extras.csproj`
+
+```bash
+# Restore packages
+dotnet restore
+
+# Build Debug
+dotnet build InfoPanel.sln -c Debug
+
+# Build Release
+dotnet build InfoPanel.sln -c Release
+
+# Publish for deployment (Windows x64)
+dotnet publish InfoPanel/InfoPanel.csproj -c Release -r win-x64 --self-contained -p:PublishProfile=FolderProfile -p:Platform=x64
+
+# Run the main application
+dotnet run --project InfoPanel/InfoPanel.csproj
+
+# Run plugin simulator for testing plugins
+dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj
+```
 
 ## Architecture Overview
 
-### Core Components
-- **InfoPanel** - Main WPF application with MVVM architecture
-- **InfoPanel.Plugins** - Plugin interface definitions and base classes
-- **InfoPanel.Plugins.Loader** - Dynamic plugin loading system using AssemblyLoadContext
-- **InfoPanel.Extras** - Built-in plugins (System Info, Network, Drive Info, Weather, Volume)
+InfoPanel is a WPF desktop application built on .NET 8.0 that displays hardware monitoring data on desktop overlays and USB LCD panels. The codebase follows MVVM architecture with a modular plugin system.
 
-### Project Structure Deep Dive
+### Core Projects
 
-**InfoPanel/ (Main Application)**
-- `Services/` - Background tasks and application services
-  - `BeadaPanelTask.cs`, `TuringPanelTask.cs` - Hardware panel communication
-  - `PanelDrawTask.cs` - Rendering pipeline management
-  - `WebServerTask.cs` - HTTP API for external integrations
-- `ViewModels/` - MVVM ViewModels with CommunityToolkit.Mvvm
-  - `DesignViewModel.cs` - UI layout and design configuration
-  - `SettingsViewModel.cs` - Application settings management
-  - `Components/` - Reusable ViewModel components
-- `Views/` - WPF XAML UI components
-  - `Pages/` - Main application pages
-  - `Components/` - Reusable UI components and properties panels
-  - `Converters/` - Data binding value converters
-- `Models/` - Data models and business logic
-  - `Profile.cs` - User configuration profiles
-  - `DisplayItem.cs` - UI element definitions
-  - `BeadaPanelDevice.cs` - Hardware device models
-- `Drawing/` - Graphics rendering pipeline
-  - `PanelDraw.cs` - Main drawing coordinator
-  - `SkiaGraphics.cs`, `AcceleratedGraphics.cs` - Different rendering backends
-- `BeadaPanel/` - BeadaPanel USB LCD communication
-- `TuringPanel/` - Turing Smart Screen communication
-- `Monitors/` - Hardware sensor data collection
-- `Utils/` - Utility classes and helpers
+- **InfoPanel** - Main WPF application
+  - Entry: `App.xaml.cs` ’ `Startup.cs` ’ `MainWindow.xaml`
+  - MVVM structure: ViewModels handle logic, Views handle UI
+  - Background services run display updates and hardware communication
+  - Drawing abstraction supports multiple graphics backends (SkiaSharp, DirectX)
 
-**InfoPanel.Plugins/ (Plugin System)**
-- Interface definitions (`IPlugin`, `IPluginSensor`, etc.)
-- Base classes (`BasePlugin`, `PluginSensor`, etc.)
-- Plugin container system for data organization
+- **InfoPanel.Plugins** - Plugin interface definitions
+  - `IPlugin` - Base plugin interface
+  - `IPluginSensor` - For sensor data providers
+  - `IPluginText/Table` - For display elements
+  - All plugins must inherit from `BasePlugin`
 
-**InfoPanel.Plugins.Loader/ (Plugin Loading)**
-- Dynamic assembly loading with isolation
-- Plugin lifecycle management
-- Plugin discovery and initialization
+- **InfoPanel.Plugins.Loader** - Dynamic plugin loading
+  - Discovers plugins in the `plugins` directory
+  - Loads assemblies in isolated contexts
+  - Manages plugin lifecycle and dependencies
 
-**InfoPanel.Extras/ (Built-in Plugins)**
-- System information (CPU, Memory, Storage)
-- Network monitoring
-- Weather integration
-- Volume control
-- Drive space monitoring
+- **InfoPanel.Extras** - Built-in plugins
+  - Ships with the application in the plugins folder
+  - Provides system info, network, drives, weather functionality
 
-### Key Architectural Patterns
-- **Plugin System**: Plugins implement `IPlugin` interface, loaded dynamically from assemblies
-- **Data Sources**: Hardware monitoring via HWiNFO (Shared Memory) and LibreHardwareMonitor
-- **Rendering Pipeline**: Multiple graphics backends (WPF, SkiaSharp, DirectX) for different display targets
-- **Background Tasks**: Sensor monitoring, panel updates, and web server run as background services
+### Key Services and Background Tasks
 
-### Display Targets
-- Desktop overlay windows (WPF/SkiaSharp)
-- BeadaPanel USB LCD displays (WinUSB API)
-- Turing Smart Screen panels (Models A, C, E)
-- Standard external monitors
+Located in `InfoPanel/Services/`:
+- `PanelDrawTask` - Renders visualizations at high frame rates
+- `BeadaPanelTask/TuringPanelTask` - USB panel communication
+- `WebServerTask` - HTTP API and web interface
+- Hardware monitors - Collect sensor data from HWiNFO/LibreHardwareMonitor
 
-### Plugin Architecture
-Plugins provide data through containers holding various data types:
-- `PluginSensor` - Numeric values with units
-- `PluginText` - String values  
-- `PluginTable` - Tabular data for complex displays
+### Display System
 
-Plugin lifecycle: Initialize â†’ Load containers â†’ Periodic UpdateAsync â†’ Close
+The drawing system (`InfoPanel/Drawing/`) has multiple implementations:
+- `SkiaGraphics` - Primary renderer using SkiaSharp
+- `AcceleratedGraphics` - Hardware-accelerated DirectX rendering
+- `PanelDraw` - Orchestrates rendering of display items
 
-### Project Dependencies
-- **Graphics**: SkiaSharp, System.Drawing.Common (Deprecated in favor of Skiasharp)
-- **Hardware**: LibreHardwareMonitor (for sensors), HidSharp, LibUsbDotNet
-- **Video**: FFmpeg.AutoGen (native FFmpeg support for video backgrounds)
-- **UI**: WPF-UI, MahApps.Metro
-- **Infrastructure**: Microsoft.Extensions.Hosting, AutoMapper
+Display items (`InfoPanel/Models/`) represent visualizations:
+- `SensorDisplayItem` - Text-based sensor values
+- `GaugeDisplayItem` - Circular gauge visualizations  
+- `ChartDisplayItem` - Graphs, bars, and donut charts
+- `ImageDisplayItem` - Static and animated images
 
-## Testing & Quality Assurance
+### USB Panel Support
 
-**Testing Approach:**
-InfoPanel does not use formal unit testing frameworks (MSTest, xUnit, NUnit). Testing is primarily manual and plugin-focused.
+USB panel communication is in `InfoPanel/TuringPanel/` and `InfoPanel/BeadaPanel/`:
+- Uses WinUSB API for BeadaPanel devices
+- Serial/USB communication for TuringPanel devices
+- Model-specific configurations in database classes
 
-**Plugin Testing:**
-- Use `InfoPanel.Plugins.Simulator` project for testing plugins in isolation
-- Build simulator: `dotnet-win build InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj`
-- Modify `Program.cs` in the simulator project to target specific plugins
-- The simulator loads plugins from the InfoPanel.Extras build output directory
+### Plugin Development
 
-## Development Workflow
+Plugins are .NET libraries that:
+1. Reference `InfoPanel.Plugins` package
+2. Implement `IPlugin` interface
+3. Use attributes like `[PluginSensor]` to expose data
+4. Include a `PluginInfo.ini` manifest file
 
-**MVVM Architecture Guidelines:**
-- **ViewModels** (`InfoPanel/ViewModels/`): Implement MVVM pattern using CommunityToolkit.Mvvm
-- **Views** (`InfoPanel/Views/`): XAML files for UI components, organized by function
-- **Models** (`InfoPanel/Models/`): Data models and business logic
-- **Services** (`InfoPanel/Services/`): Background tasks and application services
+See `PLUGINS.md` for detailed plugin development guide.
 
-**UI Development Patterns:**
-- Use WPF-UI and MahApps.Metro for consistent styling
-- Converters defined in `App.xaml` for data binding
-- Custom controls in `InfoPanel/Views/Controls/`
-- Template selectors for dynamic UI rendering
+## Key Technologies
 
-**Plugin Development Workflow:**
-1. Create new class library targeting .NET 8.0
-2. Reference `InfoPanel.Plugins` project
-3. Implement `IPlugin` interface
-4. Use base classes: `BasePlugin`, `PluginSensor`, `PluginText`, `PluginTable`
-5. Test with Plugin Simulator before integration
-
-**Code Style & Conventions:**
-- Follow standard C# naming conventions
-- Use nullable reference types (`<Nullable>enable</Nullable>`)
-- Async methods should end with `Async` suffix
-- Use dependency injection for services via Microsoft.Extensions.Hosting
+- **WPF** with **WPF-UI 3.1.1** for modern Windows 11 styling
+- **CommunityToolkit.MVVM** for MVVM implementation
+- **SkiaSharp** for cross-platform graphics rendering
+- **Serilog** for structured logging (see `LoggingGuidelines.md`)
+- **LibreHardwareMonitor** for hardware sensor access
+- **ASP.NET Core** for built-in web server
+- **Sentry** for error tracking
 
 ## Development Notes
 
-- Solution targets x64 architecture only
-- Requires .NET 8.0 Windows runtime
-- Plugin development uses separate class libraries targeting .NET 8.0
-- FFmpeg video support is experimental (current branch: ffmpeg-native)
-- Plugin testing can be done via InfoPanel.Plugins.Simulator project
-- Current development focus: BeadaPanel multi-device support
-
-## Key Implementation Details
-
-**Build System:**
-- Main project automatically builds InfoPanel.Extras via MSBuild targets
-- Built-in plugins are copied to `plugins/InfoPanel.Extras/` directory during build
-- Solution uses x64 architecture only, targeting .NET 8.0 Windows runtime
-
-**Plugin Testing Workflow:**
-- InfoPanel.Plugins.Simulator is the primary tool for plugin development and debugging
-- Simulator can be configured to test specific plugins by modifying `Program.cs`
-- Test plugins independently before integrating with main application
-
-**External Documentation:**
-- PLUGINS.md contains comprehensive plugin development guide
-- PANELS.md provides detailed hardware panel compatibility information
-- Both files contain valuable context for understanding plugin architecture and supported hardware
-
-## Development Memories
-- Converters are defined in App.xaml for data binding
-- No formal testing framework used - relies on Plugin Simulator and manual testing
-- Current development focus: BeadaPanel multi-device support
-- Graphics rendering supports multiple backends (WPF, SkiaSharp, DirectX)
-- Hardware monitoring via HWiNFO shared memory and LibreHardwareMonitor
-- FFmpeg video support exists but is experimental
-- Solution uses dependency injection via Microsoft.Extensions.Hosting
-- Use `dotnet-win` alias for building Windows projects in WSL environment
+- The solution uses .NET 8.0 with Windows Desktop runtime
+- Warning level 6 and nullable reference types are enabled
+- No unit test projects currently exist
+- Plugins are loaded from the `plugins` directory at runtime
+- Configuration is stored in `%APPDATA%/InfoPanel/`

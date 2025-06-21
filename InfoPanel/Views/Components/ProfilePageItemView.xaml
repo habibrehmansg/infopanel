@@ -65,7 +65,7 @@
                     Appearance="Danger"
                     Click="ButtonDelete_Click"
                     Content=""
-                    Icon="Delete20"
+                    Icon="{ui:SymbolIcon Delete20}"
                     ToolTip="Delete Profile"
                     Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
             </Grid>
