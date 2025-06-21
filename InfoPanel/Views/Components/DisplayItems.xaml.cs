@@ -294,25 +294,6 @@ namespace InfoPanel.Views.Components
             }
         }
 
-        private void ButtonGroup_Click(object sender, RoutedEventArgs e)
-        {
-            var groupDisplayItem = new GroupDisplayItem
-            {
-                Name = "New Group",
-            };
-
-            var selectedItem = SharedModel.Instance.SelectedItem;
-
-            SharedModel.Instance.AddDisplayItem(groupDisplayItem);
-
-            if (selectedItem is not null)
-            {
-                SharedModel.Instance.PushDisplayItemTo(groupDisplayItem, selectedItem);
-            }
-
-            ListViewItems.ScrollIntoView(groupDisplayItem);
-        }
-
         private async void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
             await SharedModel.Instance.ReloadDisplayItems();

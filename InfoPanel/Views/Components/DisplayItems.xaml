@@ -161,8 +161,8 @@
                 <ui:TextBox
                     Name="TextBoxSearch"
                     Grid.Column="0"
-                    Width="225"
-                    Margin="10,0,0,0"
+                    Width="200"
+                    Margin="0,0,0,0"
                     PlaceholderText="Search Items"
                     TextChanged="TextBoxSearch_TextChanged" />
                 <StackPanel
@@ -222,8 +222,7 @@
 
         <Grid Grid.Row="1" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="auto" />
-                <ColumnDefinition Width="auto" />
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="auto" />
 
             </Grid.ColumnDefinitions>
@@ -301,14 +300,6 @@
                 VerticalAlignment="Bottom">
 
                 <ui:Button
-                    x:Name="ButtonGroup"
-                    Margin="0,10,0,0"
-                    Appearance="Success"
-                    Click="ButtonGroup_Click"
-                    Content=""
-                    Icon="{ui:SymbolIcon Group20}"
-                    ToolTip="New Group" />
-                <ui:Button
                     x:Name="ButtonPushBack"
                     Margin="0,10,0,0"
                     Click="ButtonPushBack_Click"
@@ -358,147 +349,6 @@
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
                     ToolTip="Delete selected item" />
             </StackPanel>
-
-            <!--<Grid Grid.Column="2" Margin="0,0,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="auto" />
-                </Grid.RowDefinitions>
-                <StackPanel Grid.Column="2" Margin="10,5,5,0">
-                    <ui:CardControl Grid.Column="1" Margin="0,0,0,0">
-                        <ui:CardControl.Header>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="12" Text="Active" />
-                            </StackPanel>
-                        </ui:CardControl.Header>
-                        <StackPanel>
-                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}" />
-                        </StackPanel>
-                    </ui:CardControl>
-                    <ui:CardControl
-                        Grid.Column="1"
-                        Margin="0,10,0,0"
-                        IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}">
-                        <ui:CardControl.Header>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="12" Text="Panel Overlay" />
-                            </StackPanel>
-                        </ui:CardControl.Header>
-                        <StackPanel>
-                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.ShowFps}" />
-                        </StackPanel>
-                    </ui:CardControl>
-
-                    <StackPanel
-                        Grid.Column="1"
-                        Margin="0,10,0,0"
-                        HorizontalAlignment="Center"
-                        IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}"
-                        Orientation="Horizontal">
-
-                        <ToggleButton
-                            Margin="0,0,0,0"
-                            IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.StrictWindowMatching}"
-                            ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
-                            <ui:SymbolIcon Symbol="WindowInprivate20" />
-                        </ToggleButton>
-
-                        <ToggleButton
-                            Margin="10,0,0,0"
-                            IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Topmost}"
-                            ToolTip="Keep panel visible on top of all other windows.">
-                            <ui:SymbolIcon Symbol="ShareScreenStart20" />
-                        </ToggleButton>
-
-                        <ToggleButton
-                            Margin="10,0,0,0"
-                            IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Drag}"
-                            ToolTip="Enables drag and drop placement of panel.">
-                            <ui:SymbolIcon Symbol="Drag20" />
-                        </ToggleButton>
-
-                        <ToggleButton
-                            Margin="10,0,0,0"
-                            IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Resize}"
-                            ToolTip="Enables drag resizing of panel.">
-                            <ui:SymbolIcon Symbol="Resize20" />
-                        </ToggleButton>
-
-                    </StackPanel>
-                </StackPanel>
-
-                <StackPanel Grid.Row="2" Margin="10,10,0,0">
-
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Bottom">
-                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorDisabledBrush}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}W: {0}, H: {1}">
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.Width"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.Height"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorDisabledBrush}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}X: {0}, Y: {1}">
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.WindowX"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.WindowY"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                        </StackPanel>
-
-
-                        <StackPanel Grid.Column="1">
-                            <TextBlock
-                                HorizontalAlignment="Right"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                Text="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.TargetWindow.DeviceName, Mode=OneWay}"
-                                TextTrimming="CharacterEllipsis" />
-
-                            <TextBlock
-                                Margin="5,0,0,0"
-                                HorizontalAlignment="Right"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}{0}x{1}">
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.TargetWindow.Width"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                        <Binding
-                                            Mode="OneWay"
-                                            Path="SelectedProfile.TargetWindow.Height"
-                                            Source="{x:Static app:SharedModel.Instance}" />
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                        </StackPanel>
-                    </Grid>
-
-
-                </StackPanel>
-
-            </Grid>-->
 
         </Grid>
 
