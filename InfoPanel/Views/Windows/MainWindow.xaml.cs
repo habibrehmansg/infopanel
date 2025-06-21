@@ -116,6 +116,10 @@ namespace InfoPanel.Views.Windows
                         RestoreWindow();
                         Navigate(typeof(Pages.PluginsPage));
                         break;
+                    case "usb":
+                        RestoreWindow();
+                        Navigate(typeof(Pages.UsbPanelsPage));
+                        break;
                     case "settings":
                         RestoreWindow();
                         Navigate(typeof(Pages.SettingsPage));

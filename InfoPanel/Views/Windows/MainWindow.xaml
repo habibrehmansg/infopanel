@@ -38,7 +38,12 @@
             Name="RootTitleBar"
             Title="InfoPanel"
             Grid.Row="0"
-            Icon="/InfoPanel;component/Resources/Images/favicon.ico" />
+            CloseWindowByDoubleClickOnIcon="True">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="pack://application:,,,/Resources/Images/favicon.ico" />
+            </ui:TitleBar.Icon>
+
+        </ui:TitleBar>
 
         <ui:NavigationView
             x:Name="RootNavigation"
@@ -46,8 +51,11 @@
             BreadcrumbBar="{Binding ElementName=BreadcrumbBar}"
             IsBackButtonVisible="Collapsed"
             IsPaneOpen="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.IsPaneOpen, Mode=TwoWay}"
+            IsPaneToggleVisible="True"
             OpenPaneLength="150"
-            PaneDisplayMode="Left">
+            PaneDisplayMode="Left"
+            TitleBar="{Binding ElementName=TitleBar, Mode=OneWay}"
+            Transition="FadeInWithSlide">
             <ui:NavigationView.Header>
                 <ui:BreadcrumbBar
                     x:Name="BreadcrumbBar"
@@ -141,7 +149,7 @@
             x:Name="TrayIcon"
             Grid.Row="0"
             FocusOnLeftClick="True"
-            Icon="/InfoPanel;component/Resources/Images/favicon.ico"
+            Icon="pack://application:,,,/Resources/Images/favicon.ico"
             LeftClick="TrayIcon_LeftClick"
             MenuOnRightClick="True"
             TooltipText="InfoPanel">
@@ -175,10 +183,26 @@
                     <Separator />
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
+                        Header="Updates"
+                        Tag="updates">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="PhoneUpdate20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
                         Header="Plugins"
                         Tag="plugins">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="PlugConnected20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="USB Panels"
+                        Tag="usb">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="UsbPlug20" />
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem
@@ -189,14 +213,7 @@
                             <ui:SymbolIcon Symbol="Settings20" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem
-                        Click="TrayMenuItem_OnClick"
-                        Header="Updates"
-                        Tag="updates">
-                        <MenuItem.Icon>
-                            <ui:SymbolIcon Symbol="PhoneUpdate20" />
-                        </MenuItem.Icon>
-                    </MenuItem>
+
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
                         Header="About"

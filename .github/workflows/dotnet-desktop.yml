@@ -24,13 +24,13 @@ jobs:
         dotnet-version: 8.0.x
 
     # Cache NuGet packages
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}-${{ matrix.targetFramework }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
+    # - name: Cache NuGet packages
+    #   uses: actions/cache@v4
+    #   with:
+    #     path: ~/.nuget/packages
+    #     key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}-${{ matrix.targetFramework }}
+    #     restore-keys: |
+    #       ${{ runner.os }}-nuget-
 
     - name: Build InfoPanel
       run: |
