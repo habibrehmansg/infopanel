@@ -23,6 +23,7 @@ jobs:
       with:
         dotnet-version: 8.0.x
         cache: true
+        cache-dependency-path: '**/packages.lock.json'
 
     # Cache NuGet packages
     # - name: Cache NuGet packages
