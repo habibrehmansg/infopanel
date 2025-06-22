@@ -231,7 +231,7 @@ namespace InfoPanel.Drawing
                                                     x + tWidth, y,
                                           i != 0 && textDisplayItem.RightAlign, textDisplayItem.CenterAlign, textDisplayItem.Bold,
                                           textDisplayItem.Italic, textDisplayItem.Underline,
-                                          textDisplayItem.Strikeout, length, 0);
+                                          textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, length, 0);
                                             }
 
                                             var rows = Math.Min(table.Rows.Count, maxRows);
@@ -247,7 +247,7 @@ namespace InfoPanel.Drawing
                                                         x + tWidth, (int)(y + (fHeight * (j + (tableSensorDisplayItem.ShowHeader ? 1 : 0)))),
                                        i != 0 && textDisplayItem.RightAlign, textDisplayItem.CenterAlign, textDisplayItem.Bold,
                                        textDisplayItem.Italic, textDisplayItem.Underline,
-                                       textDisplayItem.Strikeout, length, 0);
+                                       textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, length, 0);
                                                 }
                                             }
 
@@ -261,7 +261,7 @@ namespace InfoPanel.Drawing
                         }
 
                         g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
-                            textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout,
+                            textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis,
                             textDisplayItem.Width);
 
                         break;

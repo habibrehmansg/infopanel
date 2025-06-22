@@ -23,7 +23,7 @@ namespace InfoPanel.Models
         }
 
         [ObservableProperty]
-        private string _fontStyle;
+        private string _fontStyle = string.Empty;
 
         private int _fontSize = 20;
         public int FontSize
@@ -122,6 +122,12 @@ namespace InfoPanel.Models
         }
 
         [ObservableProperty]
+        private bool _wrap = true;
+
+        [ObservableProperty]
+        private bool _ellipsis = true;
+
+        [ObservableProperty]
         private int _width = 0;
 
         [ObservableProperty]
@@ -151,18 +157,10 @@ namespace InfoPanel.Models
 
         public override SKSize EvaluateSize()
         {
-            var typeface = SkiaGraphics.CreateTypeface(Font, FontStyle, Bold, Italic);
-            using var font = new SKFont(typeface, size: FontSize * Profile.FontScale);
-
+            var skiaGraphics = SkiaGraphics.FromEmpty(Profile.FontScale);
             var text = EvaluateText();
-            font.MeasureText(text, out var bounds);
-
-            var metrics = font.Metrics;
-
-            float width = bounds.Width;
-            float height = metrics.Descent - metrics.Ascent;
-
-            return new SKSize(Width == 0 ? width : Width, height);
+            var (width, height) = skiaGraphics.MeasureString(text, Font, FontStyle, FontSize, Bold, Italic, Underline, Strikeout, Wrap, Ellipsis, Width);
+            return new SKSize(width, height);
         }
 
         public override SKRect EvaluateBounds()
