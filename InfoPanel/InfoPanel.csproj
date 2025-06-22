@@ -17,19 +17,15 @@
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
 	</PropertyGroup>
 
-	<!-- Build InfoPanel.Extras -->
+	<!-- Build InfoPanel.Extras and get its output path -->
 	<Target Name="BuildExtras" BeforeTargets="Build">
 		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
 				 Targets="Build" 
-				 Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=false" />
-	</Target>
-
-	<!-- Get InfoPanel.Extras output directory -->
-	<Target Name="GetExtrasOutputPath">
-		<!-- Query the InfoPanel.Extras project for its output path -->
+				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64;SelfContained=false" />
+		<!-- Get the output path after building -->
 		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
 				 Targets="GetTargetPath" 
-				 Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)">
+				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64">
 			<Output TaskParameter="TargetOutputs" PropertyName="_ExtrasAssemblyPath" />
 		</MSBuild>
 		<PropertyGroup>
@@ -38,28 +34,35 @@
 		<Message Text="InfoPanel.Extras output directory: $(ExtrasOutputDir)" Importance="High" />
 	</Target>
 
-	<!-- Copy InfoPanel.Extras to plugin dir -->
-	<Target Name="BuildCopyExtrasDll" AfterTargets="Build" DependsOnTargets="GetExtrasOutputPath">
-		<Message Text="Executing BuildCopyExtrasDll target" Importance="High" />
+	<!-- Copy InfoPanel.Extras to build output plugin dir -->
+	<Target Name="CopyExtrasToBuildOutput" AfterTargets="BuildExtras">
 		<MakeDir Directories="$(OutputPath)plugins" />
 		<ItemGroup>
-			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
+			<ExtrasFiles Include="$(ExtrasOutputDir)\**\*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(OutputPath)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(ExtrasFiles)" DestinationFolder="$(OutputPath)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
+	</Target>
+
+	<!-- Copy InfoPanel.Extras to publish dir -->
+	<Target Name="CopyExtrasToPublishOutput" AfterTargets="Publish">
+		<!-- Get the output path for copying -->
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
+				 Targets="GetTargetPath" 
+				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64">
+			<Output TaskParameter="TargetOutputs" PropertyName="_ExtrasAssemblyPath" />
+		</MSBuild>
+		<PropertyGroup>
+			<ExtrasOutputDir>$([System.IO.Path]::GetDirectoryName('$(_ExtrasAssemblyPath)'))</ExtrasOutputDir>
+		</PropertyGroup>
+		<MakeDir Directories="$(PublishDir)\plugins\InfoPanel.Extras" />
+		<ItemGroup>
+			<ExtrasFiles Include="$(ExtrasOutputDir)\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(ExtrasFiles)" DestinationFolder="$(PublishDir)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="CleanPluginsDirectory" BeforeTargets="Clean">
 		<RemoveDir Directories="$(OutputPath)\plugins" />
-	</Target>
-
-	<!-- Copy InfoPanel.Extras to publish dir -->
-	<Target Name="PublishCopyExtrasDll" AfterTargets="Publish" DependsOnTargets="GetExtrasOutputPath">
-		<Message Text="Executing PublishCopyExtrasDll target" Importance="High" />
-		<MakeDir Directories="$(PublishDir)\plugins\InfoPanel.Extras" />
-		<ItemGroup>
-			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(PublishDir)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="Sign" AfterTargets="Publish">
@@ -350,13 +353,4 @@
 	<ItemGroup>
 	  <Folder Include="Resources\Binaries\" />
 	</ItemGroup>
-
-	<!--<ItemGroup>
-		<Content Include="$(SolutionDir)InfoPanel.VolumePlugin\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\InfoPanel.VolumePlugin.dll">
-			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<TargetPath>plugins\InfoPanel.VolumePlugin.dll</TargetPath>
-		</Content>
-	</ItemGroup>-->
-
 </Project>

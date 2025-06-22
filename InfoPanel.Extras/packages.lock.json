@@ -1,7 +1,7 @@
 {
   "version": 1,
   "dependencies": {
-    "net8.0-windows10.0.19041": {
+    "net8.0-windows7.0": {
       "ini-parser-netstandard": {
         "type": "Direct",
         "requested": "[2.5.2, )",
@@ -74,7 +74,7 @@
         "type": "Project"
       }
     },
-    "net8.0-windows10.0.19041/win-x64": {
+    "net8.0-windows7.0/win-x64": {
       "System.Diagnostics.PerformanceCounter": {
         "type": "Direct",
         "requested": "[9.0.2, )",
