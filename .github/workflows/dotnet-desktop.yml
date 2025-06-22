@@ -5,7 +5,9 @@ name: .NET
 
 on:
   push:
-    branches: '**'
+    branches: 
+      - main
+      - master
     tags: '*'
   pull_request:
     branches: '**'
