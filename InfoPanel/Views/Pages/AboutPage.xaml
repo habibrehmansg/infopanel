@@ -201,8 +201,11 @@
                                                 <ui:HyperlinkButton
                                                     Content="{Binding ProjectUrl}"
                                                     FontSize="12"
-                                                    Icon="Link20"
-                                                    NavigateUri="{Binding ProjectUrl}" />
+                                                    NavigateUri="{Binding ProjectUrl}">
+                                                    <ui:HyperlinkButton.Icon>
+                                                        <ui:SymbolIcon Symbol="Link20" />
+                                                    </ui:HyperlinkButton.Icon>
+                                                </ui:HyperlinkButton>
                                             </StackPanel>
                                         </Grid>
                                     </DataTemplate>
