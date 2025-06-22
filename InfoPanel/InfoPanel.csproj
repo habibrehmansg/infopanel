@@ -15,16 +15,31 @@
 		<UseWindowsForms>True</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
-		<ExtrasOutputDir>..\InfoPanel.Extras\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)</ExtrasOutputDir>
 	</PropertyGroup>
 
 	<!-- Build InfoPanel.Extras -->
 	<Target Name="BuildExtras" BeforeTargets="Build">
-		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" Properties="SelfContained=false" />
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
+				 Targets="Build" 
+				 Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=false" />
+	</Target>
+
+	<!-- Get InfoPanel.Extras output directory -->
+	<Target Name="GetExtrasOutputPath">
+		<!-- Query the InfoPanel.Extras project for its output path -->
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
+				 Targets="GetTargetPath" 
+				 Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)">
+			<Output TaskParameter="TargetOutputs" PropertyName="_ExtrasAssemblyPath" />
+		</MSBuild>
+		<PropertyGroup>
+			<ExtrasOutputDir>$([System.IO.Path]::GetDirectoryName('$(_ExtrasAssemblyPath)'))</ExtrasOutputDir>
+		</PropertyGroup>
+		<Message Text="InfoPanel.Extras output directory: $(ExtrasOutputDir)" Importance="High" />
 	</Target>
 
 	<!-- Copy InfoPanel.Extras to plugin dir -->
-	<Target Name="BuildCopyExtrasDll" AfterTargets="Build">
+	<Target Name="BuildCopyExtrasDll" AfterTargets="Build" DependsOnTargets="GetExtrasOutputPath">
 		<Message Text="Executing BuildCopyExtrasDll target" Importance="High" />
 		<MakeDir Directories="$(OutputPath)plugins" />
 		<ItemGroup>
@@ -38,7 +53,7 @@
 	</Target>
 
 	<!-- Copy InfoPanel.Extras to publish dir -->
-	<Target Name="PublishCopyExtrasDll" AfterTargets="Publish">
+	<Target Name="PublishCopyExtrasDll" AfterTargets="Publish" DependsOnTargets="GetExtrasOutputPath">
 		<Message Text="Executing PublishCopyExtrasDll target" Importance="High" />
 		<MakeDir Directories="$(PublishDir)\plugins\InfoPanel.Extras" />
 		<ItemGroup>
