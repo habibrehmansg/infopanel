@@ -14,35 +14,43 @@
             Margin="0,0,0,0"
             Appearance="Success"
             Click="ButtonNewText_Click"
-            Icon="Text16"
+            Icon="{ui:SymbolIcon Text16}"
             ToolTip="Add a customisable text item" />
         <ui:Button
             x:Name="ButtonNewImage"
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonNewImage_Click"
-            Icon="Image20"
+            Icon="{ui:SymbolIcon Image20}"
             ToolTip="Add an image item" />
         <ui:Button
             x:Name="ButtonNewClock"
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonNewClock_Click"
-            Icon="Clock20"
+            Icon="{ui:SymbolIcon Clock20}"
             ToolTip="Add a dynamic clock item" />
         <ui:Button
             x:Name="ButtonNewCalendar"
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonNewCalendar_Click"
-            Icon="Calendar3Day20"
+            Icon="{ui:SymbolIcon Calendar3Day20}"
             ToolTip="Add a dynamic calendar item" />
         <ui:Button
             x:Name="ButtonNewShape"
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonNewShape_Click"
-            Icon="DrawShape20"
+            Icon="{ui:SymbolIcon DrawShape20}"
             ToolTip="Add a shape item" />
+        <ui:Button
+            x:Name="ButtonGroup"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonGroup_Click"
+            Content=""
+            Icon="{ui:SymbolIcon Group20}"
+            ToolTip="New Group" />
     </StackPanel>
 </UserControl>

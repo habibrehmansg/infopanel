@@ -28,7 +28,7 @@
             Grid.Column="1"
             Appearance="Success"
             Click="ButtonSelect_Click"
-            Icon="Temperature20"
+            Icon="{ui:SymbolIcon Temperature20}"
             IsEnabled="True"
             ToolTip="Add selected sensor as a text item" />
         <ui:Button
@@ -37,7 +37,7 @@
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonAddBar_Click"
-            Icon="DataBarHorizontal20"
+            Icon="{ui:SymbolIcon DataBarHorizontal20}"
             IsEnabled="True"
             ToolTip="Add selected sensor as a bar" />
         <ui:Button
@@ -46,7 +46,7 @@
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonAddDonut_Click"
-            Icon="DataPie20"
+            Icon="{ui:SymbolIcon DataPie20}"
             IsEnabled="True"
             ToolTip="Add selected sensor as a donut" />
         <ui:Button
@@ -55,7 +55,7 @@
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonAddGraph_Click"
-            Icon="DataBarVertical20"
+            Icon="{ui:SymbolIcon DataBarVertical20}"
             IsEnabled="True"
             ToolTip="Add selected sensor as a graph" />
         <ui:Button
@@ -64,7 +64,7 @@
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonAddCustom_Click"
-            Icon="Gauge20"
+            Icon="{ui:SymbolIcon Gauge20}"
             IsEnabled="True"
             ToolTip="Add selected sensor as gauge" />
         <ui:Button
@@ -73,7 +73,7 @@
             Margin="10,0,0,0"
             Appearance="Success"
             Click="ButtonAddSensorImage_Click"
-            Icon="CircleImage20"
+            Icon="{ui:SymbolIcon CircleImage20}"
             IsEnabled="True"
             ToolTip="Add selected sensor as sensor image" />
         <ui:Button
@@ -82,7 +82,7 @@
             Margin="10,0,0,0"
             Appearance="Caution"
             Click="ButtonReplace_Click"
-            Icon="ArrowSwap20"
+            Icon="{ui:SymbolIcon ArrowSwap20}"
             IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource IsSensorConverter}}"
             ToolTip="Replace selected sensor" />
     </Grid>

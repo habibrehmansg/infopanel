@@ -345,10 +345,10 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         var result = System.Windows.MessageBox.Show(
             $"Are you sure you want to delete '{file.Name}'?",
             "Confirm Delete",
-            MessageBoxButton.YesNo,
+            System.Windows.MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
-        if (result == MessageBoxResult.Yes)
+        if (result == System.Windows.MessageBoxResult.Yes)
         {
             try
             {
@@ -440,10 +440,10 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         var result = MessageBox.Show(
             "Are you sure you want to restart the device?",
             "Confirm Restart",
-            MessageBoxButton.YesNo,
+            System.Windows.MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
-        if (result == MessageBoxResult.Yes)
+        if (result == System.Windows.MessageBoxResult.Yes)
         {
             try
             {

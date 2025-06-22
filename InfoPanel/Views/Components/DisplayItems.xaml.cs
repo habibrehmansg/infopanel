@@ -1,20 +1,16 @@
 ﻿using GongSolutions.Wpf.DragDrop;
 using InfoPanel.Models;
-using System;
 using Serilog;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
-using Wpf.Ui.Controls;
-using System.Collections.Generic;
-using System.Xml.Serialization;
-using System.Collections.Specialized;
 using System.Windows.Data;
+using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Components
 {
@@ -143,71 +139,15 @@ namespace InfoPanel.Views.Components
 
         private void TextBoxSearch_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (sender is AutoSuggestBox autoSuggestBox)
-            {
-                var currentText = autoSuggestBox.Text ?? string.Empty;
+            if (sender is not System.Windows.Controls.TextBox textBox)
+                return;
 
-                // If text is cleared, reset the filter immediately
-                if (string.IsNullOrWhiteSpace(currentText))
-                {
-                    if (!string.IsNullOrWhiteSpace(_searchText))
-                    {
-                        _searchText = string.Empty;
-                        _displayItemsViewSource?.View?.Refresh();
-                    }
-                    autoSuggestBox.ItemsSource = null;
-                    return;
-                }
-
-                // Provide suggestions based on item names (but don't filter the list)
-                var suggestions = new List<string>();
-                var searchLower = currentText.ToLower();
-
-                // Add matching item names as suggestions
-                foreach (var item in SharedModel.Instance.DisplayItems)
-                {
-                    if (item is GroupDisplayItem group)
-                    {
-                        if (group.Name?.ToLowerInvariant().Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
-                            suggestions.Add(group.Name);
-
-                        foreach (var child in group.DisplayItems)
-                        {
-                            if (child.Name?.ToLowerInvariant().Contains(searchLower, StringComparison.InvariantCultureIgnoreCase) ?? false)
-                                suggestions.Add(child.Name);
-                        }
-                    }
-                    else
-                    {
-                        if (item.Name?.ToLower().Contains(searchLower) ?? false)
-                            suggestions.Add(item.Name);
-                    }
-                }
-
-                autoSuggestBox.ItemsSource = [.. suggestions.Distinct().Take(5)];
-            }
+            // Update the search text and refresh the view for live filtering
+            _searchText = textBox.Text ?? string.Empty;
+            _displayItemsViewSource?.View?.Refresh();
         }
 
-        private void TextBoxSearch_SuggestionChosen(object sender, RoutedEventArgs e)
-        {
-            // The AutoSuggestBox automatically updates its Text property when a suggestion is chosen
-            // We just need to update our search
-            if (sender is AutoSuggestBox autoSuggestBox)
-            {
-                _searchText = autoSuggestBox.Text ?? string.Empty;
-                _displayItemsViewSource?.View?.Refresh();
-            }
-        }
 
-        private void TextBoxSearch_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter && sender is AutoSuggestBox autoSuggestBox)
-            {
-                _searchText = autoSuggestBox.Text ?? string.Empty;
-                _displayItemsViewSource?.View?.Refresh();
-                e.Handled = true;
-            }
-        }
 
         private void ScrollToView(DisplayItem displayItem)
         {
@@ -218,7 +158,7 @@ namespace InfoPanel.Views.Components
                 group.IsExpanded = true;
 
                 // Get the ListViewItem container for the group
-                var groupContainer = ListViewItems.ItemContainerGenerator.ContainerFromItem(groupItem) as ListViewItem;
+                var groupContainer = ListViewItems.ItemContainerGenerator.ContainerFromItem(groupItem) as System.Windows.Controls.ListViewItem;
                 if (groupContainer == null)
                     return;
 
@@ -228,7 +168,7 @@ namespace InfoPanel.Views.Components
                     return;
 
                 // Search inside the Expander for the inner ListView
-                var innerListView = FindVisualChild<ListView>(expander);
+                var innerListView = FindVisualChild<System.Windows.Controls.ListView>(expander);
                 if (innerListView != null)
                 {
                     innerListView.ScrollIntoView(displayItem);
@@ -354,28 +294,9 @@ namespace InfoPanel.Views.Components
             }
         }
 
-        private void ButtonGroup_Click(object sender, RoutedEventArgs e)
+        private async void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
-            var groupDisplayItem = new GroupDisplayItem
-            {
-                Name = "New Group",
-            };
-
-            var selectedItem = SharedModel.Instance.SelectedItem;
-
-            SharedModel.Instance.AddDisplayItem(groupDisplayItem);
-
-            if (selectedItem is not null)
-            {
-                SharedModel.Instance.PushDisplayItemTo(groupDisplayItem, selectedItem);
-            }
-
-            ListViewItems.ScrollIntoView(groupDisplayItem);
-        }
-
-        private void ButtonReload_Click(object sender, RoutedEventArgs e)
-        {
-            SharedModel.Instance.LoadDisplayItems();
+            await SharedModel.Instance.ReloadDisplayItems();
             _displayItemsViewSource?.View?.Refresh();
         }
 
@@ -455,7 +376,7 @@ namespace InfoPanel.Views.Components
 
         private void ListViewItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_isHandlingSelection || sender is not ListView listView)
+            if (_isHandlingSelection || sender is not System.Windows.Controls.ListView listView)
                 return;
 
             Logger.Debug("ListViewItems_SelectionChanged - {Count} SelectedItems", listView.SelectedItems.Count);
@@ -518,7 +439,7 @@ namespace InfoPanel.Views.Components
 
         private void ListViewGroupItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_isHandlingSelection || sender is not ListView innerListView)
+            if (_isHandlingSelection || sender is not System.Windows.Controls.ListView innerListView)
                 return;
 
             Log.Debug("ListViewGroupItems_SelectionChanged - {Count} SelectedItems", innerListView.SelectedItems.Count);
@@ -565,11 +486,11 @@ namespace InfoPanel.Views.Components
                 return;
 
             var dataItem = border.DataContext;
-            var listViewItem = FindAncestor<ListViewItem>(border);
+            var listViewItem = FindAncestor<System.Windows.Controls.ListViewItem>(border);
             if (listViewItem == null)
                 return;
 
-            var listView = ItemsControl.ItemsControlFromItemContainer(listViewItem) as ListView;
+            var listView = ItemsControl.ItemsControlFromItemContainer(listViewItem) as System.Windows.Controls.ListView;
             if (listView == null)
                 return;
 
@@ -591,7 +512,7 @@ namespace InfoPanel.Views.Components
                     listView.SelectedItems.Clear();
                     for (int i = start; i <= end; i++)
                     {
-                        if (listView.ItemContainerGenerator.ContainerFromIndex(i) is ListViewItem item)
+                        if (listView.ItemContainerGenerator.ContainerFromIndex(i) is System.Windows.Controls.ListViewItem item)
                             item.IsSelected = true;
                     }
                 }

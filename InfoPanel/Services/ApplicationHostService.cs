@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using InfoPanel.Views.Windows;
 using Microsoft.Extensions.Hosting;
-using Wpf.Ui.Mvvm.Contracts;
+using Wpf.Ui;
 
 namespace InfoPanel.Services;
 
@@ -56,7 +56,7 @@ public class ApplicationHostService : IHostedService
     {
         await Task.CompletedTask;
 
-        if (!Application.Current.Windows.OfType<FluentWindow>().Any())
+        if (!Application.Current.Windows.OfType<MainWindow>().Any())
         {
             _navigationWindow = _serviceProvider.GetService(typeof(INavigationWindow)) as INavigationWindow;
             _navigationWindow?.ShowWindow();

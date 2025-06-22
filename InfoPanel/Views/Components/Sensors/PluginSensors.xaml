@@ -140,7 +140,7 @@
                     Margin="10,0,0,0"
                     Appearance="Success"
                     Click="ButtonAddHttpImage_Click"
-                    Icon="WebAsset20"
+                    Icon="{ui:SymbolIcon WebAsset20}"
                     IsEnabled="True"
                     ToolTip="Add selected sensor as Http image" />
 
@@ -150,7 +150,7 @@
                     Margin="10,0,0,0"
                     Appearance="Success"
                     Click="ButtonAddTableSensor_Click"
-                    Icon="Table20"
+                    Icon="{ui:SymbolIcon Table20}"
                     IsEnabled="{Binding SelectedItem.SensorReading, Converter={StaticResource IsPluginTableConverter}}"
                     ToolTip="Add selected sensor in table view" />
             </Grid>

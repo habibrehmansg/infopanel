@@ -1,23 +1,21 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using ControlzEx.Standard;
-using InfoPanel.BeadaPanel;
 using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
+using Serilog;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using Serilog;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Windows.Media.Imaging;
+using System.Windows;
 using System.Windows.Threading;
 using System.Xml;
 using System.Xml.Linq;
@@ -184,20 +182,71 @@ namespace InfoPanel
             }
         }
 
-        private ConcurrentDictionary<Guid, ObservableCollection<DisplayItem>> ProfileDisplayItems = new ConcurrentDictionary<Guid, ObservableCollection<DisplayItem>>();
+        private readonly ConcurrentDictionary<Guid, ObservableCollection<DisplayItem>> ProfileDisplayItems = [];
 
         public ObservableCollection<DisplayItem> DisplayItems
         {
             get
             {
-                if (SelectedProfile != null)
+                if (SelectedProfile is Profile profile)
                 {
-                    return GetProfileDisplayItems(SelectedProfile);
+                    return GetProfileDisplayItems(profile);
                 }
-                else { return []; }
+
+                return [];
             }
         }
-        private readonly object _displayItemsLock = new object();
+
+        private ObservableCollection<DisplayItem> GetProfileDisplayItems(Profile profile)
+        {
+            return ProfileDisplayItems.GetOrAdd(profile.Guid, guid =>
+            {
+                var collection = new ObservableCollection<DisplayItem>();
+                _= ReloadDisplayItems(profile);
+
+                return collection;
+            });
+        }
+
+        public async Task ReloadDisplayItems()
+        {
+            if (SelectedProfile is Profile profile)
+            {
+                await ReloadDisplayItems(profile);
+            }
+        }
+
+        public void AccessDisplayItems(Profile profile, Action<ObservableCollection<DisplayItem>> action)
+        {
+            var collection = GetProfileDisplayItems(profile);
+
+            if (Application.Current.Dispatcher is Dispatcher dispatcher)
+            {
+                if (dispatcher.CheckAccess())
+                {
+                    action(collection);
+                }
+                else
+                {
+                    dispatcher.Invoke(() =>
+                    {
+                        action(collection);
+                    });
+                }
+            }
+        }
+
+        private async Task ReloadDisplayItems(Profile profile)
+        {
+            var displayItems = await LoadDisplayItemsAsync(profile);
+
+            AccessDisplayItems(profile, collection => {
+                collection.Clear();
+
+                foreach (var item in displayItems)
+                    collection.Add(item);
+            });
+        }
 
         public DisplayItem? SelectedItem
         {
@@ -329,81 +378,82 @@ namespace InfoPanel
 
         public void AddDisplayItem(DisplayItem newDisplayItem)
         {
-            lock (_displayItemsLock)
+            if (SelectedProfile is Profile profile)
             {
-                if (DisplayItems is not ObservableCollection<DisplayItem> displayItems)
-                    return;
-
-                bool addedInGroup = false;
-
-                if (newDisplayItem is not GroupDisplayItem && SelectedItem is DisplayItem selectedItem)
+                AccessDisplayItems(profile, displayItems =>
                 {
-                    // SelectedItem is a group — add directly to it
-                    if (selectedItem is GroupDisplayItem group && !group.IsLocked)
+                    bool addedInGroup = false;
+
+                    if (newDisplayItem is not GroupDisplayItem && SelectedItem is DisplayItem selectedItem)
                     {
-                        group.DisplayItems.Add(newDisplayItem);
-                        addedInGroup = true;
-                    }
-                    else
-                    {
-                        //SelectedItem is inside a group — find its parent
-                        _= FindParentCollection(selectedItem, out var parentGroup);
-                        if (parentGroup is not null && !parentGroup.IsLocked)
+                        // SelectedItem is a group — add directly to it
+                        if (selectedItem is GroupDisplayItem group && !group.IsLocked)
                         {
-                            parentGroup.DisplayItems.Add(newDisplayItem);
+                            group.DisplayItems.Add(newDisplayItem);
                             addedInGroup = true;
                         }
+                        else
+                        {
+                            //SelectedItem is inside a group — find its parent
+                            _ = FindParentCollection(selectedItem, out var parentGroup);
+                            if (parentGroup is not null && !parentGroup.IsLocked)
+                            {
+                                parentGroup.DisplayItems.Add(newDisplayItem);
+                                addedInGroup = true;
+                            }
+                        }
                     }
-                }
 
-                if (!addedInGroup)
-                {
-                    displayItems.Add(newDisplayItem);
-                }
+                    if (!addedInGroup)
+                    {
+                        displayItems.Add(newDisplayItem);
+                    }
 
-                SelectedItem = newDisplayItem;
+                    SelectedItem = newDisplayItem;
+                });
             }
         }
 
         public void RemoveDisplayItem(DisplayItem displayItem)
         {
-            lock (_displayItemsLock)
+
+            if (SelectedProfile is Profile profile)
             {
-                if (DisplayItems is not ObservableCollection<DisplayItem> displayItems)
-                    return;
-
-                // Check if the item is inside a group
-                _= FindParentCollection(displayItem, out var parentGroup);
-                if (parentGroup is not null)
+                AccessDisplayItems(profile, displayItems =>
                 {
-                    int index = parentGroup.DisplayItems.IndexOf(displayItem);
-                    if (index >= 0)
+                    _ = FindParentCollection(displayItem, out var parentGroup);
+                    if (parentGroup is not null)
                     {
-                        parentGroup.DisplayItems.RemoveAt(index);
+                        int index = parentGroup.DisplayItems.IndexOf(displayItem);
+                        if (index >= 0)
+                        {
+                            parentGroup.DisplayItems.RemoveAt(index);
 
-                        if (parentGroup.DisplayItems.Count > 0)
-                        {
-                            parentGroup.DisplayItems[Math.Clamp(index, 0, parentGroup.DisplayItems.Count - 1)].Selected = true;
-                        } else
-                        {
-                            parentGroup.Selected = true;
+                            if (parentGroup.DisplayItems.Count > 0)
+                            {
+                                parentGroup.DisplayItems[Math.Clamp(index, 0, parentGroup.DisplayItems.Count - 1)].Selected = true;
+                            }
+                            else
+                            {
+                                parentGroup.Selected = true;
+                            }
                         }
                     }
-                }
-                else
-                {
-                    // Top-level item
-                    int index = displayItems.IndexOf(displayItem);
-                    if (index >= 0)
+                    else
                     {
-                        displayItems.RemoveAt(index);
-
-                        if (displayItems.Count > 0)
+                        // Top-level item
+                        int index = displayItems.IndexOf(displayItem);
+                        if (index >= 0)
                         {
-                            displayItems[Math.Clamp(index, 0, displayItems.Count - 1)].Selected = true;
+                            displayItems.RemoveAt(index);
+
+                            if (displayItems.Count > 0)
+                            {
+                                displayItems[Math.Clamp(index, 0, displayItems.Count - 1)].Selected = true;
+                            }
                         }
                     }
-                }
+                });
             }
         }
 
@@ -437,75 +487,72 @@ namespace InfoPanel
 
         public void PushDisplayItemBy(DisplayItem displayItem, int count)
         {
-            if (displayItem == null || count == 0)
-                return;
-
-            lock (_displayItemsLock)
+            if (SelectedProfile is Profile profile)
             {
-                if (DisplayItems == null)
-                    return;
-
-                // Find the parent collection and group (if any)
-                var parentCollection = FindParentCollection(displayItem, out GroupDisplayItem? parentGroup);
-
-                if (parentCollection == null)
-                    return;
-
-                int index = parentCollection.IndexOf(displayItem);
-                int newIndex = index + count;
-
-                // Moving out of group (up or down)
-                if (parentGroup != null && !parentGroup.IsLocked)
+                AccessDisplayItems(profile, displayItems =>
                 {
-                    if (newIndex < 0)
-                    {
-                        int groupIndex = DisplayItems.IndexOf(parentGroup);
-                        if (groupIndex >= 0)
-                        {
-                            parentCollection.RemoveAt(index);
-                            DisplayItems.Insert(groupIndex, displayItem);
-                        }
-                        return;
-                    }
+                    // Find the parent collection and group (if any)
+                    var parentCollection = FindParentCollection(displayItem, out GroupDisplayItem? parentGroup);
 
-                    if (newIndex >= parentCollection.Count)
-                    {
-                        int groupIndex = DisplayItems.IndexOf(parentGroup);
-                        if (groupIndex >= 0)
-                        {
-                            parentCollection.RemoveAt(index);
-                            DisplayItems.Insert(groupIndex + 1, displayItem);
-                        }
+                    if (parentCollection == null)
                         return;
-                    }
-                }
 
-                // Moving into a group
-                if (displayItem is not GroupDisplayItem && parentGroup == null)
-                {
-                    int targetIndex = index + count;
-                    if (targetIndex >= 0 && targetIndex < DisplayItems.Count)
+                    int index = parentCollection.IndexOf(displayItem);
+                    int newIndex = index + count;
+
+                    // Moving out of group (up or down)
+                    if (parentGroup != null && !parentGroup.IsLocked)
                     {
-                        var target = DisplayItems[targetIndex];
-                        if (target is GroupDisplayItem targetGroup && !targetGroup.IsLocked && targetGroup.DisplayItems != null)
+                        if (newIndex < 0)
                         {
-                            parentCollection.RemoveAt(index);
-                            targetGroup.DisplayItems.Insert(count > 0 ? 0 : targetGroup.DisplayItems.Count, displayItem);
-                            targetGroup.IsExpanded = true;
+                            int groupIndex = displayItems.IndexOf(parentGroup);
+                            if (groupIndex >= 0)
+                            {
+                                parentCollection.RemoveAt(index);
+                                displayItems.Insert(groupIndex, displayItem);
+                            }
+                            return;
+                        }
+
+                        if (newIndex >= parentCollection.Count)
+                        {
+                            int groupIndex = displayItems.IndexOf(parentGroup);
+                            if (groupIndex >= 0)
+                            {
+                                parentCollection.RemoveAt(index);
+                                displayItems.Insert(groupIndex + 1, displayItem);
+                            }
                             return;
                         }
                     }
-                }
 
-                // Normal move within the same collection
-                if (newIndex >= 0 && newIndex < parentCollection.Count)
-                {
-                    parentCollection.Move(index, newIndex);
-                    if(parentGroup is GroupDisplayItem)
+                    // Moving into a group
+                    if (displayItem is not GroupDisplayItem && parentGroup == null)
                     {
-                        parentGroup.IsExpanded = true;
+                        int targetIndex = index + count;
+                        if (targetIndex >= 0 && targetIndex < displayItems.Count)
+                        {
+                            var target = displayItems[targetIndex];
+                            if (target is GroupDisplayItem targetGroup && !targetGroup.IsLocked && targetGroup.DisplayItems != null)
+                            {
+                                parentCollection.RemoveAt(index);
+                                targetGroup.DisplayItems.Insert(count > 0 ? 0 : targetGroup.DisplayItems.Count, displayItem);
+                                targetGroup.IsExpanded = true;
+                                return;
+                            }
+                        }
                     }
-                }
+
+                    // Normal move within the same collection
+                    if (newIndex >= 0 && newIndex < parentCollection.Count)
+                    {
+                        parentCollection.Move(index, newIndex);
+                        if (parentGroup is GroupDisplayItem)
+                        {
+                            parentGroup.IsExpanded = true;
+                        }
+                    }
+                });
             }
         }
 
@@ -514,105 +561,102 @@ namespace InfoPanel
             if (displayItem == null || target == null || displayItem == target)
                 return;
 
-            lock (_displayItemsLock)
+
+            if (SelectedProfile is Profile profile)
             {
-                if (DisplayItems == null)
-                    return;
-
-                var sourceCollection = FindParentCollection(displayItem, out var sourceGroupDisplayItem);
-                var targetCollection = FindParentCollection(target, out var targetGroupDisplayItem);
-
-                if (sourceCollection == null || targetCollection == null || sourceCollection != targetCollection)
-                    return;
-
-                int sourceIndex = sourceCollection.IndexOf(displayItem);
-                int targetIndex = targetCollection.IndexOf(target);
-
-                if (sourceCollection == targetCollection)
+                AccessDisplayItems(profile, displayItems =>
                 {
-                    // Same collection: simple move
-                    sourceCollection.Move(sourceIndex, targetIndex + 1);
-                }
+                    var sourceCollection = FindParentCollection(displayItem, out var sourceGroupDisplayItem);
+                    var targetCollection = FindParentCollection(target, out var targetGroupDisplayItem);
+
+                    if (sourceCollection == null || targetCollection == null || sourceCollection != targetCollection)
+                        return;
+
+                    int sourceIndex = sourceCollection.IndexOf(displayItem);
+                    int targetIndex = targetCollection.IndexOf(target);
+
+                    if (sourceCollection == targetCollection)
+                    {
+                        // Same collection: simple move
+                        sourceCollection.Move(sourceIndex, targetIndex + 1);
+                    }
+                });
             }
         }
 
         public void PushDisplayItemToTop(DisplayItem displayItem)
         {
-            if (displayItem == null)
-                return;
-
-            lock (_displayItemsLock)
+            if (SelectedProfile is Profile profile)
             {
-                if (DisplayItems == null)
-                    return;
-
-                var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
-                if (sourceCollection == null)
-                    return;
-
-                int currentIndex = sourceCollection.IndexOf(displayItem);
-
-                if (sourceCollection == DisplayItems)
+                AccessDisplayItems(profile, displayItems =>
                 {
-                    if (currentIndex > 0)
+                    var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
+                    if (sourceCollection == null)
+                        return;
+
+                    int currentIndex = sourceCollection.IndexOf(displayItem);
+
+                    if (sourceCollection == displayItems)
                     {
-                        DisplayItems.Move(currentIndex, 0);
-                    }
-                }
-                else
-                {
-                    if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
-                    {
-                        sourceCollection.RemoveAt(currentIndex);
-                        DisplayItems.Insert(0, displayItem);
-                    }else
-                    {
-                        if (currentIndex != 0)
+                        if (currentIndex > 0)
                         {
-                            sourceCollection.Move(currentIndex, 0);
+                            displayItems.Move(currentIndex, 0);
                         }
                     }
-                }
+                    else
+                    {
+                        if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
+                        {
+                            sourceCollection.RemoveAt(currentIndex);
+                            displayItems.Insert(0, displayItem);
+                        }
+                        else
+                        {
+                            if (currentIndex != 0)
+                            {
+                                sourceCollection.Move(currentIndex, 0);
+                            }
+                        }
+                    }
+                });
             }
         }
 
         public void PushDisplayItemToEnd(DisplayItem displayItem)
         {
-            if (displayItem == null)
-                return;
-
-            lock (_displayItemsLock)
+            if (SelectedProfile is Profile profile)
             {
-                if (DisplayItems == null)
-                    return;
-
-                var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
-                if (sourceCollection == null)
-                    return;
-
-                int currentIndex = sourceCollection.IndexOf(displayItem);
-
-                if (sourceCollection == DisplayItems)
+                AccessDisplayItems(profile, displayItems =>
                 {
-                    if (currentIndex < DisplayItems.Count - 1)
+                    var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
+                    if (sourceCollection == null)
+                        return;
+
+                    int currentIndex = sourceCollection.IndexOf(displayItem);
+
+                    if (sourceCollection == displayItems)
                     {
-                        DisplayItems.Move(currentIndex, DisplayItems.Count - 1);
-                    }
-                }
-                else
-                {
-                    if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
-                    {
-                        sourceCollection.RemoveAt(currentIndex);
-                        DisplayItems.Add(displayItem);
-                    } else
-                    {
-                        if (currentIndex != sourceCollection.Count - 1)
+                        if (currentIndex < displayItems.Count - 1)
                         {
-                            sourceCollection.Move(currentIndex, sourceCollection.Count - 1);
+                            displayItems.Move(currentIndex, displayItems.Count - 1);
                         }
                     }
-                }
+                    else
+                    {
+                        if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
+                        {
+                            sourceCollection.RemoveAt(currentIndex);
+                            displayItems.Add(displayItem);
+                        }
+                        else
+                        {
+                            if (currentIndex != sourceCollection.Count - 1)
+                            {
+                                sourceCollection.Move(currentIndex, sourceCollection.Count - 1);
+                            }
+                        }
+                    }
+                });
             }
         }
 
@@ -1352,56 +1396,53 @@ namespace InfoPanel
 
                         //smart import
                         var displayItems = LoadDisplayItemsFromFile(profile);
-                        if (displayItems != null)
+                        foreach (DisplayItem displayItem in displayItems)
                         {
-                            foreach (DisplayItem displayItem in displayItems)
+                            if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
                             {
-                                if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                                if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
                                 {
-                                    if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
+                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(sensorDisplayItem.SensorName));
+                                    if (hash.NameDefault != null)
                                     {
-                                        var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(sensorDisplayItem.SensorName));
-                                        if (hash.NameDefault != null)
-                                        {
-                                            sensorDisplayItem.Id = hash.ParentID;
-                                            sensorDisplayItem.Instance = hash.ParentInstance;
-                                            sensorDisplayItem.EntryId = hash.SensorID;
-                                            Logger.Information("Smart imported {SensorName}", hash.NameDefault);
-                                        }
-                                    }
-                                }
-                                else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
-                                {
-                                    if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
-                                    {
-                                        var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(chartDisplayItem.SensorName));
-                                        if (hash.NameDefault != null)
-                                        {
-                                            chartDisplayItem.Id = hash.ParentID;
-                                            chartDisplayItem.Instance = hash.ParentInstance;
-                                            chartDisplayItem.EntryId = hash.SensorID;
-                                            Logger.Information("Smart imported {SensorName}", hash.NameDefault);
-                                        }
-                                    }
-                                }
-                                else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
-                                {
-                                    if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
-                                    {
-                                        var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(gaugeDisplayItem.SensorName));
-                                        if (hash.NameDefault != null)
-                                        {
-                                            gaugeDisplayItem.Id = hash.ParentID;
-                                            gaugeDisplayItem.Instance = hash.ParentInstance;
-                                            gaugeDisplayItem.EntryId = hash.SensorID;
-                                            Logger.Information("Smart imported {SensorName}", hash.NameDefault);
-                                        }
+                                        sensorDisplayItem.Id = hash.ParentID;
+                                        sensorDisplayItem.Instance = hash.ParentInstance;
+                                        sensorDisplayItem.EntryId = hash.SensorID;
+                                        Logger.Information("Smart imported {SensorName}", hash.NameDefault);
                                     }
                                 }
                             }
-                            //save it back
-                            SaveDisplayItems(profile, displayItems);
+                            else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                            {
+                                if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
+                                {
+                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(chartDisplayItem.SensorName));
+                                    if (hash.NameDefault != null)
+                                    {
+                                        chartDisplayItem.Id = hash.ParentID;
+                                        chartDisplayItem.Instance = hash.ParentInstance;
+                                        chartDisplayItem.EntryId = hash.SensorID;
+                                        Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                                    }
+                                }
+                            }
+                            else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                            {
+                                if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
+                                {
+                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(gaugeDisplayItem.SensorName));
+                                    if (hash.NameDefault != null)
+                                    {
+                                        gaugeDisplayItem.Id = hash.ParentID;
+                                        gaugeDisplayItem.Instance = hash.ParentInstance;
+                                        gaugeDisplayItem.EntryId = hash.SensorID;
+                                        Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                                    }
+                                }
+                            }
                         }
+                        //save it back
+                        SaveDisplayItems(profile, displayItems);
 
                         //extract assets
                         var assetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
@@ -1424,76 +1465,35 @@ namespace InfoPanel
             }
         }
 
-        private ObservableCollection<DisplayItem> GetProfileDisplayItems(Profile profile)
-        {
-            lock (_displayItemsLock)
-            {
-                if (!ProfileDisplayItems.TryGetValue(profile.Guid, out ObservableCollection<DisplayItem>? displayItems))
-                {
-                    LoadDisplayItems(profile);
-                    displayItems = ProfileDisplayItems[profile.Guid];
-                }
-
-                return displayItems;
-            }
-        }
-
         public List<DisplayItem> GetProfileDisplayItemsCopy()
         {
-            lock (_displayItemsLock)
+            if (SelectedProfile is Profile profile)
             {
-                if (SelectedProfile == null) { return []; }
-                return [.. GetProfileDisplayItems(SelectedProfile)];
+                return GetProfileDisplayItemsCopy(profile);
             }
+
+            return [];
+
         }
 
         public List<DisplayItem> GetProfileDisplayItemsCopy(Profile profile)
         {
-            lock (_displayItemsLock)
+            List<DisplayItem>? displayItems = null;
+            AccessDisplayItems(profile, new Action<ObservableCollection<DisplayItem>>(items =>
             {
-                return [.. GetProfileDisplayItems(profile)];
-            }
+                displayItems = [.. items];
+            }));
+
+            return displayItems ?? [];
         }
 
-        public void LoadDisplayItems()
+
+        public static async Task<ICollection<DisplayItem>> LoadDisplayItemsAsync(Profile profile)
         {
-            if (SelectedProfile != null)
-            {
-                LoadDisplayItems(SelectedProfile);
-            }
+            return await Task.Run(() => LoadDisplayItemsFromFile(profile));
         }
 
-        public void LoadDisplayItems(Profile profile)
-        {
-            if (!ProfileDisplayItems.TryGetValue(profile.Guid, out ObservableCollection<DisplayItem>? displayItems))
-            {
-                displayItems = [];
-                ProfileDisplayItems[profile.Guid] = displayItems;
-            }
-
-            lock (_displayItemsLock)
-            {
-                displayItems.SelectMany(item => item.Flatten()).ToList().ForEach(item =>
-                {
-                    if (item is ImageDisplayItem imageDisplayItem)
-                    {
-                        Cache.InvalidateImage(imageDisplayItem);
-                    }
-                });
-
-                displayItems.Clear();
-
-                if (LoadDisplayItemsFromFile(profile) is List<DisplayItem> items)
-                {
-                    foreach (var item in items)
-                    {
-                        displayItems.Add(item);
-                    }
-                }
-            }
-        }
-
-        public static List<DisplayItem>? LoadDisplayItemsFromFile(Profile profile)
+        private static List<DisplayItem> LoadDisplayItemsFromFile(Profile profile)
         {
             var fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
             if (File.Exists(fileName))
@@ -1517,7 +1517,7 @@ namespace InfoPanel
                 catch { }
             }
 
-            return null;
+            return [];
         }
     }
 

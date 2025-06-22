@@ -8,8 +8,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using Wpf.Ui.Controls.Interfaces;
-using Wpf.Ui.Mvvm.Contracts;
+using Wpf.Ui.Controls;
+using Wpf.Ui;
 using Profile = InfoPanel.Models.Profile;
 
 namespace InfoPanel.Views.Components
@@ -19,8 +19,8 @@ namespace InfoPanel.Views.Components
     /// </summary>
     public partial class ProfilePageItemView : UserControl
     {
-        private readonly IDialogControl _dialogControl;
-        private readonly ISnackbarControl _snackbarControl;
+        private readonly IContentDialogService _contentDialogService;
+        private readonly ISnackbarService _snackbarService;
 
         private DispatcherTimer? timer;
         private TaskCompletionSource<bool>? _paintCompletionSource;
@@ -29,11 +29,8 @@ namespace InfoPanel.Views.Components
 
         public ProfilePageItemView()
         {
-            var dialogService = App.GetService<IDialogService>() ?? throw new InvalidOperationException("DialogService is not registered in the service collection.");
-            _dialogControl = dialogService.GetDialogControl();
-
-            var snackbarService = App.GetService<ISnackbarService>() ?? throw new InvalidOperationException("SnackbarService is not registered in the service collection.");
-            _snackbarControl = snackbarService.GetSnackbarControl();
+            _contentDialogService = App.GetService<IContentDialogService>() ?? throw new InvalidOperationException("ContentDialogService is not registered in the service collection.");
+            _snackbarService = App.GetService<ISnackbarService>() ?? throw new InvalidOperationException("SnackbarService is not registered in the service collection.");
 
             InitializeComponent();
 
@@ -174,9 +171,17 @@ namespace InfoPanel.Views.Components
                     return;
                 }
 
-                var result = await _dialogControl.ShowAndWaitAsync("Confirm Deletion", "This will permanently delete the profile and all associated items.");
+                var dialog = new ContentDialog
+                {
+                    Title = "Confirm Deletion",
+                    Content = "This will permanently delete the profile and all associated items.",
+                    PrimaryButtonText = "Delete",
+                    CloseButtonText = "Cancel"
+                };
+                
+                var result = await _contentDialogService.ShowAsync(dialog, CancellationToken.None);
 
-                if (result == IDialogControl.ButtonPressed.Left)
+                if (result == ContentDialogResult.Primary)
                 {
                     if (ConfigModel.Instance.RemoveProfile(profile))
                     {
@@ -188,7 +193,7 @@ namespace InfoPanel.Views.Components
             }
         }
 
-        private void ButtonExport_Click(object sender, RoutedEventArgs e)
+        private async void ButtonExport_Click(object sender, RoutedEventArgs e)
         {
             if (DataContext is Profile profile)
             {
@@ -200,7 +205,7 @@ namespace InfoPanel.Views.Components
                     string? result = SharedModel.Instance.ExportProfile(profile, selectedFolderPath);
                     if (result != null)
                     {
-                        _snackbarControl.ShowAsync("Profile Exported", $"{result}");
+                        _snackbarService.Show("Profile Exported", $"{result}", ControlAppearance.Success, null, TimeSpan.FromSeconds(3));
                     }
                 }
             }

@@ -12,6 +12,9 @@ namespace InfoPanel.Models
         private float _uiScale = 1.0f;
 
         [ObservableProperty]
+        private bool _isPaneOpen = true;
+
+        [ObservableProperty]
         private bool _autoStart = false;
 
         [ObservableProperty]

@@ -22,8 +22,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Wpf.Ui.Mvvm.Contracts;
-using Wpf.Ui.Mvvm.Services;
+using Wpf.Ui;
+using Wpf.Ui.Appearance;
+using Wpf.Ui.Controls;
 
 namespace InfoPanel
 {
@@ -71,7 +72,7 @@ namespace InfoPanel
            services.AddSingleton<ISnackbarService, SnackbarService>();
 
            // Dialog service
-           services.AddSingleton<IDialogService, DialogService>();
+           services.AddSingleton<IContentDialogService, ContentDialogService>();
 
            //// Page resolver service
            services.AddSingleton<IPageService, PageService>();
@@ -83,7 +84,7 @@ namespace InfoPanel
            services.AddSingleton<INavigationService, NavigationService>();
 
            // Main window container with navigation
-           services.AddScoped<INavigationWindow, FluentWindow>();
+           services.AddScoped<INavigationWindow, MainWindow>();
            //services.AddScoped<ContainerViewModel>();
 
            // Views and ViewModels
@@ -101,6 +102,8 @@ namespace InfoPanel
            services.AddScoped<SettingsViewModel>();
            services.AddScoped<Views.Pages.UpdatesPage>();
            services.AddScoped<UpdatesViewModel>();
+           services.AddScoped<Views.Pages.UsbPanelsPage>();
+           services.AddScoped<UsbPanelsViewModel>();
 
            // Configuration
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
@@ -122,6 +125,10 @@ namespace InfoPanel
 
         public App()
         {
+            // IMPORTANT: Set Dark theme before any UI resources are loaded
+            // This prevents the ThemesDictionary constructor from defaulting to Light theme
+            ApplicationThemeManager.Apply(ApplicationTheme.Dark, WindowBackdropType.Mica, false);
+
             DispatcherUnhandledException += App_DispatcherUnhandledException;
 
             // 1. Handle exceptions from background threads and Task.Run
@@ -207,7 +214,7 @@ namespace InfoPanel
             Process proc = Process.GetCurrentProcess();
             if (Process.GetProcesses().Where(p => p.ProcessName == proc.ProcessName).Count() > 1)
             {
-                MessageBox.Show("InfoPanel is already running. Check your tray area if it is minimized.", "Error", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+                System.Windows.MessageBox.Show("InfoPanel is already running. Check your tray area if it is minimized.", "Error", System.Windows.MessageBoxButton.OK, MessageBoxImage.Exclamation);
                 Environment.Exit(0);
                 return;
             }
@@ -236,8 +243,6 @@ namespace InfoPanel
 
             _host.Start();
             Logger.Debug("Application host started");
-
-
 
             Engine.Start(new EngineConfig()
             {
@@ -379,7 +384,7 @@ namespace InfoPanel
         public void ShowDesign(Profile profile)
         {
             SharedModel.Instance.SelectedProfile = profile;
-            var window = _host.Services.GetRequiredService<INavigationWindow>() as FluentWindow;
+            var window = _host.Services.GetRequiredService<INavigationWindow>() as MainWindow;
             window?.RestoreWindow();
             window?.Navigate(typeof(Views.Pages.DesignPage));
         }

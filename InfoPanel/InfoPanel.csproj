@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
-		<TargetFramework>net8.0-windows</TargetFramework>
+		<TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<Nullable>enable</Nullable>
 		<UseWPF>true</UseWPF>
@@ -15,36 +15,54 @@
 		<UseWindowsForms>True</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
-		<ExtrasOutputDir>..\InfoPanel.Extras\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)</ExtrasOutputDir>
 	</PropertyGroup>
 
-	<!-- Build InfoPanel.Extras -->
+	<!-- Build InfoPanel.Extras and get its output path -->
 	<Target Name="BuildExtras" BeforeTargets="Build">
-		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" Properties="SelfContained=false" />
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
+				 Targets="Build" 
+				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64;SelfContained=false" />
+		<!-- Get the output path after building -->
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
+				 Targets="GetTargetPath" 
+				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64">
+			<Output TaskParameter="TargetOutputs" PropertyName="_ExtrasAssemblyPath" />
+		</MSBuild>
+		<PropertyGroup>
+			<ExtrasOutputDir>$([System.IO.Path]::GetDirectoryName('$(_ExtrasAssemblyPath)'))</ExtrasOutputDir>
+		</PropertyGroup>
+		<Message Text="InfoPanel.Extras output directory: $(ExtrasOutputDir)" Importance="High" />
 	</Target>
 
-	<!-- Copy InfoPanel.Extras to plugin dir -->
-	<Target Name="BuildCopyExtrasDll" AfterTargets="Build">
-		<Message Text="Executing BuildCopyExtrasDll target" Importance="High" />
+	<!-- Copy InfoPanel.Extras to build output plugin dir -->
+	<Target Name="CopyExtrasToBuildOutput" AfterTargets="BuildExtras">
 		<MakeDir Directories="$(OutputPath)plugins" />
 		<ItemGroup>
-			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
+			<ExtrasFiles Include="$(ExtrasOutputDir)\**\*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(OutputPath)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(ExtrasFiles)" DestinationFolder="$(OutputPath)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
+	</Target>
+
+	<!-- Copy InfoPanel.Extras to publish dir -->
+	<Target Name="CopyExtrasToPublishOutput" AfterTargets="Publish">
+		<!-- Get the output path for copying -->
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
+				 Targets="GetTargetPath" 
+				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64">
+			<Output TaskParameter="TargetOutputs" PropertyName="_ExtrasAssemblyPath" />
+		</MSBuild>
+		<PropertyGroup>
+			<ExtrasOutputDir>$([System.IO.Path]::GetDirectoryName('$(_ExtrasAssemblyPath)'))</ExtrasOutputDir>
+		</PropertyGroup>
+		<MakeDir Directories="$(PublishDir)\plugins\InfoPanel.Extras" />
+		<ItemGroup>
+			<ExtrasFiles Include="$(ExtrasOutputDir)\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(ExtrasFiles)" DestinationFolder="$(PublishDir)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="CleanPluginsDirectory" BeforeTargets="Clean">
 		<RemoveDir Directories="$(OutputPath)\plugins" />
-	</Target>
-
-	<!-- Copy InfoPanel.Extras to publish dir -->
-	<Target Name="PublishCopyExtrasDll" AfterTargets="Publish">
-		<Message Text="Executing PublishCopyExtrasDll target" Importance="High" />
-		<MakeDir Directories="$(PublishDir)\plugins\InfoPanel.Extras" />
-		<ItemGroup>
-			<FilesToCopy Include="$(ExtrasOutputDir)\**\*.*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(PublishDir)\plugins\InfoPanel.Extras" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="Sign" AfterTargets="Publish">
@@ -209,7 +227,8 @@
 		<PackageReference Include="System.IO.Ports" Version="9.0.2" />
 		<PackageReference Include="System.Management" Version="9.0.2" />
 		<PackageReference Include="TaskScheduler" Version="2.12.1" />
-		<PackageReference Include="WPF-UI" Version="2.1.0" />
+		<PackageReference Include="WPF-UI" Version="3.1.1" />
+		<PackageReference Include="WPF-UI.Tray" Version="3.1.1" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -334,13 +353,4 @@
 	<ItemGroup>
 	  <Folder Include="Resources\Binaries\" />
 	</ItemGroup>
-
-	<!--<ItemGroup>
-		<Content Include="$(SolutionDir)InfoPanel.VolumePlugin\bin\$(Platform)\$(ConfigurationName)\$(TargetFramework)\InfoPanel.VolumePlugin.dll">
-			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-			<TargetPath>plugins\InfoPanel.VolumePlugin.dll</TargetPath>
-		</Content>
-	</ItemGroup>-->
-
 </Project>

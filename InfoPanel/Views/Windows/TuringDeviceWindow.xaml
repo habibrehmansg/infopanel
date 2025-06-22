@@ -1,4 +1,4 @@
-<ui:UiWindow
+<ui:FluentWindow
     x:Class="InfoPanel.Views.Windows.TuringDeviceWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -103,12 +103,12 @@
                             Margin="0,0,10,0"
                             Command="{Binding RefreshStorageCommand}"
                             Content="Refresh"
-                            Icon="ArrowSync24" />
+                            Icon="{ui:SymbolIcon ArrowSync24}" />
                         <ui:Button
                             Margin="0,0,10,0"
                             Command="{Binding UploadVideoCommand}"
                             Content="Upload Video"
-                            Icon="VideoClip24" />
+                            Icon="{ui:SymbolIcon VideoClip24}" />
                         <TextBlock
                             Margin="10,0,0,0"
                             VerticalAlignment="Center"
@@ -268,12 +268,12 @@
                                             Margin="0,0,10,10"
                                             Command="{Binding SaveSettingsCommand}"
                                             Content="Save Settings"
-                                            Icon="Save24" />
+                                            Icon="{ui:SymbolIcon Save24}" />
                                         <ui:Button
                                             Margin="0,0,10,10"
                                             Command="{Binding RestartDeviceCommand}"
                                             Content="Restart Device"
-                                            Icon="ArrowReset24" />
+                                            Icon="{ui:SymbolIcon ArrowReset24}" />
                                     </WrapPanel>
                                 </StackPanel>
                             </ui:Card>
@@ -301,4 +301,4 @@
             </StackPanel>
         </Grid>
     </Grid>
-</ui:UiWindow>
+</ui:FluentWindow>

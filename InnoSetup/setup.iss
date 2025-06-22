@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "InfoPanel"
-#define MyAppVersion "1.2.9"
+#define MyAppVersion GetFileVersion("..\InfoPanel\bin\publish\win-x64\InfoPanel.exe")
 #define MyAppPublisher "Habib Rehman"
 #define MyAppURL "https://infopanel.net"
 #define MyAppExeName "InfoPanel.exe"
@@ -27,7 +27,7 @@ DisableWelcomePage=no
 ;PrivilegesRequired=lowest
 OutputBaseFilename=InfoPanelSetup
 SetupIconFile=..\InfoPanel\Resources\Images\favicon.ico
-Compression=lzma
+Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=force
@@ -54,8 +54,61 @@ begin
      ewWaitUntilTerminated, ResultCode);
 end;
 
+procedure DeletePluginFilesExceptIni(Path: String);
+var
+  FindRec: TFindRec;
+  FilePath: String;
+begin
+  if FindFirst(Path + '\*', FindRec) then
+  begin
+    try
+      repeat
+        if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+        begin
+          FilePath := Path + '\' + FindRec.Name;
+          if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
+          begin
+            // Recursively process subdirectories
+            DeletePluginFilesExceptIni(FilePath);
+          end
+          else
+          begin
+            // Delete file if it's not an .dll.ini file
+            if CompareText(ExtractFileExt(FindRec.Name), '.dll.ini') <> 0 then
+            begin
+              DeleteFile(FilePath);
+            end;
+          end;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  PluginsPath: String;
+begin
+  if CurStep = ssInstall then
+  begin
+    // Clean up plugins folder before installation, preserving .ini files
+    PluginsPath := ExpandConstant('{app}\plugins');
+    if DirExists(PluginsPath) then
+    begin
+      DeletePluginFilesExceptIni(PluginsPath);
+    end;
+  end;
+end;
+
 [InstallDelete]
-Type: filesandordirs; Name: "{app}\*"
+; Delete all files in root directory
+Type: files; Name: "{app}\*.*"
+
+; Delete specific directories completely
+Type: filesandordirs; Name: "{app}\FFmpeg"
+Type: filesandordirs; Name: "{app}\runtimes"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

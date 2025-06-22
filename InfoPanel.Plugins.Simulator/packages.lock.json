@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "ini-parser-netstandard": {
+        "type": "Transitive",
+        "resolved": "2.5.2",
+        "contentHash": "rTyGzgT/a+mD2HxopOGpb/yWWhu5TTPgF59XUlHjhlNv7dbt9DME/qozIR7HreVAVpNnZSqP9A8TeViK5s949g=="
+      },
+      "Serilog": {
+        "type": "Transitive",
+        "resolved": "4.1.0",
+        "contentHash": "u1aZI8HZ62LWlq5dZLFwm6jMax/sUwnWZSw5lkPsCt518cJBxFKoNmc7oSxe5aA5BgSkzy9rzwFGR/i/acnSPw=="
+      },
+      "infopanel.plugins": {
+        "type": "Project"
+      },
+      "infopanel.plugins.loader": {
+        "type": "Project",
+        "dependencies": {
+          "InfoPanel.Plugins": "[1.0.0, )",
+          "Serilog": "[4.1.0, )",
+          "ini-parser-netstandard": "[2.5.2, )"
+        }
+      }
+    }
+  }
+}
