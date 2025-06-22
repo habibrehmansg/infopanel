@@ -5,17 +5,17 @@ using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Topten.RichTextKit;
 
 namespace InfoPanel.Drawing
 {
-    internal partial class SkiaGraphics(SKCanvas canvas, float fontScale): IDisposable
+    internal partial class SkiaGraphics(SKCanvas? canvas, float fontScale): IDisposable
     {
         private static readonly ILogger Logger = Log.ForContext<SkiaGraphics>();
-        public readonly SKCanvas Canvas = canvas;
-        private readonly GRContext? GRContext = canvas.Context as GRContext;
+        public readonly SKCanvas Canvas = canvas!;
+        private readonly GRContext? GRContext = canvas?.Context as GRContext;
         public readonly float FontScale = fontScale; 
 
         public bool OpenGL => GRContext != null;
@@ -24,6 +24,11 @@ namespace InfoPanel.Drawing
         {
             var canvas = new SKCanvas(bitmap);
             return new SkiaGraphics(canvas, fontScale);
+        }
+
+        public static SkiaGraphics FromEmpty(float fontScale)
+        {
+            return new SkiaGraphics(null, fontScale);
         }
 
         public void Clear(SKColor color)
@@ -156,103 +161,48 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, int width = 0, int height = 0)
+        public void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, bool wrap = false, bool ellipsis = true, int width = 0, int height = 0)
         {
             if (string.IsNullOrEmpty(text))
                 return;
 
-            using var paint = new SKPaint
+            var tb = new TextBlock
             {
-                Color = SKColor.Parse(color),
-                IsAntialias = true
+                EllipsisEnabled = ellipsis,
+                MaxLines = wrap ? 1 : null,
+                MaxWidth = width > 0 ? width : null
+            };
+            
+            if (rightAlign)
+                tb.Alignment = TextAlignment.Right;
+            
+            if (centerAlign && width > 0) 
+                tb.Alignment = TextAlignment.Center;
+            
+            SKTypeface typeface = CreateTypeface(fontName, fontStyle, bold, italic);
+           
+            var style = new Style
+            {
+                FontFamily = typeface.FamilyName,
+                FontSize = fontSize * FontScale,
+                FontWeight = typeface.FontWeight,
+                FontItalic = typeface.IsItalic,
+                FontWidth = (SKFontStyleWidth)typeface.FontWidth,
+                TextColor = SKColor.Parse(color),
+                Underline = underline ? UnderlineStyle.Solid : UnderlineStyle.None,
+                StrikeThrough = strikeout ? StrikeThroughStyle.Solid : StrikeThroughStyle.None
             };
 
-            SKTypeface typeface = CreateTypeface(fontName, fontStyle, bold, italic);
-            using var font = new SKFont(typeface, size: (float)(fontSize * FontScale));
+            tb.AddText(text, style);
 
-            // Calculate position
-            var metrics = font.Metrics;
-            float newY = y - metrics.Ascent;
-            float newX = x;
-            // Get text alignment
-            var align = rightAlign ? SKTextAlign.Right : SKTextAlign.Left;
+            // Adjust X position based on alignment and width
+            float adjustedX = x;
+            if (width == 0 && rightAlign)
+                adjustedX = x - tb.MeasuredWidth;
+            else if (width > 0 && centerAlign)
+                adjustedX = x;
 
-            float textWidth = font.MeasureText(text);
-
-            // Apply clipping if width and height are provided
-            if (width > 0)
-            {
-                if (textWidth > width)
-                {
-                    string ellipsis = "...";
-                    string truncatedText = text.TrimEnd();
-
-                    while (truncatedText.Length > 0)
-                    {
-                        var tempText = truncatedText + ellipsis;
-                        textWidth = font.MeasureText(tempText);
-
-                        if (textWidth <= width)
-                        {
-                            text = tempText;
-                            break;
-                        }
-
-                        // Remove the last character
-                        truncatedText = truncatedText[..^1];
-                    }
-                }
-
-                if (rightAlign)
-                {
-                    newX = x + width;
-                    align = SKTextAlign.Right;
-                }
-
-                if (centerAlign)
-                {
-                    newX = x + width / 2 - textWidth / 2;
-                    align = SKTextAlign.Left;
-                }
-            }
-
-            // Draw text using the overload that takes alignment parameter
-            Canvas.DrawText(text, newX, newY, align, font, paint);
-
-            // Calculate text width for decoration lines
-            float startX = x;
-            if (rightAlign)
-                startX -= textWidth;
-            else if (centerAlign)
-                startX -= textWidth / 2;
-
-            // Draw strikeout if needed
-            if (strikeout)
-            {
-                float strikeY = y - metrics.Ascent / 2;
-                using var strikePaint = new SKPaint
-                {
-                    Color = SKColor.Parse(color),
-                    StrokeWidth = (float)(metrics.StrikeoutThickness > 0 ? metrics.StrikeoutThickness : 1),
-                    IsAntialias = true
-                };
-
-                Canvas.DrawLine(startX, strikeY, startX + textWidth, strikeY, strikePaint);
-            }
-
-            // Draw underline if needed
-            if (underline)
-            {
-                float underlineY = y - metrics.Ascent + metrics.Descent / 2;
-                using var underlinePaint = new SKPaint
-                {
-                    Color = SKColor.Parse(color),
-                    StrokeWidth = (float)(metrics.UnderlineThickness > 0 ? metrics.UnderlineThickness : 1),
-                    IsAntialias = true
-                };
-
-                Canvas.DrawLine(startX, underlineY, startX + textWidth, underlineY, underlinePaint);
-            }
+            tb.Paint(Canvas, new SKPoint(adjustedX, y));
         }
 
         private static readonly ConcurrentDictionary<string, SKTypeface> _typefaceCache = [];
@@ -800,19 +750,31 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false)
+        public (float width, float height) MeasureString(string text, string fontName, string fontStyle, int fontSize, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, bool wrap = false, bool ellipsis = true, int width = 0, int height = 0)
         {
-            var typeface = CreateTypeface(fontName, fontStyle, bold, italic);
-            using var font = new SKFont(typeface, size: fontSize * FontScale);
+            SKTypeface typeface = CreateTypeface(fontName, fontStyle, bold, italic);
 
-            font.MeasureText(text, out var bounds);
+            var tb = new TextBlock
+            {
+                EllipsisEnabled = ellipsis,
+                MaxLines = wrap ? 1 : null,
+                MaxWidth = width > 0 ? width : null
+            };
 
-            var metrics = font.Metrics;
+            var style = new Style
+            {
+                FontFamily = typeface.FamilyName,
+                FontSize = fontSize * FontScale,
+                FontWeight = typeface.FontWeight,
+                FontItalic = typeface.IsItalic,
+                FontWidth = (SKFontStyleWidth)typeface.FontWidth,
+                Underline = underline ? UnderlineStyle.Solid : UnderlineStyle.None,
+                StrikeThrough = strikeout ? StrikeThroughStyle.Solid : StrikeThroughStyle.None
+            };
 
-            float width = bounds.Width;
-            float height = metrics.Descent - metrics.Ascent;
+            tb.AddText(text, style);
 
-            return (width, height);
+            return (width == 0 ? tb.MeasuredWidth : width, tb.MeasuredHeight);
         }
     }
 }

@@ -40,6 +40,12 @@
                 <ToggleButton Margin="5,0,0,0" IsChecked="{Binding Uppercase}">
                     <ui:SymbolIcon Symbol="TextCaseUppercase20" ToolTip="Uppercase" />
                 </ToggleButton>
+                <ToggleButton Margin="5,0,0,0" IsChecked="{Binding Wrap}">
+                    <ui:SymbolIcon Symbol="TextWrap20" ToolTip="Wrap Text" />
+                </ToggleButton>
+                <ToggleButton Margin="5,0,0,0" IsChecked="{Binding Ellipsis}">
+                    <ui:SymbolIcon Symbol="TextWholeWord20" ToolTip="Ellipsis" />
+                </ToggleButton>
             </StackPanel>
 
             <StackPanel Margin="0,12,0,0">
