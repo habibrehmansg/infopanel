@@ -267,6 +267,19 @@
           "System.Security.AccessControl": "6.0.1"
         }
       },
+      "Topten.RichTextKit": {
+        "type": "Direct",
+        "requested": "[0.4.167, )",
+        "resolved": "0.4.167",
+        "contentHash": "fARM2vAZ4ZFAcNFqRLVrjQNjXzk/2yWWXTmTZ/aYUdXJE6ZT2616v3Ojux4cVcKPx2M930sY3plLKeWppGsJaA==",
+        "dependencies": {
+          "HarfBuzzSharp.NativeAssets.Linux": "2.8.2.3",
+          "SkiaSharp": "2.88.7",
+          "SkiaSharp.HarfBuzz": "2.88.7",
+          "SkiaSharp.NativeAssets.Linux": "2.88.7",
+          "System.ValueTuple": "4.5.0"
+        }
+      },
       "WPF-UI": {
         "type": "Direct",
         "requested": "[3.1.1, )",
@@ -313,6 +326,14 @@
         "contentHash": "rwLpl+W6uqu0DuvzqNhTMuFcXfy1Vc0uq0YXgPEmtTSfeUSAye1FcARrm2YIPOSiCBwBOGu3cLvMX5Fp6OKe2g==",
         "dependencies": {
           "HarfBuzzSharp.NativeAssets.Win32": "8.3.0.1"
+        }
+      },
+      "HarfBuzzSharp.NativeAssets.Linux": {
+        "type": "Transitive",
+        "resolved": "2.8.2.3",
+        "contentHash": "Qu1yJSHEN7PD3+fqfkaClnORWN5e2xJ2Xoziz/GUi/oBT1Z+Dp2oZeiONKP6NFltboSOBkvH90QuOA6YN/U1zg==",
+        "dependencies": {
+          "HarfBuzzSharp": "2.8.2.3"
         }
       },
       "HarfBuzzSharp.NativeAssets.Win32": {
@@ -841,6 +862,14 @@
           "SkiaSharp": "3.116.1"
         }
       },
+      "SkiaSharp.NativeAssets.Linux": {
+        "type": "Transitive",
+        "resolved": "2.88.7",
+        "contentHash": "i9VitS7/5D8Te3B1Gu7F6kakW9PYVnI3YC6MoR6NidreD9hDl1EIOQEBaa0eBsOsWNX5Bz92OVf6+7KbDrJvyg==",
+        "dependencies": {
+          "SkiaSharp": "2.88.7"
+        }
+      },
       "SkiaSharp.NativeAssets.Win32": {
         "type": "Transitive",
         "resolved": "3.119.0",
@@ -922,6 +951,11 @@
           "System.IO.Pipelines": "9.0.2",
           "System.Text.Encodings.Web": "9.0.2"
         }
+      },
+      "System.ValueTuple": {
+        "type": "Transitive",
+        "resolved": "4.5.0",
+        "contentHash": "okurQJO6NRE/apDIP23ajJ0hpiNmJ+f0BwOlB/cSqTLQlw5upkf+5+96+iG2Jw40G1fCVCyPz/FhIABUjMR+RQ=="
       },
       "Vortice.D3DCompiler": {
         "type": "Transitive",
@@ -1034,6 +1068,14 @@
           "System.CodeDom": "9.0.2"
         }
       },
+      "HarfBuzzSharp.NativeAssets.Linux": {
+        "type": "Transitive",
+        "resolved": "2.8.2.3",
+        "contentHash": "Qu1yJSHEN7PD3+fqfkaClnORWN5e2xJ2Xoziz/GUi/oBT1Z+Dp2oZeiONKP6NFltboSOBkvH90QuOA6YN/U1zg==",
+        "dependencies": {
+          "HarfBuzzSharp": "2.8.2.3"
+        }
+      },
       "HarfBuzzSharp.NativeAssets.Win32": {
         "type": "Transitive",
         "resolved": "8.3.0.1",
@@ -1137,6 +1179,14 @@
         "type": "Transitive",
         "resolved": "9.0.2",
         "contentHash": "aQDPDCg6seSBRJvx45K8heC2Q1u8uKZ+u52RnREKh6MdHx+E1WlEOqs7u5MH5E3dP6Hw6BIYSdvoElRi8fBB3Q=="
+      },
+      "SkiaSharp.NativeAssets.Linux": {
+        "type": "Transitive",
+        "resolved": "2.88.7",
+        "contentHash": "i9VitS7/5D8Te3B1Gu7F6kakW9PYVnI3YC6MoR6NidreD9hDl1EIOQEBaa0eBsOsWNX5Bz92OVf6+7KbDrJvyg==",
+        "dependencies": {
+          "SkiaSharp": "2.88.7"
+        }
       },
       "SkiaSharp.NativeAssets.Win32": {
         "type": "Transitive",

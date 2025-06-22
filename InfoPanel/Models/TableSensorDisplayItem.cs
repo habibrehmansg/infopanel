@@ -54,14 +54,10 @@ namespace InfoPanel.Models
 
         public override SKSize EvaluateSize()
         {
-            var typeface = SkiaGraphics.CreateTypeface(Font, FontStyle, Bold, Italic);
-            using var font = new SKFont(typeface, size: FontSize * Profile.FontScale);
 
-            var metrics = font.Metrics;
+            var skiaGraphics = SkiaGraphics.FromEmpty(Profile.FontScale);
             var text = "A";
-
-            float width = font.MeasureText(text);
-            float height = metrics.Descent - metrics.Ascent;
+            var (_, height) = skiaGraphics.MeasureString(text, Font, FontStyle, FontSize, Bold, Italic, Underline, Strikeout, Wrap, Ellipsis, Width, Height);
 
             if (GetValue() is SensorReading sensorReading && sensorReading.ValueTable is DataTable table)
             {
