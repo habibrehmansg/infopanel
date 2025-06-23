@@ -265,18 +265,21 @@ namespace InfoPanel.Views.Common
             }
         }
 
+        private int _targetPixelWidth;
+        private int _targetPixelHeight;
+
         private void MaintainPixelSize()
         {
-            // Convert desired pixel size to WPF units for current DPI
+            _targetPixelWidth = Profile.Width;
+            _targetPixelHeight = Profile.Height;
+
             var source = PresentationSource.FromVisual(this);
             if (source?.CompositionTarget != null)
             {
                 var dpiX = source.CompositionTarget.TransformToDevice.M11;
                 var dpiY = source.CompositionTarget.TransformToDevice.M22;
-
-                // Set size in WPF units that will result in exact pixel dimensions
-                this.Width = Profile.Width / dpiX;
-                this.Height = Profile.Height / dpiY;
+                this.Width = _targetPixelWidth / dpiX;
+                this.Height = _targetPixelHeight / dpiY;
             }
         }
 
@@ -292,8 +295,8 @@ namespace InfoPanel.Views.Common
                 var newPixelWidth = this.ActualWidth * dpiX;
                 var newPixelHeight = this.ActualHeight * dpiY;
 
-                Profile.Width = (int)newPixelWidth;
-                Profile.Height = (int)newPixelHeight;
+                Profile.Width = (int)Math.Round(newPixelWidth);
+                Profile.Height = (int)Math.Round(newPixelHeight);
             }
         }
 
