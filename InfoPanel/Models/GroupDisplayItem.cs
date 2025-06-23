@@ -1,15 +1,23 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SkiaSharp;
-using System;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Xml.Serialization;
 
 namespace InfoPanel.Models
 {
     public partial class GroupDisplayItem : DisplayItem
     {
         public ObservableCollection<DisplayItem> DisplayItems { get; } = [];
+
+        /// <summary>
+        /// Gets an immutable copy of the DisplayItems collection for thread-safe enumeration.
+        /// This copy is updated whenever the DisplayItems collection changes.
+        /// </summary>
+        [XmlIgnore]
+        public ImmutableList<DisplayItem> DisplayItemsCopy { get; private set; }
 
         [ObservableProperty]
         private int _displayItemsCount;
@@ -22,18 +30,19 @@ namespace InfoPanel.Models
 
         public GroupDisplayItem()
         {
-            // Initialize count
-            DisplayItemsCount = DisplayItems.Count;
-
-            // Subscribe to collection changes
+            // Subscribe to collection changes first
             DisplayItems.CollectionChanged += OnDisplayItemsChanged;
+            
+            // Then create initial copy and set count
+            DisplayItemsCopy = [.. DisplayItems];
+            DisplayItemsCount = DisplayItems.Count;
         }
 
         private void OnDisplayItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
+            DisplayItemsCopy = [.. DisplayItems];
             DisplayItemsCount = DisplayItems.Count;
         }
-
 
         [RelayCommand]
         private void ToggleLock()

@@ -189,7 +189,7 @@ namespace InfoPanel.Drawing
             {
                 case GroupDisplayItem groupDisplayItem:
                     {
-                        foreach (var item in groupDisplayItem.DisplayItems.ToList())
+                        foreach (var item in groupDisplayItem.DisplayItemsCopy)
                         {
                             if (item.Hidden) continue;
                             Draw(g, preview, scale, cache, cacheHint, item, selectedRectangles);

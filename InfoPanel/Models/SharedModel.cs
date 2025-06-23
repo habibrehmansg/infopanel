@@ -3,12 +3,15 @@ using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
+using Microsoft.VisualBasic;
 using Serilog;
 using SkiaSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -38,102 +41,6 @@ namespace InfoPanel
             set
             {
                 SetProperty(ref _hwInfoAvailable, value);
-            }
-        }
-
-
-        private bool _turingPanelARunning = false;
-
-        public bool TuringPanelARunning
-        {
-            get { return _turingPanelARunning; }
-            set
-            {
-                SetProperty(ref _turingPanelARunning, value);
-            }
-        }
-
-        private int _turingPanelAFrameRate = 0;
-        public int TuringPanelAFrameRate
-        {
-            get { return _turingPanelAFrameRate; }
-            set
-            {
-                SetProperty(ref _turingPanelAFrameRate, value);
-            }
-        }
-
-        private long _turingPanelAFrameTime = 0;
-        public long TuringPanelAFrameTime
-        {
-            get { return _turingPanelAFrameTime; }
-            set
-            {
-                SetProperty(ref _turingPanelAFrameTime, value);
-            }
-        }
-
-        private bool _turingPanelCRunning = false;
-
-        public bool TuringPanelCRunning
-        {
-            get { return _turingPanelCRunning; }
-            set
-            {
-                SetProperty(ref _turingPanelCRunning, value);
-            }
-        }
-
-        private int _turingPanelCFrameRate = 0;
-
-        public int TuringPanelCFrameRate
-        {
-            get { return _turingPanelCFrameRate; }
-            set
-            {
-                SetProperty(ref _turingPanelCFrameRate, value);
-            }
-        }
-
-        private long _turingPanelCFrameTime = 0;
-        public long TuringPanelCFrameTime
-        {
-            get { return _turingPanelCFrameTime; }
-            set
-            {
-                SetProperty(ref _turingPanelCFrameTime, value);
-            }
-        }
-
-        private bool _turingPanelERunning = false;
-
-        public bool TuringPanelERunning
-        {
-            get { return _turingPanelERunning; }
-            set
-            {
-                SetProperty(ref _turingPanelERunning, value);
-            }
-        }
-
-        private int _turingPanelEFrameRate = 0;
-
-        public int TuringPanelEFrameRate
-        {
-            get { return _turingPanelEFrameRate; }
-            set
-            {
-                SetProperty(ref _turingPanelEFrameRate, value);
-            }
-        }
-
-        private long _turingPanelEFrameTime = 0;
-        public long TuringPanelEFrameTime
-        {
-            get { return _turingPanelEFrameTime; }
-            set
-            {
-                SetProperty(ref _turingPanelEFrameTime, value);
             }
         }
 
@@ -174,35 +81,40 @@ namespace InfoPanel
             get { return _selectedProfile; }
             set
             {
-                if (_selectedProfile != value)
+                SetProperty(ref _selectedProfile, value);
+
+                if (value != null)
                 {
-                    SetProperty(ref _selectedProfile, value);
-                    OnPropertyChanged(nameof(DisplayItems));
+                    DisplayItems = GetProfileDisplayItems(value);
+                }
+                else
+                {
+                    DisplayItems = [];
                 }
             }
         }
 
         private readonly ConcurrentDictionary<Guid, ObservableCollection<DisplayItem>> ProfileDisplayItems = [];
+        private readonly ConcurrentDictionary<Guid, Debouncer> _debouncers = [];
+        private readonly ConcurrentDictionary<Guid, ImmutableList<DisplayItem>> ProfileDisplayItemsCopy = [];
 
-        public ObservableCollection<DisplayItem> DisplayItems
-        {
-            get
-            {
-                if (SelectedProfile is Profile profile)
-                {
-                    return GetProfileDisplayItems(profile);
-                }
-
-                return [];
-            }
-        }
+        [ObservableProperty]
+        private ObservableCollection<DisplayItem> _displayItems = [];
 
         private ObservableCollection<DisplayItem> GetProfileDisplayItems(Profile profile)
         {
             return ProfileDisplayItems.GetOrAdd(profile.Guid, guid =>
             {
                 var collection = new ObservableCollection<DisplayItem>();
-                _= ReloadDisplayItems(profile);
+                collection.CollectionChanged += (s, e) =>
+                {
+                    if (s is ObservableCollection<DisplayItem> observableCollection)
+                    {
+                        var debouncer = _debouncers.GetOrAdd(guid, guid => new Debouncer());
+                        debouncer.Debounce(() => ProfileDisplayItemsCopy[guid] = [.. observableCollection]);
+                    }
+                };
+                _ = ReloadDisplayItems(profile);
 
                 return collection;
             });
@@ -216,9 +128,35 @@ namespace InfoPanel
             }
         }
 
+        /// <summary>
+        /// Provides thread-safe access to the DisplayItems collection for the currently selected profile.
+        /// The action is executed on the UI thread if available.
+        /// </summary>
+        /// <param name="action">The action to perform with the DisplayItems collection</param>
+        public void AccessDisplayItems(Action<ObservableCollection<DisplayItem>> action)
+        {
+            if (SelectedProfile is not Profile profile)
+            {
+                return;
+            }
+
+            AccessDisplayItems(profile, action);
+        }
+
+        /// <summary>
+        /// Provides thread-safe access to the DisplayItems collection for a specific profile.
+        /// The action is executed on the UI thread if available.
+        /// </summary>
+        /// <param name="profile">The profile whose DisplayItems to access</param>
+        /// <param name="action">The action to perform with the DisplayItems collection</param>
         public void AccessDisplayItems(Profile profile, Action<ObservableCollection<DisplayItem>> action)
         {
             var collection = GetProfileDisplayItems(profile);
+
+            if (collection == null)
+            {
+                return;
+            }
 
             if (Application.Current.Dispatcher is Dispatcher dispatcher)
             {
@@ -240,7 +178,8 @@ namespace InfoPanel
         {
             var displayItems = await LoadDisplayItemsAsync(profile);
 
-            AccessDisplayItems(profile, collection => {
+            AccessDisplayItems(profile, collection =>
+            {
                 collection.Clear();
 
                 foreach (var item in displayItems)
@@ -252,38 +191,7 @@ namespace InfoPanel
         {
             get
             {
-                var items = SelectedItems.ToList();
-
-                //do not allow multiple group items to be selected
-                if (items.FindAll(item => item is GroupDisplayItem).Count > 1)
-                {
-                    return null;
-                }
-
-                var result = items.FirstOrDefault();
-
-                if (result is GroupDisplayItem groupDisplayItem)
-                {
-                    //check if all selected items are in the group
-                    foreach (var item in items)
-                    {
-                        if (item == result)
-                        {
-                            continue;
-                        }
-                        if (!groupDisplayItem.DisplayItems.Contains(item))
-                        {
-                            return null;
-                        }
-                    }
-
-                }
-                else if (items.Count > 1)
-                {
-                    return null;
-                }
-
-                return result;
+                return SelectedItems.FirstOrDefault();
             }
             set
             {
@@ -309,22 +217,29 @@ namespace InfoPanel
             OnPropertyChanged(nameof(SelectedItem));
             IsItemSelected = SelectedItem != null;
 
-            var items = SelectedItems.ToList();
+            var items = SelectedItems;
 
             IsSelectedItemsMovable = items.FindAll(item => item is not GroupDisplayItem).Count > 0;
             IsSelectedItemMovable = SelectedItem is not null && SelectedItem is not GroupDisplayItem;
+
+            Trace.WriteLine($"NotifySelectedItemChange={SelectedItem} {IsSelectedItemsMovable} {IsSelectedItemMovable}");
         }
 
-        public List<DisplayItem> SelectedItems
+        public ImmutableList<DisplayItem> SelectedItems
         {
             get
             {
-                return [.. DisplayItems
-            .SelectMany<DisplayItem, DisplayItem>(item =>
-                item is GroupDisplayItem group && group.DisplayItems is { } items
-                    ? [group, ..items]
-                    : [item])
-            .Where(item => item.Selected)];
+                ImmutableList<DisplayItem> result = [];
+                AccessDisplayItems(items =>
+                {
+                    result = result.AddRange(items
+                        .SelectMany<DisplayItem, DisplayItem>(item =>
+                            item is GroupDisplayItem group && group.DisplayItems is { } groupItems
+                                ? [group, .. groupItems]
+                                : [item])
+                        .Where(item => item.Selected));
+                });
+                return result;
             }
         }
 
@@ -661,7 +576,7 @@ namespace InfoPanel
         }
 
 
-        private static void SaveDisplayItems(Profile profile, List<DisplayItem> displayItems)
+        private static void SaveDisplayItems(Profile profile, ICollection<DisplayItem> displayItems)
         {
             var profileFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
             if (!Directory.Exists(profileFolder))
@@ -674,7 +589,9 @@ namespace InfoPanel
 
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
             using var wr = XmlWriter.Create(fileName, settings);
-            xs.Serialize(wr, displayItems);
+
+            // ToList() is necessary to avoid issues with serialization of ICollection directly
+            xs.Serialize(wr, displayItems.ToList());
         }
 
         public void SaveDisplayItems(Profile profile)
@@ -1284,9 +1201,10 @@ namespace InfoPanel
                     }
                 }
 
+                SaveDisplayItems(profile, displayItems);
+
                 Dispatcher.CurrentDispatcher.Invoke(() =>
                 {
-                    SaveDisplayItems(profile, displayItems);
                     ConfigModel.Instance.AddProfile(profile);
                     ConfigModel.Instance.SaveProfiles();
                     SharedModel.Instance.SelectedProfile = profile;
@@ -1465,7 +1383,7 @@ namespace InfoPanel
             }
         }
 
-        public List<DisplayItem> GetProfileDisplayItemsCopy()
+        public ImmutableList<DisplayItem> GetProfileDisplayItemsCopy()
         {
             if (SelectedProfile is Profile profile)
             {
@@ -1473,18 +1391,20 @@ namespace InfoPanel
             }
 
             return [];
-
         }
 
-        public List<DisplayItem> GetProfileDisplayItemsCopy(Profile profile)
+        public ImmutableList<DisplayItem> GetProfileDisplayItemsCopy(Profile profile)
         {
-            List<DisplayItem>? displayItems = null;
-            AccessDisplayItems(profile, new Action<ObservableCollection<DisplayItem>>(items =>
+            if(!ProfileDisplayItemsCopy.TryGetValue(profile.Guid, out var displayItemsCopy))
             {
-                displayItems = [.. items];
-            }));
+                AccessDisplayItems(profile, new Action<ObservableCollection<DisplayItem>>((displayItems) =>
+                {
+                    displayItemsCopy = [.. displayItems];
+                    ProfileDisplayItemsCopy[profile.Guid] = displayItemsCopy;
+                }));
+            }
 
-            return displayItems ?? [];
+            return displayItemsCopy ?? [];
         }
 
 

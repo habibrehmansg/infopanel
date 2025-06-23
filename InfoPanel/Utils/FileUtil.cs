@@ -151,7 +151,7 @@ namespace InfoPanel.Utils
         {
             if (item is GroupDisplayItem groupDisplayItem)
             {
-                foreach (var child in groupDisplayItem.DisplayItems)
+                foreach (var child in groupDisplayItem.DisplayItemsCopy)
                 {
                     FilterAssetFiles(child, assetFiles);
                 }

@@ -544,17 +544,14 @@ namespace InfoPanel.Views.Common
             }
             else if (e.ChangedButton == MouseButton.Middle)
             {
-
-                var selectedProfile = SharedModel.Instance.SelectedProfile;
-
-                if (selectedProfile != Profile)
+                if (SharedModel.Instance.SelectedProfile != Profile)
                 {
                     return;
                 }
 
                 DisplayItem? clickedItem = null;
 
-                var displayItems = SharedModel.Instance.GetProfileDisplayItemsCopy();
+                var displayItems = SharedModel.Instance.GetProfileDisplayItemsCopy(Profile);
                 displayItems.Reverse();
 
                 foreach (var item in displayItems)
@@ -566,7 +563,9 @@ namespace InfoPanel.Views.Common
 
                     if (item is GroupDisplayItem groupDisplayItem)
                     {
-                        foreach (var groupItem in groupDisplayItem.DisplayItems)
+                        var groupDisplayItems = groupDisplayItem.DisplayItemsCopy.ToList();
+                        groupDisplayItems.Reverse();
+                        foreach (var groupItem in groupDisplayItems)
                         {
                             if (groupItem.Hidden)
                             {

@@ -20,9 +20,9 @@ namespace InfoPanel.Views.Components
             {
                 var item = new TextDisplayItem("Custom Text", selectedProfile)
                 {
-                    Font = SharedModel.Instance.SelectedProfile!.Font,
-                    FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
-                    Color = SharedModel.Instance.SelectedProfile!.Color
+                    Font = selectedProfile.Font,
+                    FontSize = selectedProfile.FontSize,
+                    Color = selectedProfile.Color
                 };
                 SharedModel.Instance.AddDisplayItem(item);
             }

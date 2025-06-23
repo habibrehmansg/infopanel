@@ -411,23 +411,25 @@ namespace InfoPanel.Views.Components
                     return;
                 }
 
-                foreach (var item in SharedModel.Instance.DisplayItems)
-                {
-                    if (item != listView.SelectedItem)
+                SharedModel.Instance.AccessDisplayItems(displayItems => {
+                    foreach (var item in displayItems)
                     {
-                        if (item is GroupDisplayItem group)
+                        if (item != listView.SelectedItem)
                         {
-                            foreach (var item1 in group.DisplayItems)
+                            if (item is GroupDisplayItem group)
                             {
-                                item1.Selected = false;
+                                foreach (var item1 in group.DisplayItems)
+                                {
+                                    item1.Selected = false;
+                                }
+                            }
+                            else
+                            {
+                                item.Selected = false;
                             }
                         }
-                        else
-                        {
-                            item.Selected = false;
-                        }
                     }
-                }
+                });
             }
             finally
             {
@@ -582,19 +584,28 @@ namespace InfoPanel.Views.Components
 
         private GroupDisplayItem? GetGroupFromCollection(object? collection)
         {
-            if (collection == null || collection == SharedModel.Instance.DisplayItems)
-                return null;
+            GroupDisplayItem? result = null;
 
-            // Check if the collection is a view of the main collection
-            if (collection is ListCollectionView view && view.SourceCollection == SharedModel.Instance.DisplayItems)
-                return null;
+            SharedModel.Instance.AccessDisplayItems(displayItems => {
 
-            foreach (var item in SharedModel.Instance.DisplayItems)
-            {
-                if (item is GroupDisplayItem group && group.DisplayItems == collection)
-                    return group;
-            }
-            return null;
+                if (collection == null || collection == displayItems)
+                    return;
+
+                // Check if the collection is a view of the main collection
+                if (collection is ListCollectionView view && view.SourceCollection == displayItems)
+                    return;
+
+                foreach (var item in displayItems)
+                {
+                    if (item is GroupDisplayItem group && group.DisplayItems == collection)
+                    {
+                        result = group;
+                        break;
+                    }
+                }
+            });
+          
+            return result;
         }
 
         void IDropTarget.DragOver(IDropInfo dropInfo)
