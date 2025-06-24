@@ -99,63 +99,41 @@ namespace InfoPanel.ViewModels
                     Expanded = true,
                     Title = "Video streaming, multiple panel support, and new design tools",
                     Items = [
-                            new UpdateVersionItem() { Title = "Video and Live Stream Support",
+                            new UpdateVersionItem() { Title = "Videos & Live Streams",
                             Description = [
-                                "Image items can now display videos and live streams.",
-                                "RTSP stream support for security cameras and CCTV systems.",
-                                "Play local videos or stream from URLs.",
-                                "Full audio support with volume control.",
-                                "Works with common formats: MP4, MKV, AVI, and more."
+                                "Play videos and live streams with full audio support.",
+                                "Perfect for security cameras, media players, or any video content.",
+                                "Volume control and professional video playback."
                                 ] },
-                            new UpdateVersionItem() { Title = "Multiple BeadaPanel Support",
+                            new UpdateVersionItem() { Title = "Multiple USB Panel Support",
                             Description = [
-                                "Connect and use multiple BeadaPanel displays at the same time.",
-                                "Automatic detection when you plug in new panels.",
-                                "Individual control for each connected panel.",
-                                "More stable connection with automatic reconnection."
+                                "Connect multiple BeadaPanel AND Turing displays simultaneously.",
+                                "Support for latest Turing 8.8\" Rev 1.1 models.",
+                                "Each panel works independently with automatic detection."
                                 ] },
-                            new UpdateVersionItem() { Title = "Custom Shapes",
+                            new UpdateVersionItem() { Title = "Creative Design Tools",
                             Description = [
-                                "New shape tool with 11 different shapes including stars, arrows, and polygons.",
-                                "Animated gradients with 6 different styles (linear, radial, spiral, and more).",
-                                "Customizable colors, borders, and rotation.",
-                                "Perfect for creating unique backgrounds and design elements."
+                                "Custom shapes with animated gradients and rounded bar charts.",
+                                "SVG support for crisp icons and a design grid for alignment.",
+                                "Animated live bars for dynamic visualizations."
                                 ] },
-                            new UpdateVersionItem() { Title = "Group Items Together",
+                            new UpdateVersionItem() { Title = "Smart Text & Organization",
                             Description = [
-                                "Group multiple sensors and elements to move them together.",
-                                "Clone entire groups with one click.",
-                                "Better organization for complex layouts.",
-                                "Lock groups to prevent accidental changes."
+                                "Scrolling marquee text, wrapping, and ellipsis options.",
+                                "Group items together, lock them, and clone entire groups.",
+                                "Search to find items quickly and drag & drop positioning."
                                 ] },
-                            new UpdateVersionItem() { Title = "Visual Improvements",
+                            new UpdateVersionItem() { Title = "Modern Windows 11 Interface",
                             Description = [
-                                "Smoother animations and transitions.",
-                                "Rounded corners option for bar charts.",
-                                "SVG image support for sharper icons.",
-                                "New design grid to help align items perfectly.",
-                                "Better font scaling that works across all profiles."
+                                "Fresh new look with system tray support.",
+                                "Window size saves automatically.",
+                                "Consistent font scaling across all profiles."
                                 ] },
-                            new UpdateVersionItem() { Title = "Performance & Stability",
+                            new UpdateVersionItem() { Title = "Performance & Reliability",
                             Description = [
-                                "Faster rendering with lower CPU usage.",
-                                "Fixed crashes when switching panels on and off.",
-                                "More reliable settings saving.",
-                                "Reduced memory usage for long-running sessions.",
-                                "Better handling of high DPI displays."
-                                ] },
-                            new UpdateVersionItem() { Title = "Hardware Updates",
-                            Description = [
-                                "Support for newer Turing 8.8\" LCD models.",
-                                "Panels now turn off properly when shutting down Windows.",
-                                "More stable USB connections.",
-                                "Fixed frame rate issues on some BeadaPanel models."
-                                ] },
-                            new UpdateVersionItem() { Title = "Plugin Improvements",
-                            Description = [
-                                "Plugins can now show minimum, maximum, and average values.",
-                                "Better error handling for plugin issues.",
-                                "Table view improvements for plugin data."
+                                "New high-performance graphics engine for smoother animations.",
+                                "Auto-start delay option and better plugin support.",
+                                "Installer preserves your settings and plugin configurations."
                                 ] }
                             ]
                 };
