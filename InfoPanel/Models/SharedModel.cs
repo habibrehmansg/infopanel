@@ -82,14 +82,8 @@ namespace InfoPanel
             {
                 SetProperty(ref _selectedProfile, value);
 
-                if (value != null)
-                {
-                    DisplayItems = GetProfileDisplayItems(value);
-                }
-                else
-                {
-                    DisplayItems = [];
-                }
+                OnPropertyChanged(nameof(DisplayItems));
+                NotifySelectedItemChange();
             }
         }
 
@@ -97,8 +91,17 @@ namespace InfoPanel
         private readonly ConcurrentDictionary<Guid, Debouncer> _debouncers = [];
         private readonly ConcurrentDictionary<Guid, ImmutableList<DisplayItem>> ProfileDisplayItemsCopy = [];
 
-        [ObservableProperty]
-        private ObservableCollection<DisplayItem> _displayItems = [];
+        public ObservableCollection<DisplayItem> DisplayItems => GetProfileDisplayItems();
+
+        private ObservableCollection<DisplayItem> GetProfileDisplayItems()
+        {
+            if(SelectedProfile is Profile profile)
+            {
+                return GetProfileDisplayItems(profile);
+            }
+
+            return [];
+        }
 
         private ObservableCollection<DisplayItem> GetProfileDisplayItems(Profile profile)
         {
@@ -238,21 +241,11 @@ namespace InfoPanel
             }
         }
 
-        public List<DisplayItem> SelectedVisibleItems
+        public ImmutableList<DisplayItem> SelectedVisibleItems
         {
             get
             {
-                if (DisplayItems == null)
-                    return [];
-
-                return [.. DisplayItems
-                    .SelectMany(item =>
-                    {
-                        if (item is GroupDisplayItem group && group.DisplayItems != null)
-                            return group.DisplayItems.Cast<DisplayItem>();
-                        return [item];
-                    })
-                    .Where(item => item.Selected && !item.Hidden)];
+                return [.. SelectedItems.Where(item => item.Selected && !item.Hidden)];
             }
         }
         public bool IsSelectedItemsMovable => SelectedItems.FindAll(item => item is not GroupDisplayItem).Count > 0;
