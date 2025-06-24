@@ -3,7 +3,6 @@ using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
-using Microsoft.VisualBasic;
 using Serilog;
 using SkiaSharp;
 using System;
@@ -215,14 +214,10 @@ namespace InfoPanel
         public void NotifySelectedItemChange()
         {
             OnPropertyChanged(nameof(SelectedItem));
-            IsItemSelected = SelectedItem != null;
-
-            var items = SelectedItems;
-
-            IsSelectedItemsMovable = items.FindAll(item => item is not GroupDisplayItem).Count > 0;
-            IsSelectedItemMovable = SelectedItem is not null && SelectedItem is not GroupDisplayItem;
-
-            Trace.WriteLine($"NotifySelectedItemChange={SelectedItem} {IsSelectedItemsMovable} {IsSelectedItemMovable}");
+            OnPropertyChanged(nameof(IsItemSelected));
+            OnPropertyChanged(nameof(IsSingleItemSelected));
+            OnPropertyChanged(nameof(IsSelectedItemMovable));
+            OnPropertyChanged(nameof(IsSelectedItemsMovable));
         }
 
         public ImmutableList<DisplayItem> SelectedItems
@@ -260,33 +255,15 @@ namespace InfoPanel
                     .Where(item => item.Selected && !item.Hidden)];
             }
         }
+        public bool IsSelectedItemsMovable => SelectedItems.FindAll(item => item is not GroupDisplayItem).Count > 0;
+
+        public bool IsSelectedItemMovable => SelectedItem is not null && SelectedItem is not GroupDisplayItem;
+
+        public bool IsItemSelected => SelectedItem != null;
+        public bool IsSingleItemSelected => SelectedItems.Count == 1;
 
         [ObservableProperty]
-        private bool _isSelectedItemsMovable = false;
-
-        [ObservableProperty]
-        private bool _isSelectedItemMovable = false;
-
-
-        private bool _isItemSelected;
-        public bool IsItemSelected
-        {
-            get { return _isItemSelected; }
-            set
-            {
-                SetProperty(ref _isItemSelected, value);
-            }
-        }
-
         private int _moveValue = 5;
-        public int MoveValue
-        {
-            get { return _moveValue; }
-            set
-            {
-                SetProperty(ref _moveValue, value);
-            }
-        }
 
         private SharedModel()
         { }

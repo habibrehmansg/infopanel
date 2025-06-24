@@ -17,7 +17,7 @@
         Grid.Column="1"
         Background="#601A1a1a"
         CornerRadius="8">
-        <Grid Margin="20,20,20,20" Visibility="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSelectedItemMovable, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <Grid Margin="20,20,20,20" Visibility="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSelectedItemsMovable, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto" />
                 <RowDefinition Height="*" />

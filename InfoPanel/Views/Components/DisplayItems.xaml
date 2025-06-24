@@ -305,7 +305,7 @@
                     Click="ButtonPushBack_Click"
                     Content=""
                     Icon="{ui:SymbolIcon ArrowUpload20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
                     ToolTip="Push selected item to the top (overlapped by items below)" />
                 <ui:Button
                     x:Name="ButtonPushUp"
@@ -313,7 +313,7 @@
                     Click="ButtonPushUp_Click"
                     Content=""
                     Icon="{ui:SymbolIcon ArrowUp20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
                     ToolTip="Push selected item up (overlapped by items below)" />
                 <ui:Button
                     x:Name="ButtonPushDown"
@@ -321,7 +321,7 @@
                     Click="ButtonPushDown_Click"
                     Content=""
                     Icon="{ui:SymbolIcon ArrowDown20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
                     ToolTip="Bring selected item down (overlap items above)" />
                 <ui:Button
                     x:Name="ButtonPushFront"
@@ -329,7 +329,7 @@
                     Click="ButtonPushFront_Click"
                     Content=""
                     Icon="{ui:SymbolIcon ArrowDownload20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
                     ToolTip="Bring selected item to bottom (overlap items above)" />
                 <ui:Button
                     x:Name="ButtonDuplicate"
@@ -337,7 +337,7 @@
                     Click="ButtonDuplicate_Click"
                     Content=""
                     Icon="{ui:SymbolIcon Copy20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
                     ToolTip="Duplicate selected item" />
                 <ui:Button
                     x:Name="ButtonDelete"
@@ -346,7 +346,7 @@
                     Click="ButtonDelete_Click"
                     Content=""
                     Icon="{ui:SymbolIcon Delete20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
                     ToolTip="Delete selected item" />
             </StackPanel>
 
