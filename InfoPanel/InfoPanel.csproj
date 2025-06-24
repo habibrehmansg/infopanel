@@ -20,13 +20,9 @@
 
 	<!-- Build InfoPanel.Extras and get its output path -->
 	<Target Name="BuildExtras" BeforeTargets="Build">
-		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
-				 Targets="Build" 
-				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64;SelfContained=false" />
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64;SelfContained=false" />
 		<!-- Get the output path after building -->
-		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
-				 Targets="GetTargetPath" 
-				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64">
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64">
 			<Output TaskParameter="TargetOutputs" PropertyName="_ExtrasAssemblyPath" />
 		</MSBuild>
 		<PropertyGroup>
@@ -47,9 +43,7 @@
 	<!-- Copy InfoPanel.Extras to publish dir -->
 	<Target Name="CopyExtrasToPublishOutput" AfterTargets="Publish">
 		<!-- Get the output path for copying -->
-		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" 
-				 Targets="GetTargetPath" 
-				 Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64">
+		<MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x64">
 			<Output TaskParameter="TargetOutputs" PropertyName="_ExtrasAssemblyPath" />
 		</MSBuild>
 		<PropertyGroup>
@@ -201,20 +195,21 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-		<PackageReference Include="AutoMapper" Version="13.0.1" />
+		<PackageReference Include="AutoMapper" Version="14.0.0" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="FlyleafLib" Version="3.8.4" />
 		<PackageReference Include="gong-wpf-dragdrop" Version="4.0.0" />
 		<PackageReference Include="HidSharp" Version="2.1.0" />
-		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
+		<PackageReference Include="ini-parser-netstandard" Version="2.5.3" />
 		<PackageReference Include="LibUsbDotNet" Version="2.2.75" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
-		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.2" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.6" />
+		<PackageReference Include="RAMSPDToolkit-NDD" Version="1.1.4" />
 		<PackageReference Include="SecureStore" Version="1.2.2" />
-		<PackageReference Include="Sentry" Version="5.3.0" />
+		<PackageReference Include="Sentry" Version="5.11.1" />
 		<PackageReference Include="Serilog" Version="4.3.0" />
 		<PackageReference Include="Serilog.Extensions.Hosting" Version="9.0.0" />
 		<PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
@@ -225,8 +220,8 @@
 		<PackageReference Include="SkiaSharp" Version="3.119.0" />
 		<PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.0" />
 		<PackageReference Include="Svg.Skia" Version="3.0.3" />
-		<PackageReference Include="System.IO.Ports" Version="9.0.2" />
-		<PackageReference Include="System.Management" Version="9.0.2" />
+		<PackageReference Include="System.IO.Ports" Version="9.0.6" />
+		<PackageReference Include="System.Management" Version="9.0.6" />
 		<PackageReference Include="TaskScheduler" Version="2.12.1" />
 		<PackageReference Include="Topten.RichTextKit" Version="0.4.167" />
 		<PackageReference Include="WPF-UI" Version="3.1.1" />
