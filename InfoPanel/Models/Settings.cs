@@ -9,6 +9,12 @@ namespace InfoPanel.Models
     public partial class Settings : ObservableObject
     {
         [ObservableProperty]
+        private float _uiWidth = 1300;
+
+        [ObservableProperty]
+        private float _uiHeight = 900;
+
+        [ObservableProperty]
         private float _uiScale = 1.0f;
 
         [ObservableProperty]

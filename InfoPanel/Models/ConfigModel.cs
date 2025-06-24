@@ -376,6 +376,8 @@ namespace InfoPanel
                     {
                         lock (_settingsLock)
                         {
+                            Settings.UiWidth = settings.UiWidth;
+                            Settings.UiHeight = settings.UiHeight;
                             Settings.UiScale = settings.UiScale;
                             Settings.IsPaneOpen = settings.IsPaneOpen;
                             Settings.AutoStart = settings.AutoStart;
