@@ -15,10 +15,6 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
-
-        <converters:LockSymbolConverter x:Key="LockSymbolConverter" />
-        <converters:LockColorConverter x:Key="LockColorConverter" />
-
         <!--  CollectionViewSource for filtering display items  -->
         <CollectionViewSource x:Key="DisplayItemsViewSource" Source="{Binding Source={x:Static app:SharedModel.Instance}, Path=DisplayItems}" />
 
@@ -84,7 +80,7 @@
                             Grid.Column="1"
                             Width="20"
                             Height="20"
-                            Margin="10,0,-10,0"
+                            Margin="40,0,-5,0"
                             Padding="0"
                             VerticalAlignment="Center"
                             Background="Transparent"
@@ -98,7 +94,7 @@
                         <!--  Visibility Checkbox  -->
                         <CheckBox
                             Grid.Column="2"
-                            Margin="20,0,5,0"
+                            Margin="5,0,8,0"
                             VerticalAlignment="Center"
                             IsChecked="{Binding Hidden, Converter={StaticResource InverseBooleanConverter}}" />
                     </Grid>

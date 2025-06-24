@@ -10,9 +10,10 @@
     <Grid HorizontalAlignment="Stretch" VerticalAlignment="Center">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="25" />
-            <ColumnDefinition Width="250" />
+            <ColumnDefinition Width="230" />
             <ColumnDefinition Width="30" />
             <ColumnDefinition Width="80" />
+            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
@@ -111,9 +112,24 @@
             </TextBlock.Text>
         </TextBlock>
 
+        <Button
+            Grid.Column="4"
+            Width="20"
+            Height="20"
+            Margin="10,0,-10,0"
+            Padding="0"
+            VerticalAlignment="Center"
+            Background="Transparent"
+            BorderThickness="0"
+            Command="{Binding ToggleLockCommand}"
+            Cursor="Hand"
+            ToolTip="Lock item to prevent drag move.">
+            <ui:SymbolIcon Foreground="{Binding IsLocked, Converter={StaticResource LockColorConverter}}" Symbol="{Binding IsLocked, Converter={StaticResource LockSymbolConverter}}" />
+        </Button>
+
         <!--  Visibility Checkbox  -->
         <CheckBox
-            Grid.Column="4"
+            Grid.Column="5"
             Margin="10,0,0,0"
             VerticalAlignment="Center"
             IsChecked="{Binding Hidden, Converter={StaticResource InverseBooleanConverter}}" />

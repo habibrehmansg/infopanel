@@ -579,7 +579,10 @@ namespace InfoPanel.Views.Common
                             }
                         }
 
-                        continue;
+                        if(clickedItem == null)
+                        {
+                            continue;
+                        }
                     }
 
                     if (clickedItem != null)
@@ -639,7 +642,7 @@ namespace InfoPanel.Views.Common
 
                 foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                 {
-                    if (displayItem.Selected)
+                    if (displayItem.Selected && !displayItem.IsLocked)
                     {
                         int x = (int)(currentPosition.X - displayItem.MouseOffset.X);
                         int y = (int)(currentPosition.Y - displayItem.MouseOffset.Y);

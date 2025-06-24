@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using SkiaSharp;
 using System;
 using System.Linq;
@@ -17,6 +18,15 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
 
     [XmlIgnore]
     public Guid ProfileGuid => Profile.Guid;
+
+    [ObservableProperty]
+    private bool _isLocked = false;
+
+    [RelayCommand]
+    private void ToggleLock()
+    {
+        IsLocked = !IsLocked;
+    }
 
     private bool _selected;
 

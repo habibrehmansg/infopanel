@@ -25,9 +25,6 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _isExpanded = true;
 
-        [ObservableProperty]
-        private bool _isLocked = false;
-
         public GroupDisplayItem()
         {
             // Subscribe to collection changes first
@@ -42,12 +39,6 @@ namespace InfoPanel.Models
         {
             DisplayItemsCopy = [.. DisplayItems];
             DisplayItemsCount = DisplayItems.Count;
-        }
-
-        [RelayCommand]
-        private void ToggleLock()
-        {
-            IsLocked = !IsLocked;
         }
 
         public override object Clone()
