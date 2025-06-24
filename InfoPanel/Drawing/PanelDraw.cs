@@ -262,7 +262,7 @@ namespace InfoPanel.Drawing
 
                         g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
                             textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis,
-                            textDisplayItem.Width);
+                            (int)(textDisplayItem.Width * scale));
 
                         break;
                     }
