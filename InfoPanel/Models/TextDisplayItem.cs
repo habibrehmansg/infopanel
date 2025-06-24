@@ -133,6 +133,15 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _height = 0;
 
+        [ObservableProperty]
+        private bool _marquee = false;
+
+        [ObservableProperty]
+        private int _marqueeSpeed = 50;
+
+        [ObservableProperty]
+        private int _marqueeSpacing = 40;
+
         public TextDisplayItem()
         {
         }

@@ -198,71 +198,26 @@ namespace InfoPanel.Drawing
                     }
                 case TextDisplayItem textDisplayItem:
                     {
-
-                        var fontSize = (int)Math.Floor(textDisplayItem.FontSize * scale);
                         (var text, var color) = textDisplayItem.EvaluateTextAndColor();
 
+                        // Handle table display items separately
                         if (textDisplayItem is TableSensorDisplayItem tableSensorDisplayItem
                             && tableSensorDisplayItem.GetValue() is SensorReading sensorReading
                             && sensorReading.ValueTable is DataTable table)
                         {
-                            var format = tableSensorDisplayItem.TableFormat;
-
-                            var maxRows = tableSensorDisplayItem.MaxRows;
-
-                            var formatParts = format.Split('|');
-
-                            if (formatParts.Length > 0)
-                            {
-                                (float fWidth, float fHeight) = g.MeasureString("A", textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, textDisplayItem.Bold,
-                                              textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout);
-
-                                var tWidth = 0;
-                                for (int i = 0; i < formatParts.Length; i++)
-                                {
-                                    var split = formatParts[i].Split(':');
-                                    if (split.Length == 2)
-                                    {
-                                        if (int.TryParse(split[0], out var column) && column < table.Columns.Count && int.TryParse(split[1], out var length))
-                                        {
-                                            if (tableSensorDisplayItem.ShowHeader)
-                                            {
-                                                g.DrawString(table.Columns[column].ColumnName, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color,
-                                                    x + tWidth, y,
-                                          i != 0 && textDisplayItem.RightAlign, textDisplayItem.CenterAlign, textDisplayItem.Bold,
-                                          textDisplayItem.Italic, textDisplayItem.Underline,
-                                          textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, length, 0);
-                                            }
-
-                                            var rows = Math.Min(table.Rows.Count, maxRows);
-
-                                            for (int j = 0; j < rows; j++)
-                                            {
-                                                var col = table.Rows[j][column];
-
-                                                if (table.Rows[j][column] is IPluginData pluginData)
-                                                {
-
-                                                    g.DrawString(pluginData.ToString(), textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color,
-                                                        x + tWidth, (int)(y + (fHeight * (j + (tableSensorDisplayItem.ShowHeader ? 1 : 0)))),
-                                       i != 0 && textDisplayItem.RightAlign, textDisplayItem.CenterAlign, textDisplayItem.Bold,
-                                       textDisplayItem.Italic, textDisplayItem.Underline,
-                                       textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, length, 0);
-                                                }
-                                            }
-
-                                            tWidth += length + 10;
-                                        }
-                                    }
-                                }
-                            }
-
+                            DrawTableSensorDisplay(g, tableSensorDisplayItem, x, y, scale, color, table);
                             break;
                         }
 
-                        g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
-                            textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis,
-                            (int)(textDisplayItem.Width * scale));
+                        // Regular text display
+                        if (textDisplayItem.Marquee && textDisplayItem.Width > 0)
+                        {
+                            DrawMarqueeText(g, textDisplayItem, text, color, x, y, scale);
+                        }
+                        else
+                        {
+                            DrawNormalText(g, textDisplayItem, text, color, x, y, scale);
+                        }
 
                         break;
                     }
@@ -840,6 +795,126 @@ namespace InfoPanel.Drawing
             return overlayBitmap;
         }
 
+        private static void DrawTableSensorDisplay(SkiaGraphics g, TableSensorDisplayItem tableSensorDisplayItem, 
+            int x, int y, float scale, string color, DataTable table)
+        {
+            var fontSize = (int)Math.Floor(tableSensorDisplayItem.FontSize * scale);
+            var format = tableSensorDisplayItem.TableFormat;
+            var maxRows = tableSensorDisplayItem.MaxRows;
+            var formatParts = format.Split('|');
+
+            if (formatParts.Length == 0) return;
+
+            (float fWidth, float fHeight) = g.MeasureString("A", tableSensorDisplayItem.Font, tableSensorDisplayItem.FontStyle, 
+                fontSize, tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic, 
+                tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout);
+
+            var tWidth = 0;
+            for (int i = 0; i < formatParts.Length; i++)
+            {
+                var split = formatParts[i].Split(':');
+                if (split.Length == 2 && 
+                    int.TryParse(split[0], out var column) && 
+                    column < table.Columns.Count && 
+                    int.TryParse(split[1], out var length))
+                {
+                    // Draw header if enabled
+                    if (tableSensorDisplayItem.ShowHeader)
+                    {
+                        g.DrawString(table.Columns[column].ColumnName, 
+                            tableSensorDisplayItem.Font, tableSensorDisplayItem.FontStyle, fontSize, color,
+                            x + tWidth, y,
+                            i != 0 && tableSensorDisplayItem.RightAlign, tableSensorDisplayItem.CenterAlign, 
+                            tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic, 
+                            tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout, 
+                            tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, length, 0);
+                    }
+
+                    // Draw rows
+                    var rows = Math.Min(table.Rows.Count, maxRows);
+                    for (int j = 0; j < rows; j++)
+                    {
+                        if (table.Rows[j][column] is IPluginData pluginData)
+                        {
+                            g.DrawString(pluginData.ToString(), 
+                                tableSensorDisplayItem.Font, tableSensorDisplayItem.FontStyle, fontSize, color,
+                                x + tWidth, (int)(y + (fHeight * (j + (tableSensorDisplayItem.ShowHeader ? 1 : 0)))),
+                                i != 0 && tableSensorDisplayItem.RightAlign, tableSensorDisplayItem.CenterAlign, 
+                                tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic, 
+                                tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout, 
+                                tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, length, 0);
+                        }
+                    }
+
+                    tWidth += length + 10;
+                }
+            }
+        }
+
+        private static void DrawMarqueeText(SkiaGraphics g, TextDisplayItem textDisplayItem, 
+            string text, string color, int x, int y, float scale)
+        {
+            var fontSize = (int)Math.Floor(textDisplayItem.FontSize * scale);
+            var drawWidth = (int)(textDisplayItem.Width * scale);
+            
+            // Validate marquee speed to prevent division by zero
+            var scrollSpeed = Math.Max(textDisplayItem.MarqueeSpeed, 1) * 1.0;
+            var padding = (int)(textDisplayItem.MarqueeSpacing * scale); // Apply scale to spacing
+            
+            // Measure text once
+            var (textWidth, textHeight) = g.MeasureString(text, textDisplayItem.Font, textDisplayItem.FontStyle,
+                fontSize, textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline,
+                textDisplayItem.Strikeout, false, false, 0, 0);
+
+            if (textWidth <= drawWidth)
+            {
+                // Text fits, draw normally without marquee
+                DrawNormalText(g, textDisplayItem, text, color, x, y, scale);
+                return;
+            }
+
+            // Calculate animation
+            var currentTime = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+            var totalDistance = textWidth + padding;
+            var duration = totalDistance / scrollSpeed * 1000; // milliseconds
+            var progress = (currentTime % duration) / duration;
+            var offset = (int)(progress * totalDistance);
+
+            // Calculate height for clipping
+            var clipHeight = textDisplayItem.Height > 0 
+                ? (int)(textDisplayItem.Height * scale) 
+                : (int)textHeight;
+
+            // Set up clipping
+            g.Canvas.Save();
+            g.Canvas.ClipRect(new SKRect(x, y, x + drawWidth, y + clipHeight));
+
+            // Draw text twice for infinite scroll
+            // Note: Disable alignment for marquee as position is controlled by offset
+            g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, 
+                x - offset, y, false, false, // Disable alignment for marquee
+                textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, 
+                textDisplayItem.Strikeout, false, false, 0);
+
+            g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, 
+                x - offset + (int)textWidth + padding, y, false, false, // Disable alignment for marquee
+                textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, 
+                textDisplayItem.Strikeout, false, false, 0);
+
+            g.Canvas.Restore();
+        }
+
+        private static void DrawNormalText(SkiaGraphics g, TextDisplayItem textDisplayItem, 
+            string text, string color, int x, int y, float scale)
+        {
+            var fontSize = (int)Math.Floor(textDisplayItem.FontSize * scale);
+            var drawWidth = (int)(textDisplayItem.Width * scale);
+            
+            g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, 
+                x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
+                textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, 
+                textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, drawWidth);
+        }
 
     }
 }
