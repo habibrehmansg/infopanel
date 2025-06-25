@@ -112,7 +112,7 @@ namespace InfoPanel
 
                 _device.UpdateRuntimeProperties(isRunning: true);
 
-                screen.Clear();
+                screen.ScreenOn();
                 var brightness = _device.Brightness;
                 screen.SetBrightness((byte)brightness);
 
@@ -191,9 +191,8 @@ namespace InfoPanel
                 }
                 finally
                 {
-                    sentBitmap?.Dispose();
                     screen.ScreenOff();
-                    screen.Reset();
+                    sentBitmap?.Dispose();
                 }
             }
             catch (Exception e)
