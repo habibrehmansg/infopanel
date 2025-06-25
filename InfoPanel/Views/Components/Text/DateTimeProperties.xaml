@@ -1,28 +1,283 @@
-﻿<UserControl x:Class="InfoPanel.Views.Components.DateTimeProperties"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:InfoPanel.Views.Components"
-             xmlns:app="clr-namespace:InfoPanel"
-             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-             mc:Ignorable="d">
-    
+﻿<UserControl
+    x:Class="InfoPanel.Views.Components.DateTimeProperties"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="clr-namespace:InfoPanel"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:InfoPanel.Views.Components"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    x:Name="UserControlRoot"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
+    </UserControl.Resources>
+
     <Grid Margin="10,10,10,10">
-        <StackPanel>
-            <TextBox x:Name="TextBoxName" Text="{Binding Format}"/>
-            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" Text="Custom Format" FontSize="12" Margin="5,0,0,0" />
-            <TextBlock Foreground="{DynamicResource TextFillColorDisabledBrush}" FontSize="12" Margin="20,5,0,0">
-                d for Day, M for Month, and y for Year.
-                <LineBreak/><LineBreak/>
-                M/d/yyyy<LineBreak/>
-                M/d/yy<LineBreak/>
-                MM/dd/yy<LineBreak/>
-                MM/dd/yyyy<LineBreak/>
-                yy/MM/dd<LineBreak/>
-                yyyy-MM-dd<LineBreak/>
-                dd-MMM-yy<LineBreak/>
-            </TextBlock>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Format Input Section  -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Row="0">
+                <TextBox
+                    x:Name="TextBoxFormat"
+                    Grid.Column="0"
+                    Text="{Binding Format, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock
+                    Margin="5,0,0,0"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Text="Custom Format" />
+
+            </StackPanel>
+            <!--  Quick Templates Section  -->
+            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                <ComboBox
+                    x:Name="TemplateComboBox"
+                    DisplayMemberPath="Display"
+                    SelectedValuePath="Format" />
+                <TextBlock
+                    Margin="0,0,0,5"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Text="Quick Templates:" />
+            </StackPanel>
+
+        </Grid>
+
+        <!--  Live Preview Section  -->
+        <Border
+            Grid.Row="1"
+            Margin="0,10,0,0"
+            Padding="10"
+            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="4">
+            <StackPanel>
+                <TextBlock
+                    FontSize="11"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    Text="Preview:" />
+                <TextBlock
+                    x:Name="PreviewText"
+                    Margin="0,2,0,0"
+                    FontSize="14"
+                    FontWeight="Medium"
+                    Text="December 25, 2024 3:45:30 PM" />
+            </StackPanel>
+        </Border>
+
+        <!--  Format Builder Section  -->
+        <StackPanel Grid.Row="3" Margin="0,10,0,0">
+            <TextBlock
+                Margin="0,0,0,5"
+                FontSize="12"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="Format Builder (mouse over for details)" />
+            <WrapPanel Visibility="{Binding ElementName=UserControlRoot, Path=IsDateVisible, Converter={StaticResource BoolToVisConverter}}">
+                <!--  Date Components  -->
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="d"
+                    Tag="d"
+                    ToolTip="Day (1-31)" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="dd"
+                    Tag="dd"
+                    ToolTip="Day (01-31)" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="ddd"
+                    Tag="ddd"
+                    ToolTip="Day name (Mon)" />
+                <Button
+                    Margin="0,0,10,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="dddd"
+                    Tag="dddd"
+                    ToolTip="Day name (Monday)" />
+
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="M"
+                    Tag="M"
+                    ToolTip="Month (1-12)" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="MM"
+                    Tag="MM"
+                    ToolTip="Month (01-12)" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="MMM"
+                    Tag="MMM"
+                    ToolTip="Month name (Dec)" />
+                <Button
+                    Margin="0,0,10,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="MMMM"
+                    Tag="MMMM"
+                    ToolTip="Month name (December)" />
+
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="yy"
+                    Tag="yy"
+                    ToolTip="Year (24)" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="yyyy"
+                    Tag="yyyy"
+                    ToolTip="Year (2024)" />
+            </WrapPanel>
+
+            <WrapPanel Margin="0,5,0,0" Visibility="{Binding ElementName=UserControlRoot, Path=IsTimeVisible, Converter={StaticResource BoolToVisConverter}}">
+                <!--  Time Components  -->
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="h"
+                    Tag="h"
+                    ToolTip="Hour 12 (1-12)" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="hh"
+                    Tag="hh"
+                    ToolTip="Hour 12 (01-12)" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="H"
+                    Tag="H"
+                    ToolTip="Hour 24 (0-23)" />
+                <Button
+                    Margin="0,0,10,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="HH"
+                    Tag="HH"
+                    ToolTip="Hour 24 (00-23)" />
+
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="m"
+                    Tag="m"
+                    ToolTip="Minute (0-59)" />
+                <Button
+                    Margin="0,0,10,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="mm"
+                    Tag="mm"
+                    ToolTip="Minute (00-59)" />
+
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="s"
+                    Tag="s"
+                    ToolTip="Second (0-59)" />
+                <Button
+                    Margin="0,0,10,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="ss"
+                    Tag="ss"
+                    ToolTip="Second (00-59)" />
+
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="tt"
+                    Tag="tt"
+                    ToolTip="AM/PM" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="t"
+                    Tag="t"
+                    ToolTip="A/P" />
+            </WrapPanel>
+
+            <WrapPanel Margin="0,5,0,0">
+                <!--  Separators  -->
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="/"
+                    Tag="/"
+                    ToolTip="Slash separator" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content="-"
+                    Tag="-"
+                    ToolTip="Dash separator" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content=":"
+                    Tag=":"
+                    ToolTip="Colon separator" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="12,4"
+                    Click="FormatButton_Click"
+                    Content=" "
+                    Tag=" "
+                    ToolTip="Space separator" />
+                <Button
+                    Margin="0,0,2,2"
+                    Padding="8,4"
+                    Click="FormatButton_Click"
+                    Content=","
+                    Tag=", "
+                    ToolTip="Comma separator" />
+            </WrapPanel>
         </StackPanel>
     </Grid>
 </UserControl>

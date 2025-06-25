@@ -43,9 +43,10 @@ namespace InfoPanel.Views.Components
             {
                 var item = new ClockDisplayItem("Clock", selectedProfile)
                 {
-                    Font = SharedModel.Instance.SelectedProfile!.Font,
-                    FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
-                    Color = SharedModel.Instance.SelectedProfile!.Color
+                    Font = selectedProfile.Font,
+                    FontSize = selectedProfile.FontSize,
+                    Color = selectedProfile.Color,
+                    Uppercase = true
 
                 };
                 SharedModel.Instance.AddDisplayItem(item);
@@ -58,9 +59,10 @@ namespace InfoPanel.Views.Components
             {
                 var item = new CalendarDisplayItem("Calendar", selectedProfile)
                 {
-                    Font = SharedModel.Instance.SelectedProfile!.Font,
-                    FontSize = SharedModel.Instance.SelectedProfile!.FontSize,
-                    Color = SharedModel.Instance.SelectedProfile!.Color
+                    Font = selectedProfile.Font,
+                    FontSize = selectedProfile.FontSize,
+                    Color = selectedProfile.Color,
+                    Uppercase = true
                 };
                 SharedModel.Instance.AddDisplayItem(item);
             }
