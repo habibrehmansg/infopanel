@@ -28,6 +28,8 @@ namespace InfoPanel.Plugins.Loader
         private CancellationTokenSource? _cts;
         private Task? _task;
 
+        public bool IsLoaded { get; private set; } = false;
+
         public bool IsRunning => _task is not null && !_task.IsCompleted && _cts is not null && !_cts.IsCancellationRequested;
 
         public void Update()
@@ -54,6 +56,7 @@ namespace InfoPanel.Plugins.Loader
             {
                 Plugin.Initialize();
                 Plugin.Load(PluginContainers);
+                IsLoaded = true;
 
                 // If the plugin is running or the interval is not set to >0, we don't want to start it
                 if (IsRunning || Plugin.UpdateInterval.TotalMilliseconds <= 0) return;

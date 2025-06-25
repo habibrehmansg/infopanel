@@ -1,4 +1,5 @@
 ﻿using Flurl.Http;
+using FlyleafLib.Plugins;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
@@ -28,8 +29,6 @@ namespace InfoPanel.Monitors
         public static readonly ConcurrentDictionary<string, PluginReading> SENSORHASH = new();
 
         public List<PluginDescriptor> Plugins { get; private set; } = [];
-
-        public readonly Dictionary<string, PluginWrapper> _loadedPlugins = [];
 
         private PluginMonitor() {
             if(!Directory.Exists(FileUtil.GetExternalPluginFolder()))
@@ -116,21 +115,28 @@ namespace InfoPanel.Monitors
                     await StartPluginModulesAsync(descriptor);
                 }
 
-
                 stopwatch.Stop();
                 Logger.Information("Plugins loaded in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
 
                 while (!token.IsCancellationRequested)
                 {
                     stopwatch.Restart();
-                    foreach (var plugin in _loadedPlugins.Values)
+
+                    foreach(var pluginDescriptor in Plugins)
                     {
-                        try
+                        foreach(var wrapper in pluginDescriptor.PluginWrappers.Values)
                         {
-                            //plugin.Update();
+                            if (wrapper.IsLoaded)
+                            {
+                                try
+                                {
+                                    wrapper.Update();
+                                }
+                                catch { }
+                            }
                         }
-                        catch { }
                     }
+                   
                     stopwatch.Stop();
                     //Trace.WriteLine($"Plugins updated: {stopwatch.ElapsedMilliseconds}ms");
                     await Task.Delay(100, token);
@@ -143,15 +149,6 @@ namespace InfoPanel.Monitors
             catch (Exception ex)
             {
                 Logger.Error(ex, "Exception during PluginMonitor work");
-            }
-            finally
-            {
-                foreach (var loadedPluginWrapper in _loadedPlugins.Values)
-                {
-                    await loadedPluginWrapper.StopAsync();
-                }
-
-                _loadedPlugins.Clear();
             }
         }
 
