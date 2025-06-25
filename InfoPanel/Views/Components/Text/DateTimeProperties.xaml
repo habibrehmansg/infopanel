@@ -52,7 +52,7 @@
                     Margin="0,0,0,5"
                     FontSize="12"
                     Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                    Text="Quick Templates:" />
+                    Text="Quick Templates" />
             </StackPanel>
 
         </Grid>
