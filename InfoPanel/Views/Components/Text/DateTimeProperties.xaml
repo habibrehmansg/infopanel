@@ -163,7 +163,7 @@
                     ToolTip="Year (2024)" />
             </WrapPanel>
 
-            <WrapPanel Margin="0,5,0,0" Visibility="{Binding ElementName=UserControlRoot, Path=IsTimeVisible, Converter={StaticResource BoolToVisConverter}}">
+            <WrapPanel Margin="0,0,0,0" Visibility="{Binding ElementName=UserControlRoot, Path=IsTimeVisible, Converter={StaticResource BoolToVisConverter}}">
                 <!--  Time Components  -->
                 <Button
                     Margin="0,0,2,2"
