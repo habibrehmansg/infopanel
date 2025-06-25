@@ -166,8 +166,9 @@ namespace InfoPanel.Views.Components
         {
             if (DataContext is Profile profile)
             {
-                if (ConfigModel.Instance.Profiles.First() == profile)
+                if(ConfigModel.Instance.Profiles.Count <= 1)
                 {
+                    _snackbarService.Show("Cannot Delete Profile", "At least one profile must remain.", ControlAppearance.Danger, null, TimeSpan.FromSeconds(3));
                     return;
                 }
 
