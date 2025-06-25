@@ -155,13 +155,18 @@ namespace InfoPanel.Monitors
             }
         }
 
+        private static readonly string[] _bundledPlugins = ["plugins\\InfoPanel.Extras"];
         internal void FindPlugins()
         {
             UnzipPluginArchives();
             //bundled plugins
             foreach (var directory in Directory.GetDirectories(FileUtil.GetBundledPluginFolder()))
             {
-                Plugins.Add(CreatePluginDescriptor(directory));
+                //whitelist plugins
+                if (_bundledPlugins.Contains(directory))
+                {
+                    Plugins.Add(CreatePluginDescriptor(directory));
+                }
             }
 
             //external plugins
