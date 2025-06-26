@@ -94,6 +94,9 @@
                         <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="Libre">
                             <Setter Property="Source" Value="/InfoPanel;component/Resources/Images/libre_icon.ico" />
                         </DataTrigger>
+                        <DataTrigger Binding="{Binding SensorType, FallbackValue=Default}" Value="Plugin">
+                            <Setter Property="Source" Value="/InfoPanel;component/Resources/Images/logo.ico" />
+                        </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </Image.Style>
