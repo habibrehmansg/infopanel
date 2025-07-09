@@ -6,19 +6,19 @@
         {
             Id = id;
             Name = name;
-            IsEmphemeralPath = isEmphemeralPath;
+            IsEphemeralPath = isEmphemeralPath;
         }
 
         public PluginContainer(string name)
         {
             Id = IdUtil.Encode(name);
             Name = name;
-            IsEmphemeralPath = false;
+            IsEphemeralPath = false;
         }
 
         public string Id { get; }
         public string Name { get; }
-        public bool IsEmphemeralPath { get; }
+        public bool IsEphemeralPath { get; }
         public List<IPluginData> Entries { get; } = [];
     }
 }

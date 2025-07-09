@@ -287,7 +287,7 @@ namespace InfoPanel.Monitors
 
         private static string BuildEntryId(PluginWrapper wrapper, IPluginContainer container, IPluginData entry)
         {
-            if(container.IsEmphemeralPath)
+            if(container.IsEphemeralPath)
             {
                 return $"/{wrapper.Id}/{entry.Id}";
             }
