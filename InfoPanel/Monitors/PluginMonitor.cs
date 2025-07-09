@@ -1,15 +1,10 @@
-﻿using Flurl.Http;
-using FlyleafLib.Plugins;
-using InfoPanel.Plugins;
+﻿using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
-using InfoPanel.ViewModels;
-using Microsoft.Win32.TaskScheduler.Fluent;
 using Serilog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -199,7 +194,7 @@ namespace InfoPanel.Monitors
                 {
                     foreach (var entry in container.Entries)
                     {
-                        var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+                        var id = BuildEntryId(wrapper, container, entry);
                         SENSORHASH.TryRemove(id, out _);
                     }
                 }
@@ -222,7 +217,7 @@ namespace InfoPanel.Monitors
                     {
                         foreach (var entry in container.Entries)
                         {
-                            var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+                            var id = BuildEntryId(wrapper, container, entry);
                             SENSORHASH[id] = new()
                             {
                                 Id = id,
@@ -252,7 +247,7 @@ namespace InfoPanel.Monitors
             {
                 foreach (var entry in container.Entries)
                 {
-                    var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+                    var id = BuildEntryId(wrapper, container, entry);
                     SENSORHASH.TryRemove(id, out _);
                 }
             }
@@ -269,7 +264,7 @@ namespace InfoPanel.Monitors
                 {
                     foreach (var entry in container.Entries)
                     {
-                        var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+                        var id = BuildEntryId(wrapper, container, entry);
                         SENSORHASH[id] = new()
                         {
                             Id = id,
@@ -290,37 +285,14 @@ namespace InfoPanel.Monitors
             }
         }
 
-        private async Task LoadPlugin(PluginWrapper wrapper)
+        private static string BuildEntryId(PluginWrapper wrapper, IPluginContainer container, IPluginData entry)
         {
-            try
+            if(container.IsEphemeralPath)
             {
-                await wrapper.Initialize();
-                Log.Information("Plugin {PluginName} loaded successfully", wrapper.Name);
+                return $"/{wrapper.Id}/{entry.Id}";
+            }
 
-                int indexOrder = 0;
-                foreach (var container in wrapper.PluginContainers)
-                {
-                    foreach (var entry in container.Entries)
-                    {
-                        var id = $"/{wrapper.Id}/{container.Id}/{entry.Id}";
-                        SENSORHASH[id] = new()
-                        {
-                            Id = id,
-                            Name = entry.Name,
-                            ContainerId = container.Id,
-                            ContainerName = container.Name,
-                            PluginId = wrapper.Id,
-                            PluginName = wrapper.Name,
-                            Data = entry,
-                            IndexOrder = indexOrder++
-                        };
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Plugin {PluginName} failed to load", wrapper.Name);
-            }
+            return $"/{wrapper.Id}/{container.Id}/{entry.Id}";
         }
 
         public static List<PluginReading> GetOrderedList()
