@@ -13,6 +13,8 @@
     Title="InfoPanel"
     Width="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.UiWidth, Mode=TwoWay}"
     Height="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.UiHeight, Mode=TwoWay}"
+    MinWidth="1300"
+    MinHeight="900"
     d:DesignHeight="900"
     d:DesignWidth="1300"
     ui:Design.Background="{DynamicResource ApplicationBackgroundBrush}"
