@@ -4,6 +4,7 @@
     {
         string Id { get; }
         string Name { get; }
+        bool IsEmphemeralPath { get; }
         List<IPluginData> Entries { get; }
     }
 }

@@ -10,7 +10,7 @@ var pluginFolder = Path.Combine(currentDirectory, "..\\..\\..\\..\\..\\InfoPanel
 var pluginPath = Path.Combine(currentDirectory, pluginFolder, "InfoPanel.Extras.dll");
 var plugins = PluginLoader.InitializePlugin(pluginPath);
 
-var targetPlugin = "system-info-plugin";
+var targetPlugin = "hwinfo-registry-plugin";
 
 var pluginInfo = PluginLoader.GetPluginInfo(pluginFolder);
 var pluginDescriptor = new PluginDescriptor(pluginPath, pluginInfo);
@@ -71,7 +71,7 @@ while (true)
                 }
                 else if (entry is IPluginSensor sensor)
                 {
-                    buffer.AppendLine($"---{sensor.Name}: {sensor.Value.ToString()}");
+                    buffer.AppendLine($"---{sensor.Name}: {sensor.Value.ToString()}{sensor.Unit}");
                 }
                 else if (entry is IPluginTable table)
                 {
