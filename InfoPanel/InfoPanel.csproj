@@ -201,13 +201,13 @@
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="FlyleafLib" Version="3.8.4" />
 		<PackageReference Include="gong-wpf-dragdrop" Version="4.0.0" />
-		<PackageReference Include="HidSharp" Version="2.1.0" />
+		<PackageReference Include="HidSharp" Version="2.6.4" />
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.3" />
+		<PackageReference Include="LibreHardwareMonitorLib" Version="0.9.5-pre506" />
 		<PackageReference Include="LibUsbDotNet" Version="2.2.75" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.10" />
-		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.6" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.6" />
-		<PackageReference Include="RAMSPDToolkit-NDD" Version="1.1.4" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.10" />
 		<PackageReference Include="SecureStore" Version="1.2.2" />
 		<PackageReference Include="Sentry" Version="5.11.1" />
 		<PackageReference Include="Serilog" Version="4.3.0" />
@@ -220,8 +220,7 @@
 		<PackageReference Include="SkiaSharp" Version="3.119.0" />
 		<PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.0" />
 		<PackageReference Include="Svg.Skia" Version="3.0.3" />
-		<PackageReference Include="System.IO.Ports" Version="9.0.6" />
-		<PackageReference Include="System.Management" Version="9.0.6" />
+		<PackageReference Include="System.IO.Ports" Version="9.0.10" />
 		<PackageReference Include="TaskScheduler" Version="2.12.1" />
 		<PackageReference Include="Topten.RichTextKit" Version="0.4.167" />
 		<PackageReference Include="WPF-UI" Version="3.1.1" />
@@ -275,6 +274,7 @@
 			<Generator>ResXFileCodeGenerator</Generator>
 			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
 		</EmbeddedResource>
+		<EmbeddedResource Include="Resources\PawnIO_setup.exe" />
 	</ItemGroup>
 
 	<ItemGroup>

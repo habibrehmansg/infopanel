@@ -2,6 +2,7 @@
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
+using InfoPanel.Utils;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Common;
 using InfoPanel.Views.Windows;
@@ -291,9 +292,10 @@ namespace InfoPanel
             HWHash.SetDelay(300);
             HWHash.Launch();
 
+            // Check PawniO status before starting LibreHardwareMonitor
             if (ConfigModel.Instance.Settings.LibreHardwareMonitor)
             {
-                LibreMonitor.Instance.SetRing0(ConfigModel.Instance.Settings.LibreHardMonitorRing0);
+                CheckAndPromptPawnIO();
                 await LibreMonitor.Instance.StartAsync();
             }
 
@@ -365,6 +367,74 @@ namespace InfoPanel
         private void App_Exit(object sender, ExitEventArgs e)
         {
 
+        }
+
+        /// <summary>
+        /// Checks PawniO installation status and prompts user to install/update if needed.
+        /// </summary>
+        private static void CheckAndPromptPawnIO()
+        {
+            try
+            {
+                if (PawnIoHelper.IsInstalled && !PawnIoHelper.RequiresUpdate)
+                {
+                    Logger.Information("PawniO is installed and up to date: {Version}", PawnIoHelper.Version);
+                    return;
+                }
+
+                string message;
+                string title = "PawniO Driver";
+
+                if (PawnIoHelper.RequiresUpdate)
+                {
+                    message = $"PawniO is outdated (v{PawnIoHelper.Version}).\n\n" +
+                             $"LibreHardwareMonitor requires PawniO v{2}.0.0.0 or higher for low-level hardware access.\n\n" +
+                             "Would you like to update it now?";
+                    Logger.Information("PawniO update available: current v{Current}, required v{Required}",
+                        PawnIoHelper.Version, "2.0.0.0");
+                }
+                else
+                {
+                    message = "PawniO is not installed.\n\n" +
+                             "LibreHardwareMonitor requires PawniO for low-level hardware access (CPU temperatures, voltages, etc.).\n\n" +
+                             "Would you like to install it now?";
+                    Logger.Information("PawniO is not installed");
+                }
+
+                var result = System.Windows.MessageBox.Show(
+                    message,
+                    title,
+                    System.Windows.MessageBoxButton.OKCancel,
+                    MessageBoxImage.Question);
+
+                if (result == System.Windows.MessageBoxResult.OK)
+                {
+                    Logger.Information("User chose to install/update PawniO");
+                    bool success = PawnIoHelper.InstallOrUpdate();
+
+                    if (success && PawnIoHelper.IsInstalled)
+                    {
+                        Logger.Information("PawniO installation/update successful");
+                        System.Windows.MessageBox.Show(
+                            $"PawniO v{PawnIoHelper.Version} has been installed successfully.",
+                            "Installation Complete",
+                            System.Windows.MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                    }
+                    else if (!success)
+                    {
+                        Logger.Warning("PawniO installation/update failed or was cancelled");
+                    }
+                }
+                else
+                {
+                    Logger.Information("User cancelled PawniO installation/update");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error checking or installing PawniO");
+            }
         }
 
         public static async Task CleanShutDown()

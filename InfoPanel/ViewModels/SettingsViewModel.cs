@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -27,8 +28,20 @@ namespace InfoPanel.ViewModels
                 new UiScaleOption { Display = "120%", Value = 1.2f }
             ];
 
+        [ObservableProperty]
+        private string _pawnIOStatus = "Click to check";
+
         public SettingsViewModel()
         {
+        }
+
+        /// <summary>
+        /// Refreshes the PawniO installation status.
+        /// </summary>
+        public void RefreshPawnIOStatus()
+        {
+            PawnIoHelper.RefreshStatus();
+            PawnIOStatus = PawnIoHelper.StatusMessage;
         }
 
         public ObservableCollection<string> ComPorts

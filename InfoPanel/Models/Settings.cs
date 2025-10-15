@@ -47,9 +47,6 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _libreHardwareMonitor = true;
 
-        [ObservableProperty]
-        private bool _libreHardMonitorRing0 = true;
-
         private readonly ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = [];
 
         public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices

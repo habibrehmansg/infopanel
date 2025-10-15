@@ -180,13 +180,12 @@ namespace InfoPanel
             {
                 ValidateStartup();
             }
-            else if (e.PropertyName == nameof(Settings.LibreHardwareMonitor) || e.PropertyName == nameof(Settings.LibreHardMonitorRing0))
+            else if (e.PropertyName == nameof(Settings.LibreHardwareMonitor))
             {
                 await LibreMonitor.Instance.StopAsync();
 
                 if (Settings.LibreHardwareMonitor)
                 {
-                    LibreMonitor.Instance.SetRing0(Settings.LibreHardMonitorRing0);
                     await LibreMonitor.Instance.StartAsync();
                 }
             }
@@ -391,7 +390,6 @@ namespace InfoPanel
                             Settings.GridLinesSpacing = settings.GridLinesSpacing;
 
                             Settings.LibreHardwareMonitor = settings.LibreHardwareMonitor;
-                            Settings.LibreHardMonitorRing0 = settings.LibreHardMonitorRing0;
                             Settings.WebServer = settings.WebServer;
                             Settings.WebServerListenIp = settings.WebServerListenIp;
                             Settings.WebServerListenPort = settings.WebServerListenPort;
