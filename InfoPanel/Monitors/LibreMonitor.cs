@@ -34,14 +34,7 @@ namespace InfoPanel.Monitors
         private static readonly ConcurrentDictionary<string, IHardware> HEADER_DICT = new();
         public static readonly ConcurrentDictionary<string, ISensor> SENSORHASH = new();
 
-        private bool _useRing0 = true;
-
         private LibreMonitor() { }
-
-        public void SetRing0(bool useRing0)
-        {
-            _useRing0 = useRing0;
-        }
 
         protected override async Task DoWorkAsync(CancellationToken token)
         {
@@ -62,14 +55,7 @@ namespace InfoPanel.Monitors
                     IsStorageEnabled = true,
                 };
 
-                if (_useRing0)
-                {
-                    computer.Open();
-                }
-                else
-                {
-                    computer.OpenWithoutRing0();
-                }
+                computer.Open();
 
                 stopwatch.Stop();
                 Logger.Information("LibreHardwareMonitor computer opened in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);

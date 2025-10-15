@@ -322,7 +322,7 @@
 
             <ui:CardControl Margin="0,10,0,0" Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitor, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <ui:CardControl.Icon>
-                    <ui:SymbolIcon Symbol="HardDrive20" />
+                    <ui:SymbolIcon Symbol="Chess20" />
                 </ui:CardControl.Icon>
                 <ui:CardControl.Header>
                     <Grid>
@@ -334,16 +334,30 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Game anti-cheat compatibility" />
+                                Text="PawniO Driver" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                Text="Enabling this will cause some sensors to stop working but may improve game anti-cheat compatibility." />
+                                Text="Required for low-level hardware access (CPU temps, voltages, etc.). Click Check Status to verify installation." />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardMonitorRing0, Converter={StaticResource InverseBooleanConverter}}" />
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock
+                        x:Name="TextBlockPawnIOStatus"
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding ViewModel.PawnIOStatus}" />
+                    <ui:Button
+                        x:Name="ButtonCheckPawnIO"
+                        Width="150"
+                        Margin="0,0,0,0"
+                        Click="ButtonCheckPawnIO_Click"
+                        Content="Check Status" />
+                </StackPanel>
             </ui:CardControl>
         </StackPanel>
 
