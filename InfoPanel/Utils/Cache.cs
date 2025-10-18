@@ -128,9 +128,8 @@ namespace InfoPanel
 
             var cachedImage = new LockedImage(path, imageDisplayItem);
 
-            ImageCache.Set(path, cachedImage, new MemoryCacheEntryOptions
+            var cacheOptions = new MemoryCacheEntryOptions
             {
-                SlidingExpiration = TimeSpan.FromSeconds(10),
                 PostEvictionCallbacks = {
                     new PostEvictionCallbackRegistration
                     {
@@ -144,9 +143,17 @@ namespace InfoPanel
                         }
                     }
                 }
-            });
+            };
 
-            Logger.Debug("Image '{Path}' loaded successfully", path);
+            // Only set expiration for non-persistent images
+            if (imageDisplayItem?.PersistentCache != true)
+            {
+                cacheOptions.SlidingExpiration = TimeSpan.FromSeconds(10);
+            }
+
+            ImageCache.Set(path, cachedImage, cacheOptions);
+
+            Logger.Debug("Image '{Path}' loaded successfully (Persistent: {Persistent})", path, imageDisplayItem?.PersistentCache ?? false);
         }
 
         public static void InvalidateImage(ImageDisplayItem imageDisplayItem)

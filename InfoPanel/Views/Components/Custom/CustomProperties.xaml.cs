@@ -99,7 +99,10 @@ namespace InfoPanel.Views.Components
                             {
                                 var fileName = Path.GetFileName(file);
                                 File.Copy(file, Path.Combine(imageFolder, fileName), true);
-                                var imageDisplayItem = new ImageDisplayItem(fileName, profile, fileName, true);
+                                var imageDisplayItem = new ImageDisplayItem(fileName, profile, fileName, true)
+                                {
+                                    PersistentCache = true // Gauge images should not expire
+                                };
 
                                 customDisplayItem.Images.Add(imageDisplayItem);
                             }

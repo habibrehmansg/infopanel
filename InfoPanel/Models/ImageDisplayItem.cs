@@ -146,6 +146,17 @@ namespace InfoPanel.Models
             }
         }
 
+        private bool _persistentCache = false;
+        [System.Xml.Serialization.XmlIgnore]
+        public bool PersistentCache
+        {
+            get { return _persistentCache; }
+            set
+            {
+                SetProperty(ref _persistentCache, value);
+            }
+        }
+
         private int _scale = 100;
         public int Scale
         {
