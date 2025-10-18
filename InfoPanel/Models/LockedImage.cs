@@ -623,7 +623,8 @@ namespace InfoPanel.Models
                 if (bitmapFrame.Image == null)
                 {
                     using var bitmap = GetSKBitmapFromSK(frame);
-                    using var resizedBitmap = bitmap?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
+                    //using var resizedBitmap = bitmap?.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
+                    using var resizedBitmap = bitmap?.Resize(new SKImageInfo(targetWidth, targetHeight), new SKSamplingOptions(SKCubicResampler.Mitchell));
 
                     if (grContext != null && cache && resizedBitmap != null)
                     {
