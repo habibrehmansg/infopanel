@@ -133,7 +133,8 @@ namespace InfoPanel.ViewModels
                             Description = [
                                 "New high-performance graphics engine for smoother animations.",
                                 "Auto-start delay option and better plugin support.",
-                                "Installer preserves your settings and plugin configurations."
+                                "Installer preserves your settings and plugin configurations.",
+                                "Updated LibreHardwareMonitor to resolve WinRing0 compatibility issues."
                                 ] }
                             ]
                 };
