@@ -338,6 +338,7 @@ namespace InfoPanel.Models
             foreach (var imageDisplayItem in Images)
             {
                 imageDisplayItem.SetProfile(profile);
+                imageDisplayItem.PersistentCache = true; // Ensure gauge images never expire
             }
         }
 
@@ -352,6 +353,7 @@ namespace InfoPanel.Models
             {
                 var cloneImage = (ImageDisplayItem) imageDisplayItem.Clone();
                 cloneImage.Guid = Guid.NewGuid();
+                cloneImage.PersistentCache = true; // Ensure gauge images never expire
                 clone.Images.Add(cloneImage);
             }
 
