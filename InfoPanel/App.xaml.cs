@@ -213,11 +213,46 @@ namespace InfoPanel
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
 
             Process proc = Process.GetCurrentProcess();
-            if (Process.GetProcesses().Where(p => p.ProcessName == proc.ProcessName).Count() > 1)
+            var otherInstances = Process.GetProcesses()
+                .Where(p => p.ProcessName == proc.ProcessName && p.Id != proc.Id)
+                .ToList();
+
+            if (otherInstances.Count > 0)
             {
-                System.Windows.MessageBox.Show("InfoPanel is already running. Check your tray area if it is minimized.", "Error", System.Windows.MessageBoxButton.OK, MessageBoxImage.Exclamation);
-                Environment.Exit(0);
-                return;
+                var result = System.Windows.MessageBox.Show(
+                    $"Another instance of InfoPanel is running (Process ID: {string.Join(", ", otherInstances.Select(p => p.Id))}).\n\n" +
+                    "This may be from a previous crash or hung process.\n\n" +
+                    "Would you like to terminate the other instance(s) and continue?",
+                    "InfoPanel Already Running",
+                    System.Windows.MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == System.Windows.MessageBoxResult.Yes)
+                {
+                    Logger.Information("User chose to terminate {Count} other InfoPanel instance(s)", otherInstances.Count);
+                    foreach (var otherProcess in otherInstances)
+                    {
+                        try
+                        {
+                            Logger.Information("Terminating process ID: {ProcessId}", otherProcess.Id);
+                            otherProcess.Kill();
+                            otherProcess.WaitForExit(5000); // Wait up to 5 seconds for process to exit
+                            Logger.Information("Successfully terminated process ID: {ProcessId}", otherProcess.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error(ex, "Failed to terminate process ID: {ProcessId}", otherProcess.Id);
+                        }
+                    }
+                    Logger.Information("Continuing with InfoPanel startup after terminating other instances");
+                    // Continue with startup
+                }
+                else
+                {
+                    Logger.Information("User chose not to terminate other instances, exiting");
+                    Environment.Exit(0);
+                    return;
+                }
             }
 
             ShutdownMode = ShutdownMode.OnMainWindowClose;
