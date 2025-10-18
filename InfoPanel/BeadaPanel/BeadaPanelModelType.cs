@@ -23,6 +23,12 @@ namespace InfoPanel.BeadaPanel
         Model2 = 17,
         Model2W = 18,
         Model7S = 19,
-        Model5S = 20
+        Model5S = 20,
+        Model8 = 21,
+        Model11 = 22,
+        Model9 = 23,
+        ModelY = 24,
+        ModelX = 25,
+        ModelZ = 26,
     }
 }
