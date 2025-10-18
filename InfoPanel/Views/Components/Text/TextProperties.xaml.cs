@@ -99,6 +99,9 @@ namespace InfoPanel.Views.Components
                     return;
                 }
 
+                // Save current FontStyle before clearing to prevent it from being nullified
+                string savedFontStyle = item.FontStyle;
+
                 control.FontStyles.Clear();
                 var styles = SKFontManager.Default.GetFontStyles(fontName);
 
@@ -110,7 +113,12 @@ namespace InfoPanel.Views.Components
 
                 if (control.FontStyles.Count > 0)
                 {
-                    if (string.IsNullOrEmpty(item.FontStyle) || !control.FontStyles.Contains(item.FontStyle))
+                    // Try to restore saved style if it's valid for the new font
+                    if (!string.IsNullOrEmpty(savedFontStyle) && control.FontStyles.Contains(savedFontStyle))
+                    {
+                        item.FontStyle = savedFontStyle;
+                    }
+                    else if (string.IsNullOrEmpty(item.FontStyle) || !control.FontStyles.Contains(item.FontStyle))
                     {
                         string requestedFont = "";
                         //legacy

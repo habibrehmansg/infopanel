@@ -169,7 +169,7 @@
                         Grid.Column="1"
                         ItemsSource="{Binding InstalledFonts, RelativeSource={RelativeSource AncestorType=local:TextProperties}}"
                         ScrollViewer.VerticalScrollBarVisibility="Visible"
-                        SelectedValue="{Binding Font}">
+                        SelectedValue="{Binding TextDisplayItem.Font, RelativeSource={RelativeSource AncestorType=local:TextProperties}}">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock FontFamily="{Binding Converter={StaticResource FontFamilyConverter}}" Text="{Binding}" />
@@ -187,7 +187,7 @@
                         Grid.Column="1"
                         ItemsSource="{Binding FontStyles, RelativeSource={RelativeSource AncestorType=local:TextProperties}}"
                         ScrollViewer.VerticalScrollBarVisibility="Visible"
-                        SelectedValue="{Binding FontStyle}">
+                        SelectedValue="{Binding TextDisplayItem.FontStyle, RelativeSource={RelativeSource AncestorType=local:TextProperties}}">
                         <!--<ComboBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock FontFamily="{Binding Converter={StaticResource FontFamilyConverter}}" Text="{Binding}" />
