@@ -12,6 +12,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 
@@ -352,9 +353,12 @@ namespace InfoPanel.TuringPanel
                     return false;  // Changed: Treat zero-length responses as failures
                 }
 
-                // Flush any remaining data from the buffer
-                // This is crucial for reliable communications and matches the Python implementation
-                ReadFlush();
+                // Flush any remaining data from the buffer using native ReadFlush
+                // This matches the original implementation (GClass14.cs:148)
+                if (_reader != null)
+                {
+                    _reader.ReadFlush();
+                }
 
                 return true;
             }
@@ -613,9 +617,25 @@ namespace InfoPanel.TuringPanel
 
             try
             {
+                // Validate response status byte (matches GClass14.cs:547 - checks byte 1 == 200)
+                // Note: Some devices may use byte 8 instead, so check both
+                if (response.Length > 1 && response[1] != 200 && response.Length > 8 && response[8] != 200)
+                {
+                    Logger.Warning("Storage info response may be invalid - status byte check failed. Response: {Response}",
+                        BitConverter.ToString([.. response.Take(20)]));
+                }
+
                 uint total = BitConverter.ToUInt32(response, 8);
                 uint used = BitConverter.ToUInt32(response, 12);
                 uint valid = BitConverter.ToUInt32(response, 16);
+
+                // Additional validation: if all values are 0, the response is likely invalid
+                if (total == 0 && used == 0 && valid == 0)
+                {
+                    var error = "Received invalid storage data (all zeros) - device may not be responding properly";
+                    Logger.Warning(error);
+                    throw new TuringDeviceException(error);
+                }
 
                 var storageInfo = new StorageInfo
                 {
@@ -850,67 +870,92 @@ namespace InfoPanel.TuringPanel
                 Logger.Error(ex, "Error writing file contents");
                 return false;
             }
-        }// Updated play methods with better naming and automatic content type detection
+        }
+
+        // Play file from device storage
+        // Sequence: Clear → Set Brightness → Play command
+        // Uses command 110 for H264 videos, command 113 for PNG images (GClass14.cs:532-588)
         public bool PlayFile(string filePath)
         {
-            // Automatically select the appropriate play method based on file type
             string extension = Path.GetExtension(filePath).ToLower();
 
             try
             {
-                // Match Python's play-select implementation
-                // First, stop any existing playback
+                Logger.Debug("Playing file from device storage: {FilePath}", filePath);
+
+                // 1. Clear screen to remove old content
                 try
                 {
-                    StopPlay();
+                    SendClearImageCommand();
+                    Logger.Debug("Screen cleared");
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning(ex, "Failed to stop playback");
+                    Logger.Warning(ex, "Failed to clear screen, continuing anyway");
                 }
 
-                // Don't change brightness during playback - respect user's setting
+                // Small delay for clear command to process
+                Thread.Sleep(100);
 
-                if (extension == ".h264")
+                // 2. Set brightness to ensure screen is visible (not brightness 0)
+                try
                 {
-                    // For H264 files, follow Python's sequence
-                    PlayVideoWithCommand(filePath, 98); // First play attempt
+                    SendBrightnessCommand(100); // Full brightness for playback
+                    Logger.Debug("Brightness set to 100");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Failed to set brightness, continuing anyway");
                 }
 
-                // Send command 111 and 112 sequence
-                byte[] cmdPacket111 = BuildCommandPacketHeader(111);
-                WriteToDevice(EncryptCommandPacket(cmdPacket111));
+                // Small delay for brightness command to process
+                Thread.Sleep(100);
 
-                byte[] cmdPacket112 = BuildCommandPacketHeader(112);
-                WriteToDevice(EncryptCommandPacket(cmdPacket112));
+                // 3. Send commands 111 and 112 to prepare device for playback
+                // These commands may be needed to switch the device into playback mode
+                try
+                {
+                    Logger.Debug("Sending preparation commands (111, 112)");
+                    byte[] cmdPacket111 = BuildCommandPacketHeader(111);
+                    WriteToDevice(EncryptCommandPacket(cmdPacket111));
+                    Thread.Sleep(50);
 
-                // Clear the image
-                SendClearImageCommand();
+                    byte[] cmdPacket112 = BuildCommandPacketHeader(112);
+                    WriteToDevice(EncryptCommandPacket(cmdPacket112));
+                    Thread.Sleep(50);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Failed to send preparation commands, continuing anyway");
+                }
 
-                bool finalSuccess = false;
+                // 4. Send play command based on file type
+                bool success;
                 if (extension == ".h264")
                 {
-                    // For H264, use command 110
-                    finalSuccess = PlayVideoWithCommand(filePath, 110);
+                    // Command 110 for video playback (GClass14.cs:561-588)
+                    Logger.Debug("Sending play command (110) for video");
+                    success = PlayVideoWithCommand(filePath, 110);
                 }
                 else if (extension == ".png")
                 {
-                    // For PNG, use command 113
-                    finalSuccess = PlayImageWithCommand(filePath, 113);
+                    // Command 113 for image playback (GClass14.cs:532-559)
+                    Logger.Debug("Sending play command (113) for image");
+                    success = PlayImageWithCommand(filePath, 113);
                 }
                 else
                 {
                     var error = $"Unsupported file type: {extension}. Supported types: .png, .h264";
                     Logger.Debug("Unsupported file type: {Extension}", extension);
-                    Logger.Debug("Supported file types: .png, .h264");
                     throw new TuringDeviceException(error);
                 }
 
-                Logger.Information("File playback complete.");
+                if (!success)
+                {
+                    throw new TuringDeviceException("Play command failed");
+                }
 
-                if (!finalSuccess)
-                    throw new TuringDeviceException("Failed to play file");
-
+                Logger.Information("File playback initiated successfully");
                 return true;
             }
             catch (TuringDeviceException)
@@ -993,7 +1038,30 @@ namespace InfoPanel.TuringPanel
             // Copy the path bytes to the packet starting at position 16
             Buffer.BlockCopy(pathBytes, 0, packet, 16, length);
 
-            return WriteToDevice(EncryptCommandPacket(packet));
+            // Send command and get response
+            // Note: Play commands for device storage may not return standard status codes
+            byte[] response;
+            if (!WriteToDevice(EncryptCommandPacket(packet), COMMAND_TIMEOUT, out response))
+            {
+                Logger.Warning("Play command {CommandId} failed - no response from device", commandId);
+                return false;
+            }
+
+            // Log response for debugging, but don't enforce strict validation
+            // Play commands may work even without standard success codes
+            if (response != null && response.Length > 8)
+            {
+                Logger.Debug("Play command {CommandId} response: byte[0]={B0}, byte[1]={B1}, byte[8]={B8}",
+                    commandId, response[0], response[1], response[8]);
+            }
+            else if (response != null)
+            {
+                Logger.Debug("Play command {CommandId} response: length={Length}", commandId, response.Length);
+            }
+
+            // Accept any response as success - actual playback errors will show as exceptions
+            Logger.Information("Play command {CommandId} sent successfully", commandId);
+            return true;
         }
         public bool StopPlay()
         {

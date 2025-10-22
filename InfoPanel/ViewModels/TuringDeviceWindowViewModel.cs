@@ -316,42 +316,24 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
             IsLoading = true;
             LoadingText = $"Playing {file.Name}...";
 
-            // Always stop current playback first
+            // Stop current playback first (matches original implementation)
             try
             {
                 _turingDevice.StopPlay();
-                _turingDevice.SendSyncCommand();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Warning: Failed to stop playback: {ex.Message}");
+                Logger.Debug(ex, "Failed to stop playback (may not be playing)");
             }
 
-            await Task.Delay(200);
+            // Small delay for device to process stop command
+            await Task.Delay(100);
 
-            // Clear the screen
-            try
-            {
-                _turingDevice.ClearScreen();
-                _turingDevice.SendBrightnessCommand(100);
-                _turingDevice.SendSyncCommand();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Warning: Failed to clear screen: {ex.Message}");
-            }
-
-            // Small delay to ensure commands are processed
-            await Task.Delay(200);
-
-            // Play video file from device storage
+            // Play the file - single command, no extra stop/clear sequences
+            // The original implementation (GClass14.cs:532-588) just sends the play command
             try
             {
                 _turingDevice.PlayFile(file.Name);
-                _turingDevice.SendSyncCommand();
-
-                await Task.Delay(200);
-
                 CurrentlyPlaying = file.Name;
                 ShowStatus("Playing", $"Now playing: {file.Name}", InfoBarSeverity.Success);
             }
