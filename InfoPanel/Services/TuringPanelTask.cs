@@ -36,7 +36,12 @@ namespace InfoPanel.Services
                 BackgroundTask deviceTask;
                 switch (modelInfo.Model)
                 {
+                    case TuringPanelModel.REV_8INCH_USB:
                     case TuringPanelModel.REV_88INCH_USB:
+                    case TuringPanelModel.REV_92INCH_USB:
+                    case TuringPanelModel.REV_5INCH_USB:
+                    case TuringPanelModel.REV_16INCH_USB:
+                    case TuringPanelModel.REV_21INCH_USB:
                         deviceTask = new TuringPanelUsbDeviceTask(device);
                         break;
                     case TuringPanelModel.TURING_3_5:
