@@ -38,7 +38,7 @@ jobs:
 
     - name: Build InfoPanel
       run: |
-        dotnet restore --locked-mode
+        dotnet restore
         dotnet publish InfoPanel/InfoPanel.csproj -c Release -r win-x64 --self-contained -p:PublishProfile=FolderProfile -p:Platform=x64
 
     - name: Install and Compile Inno Setup Installer
