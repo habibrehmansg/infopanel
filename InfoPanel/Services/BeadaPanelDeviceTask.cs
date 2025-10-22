@@ -136,7 +136,7 @@ namespace InfoPanel.Services
                 Logger.Information("BeadaPanelDevice {Device}: {PanelInfo}", _device, panelInfo);
                 _device.UpdateRuntimeProperties(panelInfo: panelInfo);
 
-                bool writeThroughMode = panelInfo.Platform == 1 || panelInfo.Platform == 2;
+                bool writeThroughMode = (panelInfo.Platform == 1 || panelInfo.Platform == 2) && panelInfo.ModelInfo != null;
 
                 if (writeThroughMode)
                 {
