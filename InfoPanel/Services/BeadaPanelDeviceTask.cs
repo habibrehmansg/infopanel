@@ -59,7 +59,7 @@ namespace InfoPanel.Services
                     // Always query first
                     var panelInfo = await BeadaPanelHelper.GetPanelInfoAsync(deviceReg);
 
-                    if(panelInfo == null)
+                    if (panelInfo == null)
                     {
                         continue; // Skip this device if we can't get info
                     }
@@ -67,12 +67,12 @@ namespace InfoPanel.Services
                     var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
                     var deviceLocation = deviceReg.DeviceProperties["LocationInformation"] as string;
 
-                    if(string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
+                    if (string.IsNullOrEmpty(deviceId) || string.IsNullOrEmpty(deviceLocation))
                     {
                         continue; // Skip if we can't get ID or location
                     }
 
-                   if(_device.IsMatching(deviceId, deviceLocation, panelInfo))
+                    if (_device.IsMatching(deviceId, deviceLocation, panelInfo))
                     {
                         Logger.Information("BeadaPanelDevice {Device}: Found matching device {DevicePath}", _device, deviceReg.DevicePath);
                         return deviceReg;
@@ -87,7 +87,7 @@ namespace InfoPanel.Services
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
-            
+
             try
             {
                 var usbRegistry = await FindTargetDeviceAsync();
@@ -100,7 +100,7 @@ namespace InfoPanel.Services
 
                 using var usbDevice = usbRegistry.Device;
 
-                if(usbDevice == null)
+                if (usbDevice == null)
                 {
                     return;
                 }
@@ -138,8 +138,16 @@ namespace InfoPanel.Services
 
                 bool writeThroughMode = panelInfo.Platform == 1 || panelInfo.Platform == 2;
 
-                _panelWidth = panelInfo.ModelInfo?.Width ?? panelInfo.ResolutionX;
-                _panelHeight = panelInfo.ModelInfo?.Height ?? panelInfo.ResolutionY;
+                if (writeThroughMode)
+                {
+                    _panelWidth = panelInfo.ModelInfo.Width;
+                    _panelHeight = panelInfo.ModelInfo.Height;
+                }
+                else
+                {
+                    _panelWidth = panelInfo.ResolutionX;
+                    _panelHeight = panelInfo.ResolutionY;
+                }
 
                 var startTag = new PanelLinkMessage
                 {
@@ -259,7 +267,8 @@ namespace InfoPanel.Services
                                     }
                                 }
                             }
-                        }catch(Exception e)
+                        }
+                        catch (Exception e)
                         {
                             Logger.Error(e, "BeadaPanelDevice {Device}: Error in send task", _device);
                         }
