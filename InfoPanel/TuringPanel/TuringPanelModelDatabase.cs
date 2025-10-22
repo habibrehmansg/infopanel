@@ -19,9 +19,9 @@ namespace InfoPanel.TuringPanel
             [TuringPanelModel.REV_88INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_88INCH_USB, Name = "Turing Smart Screen 8.8\" Rev 1.1", Width = 480, Height = 1920, VendorId = 0x1cbe, ProductId = 0x0088, IsUsbDevice = true },
             [TuringPanelModel.REV_8INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_8INCH_USB, Name = "Turing Smart Screen 8\"", Width = 800, Height = 1280, VendorId = 0x1cbe, ProductId = 0x0080, IsUsbDevice = true },
             [TuringPanelModel.REV_92INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_92INCH_USB, Name = "Turing Smart Screen 9.2\"", Width = 464, Height = 1920, VendorId = 0x1cbe, ProductId = 0x0092, IsUsbDevice = true },
-            [TuringPanelModel.REV_5INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_92INCH_USB, Name = "Turing Smart Screen 5\"", Width = 720, Height = 1280, VendorId = 0x1cbe, ProductId = 0x0050, IsUsbDevice = true },
-            [TuringPanelModel.REV_16INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_92INCH_USB, Name = "Turing Smart Screen 1.6\"", Width = 400, Height = 400, VendorId = 0x1cbe, ProductId = 0x0016, IsUsbDevice = true },
-            [TuringPanelModel.REV_21INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_92INCH_USB, Name = "Turing Smart Screen 2.1\"", Width = 480, Height = 480, VendorId = 0x1cbe, ProductId = 0x0021, IsUsbDevice = true },
+            [TuringPanelModel.REV_5INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_5INCH_USB, Name = "Turing Smart Screen 5\"", Width = 720, Height = 1280, VendorId = 0x1cbe, ProductId = 0x0050, IsUsbDevice = true },
+            [TuringPanelModel.REV_16INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_16INCH_USB, Name = "Turing Smart Screen 1.6\"", Width = 400, Height = 400, VendorId = 0x1cbe, ProductId = 0x0016, IsUsbDevice = true },
+            [TuringPanelModel.REV_21INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_21INCH_USB, Name = "Turing Smart Screen 2.1\"", Width = 480, Height = 480, VendorId = 0x1cbe, ProductId = 0x0021, IsUsbDevice = true },
         };
 
         public static bool TryGetModelInfo(int vendorId, int productId, bool isUsbDevice, out TuringPanelModelInfo modelInfo)
