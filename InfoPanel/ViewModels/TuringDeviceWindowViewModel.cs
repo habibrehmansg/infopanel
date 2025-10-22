@@ -3,6 +3,8 @@ using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Models;
 using InfoPanel.TuringPanel;
 using InfoPanel.Views.Windows;
+using LibUsbDotNet;
+using LibUsbDotNet.Main;
 using Microsoft.Win32;
 using Serilog;
 using System;
@@ -14,7 +16,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using Wpf.Ui.Controls;
 using MessageBox = System.Windows.MessageBox;
-using static InfoPanel.ViewModels.SettingsViewModel;
 
 namespace InfoPanel.ViewModels;
 
@@ -112,6 +113,31 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         Task.Run(InitializeDevice);
     }
 
+    private async Task<UsbRegistry?> FindTargetDeviceAsync()
+    {
+        foreach (UsbRegistry deviceReg in UsbDevice.AllDevices)
+        {
+            if (deviceReg.Vid == 0x1cbe && deviceReg.Pid == 0x0088) // VENDOR_ID and PRODUCT_ID from TuringDevice
+            {
+                var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
+
+                if (string.IsNullOrEmpty(deviceId))
+                {
+                    Logger.Debug("TuringPanelDevice {Device}: Unable to get DeviceId for device {DevicePath}", _device, deviceReg.DevicePath);
+                    continue;
+                }
+
+                if (_device.IsMatching(deviceId))
+                {
+                    Logger.Information("TuringPanelDevice {Device}: Found matching device with DeviceId {DeviceId}", _device, deviceId);
+                    return deviceReg;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private async Task InitializeDevice()
     {
         try
@@ -122,11 +148,20 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
                 LoadingText = "Connecting to device...";
             });
 
+            var usbRegistry = await FindTargetDeviceAsync();
+
+            if (usbRegistry == null)
+            {
+                Logger.Warning("TuringPanelDevice {Device}: USB Device not found.", _device);
+                _device.UpdateRuntimeProperties(errorMessage: "Device not found");
+                return;
+            }
+
             _turingDevice = new TuringDevice();
             
             try
             {
-                _turingDevice.Initialize();
+                _turingDevice.Initialize(usbRegistry);
                 Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Connected");
                 await RefreshStorage();
             }

@@ -46,13 +46,10 @@ namespace InfoPanel.TuringPanel
     {
         private static readonly ILogger Logger = Log.ForContext<TuringDevice>();
         
-        private const int VENDOR_ID = 0x1cbe;
-        private const int PRODUCT_ID = 0x0088;
         private const int CMD_PACKET_SIZE = 500;
         private const int FULL_PACKET_SIZE = 512;
         private const int COMMAND_TIMEOUT = 2000;
         private const int MAX_RETRIES = 20;
-        private const int CHUNK_SIZE = 1048576; // 1MB
         private static readonly byte[] DES_KEY_BYTES = Encoding.ASCII.GetBytes("slv3tuzx");
         private static readonly byte[] MAGIC_BYTES = { 161, 26 };
 
@@ -70,55 +67,6 @@ namespace InfoPanel.TuringPanel
         {
             _ffmpegPath = ffmpegPath;
             _cipher = new BufferedBlockCipher(new CbcBlockCipher(new DesEngine()));
-        }
-
-        public bool Initialize()
-        {
-            Logger.Debug("Initializing Turing Device...");
-
-            try
-            {
-                UsbDeviceFinder finder = new UsbDeviceFinder(VENDOR_ID, PRODUCT_ID);
-                _device = UsbDevice.OpenUsbDevice(finder);
-
-                if (_device == null)
-                {
-                    var error = "Device not found. Please ensure the Turing device is connected.";
-                    Logger.Error(error);
-                    throw new TuringDeviceException(error);
-                }
-
-                Logger.Information("Device found.");
-
-                if (_device is IUsbDevice wholeUsbDevice)
-                {
-                    wholeUsbDevice.SetConfiguration(1);
-                    wholeUsbDevice.ClaimInterface(0);
-                }
-
-                _reader = _device.OpenEndpointReader(ReadEndpointID.Ep01);
-                _writer = _device.OpenEndpointWriter(WriteEndpointID.Ep01);
-
-                if (_reader == null || _writer == null)
-                {
-                    var error = "Failed to open USB endpoints.";
-                    Logger.Error(error);
-                    throw new TuringDeviceException(error);
-                }
-
-                Logger.Information("Device initialized successfully.");
-                return true;
-            }
-            catch (TuringDeviceException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                var error = "Error initializing device";
-                Logger.Error(ex, error);
-                throw new TuringDeviceException(error, ex);
-            }
         }
 
         public bool Initialize(UsbRegistry usbRegistry)
