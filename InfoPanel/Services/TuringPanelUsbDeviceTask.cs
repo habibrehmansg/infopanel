@@ -19,9 +19,9 @@ namespace InfoPanel.Services
     {
         private static readonly ILogger Logger = Log.ForContext<TuringPanelUsbDeviceTask>();
         private readonly TuringPanelDevice _device;
-        private readonly int _panelWidth = 480;
-        private readonly int _panelHeight = 1920;
-        private static int _maxSize = 1024 * 1024; // 1MB
+        private readonly int _panelWidth;
+        private readonly int _panelHeight;
+        private static readonly int _maxSize = 1024 * 1024; // 1MB
         private DateTime _downgradeRenderingUntil = DateTime.MinValue;
 
         public TuringPanelDevice Device => _device;
@@ -29,6 +29,14 @@ namespace InfoPanel.Services
         public TuringPanelUsbDeviceTask(TuringPanelDevice device)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
+
+            if(device.ModelInfo == null)
+            {
+                throw new ArgumentException("Device model info cannot be null", nameof(device));
+            }
+
+            _panelWidth = device.ModelInfo.Width;
+            _panelHeight = device.ModelInfo.Height;
         }
 
         public byte[]? GenerateLcdBuffer()
@@ -105,9 +113,15 @@ namespace InfoPanel.Services
 
         private async Task<UsbRegistry?> FindTargetDeviceAsync()
         {
+            if(_device.ModelInfo == null)
+            {
+                Logger.Error("TuringPanelDevice {Device}: ModelInfo is null", _device);
+                return null;
+            }
+
             foreach (UsbRegistry deviceReg in UsbDevice.AllDevices)
             {
-                if (deviceReg.Vid == 0x1cbe && deviceReg.Pid == 0x0088) // VENDOR_ID and PRODUCT_ID from TuringDevice
+                if (deviceReg.Vid == _device.ModelInfo.VendorId && deviceReg.Pid == _device.ModelInfo.ProductId) // VENDOR_ID and PRODUCT_ID from TuringDevice
                 {
                     var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
 

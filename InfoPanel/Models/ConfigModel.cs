@@ -20,13 +20,15 @@ using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
 using Timer = System.Threading.Timer;
 using InfoPanel.Services;
+using InfoPanel.TuringPanel;
+using HidSharp;
 
 namespace InfoPanel
 {
     public sealed class ConfigModel : ObservableObject
     {
         private static readonly ILogger Logger = Log.ForContext<ConfigModel>();
-        private const int CurrentVersion = 123;
+        private const int CurrentVersion = 131;
         private const string RegistryRunKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
         private static readonly Lazy<ConfigModel> lazy = new(() => new ConfigModel());
 
@@ -56,6 +58,14 @@ namespace InfoPanel
                     Settings.Version = 115;
                     _ = SaveSettingsAsync(batch: false);
                 }
+
+                if (Settings.Version < 131)
+                {
+                    Upgrade_File_Structure_For_1_3_1();
+                    Settings.Version = 131;
+                    _ = SaveSettingsAsync(batch: false);
+                }
+
             }
 
             Settings.PropertyChanged += Settings_PropertyChanged;
@@ -582,6 +592,17 @@ namespace InfoPanel
             return null;
         }
 
+        private void Upgrade_File_Structure_For_1_3_1()
+        {
+            //validate devices models for enum change in versions >1.3.0
+            foreach (TuringPanelDevice device in Settings.TuringPanelDevices)
+            {
+                if (device.Model == "REV_8INCH_USB" && device.DeviceId.StartsWith(@"USB\VID_1CBE&PID_0088\"))
+                {
+                    device.Model = TuringPanelModel.REV_88INCH_USB.ToString();
+                }
+            }
+        }
         private void Upgrade_File_Structure_From_1_1_4()
         {
             var profilesFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
