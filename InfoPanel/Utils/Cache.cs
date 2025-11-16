@@ -171,7 +171,6 @@ namespace InfoPanel
                     {
                         Log.Error(e, "Failed to invalidate image from cache '{Path}'", path);
                     }
-                    ImageCache.Remove(path);
                 }
             }
         }
