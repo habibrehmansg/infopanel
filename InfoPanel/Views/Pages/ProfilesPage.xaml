@@ -448,7 +448,23 @@
                                             <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowFps}" />
                                         </StackPanel>
                                     </ui:CardControl>
+
+                                    <ui:CardControl Grid.Column="1" Margin="10,10,0,0">
+                                        <ui:CardControl.Header>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                        Text="Display Thousands Separator" />
+                                            </StackPanel>
+                                        </ui:CardControl.Header>
+                                        <StackPanel>
+                                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowThousandsSeparator}" />
+                                        </StackPanel>
+                                    </ui:CardControl>
+
                                 </StackPanel>
+
                             </Grid>
 
                             <Grid>

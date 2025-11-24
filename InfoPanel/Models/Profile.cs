@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SkiaSharp;
 using System;
 using System.Linq;
@@ -97,6 +97,9 @@ namespace InfoPanel.Models
 
         [ObservableProperty]
         private bool _showFps = false;
+
+        [ObservableProperty]
+        private bool _showThousandsSeparator = false;
 
         private bool _drag = true;
         public bool Drag
