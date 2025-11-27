@@ -46,6 +46,10 @@ namespace InfoPanel.TuringPanel
                             devices.Add(device);
                         }
                     }
+                    else
+                    {
+                        Log.Information("Unknown USB device {VID} {PID} {Name}", deviceReg.Vid, deviceReg.Pid, deviceReg.FullName);
+                    }
                 }
 
                 return devices;

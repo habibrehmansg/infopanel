@@ -33,22 +33,9 @@ namespace InfoPanel.Services
 
             if (modelInfo != null)
             {
-                BackgroundTask deviceTask;
-                switch (modelInfo.Model)
-                {
-                    case TuringPanelModel.REV_8INCH_USB:
-                        deviceTask = new TuringPanelUsbDeviceTask(device);
-                        break;
-                    case TuringPanelModel.TURING_3_5:
-                    case TuringPanelModel.REV_2INCH:
-                    case TuringPanelModel.REV_5INCH:
-                    case TuringPanelModel.REV_8INCH:
-                        deviceTask = new TuringPanelSerialTask(device);
-                        break;
-                    default:
-                        Logger.Error("TuringPanel: Unsupported model {Model} for device {DeviceId}", modelInfo.Model, device.Id);
-                        return;
-                }
+                BackgroundTask deviceTask = modelInfo.IsUsbDevice 
+                    ? new TuringPanelUsbDeviceTask(device) 
+                    : new TuringPanelSerialTask(device);
 
                 if (_deviceTasks.TryAdd(device.Id, deviceTask))
                 {

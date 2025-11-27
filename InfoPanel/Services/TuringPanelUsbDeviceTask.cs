@@ -19,8 +19,6 @@ namespace InfoPanel.Services
     {
         private static readonly ILogger Logger = Log.ForContext<TuringPanelUsbDeviceTask>();
         private readonly TuringPanelDevice _device;
-        private readonly int _panelWidth = 480;
-        private readonly int _panelHeight = 1920;
         private static int _maxSize = 1024 * 1024; // 1MB
         private DateTime _downgradeRenderingUntil = DateTime.MinValue;
 
@@ -41,7 +39,7 @@ namespace InfoPanel.Services
                 using var bitmap = PanelDrawTask.RenderSK(profile, false,
                     colorType: DateTime.Now > _downgradeRenderingUntil ? SKColorType.Rgba8888 : SKColorType.Argb4444);
 
-                using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
+                using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _device.ModelInfo.Width, _device.ModelInfo.Height, rotation);
 
                 var options = new SKPngEncoderOptions(
                         filterFlags: SKPngEncoderFilterFlags.NoFilters,
@@ -107,7 +105,7 @@ namespace InfoPanel.Services
         {
             foreach (UsbRegistry deviceReg in UsbDevice.AllDevices)
             {
-                if (deviceReg.Vid == 0x1cbe && deviceReg.Pid == 0x0088) // VENDOR_ID and PRODUCT_ID from TuringDevice
+                if (deviceReg.Vid == _device.ModelInfo.VendorId && deviceReg.Pid == _device.ModelInfo.ProductId)
                 {
                     var deviceId = deviceReg.DeviceProperties["DeviceID"] as string;
 
