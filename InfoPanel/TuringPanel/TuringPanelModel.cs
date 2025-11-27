@@ -14,6 +14,7 @@
         REV_8INCH,
 
         // Turing Rev "C" with USB interface
-        REV_8INCH_USB,
+        REV_88INCH_USB,
+        REV_80INCH_USB,
     }
 }
