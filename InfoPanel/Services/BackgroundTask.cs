@@ -1,6 +1,6 @@
-﻿using Serilog;
+﻿using AsyncKeyedLock;
+using Serilog;
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,7 +9,7 @@ namespace InfoPanel
     public abstract class BackgroundTask
     {
         private static readonly ILogger Logger = Log.ForContext<BackgroundTask>();
-        private static readonly SemaphoreSlim _startStopSemaphore = new(1, 1);
+        private static readonly AsyncNonKeyedLocker _startStopLock = new(1);
 
         private CancellationTokenSource? _cts;
         private Task? _task;
@@ -24,35 +24,28 @@ namespace InfoPanel
 
         public async Task StartAsync(CancellationToken? token = null)
         {
-            await _startStopSemaphore.WaitAsync();
+            using var _ = await _startStopLock.LockAsync();
             _shutdown = false;
-            try
-            {
-                if (IsRunning) return;
-                
-                Logger.Debug("{TaskName} starting initialization", this.GetType().Name);
+            if (IsRunning) return;
 
-                if (token == null)
-                {
-                    _cts = new CancellationTokenSource();
-                }
-                else
-                {
-                    _cts = CancellationTokenSource.CreateLinkedTokenSource(token.Value);
-                }
-                _task = Task.Run(() => DoWorkAsync(_cts.Token), _cts.Token);
-            }
-            finally
+            Logger.Debug("{TaskName} starting initialization", this.GetType().Name);
+
+            if (token == null)
             {
-                _startStopSemaphore.Release();
+                _cts = new CancellationTokenSource();
             }
+            else
+            {
+                _cts = CancellationTokenSource.CreateLinkedTokenSource(token.Value);
+            }
+            _task = Task.Run(() => DoWorkAsync(_cts.Token), _cts.Token);
         }
 
         public virtual async Task StopAsync(bool shutdown = false)
         {
             Logger.Debug("{TaskName} stopping", this.GetType().Name);
 
-            await _startStopSemaphore.WaitAsync();
+            using var _ = await _startStopLock.LockAsync();
             _shutdown = shutdown;
             try
             {
@@ -79,10 +72,8 @@ namespace InfoPanel
             }
             finally
             {
-                _startStopSemaphore.Release();
-            }
-
-            Logger.Debug("{TaskName} stopped", this.GetType().Name);
+                Logger.Debug("{TaskName} stopped", this.GetType().Name);
+            }            
         }
 
         protected abstract Task DoWorkAsync(CancellationToken token);
@@ -92,6 +83,7 @@ namespace InfoPanel
             Logger.Debug("Disposing resources for {TaskName}", this.GetType().Name);
             _cts?.Dispose();
             _task?.Dispose();
+            _startStopLock?.Dispose();
             _cts = null;
             _task = null;
         }

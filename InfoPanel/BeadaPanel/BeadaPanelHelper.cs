@@ -1,12 +1,11 @@
-﻿using InfoPanel.BeadaPanel.StatusLink;
+﻿using AsyncKeyedLock;
+using InfoPanel.BeadaPanel.StatusLink;
 using InfoPanel.Utils;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
 using Microsoft.Extensions.Caching.Memory;
 using Serilog;
 using System;
-using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace InfoPanel.BeadaPanel
@@ -15,27 +14,24 @@ namespace InfoPanel.BeadaPanel
     {
         private static readonly ILogger Logger = Log.ForContext(typeof(BeadaPanelHelper));
         private static readonly TypedMemoryCache<BeadaPanelInfo> _panelInfoCache = new();
-        private static readonly SemaphoreSlim _semaphore = new(1, 1);
+        private static readonly AsyncNonKeyedLocker _lock = new(1);
 
         public static async Task<BeadaPanelInfo?> GetPanelInfoAsync(UsbRegistry usbRegistry)
         {
-            await _semaphore.WaitAsync();
-
-            try
+            using (await _lock.LockAsync())
             {
-                return await Task.Run(() => {
-                    return GetPanelInfo(usbRegistry);
-                });
+                try
+                {
+                    return await Task.Run(() =>
+                    {
+                        return GetPanelInfo(usbRegistry);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "BeadaPanelHelper: Error claiming USB interface");
+                }
             }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "BeadaPanelHelper: Error claiming USB interface");
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-
             return null;
         }
 

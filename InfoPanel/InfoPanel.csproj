@@ -195,7 +195,7 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-		<PackageReference Include="AsyncKeyedLock" Version="7.1.7" />
+		<PackageReference Include="AsyncKeyedLock" Version="7.1.8" />
 		<PackageReference Include="AutoMapper" Version="14.0.0" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
