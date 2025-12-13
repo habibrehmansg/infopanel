@@ -34,13 +34,19 @@ namespace InfoPanel.Views.Common
 
         private bool _dragMove = false;
         private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
+        private HwndSource? _hwndSource;
 
         private bool _isUserResizing = false;
         private readonly DispatcherTimer _resizeTimer;
         private bool _isDpiChanging = false;
+        private bool _isLoaded = false;
+        private bool _isProgrammaticSizeChange = false;
 
         private Timer? _renderTimer;
         private readonly FpsCounter FpsCounter = new();
+
+        private bool dragStart = false;
+        private System.Windows.Point startPosition = new System.Windows.Point();
 
         public DisplayWindow(Profile profile)
         {
@@ -88,11 +94,21 @@ namespace InfoPanel.Views.Common
             //Performing some magic to hide the form from Alt+Tab
             _ = SetWindowLong(helper, GWL_EX_STYLE, (GetWindowLong(helper, GWL_EX_STYLE) | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW);
 
+            // Disable Windows Snap/Aero Snap by removing maximize box style
+            _ = SetWindowLong(helper, GWL_STYLE, GetWindowLong(helper, GWL_STYLE) & ~WS_MAXIMIZEBOX);
+
+            // Hook WndProc to allow window to be resized beyond screen bounds
+            _hwndSource = HwndSource.FromHwnd(helper);
+            _hwndSource.AddHook(WndProc);
+
             SetWindowPositionRelativeToScreen();
 
             UpdateSkiaTimer();
 
             Activate();
+
+            // Mark as loaded to prevent initial size changes from being treated as user resizes
+            _isLoaded = true;
         }
 
         private void UpdateSkiaTimer()
@@ -139,6 +155,13 @@ namespace InfoPanel.Views.Common
 
         private void DisplayWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            // Unhook WndProc
+            if (_hwndSource != null)
+            {
+                _hwndSource.RemoveHook(WndProc);
+                _hwndSource = null;
+            }
+
             _resizeTimer.Stop();
             _resizeTimer.Tick -= OnResizeCompleted;
 
@@ -147,8 +170,8 @@ namespace InfoPanel.Views.Common
             if (_renderTimer != null)
             {
                 _renderTimer.Stop();
-                _renderTimer.Dispose();
                 _renderTimer.Elapsed -= OnTimerElapsed;
+                _renderTimer.Dispose();
             }
 
             Profile.PropertyChanged -= Profile_PropertyChanged;
@@ -183,6 +206,18 @@ namespace InfoPanel.Views.Common
                 _skGlElement = null;
 
                 Logger.Debug("Disposed _skGLElement");
+            }
+
+            if (_sKElement != null)
+            {
+                _sKElement.PaintSurface -= SkElement_PaintSurface;
+
+                BindingOperations.ClearBinding(_sKElement, WidthProperty);
+                BindingOperations.ClearBinding(_sKElement, HeightProperty);
+
+                _sKElement = null;
+
+                Logger.Debug("Disposed _sKElement");
             }
         }
 
@@ -229,8 +264,8 @@ namespace InfoPanel.Views.Common
 
         private void DisplayWindow_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            // Only track user-initiated size changes, not our DPI corrections
-            if (!_isDpiChanging)
+            // Only track user-initiated size changes, not our DPI corrections, initial load, or programmatic changes
+            if (!_isDpiChanging && !_isProgrammaticSizeChange && _isLoaded)
             {
                 _isUserResizing = true;
 
@@ -397,10 +432,18 @@ namespace InfoPanel.Views.Common
             }
             else if (e.PropertyName == nameof(Profile.Width) || e.PropertyName == nameof(Profile.Height))
             {
-                _dispatcher.BeginInvoke(() =>
+                _isProgrammaticSizeChange = true;
+                try
                 {
-                    MaintainPixelSize();
-                });
+                    _dispatcher.Invoke(() =>
+                    {
+                        MaintainPixelSize();
+                    });
+                }
+                finally
+                {
+                    _isProgrammaticSizeChange = false;
+                }
             }
         }
 
@@ -453,7 +496,7 @@ namespace InfoPanel.Views.Common
 
             if (!Profile.StrictWindowMatching)
             {
-                targetScreen ??= screens.First();
+                targetScreen ??= screens.FirstOrDefault();
             }
 
             if (targetScreen != null)
@@ -461,8 +504,8 @@ namespace InfoPanel.Views.Common
                 var x = targetScreen.Bounds.Left + Profile.WindowX;
                 var y = targetScreen.Bounds.Top + Profile.WindowY;
 
-                Log.Debug("SetWindowPositionRelativeToScreen targetScreen={TargetScreen}", targetScreen);
-                Log.Debug("SetWindowPositionRelativeToScreen targetScreen={DeviceName} x={X} y={Y}", targetScreen.DeviceName, x, y);
+                Logger.Debug("SetWindowPositionRelativeToScreen targetScreen={TargetScreen}", targetScreen);
+                Logger.Debug("SetWindowPositionRelativeToScreen targetScreen={DeviceName} x={X} y={Y}", targetScreen.DeviceName, x, y);
                 ScreenHelper.MoveWindowPhysical(this, (int)x, (int)y);
             }
             else if (this.IsVisible)
@@ -503,7 +546,15 @@ namespace InfoPanel.Views.Common
                 {
                     if (Profile.Drag)
                     {
-                        this.DragMove();
+                        try
+                        {
+                            this.DragMove();
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // DragMove can throw if mouse button is released during drag
+                            return;
+                        }
 
                         var screen = ScreenHelper.GetWindowScreen(this);
 
@@ -512,8 +563,8 @@ namespace InfoPanel.Views.Common
                             var position = ScreenHelper.GetWindowPositionPhysical(this);
                             var relativePosition = ScreenHelper.GetWindowRelativePosition(screen, position);
 
-                            Log.Debug("SetPosition screen={Screen}", screen);
-                            Log.Debug("SetPosition screen={DeviceName} position={Position} relativePosition={RelativePosition}", screen.DeviceName, position, relativePosition);
+                            Logger.Debug("SetPosition screen={Screen}", screen);
+                            Logger.Debug("SetPosition screen={DeviceName} position={Position} relativePosition={RelativePosition}", screen.DeviceName, position, relativePosition);
 
                             _dragMove = true;
 
@@ -623,8 +674,6 @@ namespace InfoPanel.Views.Common
             }
         }
 
-        bool dragStart = false;
-        System.Windows.Point startPosition = new System.Windows.Point();
         private void Window_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
         {
             if (dragStart)
@@ -677,49 +726,50 @@ namespace InfoPanel.Views.Common
             Close();
         }
 
-        //     [DllImport("user32.dll", SetLastError = true)]
-        //     public static extern IntPtr FindWindowEx(IntPtr hP, IntPtr hC, string sC,
-        //string sW);
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            const int WM_GETMINMAXINFO = 0x0024;
 
-        //     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        //     [return: MarshalAs(UnmanagedType.Bool)]
-        //     public static extern bool EnumWindows(EnumedWindow lpEnumFunc, ArrayList
-        //     lParam);
+            if (msg == WM_GETMINMAXINFO)
+            {
+                // Override the maximum tracking size to allow window to be larger than screen
+                MINMAXINFO mmi = (MINMAXINFO)Marshal.PtrToStructure(lParam, typeof(MINMAXINFO))!;
 
-        //     public delegate bool EnumedWindow(IntPtr handleWindow, ArrayList handles);
+                // Set maximum tracking size to our MaxWidth/MaxHeight (10000x10000)
+                mmi.ptMaxTrackSize.x = 10000;
+                mmi.ptMaxTrackSize.y = 10000;
 
-        //     public static bool GetWindowHandle(IntPtr windowHandle, ArrayList
-        //     windowHandles)
-        //     {
-        //         windowHandles.Add(windowHandle);
-        //         return true;
-        //     }
+                Marshal.StructureToPtr(mmi, lParam, true);
+                handled = true;
+            }
 
-        //     private void SetAsDesktopChild()
-        //     {
-        //         ArrayList windowHandles = new ArrayList();
-        //         EnumedWindow callBackPtr = GetWindowHandle;
-        //         EnumWindows(callBackPtr, windowHandles);
+            return IntPtr.Zero;
+        }
 
-        //         foreach (IntPtr windowHandle in windowHandles)
-        //         {
-        //             IntPtr hNextWin = FindWindowEx(windowHandle, IntPtr.Zero,
-        //             "SHELLDLL_DefView", null);
-        //             if (hNextWin != IntPtr.Zero)
-        //             {
-        //                 var interop = new WindowInteropHelper(this);
-        //                 interop.EnsureHandle();
-        //                 interop.Owner = hNextWin;
-        //             }
-        //         }
-        //     }
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int x;
+            public int y;
+        }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MINMAXINFO
+        {
+            public POINT ptReserved;
+            public POINT ptMaxSize;
+            public POINT ptMaxPosition;
+            public POINT ptMinTrackSize;
+            public POINT ptMaxTrackSize;
+        }
 
         [DllImport("user32.dll", SetLastError = true)]
         static extern int GetWindowLong(IntPtr hWnd, int nIndex);
         [DllImport("user32.dll")]
         static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        private const int GWL_STYLE = -16;
         private const int GWL_EX_STYLE = -20;
+        private const int WS_MAXIMIZEBOX = 0x00010000;
         private const int WS_EX_APPWINDOW = 0x00040000, WS_EX_TOOLWINDOW = 0x00000080;
     }
 }
