@@ -43,9 +43,9 @@
       },
       "FlyleafLib": {
         "type": "Direct",
-        "requested": "[3.9.3, )",
-        "resolved": "3.9.3",
-        "contentHash": "VP5y4avbqskTBsoJOQBfp+/kCesl68ShlFY7vQGqW3k8qto8QMC9u8FkmsJtwzpEX5cJjdel2r0Z2H0A1w4/XQ==",
+        "requested": "[3.9.4, )",
+        "resolved": "3.9.4",
+        "contentHash": "7c8uhHs7iQXIZdZgRNwwnqY/7tnCd9KC7tylK9FI3MDVRfVo729UTB1xVd5oYF2kBdiMdNFT+hrFd4gTyTE/KQ==",
         "dependencies": {
           "Flyleaf.FFmpeg.Bindings": "7.1.1",
           "Vortice.D3DCompiler": "3.7.6-beta",
