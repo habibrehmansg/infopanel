@@ -34,10 +34,13 @@ namespace InfoPanel.Views.Common
 
         private bool _dragMove = false;
         private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
+        private HwndSource? _hwndSource;
 
         private bool _isUserResizing = false;
         private readonly DispatcherTimer _resizeTimer;
         private bool _isDpiChanging = false;
+        private bool _isLoaded = false;
+        private bool _isProgrammaticSizeChange = false;
 
         private Timer? _renderTimer;
         private readonly FpsCounter FpsCounter = new();
@@ -88,11 +91,21 @@ namespace InfoPanel.Views.Common
             //Performing some magic to hide the form from Alt+Tab
             _ = SetWindowLong(helper, GWL_EX_STYLE, (GetWindowLong(helper, GWL_EX_STYLE) | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW);
 
+            // Disable Windows Snap/Aero Snap by removing maximize box style
+            _ = SetWindowLong(helper, GWL_STYLE, GetWindowLong(helper, GWL_STYLE) & ~WS_MAXIMIZEBOX);
+
+            // Hook WndProc to allow window to be resized beyond screen bounds
+            _hwndSource = HwndSource.FromHwnd(helper);
+            _hwndSource.AddHook(WndProc);
+
             SetWindowPositionRelativeToScreen();
 
             UpdateSkiaTimer();
 
             Activate();
+
+            // Mark as loaded to prevent initial size changes from being treated as user resizes
+            _isLoaded = true;
         }
 
         private void UpdateSkiaTimer()
@@ -139,6 +152,13 @@ namespace InfoPanel.Views.Common
 
         private void DisplayWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            // Unhook WndProc
+            if (_hwndSource != null)
+            {
+                _hwndSource.RemoveHook(WndProc);
+                _hwndSource = null;
+            }
+
             _resizeTimer.Stop();
             _resizeTimer.Tick -= OnResizeCompleted;
 
@@ -229,8 +249,8 @@ namespace InfoPanel.Views.Common
 
         private void DisplayWindow_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            // Only track user-initiated size changes, not our DPI corrections
-            if (!_isDpiChanging)
+            // Only track user-initiated size changes, not our DPI corrections, initial load, or programmatic changes
+            if (!_isDpiChanging && !_isProgrammaticSizeChange && _isLoaded)
             {
                 _isUserResizing = true;
 
@@ -399,7 +419,9 @@ namespace InfoPanel.Views.Common
             {
                 _dispatcher.BeginInvoke(() =>
                 {
+                    _isProgrammaticSizeChange = true;
                     MaintainPixelSize();
+                    _isProgrammaticSizeChange = false;
                 });
             }
         }
@@ -714,12 +736,50 @@ namespace InfoPanel.Views.Common
         //         }
         //     }
 
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            const int WM_GETMINMAXINFO = 0x0024;
+
+            if (msg == WM_GETMINMAXINFO)
+            {
+                // Override the maximum tracking size to allow window to be larger than screen
+                MINMAXINFO mmi = (MINMAXINFO)Marshal.PtrToStructure(lParam, typeof(MINMAXINFO))!;
+
+                // Set maximum tracking size to our MaxWidth/MaxHeight (10000x10000)
+                mmi.ptMaxTrackSize.x = 10000;
+                mmi.ptMaxTrackSize.y = 10000;
+
+                Marshal.StructureToPtr(mmi, lParam, true);
+                handled = true;
+            }
+
+            return IntPtr.Zero;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int x;
+            public int y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MINMAXINFO
+        {
+            public POINT ptReserved;
+            public POINT ptMaxSize;
+            public POINT ptMaxPosition;
+            public POINT ptMinTrackSize;
+            public POINT ptMaxTrackSize;
+        }
 
         [DllImport("user32.dll", SetLastError = true)]
         static extern int GetWindowLong(IntPtr hWnd, int nIndex);
         [DllImport("user32.dll")]
         static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        private const int GWL_STYLE = -16;
         private const int GWL_EX_STYLE = -20;
+        private const int WS_MAXIMIZEBOX = 0x00010000;
         private const int WS_EX_APPWINDOW = 0x00040000, WS_EX_TOOLWINDOW = 0x00000080;
     }
 }
