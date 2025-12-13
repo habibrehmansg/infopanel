@@ -45,6 +45,9 @@ namespace InfoPanel.Views.Common
         private Timer? _renderTimer;
         private readonly FpsCounter FpsCounter = new();
 
+        private bool dragStart = false;
+        private System.Windows.Point startPosition = new System.Windows.Point();
+
         public DisplayWindow(Profile profile)
         {
             RenderOptions.ProcessRenderMode = RenderMode.Default;
@@ -167,8 +170,8 @@ namespace InfoPanel.Views.Common
             if (_renderTimer != null)
             {
                 _renderTimer.Stop();
-                _renderTimer.Dispose();
                 _renderTimer.Elapsed -= OnTimerElapsed;
+                _renderTimer.Dispose();
             }
 
             Profile.PropertyChanged -= Profile_PropertyChanged;
@@ -203,6 +206,18 @@ namespace InfoPanel.Views.Common
                 _skGlElement = null;
 
                 Logger.Debug("Disposed _skGLElement");
+            }
+
+            if (_sKElement != null)
+            {
+                _sKElement.PaintSurface -= SkElement_PaintSurface;
+
+                BindingOperations.ClearBinding(_sKElement, WidthProperty);
+                BindingOperations.ClearBinding(_sKElement, HeightProperty);
+
+                _sKElement = null;
+
+                Logger.Debug("Disposed _sKElement");
             }
         }
 
@@ -417,12 +432,18 @@ namespace InfoPanel.Views.Common
             }
             else if (e.PropertyName == nameof(Profile.Width) || e.PropertyName == nameof(Profile.Height))
             {
-                _dispatcher.BeginInvoke(() =>
+                _isProgrammaticSizeChange = true;
+                try
                 {
-                    _isProgrammaticSizeChange = true;
-                    MaintainPixelSize();
+                    _dispatcher.Invoke(() =>
+                    {
+                        MaintainPixelSize();
+                    });
+                }
+                finally
+                {
                     _isProgrammaticSizeChange = false;
-                });
+                }
             }
         }
 
@@ -475,7 +496,7 @@ namespace InfoPanel.Views.Common
 
             if (!Profile.StrictWindowMatching)
             {
-                targetScreen ??= screens.First();
+                targetScreen ??= screens.FirstOrDefault();
             }
 
             if (targetScreen != null)
@@ -483,8 +504,8 @@ namespace InfoPanel.Views.Common
                 var x = targetScreen.Bounds.Left + Profile.WindowX;
                 var y = targetScreen.Bounds.Top + Profile.WindowY;
 
-                Log.Debug("SetWindowPositionRelativeToScreen targetScreen={TargetScreen}", targetScreen);
-                Log.Debug("SetWindowPositionRelativeToScreen targetScreen={DeviceName} x={X} y={Y}", targetScreen.DeviceName, x, y);
+                Logger.Debug("SetWindowPositionRelativeToScreen targetScreen={TargetScreen}", targetScreen);
+                Logger.Debug("SetWindowPositionRelativeToScreen targetScreen={DeviceName} x={X} y={Y}", targetScreen.DeviceName, x, y);
                 ScreenHelper.MoveWindowPhysical(this, (int)x, (int)y);
             }
             else if (this.IsVisible)
@@ -525,7 +546,15 @@ namespace InfoPanel.Views.Common
                 {
                     if (Profile.Drag)
                     {
-                        this.DragMove();
+                        try
+                        {
+                            this.DragMove();
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // DragMove can throw if mouse button is released during drag
+                            return;
+                        }
 
                         var screen = ScreenHelper.GetWindowScreen(this);
 
@@ -534,8 +563,8 @@ namespace InfoPanel.Views.Common
                             var position = ScreenHelper.GetWindowPositionPhysical(this);
                             var relativePosition = ScreenHelper.GetWindowRelativePosition(screen, position);
 
-                            Log.Debug("SetPosition screen={Screen}", screen);
-                            Log.Debug("SetPosition screen={DeviceName} position={Position} relativePosition={RelativePosition}", screen.DeviceName, position, relativePosition);
+                            Logger.Debug("SetPosition screen={Screen}", screen);
+                            Logger.Debug("SetPosition screen={DeviceName} position={Position} relativePosition={RelativePosition}", screen.DeviceName, position, relativePosition);
 
                             _dragMove = true;
 
@@ -645,8 +674,6 @@ namespace InfoPanel.Views.Common
             }
         }
 
-        bool dragStart = false;
-        System.Windows.Point startPosition = new System.Windows.Point();
         private void Window_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
         {
             if (dragStart)
@@ -698,43 +725,6 @@ namespace InfoPanel.Views.Common
         {
             Close();
         }
-
-        //     [DllImport("user32.dll", SetLastError = true)]
-        //     public static extern IntPtr FindWindowEx(IntPtr hP, IntPtr hC, string sC,
-        //string sW);
-
-        //     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        //     [return: MarshalAs(UnmanagedType.Bool)]
-        //     public static extern bool EnumWindows(EnumedWindow lpEnumFunc, ArrayList
-        //     lParam);
-
-        //     public delegate bool EnumedWindow(IntPtr handleWindow, ArrayList handles);
-
-        //     public static bool GetWindowHandle(IntPtr windowHandle, ArrayList
-        //     windowHandles)
-        //     {
-        //         windowHandles.Add(windowHandle);
-        //         return true;
-        //     }
-
-        //     private void SetAsDesktopChild()
-        //     {
-        //         ArrayList windowHandles = new ArrayList();
-        //         EnumedWindow callBackPtr = GetWindowHandle;
-        //         EnumWindows(callBackPtr, windowHandles);
-
-        //         foreach (IntPtr windowHandle in windowHandles)
-        //         {
-        //             IntPtr hNextWin = FindWindowEx(windowHandle, IntPtr.Zero,
-        //             "SHELLDLL_DefView", null);
-        //             if (hNextWin != IntPtr.Zero)
-        //             {
-        //                 var interop = new WindowInteropHelper(this);
-        //                 interop.EnsureHandle();
-        //                 interop.Owner = hNextWin;
-        //             }
-        //         }
-        //     }
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
