@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 
 namespace InfoPanel.Models
@@ -365,9 +365,24 @@ namespace InfoPanel.Models
             return "-";
         }
 
+        private string FormatSensorValue(double value, int decimals, bool floor)
+        {
+            if (floor)
+            {
+                value = Math.Floor(value);
+            }
+
+            string format = (Profile.ShowThousandsSeparator ? "#,0" : "0") + (decimals > 0 ? "." + new string('0', decimals) : "");
+
+            return value.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         private string EvaluateText(SensorReading sensorReading)
         {
             string? value;
+            int decimals = 0;
+            bool floor = false;
+
             // new string sensor handling
             if (!string.IsNullOrEmpty(sensorReading.ValueText))
             {
@@ -375,7 +390,6 @@ namespace InfoPanel.Models
             }
             else
             {
-
                 double sensorReadingValue;
 
                 switch (ValueType)
@@ -415,48 +429,39 @@ namespace InfoPanel.Models
                     sensorReadingValue = Math.Abs(sensorReadingValue);
                 }
 
-
                 if (OverridePrecision)
                 {
-                    switch (Precision)
+                    if (Precision == 0)
                     {
-                        case 1:
-                            value = string.Format("{0:0.0}", sensorReadingValue);
-                            break;
-                        case 2:
-                            value = string.Format("{0:0.00}", sensorReadingValue);
-                            break;
-                        case 3:
-                            value = string.Format("{0:0.000}", sensorReadingValue);
-                            break;
-                        default:
-                            value = string.Format("{0:0}", Math.Floor(sensorReadingValue));
-                            break;
+                        floor = true;
                     }
+
+                    decimals = Precision <= 3 ? Precision : 0;
                 }
                 else
                 {
                     switch (sensorReading.Unit.ToLower())
                     {
                         case "gb":
-                            value = string.Format("{0:0.0}", sensorReadingValue);
+                            decimals = 1;
                             break;
                         case "kb/s":
                         case "mb/s":
                         case "mbar/min":
                         case "mbar":
-                            value = string.Format("{0:0.00}", sensorReadingValue);
+                            decimals = 2;
                             break;
                         case "v":
-                            value = string.Format("{0:0.000}", sensorReadingValue);
+                            decimals = 3;
                             break;
                         default:
-                            value = string.Format("{0:0}", sensorReadingValue);
+                            decimals = 0;
                             break;
                     }
                 }
-            }
 
+                value = FormatSensorValue(sensorReadingValue, decimals, floor);
+            }
 
             if (ShowUnit)
             {
