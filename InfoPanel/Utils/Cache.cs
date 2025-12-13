@@ -78,23 +78,23 @@ namespace InfoPanel
                 return null;
             }
 
-            // Try to acquire lock WITHOUT waiting (0ms timeout)
-            var semLock = _locks.LockOrNull(path, 0);
-
-            if (semLock == null)
-            {
-                // Another thread is initializing - return null immediately
-                return null;
-            }
-
             // Start async initialization without blocking
-            _ = Task.Run(() => InitializeImageSafe(path, imageDisplayItem, semLock));
+            _ = Task.Run(() => InitializeImageSafe(path, imageDisplayItem));
 
             return null; // Return null immediately while initializing
         }
 
-        private static void InitializeImageSafe(string path, ImageDisplayItem? imageDisplayItem, IDisposable semLock)
+        private static void InitializeImageSafe(string path, ImageDisplayItem? imageDisplayItem)
         {
+            // Try to acquire lock WITHOUT waiting (0ms timeout)
+            using var semLock = _locks.LockOrNull(path, 0);
+
+            if (semLock == null)
+            {
+                // Another thread is initializing - return immediately
+                return;
+            }
+
             try
             {
                 InitializeImage(path, imageDisplayItem);
@@ -102,10 +102,6 @@ namespace InfoPanel
             catch (Exception e)
             {
                 Logger.Error(e, "Failed to load image '{Path}'" , path);
-            }
-            finally
-            {
-                semLock.Dispose();
             }
         }
 
