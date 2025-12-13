@@ -92,11 +92,36 @@ namespace InfoPanel.ViewModels
                 ]
             };
 
+            var version131 =
+                new UpdateVersion
+                {
+                    Version = "v1.3.1",
+                    Expanded = true,
+                    Title = "Bug Fixes and Enhancements",
+                    Items = [
+                            new UpdateVersionItem() { Title = "USB Panel Improvements",
+                            Description = [
+                                "Added support for additional TuringPanel models.",
+                                "Improved BeadaPanel stability and communication.",
+                                "Enhanced device detection and validation."
+                                ] },
+                            new UpdateVersionItem() { Title = "Video Player Enhancements",
+                            Description = [
+                                "Improved video playback performance."
+                                ] },
+                            new UpdateVersionItem() { Title = "UI & UX Improvements",
+                            Description = [
+                                "Increased maximum window and profile sizes to 10000x10000 pixels.",
+                                "Improved resource cleanup and error logging."
+                                ] }
+                            ]
+                };
+
             var version130 =
                 new UpdateVersion
                 {
                     Version = "v1.3.0",
-                    Expanded = true,
+                    Expanded = false,
                     Title = "Video streaming, multiple panel support, and new design tools",
                     Items = [
                             new UpdateVersionItem() { Title = "Videos & Live Streams",
@@ -186,6 +211,7 @@ namespace InfoPanel.ViewModels
                             ]
                 };
 
+            UpdateVersions.Add(version131);
             UpdateVersions.Add(version130);
             UpdateVersions.Add(version129);
             UpdateVersions.Add(version128);
