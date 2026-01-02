@@ -19,11 +19,11 @@
       },
       "OpenWeatherMap.Cache": {
         "type": "Direct",
-        "requested": "[2.2.1, )",
-        "resolved": "2.2.1",
-        "contentHash": "f+0K5+ebUd9M46paMz6Lahp/hkzIKdGaMZg7VIeQEbX16QoXaMyRwsu2e6Y04A72iv7fmFP+2p0Mw29ax1nebg==",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "XHT9y1FFv2gwfIyf4PsSdHmBf/fqYGVRATo/DqTsFDey1yknHXRTbB0u22UBG+gE6oKZJ0rjpRmos84lEzz1BQ==",
         "dependencies": {
-          "AsyncKeyedLock": "7.1.8",
+          "AsyncKeyedLock": "8.0.0",
           "Microsoft.Extensions.Caching.Memory": "[10.0.1, 11.0.0)",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, 11.0.0)",
           "Microsoft.Extensions.Http": "[10.0.1, 11.0.0)",
@@ -54,8 +54,8 @@
       },
       "AsyncKeyedLock": {
         "type": "Transitive",
-        "resolved": "7.1.8",
-        "contentHash": "LhDLwna+oO0lDA/xRK2JMeZ6XN4AN6VnZXaTC+pO95sd+uJUFqfdK1H5hS09upX4IrpErVSKW+uKgxctcnYe7w==",
+        "resolved": "8.0.0",
+        "contentHash": "7OvOXY8M4lUDi12P6P1/WbD5AgpCpMjY2zn6USSiaQW45YRoM11MruCqQXdbbDmMIHt3v2v1YCUqIJK44YYeyg==",
         "dependencies": {
           "System.Threading.Tasks.Extensions": "4.6.3"
         }
