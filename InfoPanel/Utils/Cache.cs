@@ -1,11 +1,10 @@
-﻿using InfoPanel.Extensions;
+﻿using AsyncKeyedLock;
+using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using Serilog;
 using System;
-using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -20,7 +19,7 @@ namespace InfoPanel
         });
 
         private static readonly Timer _expirationTimer;
-        private static readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = [];
+        private static readonly AsyncKeyedLocker<string> _locks = new();
 
         static Cache()
         {
@@ -79,23 +78,23 @@ namespace InfoPanel
                 return null;
             }
 
-            var semaphore = _locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
-
-            // Try to acquire lock WITHOUT waiting (0ms timeout)
-            if (!semaphore.Wait(0))
-            {
-                // Another thread is initializing - return null immediately
-                return null;
-            }
-
             // Start async initialization without blocking
-            _ = Task.Run(() => InitializeImageSafe(path, imageDisplayItem, semaphore));
+            _ = Task.Run(() => InitializeImageSafe(path, imageDisplayItem));
 
             return null; // Return null immediately while initializing
         }
 
-        private static void InitializeImageSafe(string path, ImageDisplayItem? imageDisplayItem, SemaphoreSlim semaphore)
+        private static void InitializeImageSafe(string path, ImageDisplayItem? imageDisplayItem)
         {
+            // Try to acquire lock WITHOUT waiting (0ms timeout)
+            using var semLock = _locks.LockOrNull(path, 0);
+
+            if (semLock == null)
+            {
+                // Another thread is initializing - return immediately
+                return;
+            }
+
             try
             {
                 InitializeImage(path, imageDisplayItem);
@@ -103,18 +102,6 @@ namespace InfoPanel
             catch (Exception e)
             {
                 Logger.Error(e, "Failed to load image '{Path}'" , path);
-            }
-            finally
-            {
-                semaphore.Release();
-
-                // Safely clean up semaphore - check if we can remove it atomically
-                if (_locks.TryGetValue(path, out var currentSemaphore) &&
-                    ReferenceEquals(currentSemaphore, semaphore) &&
-                    semaphore.CurrentCount == 1)
-                {
-                    _locks.TryRemove(path, out _);
-                }
             }
         }
 
@@ -170,20 +157,16 @@ namespace InfoPanel
         {
             if (!string.IsNullOrEmpty(path))
             {
-                var semaphore = _locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
-
-                try
+                using (_locks.Lock(path))
                 {
-                    semaphore.Wait();
-                    ImageCache.Remove(path);
-                }
-                catch (Exception e)
-                {
-                    Log.Error(e, "Failed to acquire lock for invalidating image '{Path}'", path);
-                }
-                finally
-                {
-                    semaphore.Release();
+                    try
+                    {
+                        ImageCache.Remove(path);
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error(e, "Failed to invalidate image from cache '{Path}'", path);
+                    }
                 }
             }
         }
