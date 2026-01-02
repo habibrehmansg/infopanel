@@ -2,6 +2,15 @@
   "version": 1,
   "dependencies": {
     "net8.0-windows10.0.19041": {
+      "AsyncKeyedLock": {
+        "type": "Direct",
+        "requested": "[8.0.0, )",
+        "resolved": "8.0.0",
+        "contentHash": "7OvOXY8M4lUDi12P6P1/WbD5AgpCpMjY2zn6USSiaQW45YRoM11MruCqQXdbbDmMIHt3v2v1YCUqIJK44YYeyg==",
+        "dependencies": {
+          "System.Threading.Tasks.Extensions": "4.6.3"
+        }
+      },
       "AutoMapper": {
         "type": "Direct",
         "requested": "[14.0.0, )",
@@ -1031,6 +1040,11 @@
         "resolved": "10.0.1",
         "contentHash": "m8Ww4HdmbDxvIdUerGD2qlfPRvcgBflI077Sb+sFj6w5ux36JBgFCNSZbR8ttEg0ZRdATgeDtL5I/HuFA0+oVQ=="
       },
+      "System.Threading.Tasks.Extensions": {
+        "type": "Transitive",
+        "resolved": "4.6.3",
+        "contentHash": "7sCiwilJLYbTZELaKnc7RecBBXWXA+xMLQWZKWawBxYjp6DBlSE3v9/UcvKBvr1vv2tTOhipiogM8rRmxlhrVA=="
+      },
       "System.ValueTuple": {
         "type": "Transitive",
         "resolved": "4.5.0",
@@ -1122,6 +1136,7 @@
       "infopanel.plugins.loader": {
         "type": "Project",
         "dependencies": {
+          "AsyncKeyedLock": "[8.0.0, )",
           "InfoPanel.Plugins": "[1.0.0, )",
           "Serilog": "[4.3.0, )",
           "ini-parser-netstandard": "[2.5.3, )"

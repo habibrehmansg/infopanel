@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using Wpf.Ui.Controls;
 using Wpf.Ui;
 using Profile = InfoPanel.Models.Profile;
+using AsyncKeyedLock;
 
 namespace InfoPanel.Views.Components
 {
@@ -25,7 +26,7 @@ namespace InfoPanel.Views.Components
         private DispatcherTimer? timer;
         private TaskCompletionSource<bool>? _paintCompletionSource;
         private CancellationTokenSource? _cancellationTokenSource;
-        private readonly SemaphoreSlim _updateSemaphore = new(1, 1);
+        private readonly AsyncNonKeyedLocker _updateLock = new(1);
 
         public ProfilePageItemView()
         {
@@ -90,7 +91,7 @@ namespace InfoPanel.Views.Components
 
         private async Task UpdateAsync(CancellationToken cancellationToken)
         {
-            await _updateSemaphore.WaitAsync(cancellationToken);
+            using var _ = await _updateLock.LockAsync(cancellationToken);
 
             try
             {
@@ -136,10 +137,6 @@ namespace InfoPanel.Views.Components
                 }
             }
             catch (OperationCanceledException) { }
-            finally
-            {
-                _updateSemaphore.Release();
-            }
         }
 
         private void skElement_PaintSurface(object sender, SkiaSharp.Views.Desktop.SKPaintSurfaceEventArgs e)
