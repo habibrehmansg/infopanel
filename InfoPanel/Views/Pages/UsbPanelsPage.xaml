@@ -391,7 +391,7 @@
                                         IsEnabled="{Binding Enabled, Converter={StaticResource InverseBooleanConverter}}"
                                         Tag="{Binding}"
                                         ToolTip="Manage device storage, videos, and settings"
-                                        Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        Visibility="{Binding ModelInfo.HasStorageManagement, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <StackPanel Margin="10,0,0,0">
                                         <!--  Profile selection  -->
                                         <ComboBox

@@ -14,6 +14,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using TuringSmartScreenLib;
 using Wpf.Ui.Controls;
 using MessageBox = System.Windows.MessageBox;
 
@@ -24,6 +25,8 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     private static readonly ILogger Logger = Log.ForContext<TuringDeviceWindowViewModel>();
     private readonly TuringPanelDevice _device;
     private TuringDevice? _turingDevice;
+    private TuringSmartScreenRevisionE? _serialDevice;
+    private bool _isSerialDevice;
 
     [ObservableProperty]
     private string _deviceName = "Turing Device";
@@ -148,27 +151,16 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
                 LoadingText = "Connecting to device...";
             });
 
-            var usbRegistry = await FindTargetDeviceAsync();
+            var modelInfo = _device.ModelInfo;
+            _isSerialDevice = modelInfo != null && !modelInfo.IsUsbDevice && modelInfo.HasStorageManagement;
 
-            if (usbRegistry == null)
+            if (_isSerialDevice)
             {
-                Logger.Warning("TuringPanelDevice {Device}: USB Device not found.", _device);
-                _device.UpdateRuntimeProperties(errorMessage: "Device not found");
-                return;
+                await InitializeSerialDevice(modelInfo!);
             }
-
-            _turingDevice = new TuringDevice();
-            
-            try
+            else
             {
-                _turingDevice.Initialize(usbRegistry);
-                Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Connected");
-                await RefreshStorage();
-            }
-            catch (TuringDeviceException ex)
-            {
-                Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Failed to connect");
-                ShowStatus("Connection Failed", $"Could not connect to the Turing device: {ex.Message}", InfoBarSeverity.Error);
+                await InitializeUsbDevice();
             }
         }
         catch (Exception ex)
@@ -182,6 +174,57 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         }
     }
 
+    private async Task InitializeUsbDevice()
+    {
+        var usbRegistry = await FindTargetDeviceAsync();
+
+        if (usbRegistry == null)
+        {
+            Logger.Warning("TuringPanelDevice {Device}: USB Device not found.", _device);
+            _device.UpdateRuntimeProperties(errorMessage: "Device not found");
+            return;
+        }
+
+        _turingDevice = new TuringDevice();
+
+        try
+        {
+            _turingDevice.Initialize(usbRegistry);
+            Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Connected");
+            await RefreshStorage();
+        }
+        catch (TuringDeviceException ex)
+        {
+            Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Failed to connect");
+            ShowStatus("Connection Failed", $"Could not connect to the Turing device: {ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private async Task InitializeSerialDevice(TuringPanelModelInfo modelInfo)
+    {
+        var comPort = _device.DeviceLocation;
+        if (string.IsNullOrEmpty(comPort))
+        {
+            ShowStatus("Error", "No COM port found for device.", InfoBarSeverity.Error);
+            return;
+        }
+
+        try
+        {
+            _serialDevice = new TuringSmartScreenRevisionE(comPort, modelInfo.Width, modelInfo.Height);
+            await Task.Run(() => _serialDevice.Open());
+            Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Connected");
+            await RefreshStorage();
+        }
+        catch (Exception ex)
+        {
+            _serialDevice?.Dispose();
+            _serialDevice = null;
+            Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Failed to connect");
+            ShowStatus("Connection Failed", $"Could not connect to serial device on {comPort}: {ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
     partial void OnSelectedFileChanged(DeviceFile? value)
     {
         IsFileSelected = value != null;
@@ -190,7 +233,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task RefreshStorage()
     {
-        if (_turingDevice == null) return;
+        if (_turingDevice == null && _serialDevice == null) return;
 
         try
         {
@@ -203,44 +246,56 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
             // Get storage info
             try
             {
-                var storageInfo = _turingDevice.GetStorageInfo();
-                Application.Current.Dispatcher.Invoke(() =>
+                if (_isSerialDevice)
                 {
-                    TotalStorageDisplay = FormatBytes(storageInfo.TotalBytes);
-                    UsedStorageDisplay = FormatBytes(storageInfo.UsedBytes);
-                    FreeStorageDisplay = FormatBytes(storageInfo.TotalBytes - storageInfo.UsedBytes);
-                    StorageUsagePercentage = storageInfo.TotalBytes > 0 
-                        ? (double)storageInfo.UsedBytes / storageInfo.TotalBytes * 100 
-                        : 0;
-                });
+                    await RefreshSerialStorageInfo();
+                }
+                else
+                {
+                    var storageInfo = _turingDevice!.GetStorageInfo();
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        TotalStorageDisplay = FormatBytes(storageInfo.TotalBytes);
+                        UsedStorageDisplay = FormatBytes(storageInfo.UsedBytes);
+                        FreeStorageDisplay = FormatBytes(storageInfo.TotalBytes - storageInfo.UsedBytes);
+                        StorageUsagePercentage = storageInfo.TotalBytes > 0
+                            ? (double)storageInfo.UsedBytes / storageInfo.TotalBytes * 100
+                            : 0;
+                    });
+                }
             }
             catch (Exception ex)
             {
                 Logger.Warning(ex, "Failed to get storage info");
             }
 
-            // Get video file list
-            Application.Current.Dispatcher.Invoke(() => LoadingText = "Loading video files...");
-            
+            // Get file list
+            Application.Current.Dispatcher.Invoke(() => LoadingText = "Loading files...");
+
             try
             {
-                var files = _turingDevice.ListFiles("/tmp/sdcard/mmcblk0p1/video/");
-                
-                // Update collection on UI thread
-                Application.Current.Dispatcher.Invoke(() =>
+                if (_isSerialDevice)
                 {
-                    DeviceFiles.Clear();
-                    foreach (var fileName in files)
+                    await RefreshSerialFileList();
+                }
+                else
+                {
+                    var files = _turingDevice!.ListFiles("/tmp/sdcard/mmcblk0p1/video/");
+                    Application.Current.Dispatcher.Invoke(() =>
                     {
-                        DeviceFiles.Add(new DeviceFile
+                        DeviceFiles.Clear();
+                        foreach (var fileName in files)
                         {
-                            Name = fileName,
-                            Type = "Video",
-                            Size = 0, // Size not provided by ListFiles
-                            SizeDisplay = "N/A"
-                        });
-                    }
-                });
+                            DeviceFiles.Add(new DeviceFile
+                            {
+                                Name = fileName,
+                                Type = "Video",
+                                Size = 0,
+                                SizeDisplay = "N/A"
+                            });
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -259,15 +314,58 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         }
     }
 
+    private async Task RefreshSerialStorageInfo()
+    {
+        var response = await Task.Run(() => _serialDevice!.QueryStorageInfo());
+        // Format: "total-used-free-0-0-0" (values in KB)
+        var parts = response.Split('-');
+        if (parts.Length >= 3 &&
+            long.TryParse(parts[0], out var totalKb) &&
+            long.TryParse(parts[1], out var usedKb) &&
+            long.TryParse(parts[2], out var freeKb))
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                TotalStorageDisplay = FormatBytes(totalKb);
+                UsedStorageDisplay = FormatBytes(usedKb);
+                FreeStorageDisplay = FormatBytes(freeKb);
+                StorageUsagePercentage = totalKb > 0
+                    ? (double)usedKb / totalKb * 100
+                    : 0;
+            });
+        }
+    }
+
+    private async Task RefreshSerialFileList()
+    {
+        var files = await Task.Run(() => _serialDevice!.ListDirectory("/mnt/UDISK/img/"));
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            DeviceFiles.Clear();
+            foreach (var fileName in files)
+            {
+                DeviceFiles.Add(new DeviceFile
+                {
+                    Name = fileName,
+                    Type = GetFileType(fileName),
+                    Size = 0,
+                    SizeDisplay = "N/A"
+                });
+            }
+        });
+    }
+
     [RelayCommand]
     private async Task UploadVideo()
     {
-        if (_turingDevice == null) return;
+        if (_turingDevice == null && _serialDevice == null) return;
 
         var dialog = new OpenFileDialog
         {
-            Title = "Select Video File",
-            Filter = "MP4 Files|*.mp4|All Files|*.*",
+            Title = _isSerialDevice ? "Select Image File" : "Select Video File",
+            Filter = _isSerialDevice
+                ? "Image Files|*.png;*.jpg;*.jpeg|All Files|*.*"
+                : "MP4 Files|*.mp4|All Files|*.*",
             Multiselect = false
         };
 
@@ -276,22 +374,36 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
             try
             {
                 IsLoading = true;
-                LoadingText = "Uploading video...";
-
                 var fileName = Path.GetFileName(dialog.FileName);
+                LoadingText = $"Uploading {fileName}...";
 
                 try
                 {
-                    await Task.Run(() => { 
-                        _turingDevice.UploadFile(dialog.FileName);
-                    });
+                    if (_isSerialDevice)
+                    {
+                        var fileData = await Task.Run(() => File.ReadAllBytes(dialog.FileName));
+                        var devicePath = $"/mnt/UDISK/img/{fileName}";
+                        await Task.Run(() => _serialDevice!.UploadFile(devicePath, fileData));
+                    }
+                    else
+                    {
+                        await Task.Run(() => _turingDevice!.UploadFile(dialog.FileName));
+                    }
 
-                    ShowStatus("Success", $"Video '{fileName}' uploaded successfully.", InfoBarSeverity.Success);
+                    ShowStatus("Success", $"'{fileName}' uploaded successfully.", InfoBarSeverity.Success);
                     await RefreshStorage();
+                }
+                catch (TimeoutException ex)
+                {
+                    ShowStatus("Upload Failed", $"Upload timed out for '{fileName}': {ex.Message}. The device may need to be reconnected.", InfoBarSeverity.Error);
                 }
                 catch (TuringDeviceException ex)
                 {
-                    ShowStatus("Upload Failed", $"Failed to upload video '{fileName}': {ex.Message}", InfoBarSeverity.Error);
+                    ShowStatus("Upload Failed", $"Failed to upload '{fileName}': {ex.Message}", InfoBarSeverity.Error);
+                }
+                catch (IOException ex)
+                {
+                    ShowStatus("Upload Failed", $"Failed to upload '{fileName}': {ex.Message}", InfoBarSeverity.Error);
                 }
             }
             catch (Exception ex)
@@ -309,38 +421,52 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task PlayFile(DeviceFile? file)
     {
-        if (_turingDevice == null || file == null) return;
+        if ((_turingDevice == null && _serialDevice == null) || file == null) return;
 
         try
         {
             IsLoading = true;
             LoadingText = $"Playing {file.Name}...";
 
-            // Stop current playback first (matches original implementation)
-            try
+            if (_isSerialDevice)
             {
-                _turingDevice.StopPlay();
+                try
+                {
+                    await Task.Run(() => _serialDevice!.StartMedia());
+                    CurrentlyPlaying = file.Name;
+                    ShowStatus("Playing", $"Now playing: {file.Name}", InfoBarSeverity.Success);
+                }
+                catch (Exception ex)
+                {
+                    CurrentlyPlaying = "Nothing";
+                    ShowStatus("Playback Failed", $"Failed to play {file.Name}: {ex.Message}", InfoBarSeverity.Error);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                Logger.Debug(ex, "Failed to stop playback (may not be playing)");
-            }
+                // Stop current playback first (matches original implementation)
+                try
+                {
+                    _turingDevice!.StopPlay();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Debug(ex, "Failed to stop playback (may not be playing)");
+                }
 
-            // Small delay for device to process stop command
-            await Task.Delay(100);
+                await Task.Delay(100);
 
-            // Play the file - single command, no extra stop/clear sequences
-            // The original implementation (GClass14.cs:532-588) just sends the play command
-            try
-            {
-                _turingDevice.PlayFile(file.Name);
-                CurrentlyPlaying = file.Name;
-                ShowStatus("Playing", $"Now playing: {file.Name}", InfoBarSeverity.Success);
-            }
-            catch (TuringDeviceException ex)
-            {
-                CurrentlyPlaying = "Nothing";
-                ShowStatus("Playback Failed", $"Failed to play {file.Name}: {ex.Message}", InfoBarSeverity.Error);
+                try
+                {
+                    _turingDevice!.PlayFile(file.Name);
+                    CurrentlyPlaying = file.Name;
+                    ShowStatus("Playing", $"Now playing: {file.Name}", InfoBarSeverity.Success);
+                }
+                catch (TuringDeviceException ex)
+                {
+                    CurrentlyPlaying = "Nothing";
+                    ShowStatus("Playback Failed", $"Failed to play {file.Name}: {ex.Message}", InfoBarSeverity.Error);
+                }
             }
         }
         catch (Exception ex)
@@ -357,7 +483,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task DeleteFile(DeviceFile? file)
     {
-        if (_turingDevice == null || file == null) return;
+        if ((_turingDevice == null && _serialDevice == null) || file == null) return;
 
         var result = System.Windows.MessageBox.Show(
             $"Are you sure you want to delete '{file.Name}'?",
@@ -375,17 +501,35 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
                 // If this is the currently playing file, stop it first
                 if (CurrentlyPlaying == file.Name)
                 {
-                    _turingDevice.StopPlay();
+                    if (_isSerialDevice)
+                    {
+                        try { await Task.Run(() => _serialDevice!.StopMedia()); } catch { }
+                    }
+                    else
+                    {
+                        try { _turingDevice!.StopPlay(); } catch { }
+                    }
                     CurrentlyPlaying = "Nothing";
                 }
 
                 try
                 {
-                    _turingDevice.DeleteFile(file.Name);
+                    if (_isSerialDevice)
+                    {
+                        await Task.Run(() => _serialDevice!.DeleteFile($"/mnt/UDISK/img/{file.Name}"));
+                    }
+                    else
+                    {
+                        _turingDevice!.DeleteFile(file.Name);
+                    }
                     ShowStatus("Success", $"File '{file.Name}' deleted successfully.", InfoBarSeverity.Success);
                     await RefreshStorage();
                 }
                 catch (TuringDeviceException ex)
+                {
+                    ShowStatus("Delete Failed", $"Failed to delete '{file.Name}': {ex.Message}", InfoBarSeverity.Error);
+                }
+                catch (IOException ex)
                 {
                     ShowStatus("Delete Failed", $"Failed to delete '{file.Name}': {ex.Message}", InfoBarSeverity.Error);
                 }
@@ -406,7 +550,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveSettings()
     {
-        if (_turingDevice == null) return;
+        if (_turingDevice == null || _isSerialDevice) return;
 
         try
         {
@@ -452,7 +596,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task RestartDevice()
     {
-        if (_turingDevice == null) return;
+        if (_turingDevice == null || _isSerialDevice) return;
 
         var result = MessageBox.Show(
             "Are you sure you want to restart the device?",
@@ -533,6 +677,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         return extension switch
         {
             ".mp4" or ".h264" => "Video",
+            ".png" or ".jpg" or ".jpeg" => "Image",
             _ => "Other"
         };
     }
@@ -540,6 +685,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     public void Cleanup()
     {
         _turingDevice?.Dispose();
+        _serialDevice?.Dispose();
     }
 }
 
