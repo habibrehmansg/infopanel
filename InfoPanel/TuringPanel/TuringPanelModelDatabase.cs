@@ -22,6 +22,7 @@ namespace InfoPanel.TuringPanel
             [TuringPanelModel.REV_5INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_5INCH_USB, Name = "Turing Smart Screen 5\"", Width = 720, Height = 1280, VendorId = 0x1cbe, ProductId = 0x0050, IsUsbDevice = true },
             [TuringPanelModel.REV_16INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_16INCH_USB, Name = "Turing Smart Screen 1.6\"", Width = 400, Height = 400, VendorId = 0x1cbe, ProductId = 0x0016, IsUsbDevice = true },
             [TuringPanelModel.REV_21INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_21INCH_USB, Name = "Turing Smart Screen 2.1\"", Width = 480, Height = 480, VendorId = 0x1cbe, ProductId = 0x0021, IsUsbDevice = true },
+            [TuringPanelModel.REV_13INCH_USB] = new TuringPanelModelInfo { Model = TuringPanelModel.REV_13INCH_USB, Name = "Shiny Snake G600 11.3\" (Turing 10.2\")", Width = 440, Height = 1920, VendorId = 0x0525, ProductId = 0xa4a7, IsUsbDevice = false },
         };
 
         public static bool TryGetModelInfo(int vendorId, int productId, bool isUsbDevice, out TuringPanelModelInfo modelInfo)
