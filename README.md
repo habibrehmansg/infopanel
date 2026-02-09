@@ -74,6 +74,7 @@ InfoPanel features a robust plugin system that extends its capabilities:
 ### Community Plugins
 - [InfoPanel Spotify Plugin](https://github.com/F3NN3X/InfoPanel.Spotify) - Displays currently playing tracks and album art from Spotify
 - [InfoPanel FPS Plugin](https://github.com/F3NN3X/InfoPanel.FPS) - Shows FPS and performance metrics for gaming sessions
+- [InfoPanel YouTube Live Plugin](https://github.com/fweepa/InfoPanel.YoutubeLivePlugin) - Plays a YouTube Live stream in your panel
 
 ### Plugin Development
 InfoPanel provides a comprehensive API for plugin development that allows access to:
