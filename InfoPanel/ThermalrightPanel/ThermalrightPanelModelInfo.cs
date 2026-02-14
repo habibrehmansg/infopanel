@@ -4,11 +4,14 @@ namespace InfoPanel.ThermalrightPanel
     {
         public ThermalrightPanelModel Model { get; init; }
         public string Name { get; init; } = "Unknown Model";
-        public int Width { get; init; }
+        public string DeviceIdentifier { get; init; } = "";  // e.g., "SSCRM-V1", "SSCRM-V3"
+        public int Width { get; init; }      // Native resolution
         public int Height { get; init; }
+        public int RenderWidth { get; init; }   // Actual render resolution (may differ from native)
+        public int RenderHeight { get; init; }
         public int VendorId { get; init; }
         public int ProductId { get; init; }
 
-        public override string ToString() => $"{Name} ({Width}x{Height}) - VID: {VendorId:X4}, PID: {ProductId:X4}";
+        public override string ToString() => $"{Name} ({RenderWidth}x{RenderHeight}) - {DeviceIdentifier}";
     }
 }

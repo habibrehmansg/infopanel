@@ -22,23 +22,20 @@ namespace InfoPanel.Services
         private const int COMMAND_DISPLAY = 0x02;
         private const int JPEG_QUALITY = 85;
 
-        // TRCC uses 1600x720 (2/3 of native 2400x1080)
-        private const int TRCC_WIDTH = 1600;
-        private const int TRCC_HEIGHT = 720;
+        // Default resolution (updated after device identification)
+        private const int DEFAULT_WIDTH = 480;
+        private const int DEFAULT_HEIGHT = 480;
 
         private readonly ThermalrightPanelDevice _device;
-        private int _panelWidth;
-        private int _panelHeight;
+        private int _panelWidth = DEFAULT_WIDTH;
+        private int _panelHeight = DEFAULT_HEIGHT;
+        private ThermalrightPanelModelInfo? _detectedModel;
 
         public ThermalrightPanelDevice Device => _device;
 
         public ThermalrightPanelDeviceTask(ThermalrightPanelDevice device)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
-
-            // Use TRCC resolution (1600x720) - this is what the official software uses
-            _panelWidth = TRCC_WIDTH;
-            _panelHeight = TRCC_HEIGHT;
         }
 
         /// <summary>
@@ -143,10 +140,6 @@ namespace InfoPanel.Services
                 }
 
                 Logger.Information("ThermalrightPanelDevice {Device}: Device opened successfully!", _device);
-                Logger.Information("ThermalrightPanelDevice {Device}: Connected to {Width}x{Height} panel",
-                    _device, _panelWidth, _panelHeight);
-
-                _device.RuntimeProperties.Name = $"Thermalright {_device.ModelInfo?.Name ?? "Panel"} ({_panelWidth}x{_panelHeight})";
 
                 // Send initialization command (magic + zeros + 0x01 at offset 56)
                 var initCommand = BuildInitCommand();
@@ -162,25 +155,50 @@ namespace InfoPanel.Services
                 }
                 Logger.Information("ThermalrightPanelDevice {Device}: Init command sent ({Bytes} bytes)", _device, initWritten);
 
-                // Read device response (should contain "SSCRM-V3" identifier)
+                // Read device response to identify panel type (SSCRM-V1, SSCRM-V3, etc.)
                 var responseBuffer = new byte[64];
+                string? deviceIdentifier = null;
                 if (usbDevice.Read(responseBuffer, out int bytesRead) && bytesRead > 0)
                 {
                     var responseHex = BitConverter.ToString(responseBuffer, 0, Math.Min(bytesRead, 32)).Replace("-", "");
                     Logger.Information("ThermalrightPanelDevice {Device}: Device response ({Bytes} bytes): {Hex}",
                         _device, bytesRead, responseHex);
 
-                    // Check for device identifier (SSCRM-V3 at offset 4)
+                    // Extract device identifier (e.g., "SSCRM-V1", "SSCRM-V3" at offset 4)
                     if (bytesRead >= 12)
                     {
-                        var identifier = System.Text.Encoding.ASCII.GetString(responseBuffer, 4, 8).TrimEnd('\0');
-                        Logger.Information("ThermalrightPanelDevice {Device}: Device identifier: {Id}", _device, identifier);
+                        deviceIdentifier = System.Text.Encoding.ASCII.GetString(responseBuffer, 4, 8).TrimEnd('\0');
+                        Logger.Information("ThermalrightPanelDevice {Device}: Device identifier: {Id}", _device, deviceIdentifier);
+
+                        // Detect panel model based on identifier
+                        _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifier(deviceIdentifier);
+                        if (_detectedModel != null)
+                        {
+                            _panelWidth = _detectedModel.RenderWidth;
+                            _panelHeight = _detectedModel.RenderHeight;
+                            Logger.Information("ThermalrightPanelDevice {Device}: Detected {Model} - using {Width}x{Height}",
+                                _device, _detectedModel.Name, _panelWidth, _panelHeight);
+                        }
+                        else
+                        {
+                            Logger.Warning("ThermalrightPanelDevice {Device}: Unknown identifier '{Id}', using default {Width}x{Height}",
+                                _device, deviceIdentifier, _panelWidth, _panelHeight);
+                        }
                     }
                 }
                 else
                 {
-                    Logger.Warning("ThermalrightPanelDevice {Device}: No response from device", _device);
+                    Logger.Warning("ThermalrightPanelDevice {Device}: No response from device, using default {Width}x{Height}",
+                        _device, _panelWidth, _panelHeight);
                 }
+
+                // Update device display name with detected model (show native resolution)
+                var modelName = _detectedModel?.Name ?? "Panel";
+                var nativeWidth = _detectedModel?.Width ?? _panelWidth;
+                var nativeHeight = _detectedModel?.Height ?? _panelHeight;
+                _device.RuntimeProperties.Name = $"Thermalright {modelName} ({nativeWidth}x{nativeHeight})";
+                Logger.Information("ThermalrightPanelDevice {Device}: Connected to {Name} (native {NativeW}x{NativeH}, rendering at {RenderW}x{RenderH})",
+                    _device, modelName, nativeWidth, nativeHeight, _panelWidth, _panelHeight);
 
                 await Task.Delay(100, token); // Small delay after init
 
