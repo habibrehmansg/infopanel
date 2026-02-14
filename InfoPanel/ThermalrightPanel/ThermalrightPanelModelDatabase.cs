@@ -8,8 +8,8 @@ namespace InfoPanel.ThermalrightPanel
         public const int THERMALRIGHT_PRODUCT_ID = 0x70DB;
 
         // Device identifiers returned in init response
-        public const string IDENTIFIER_V1 = "SSCRM-V1"; // Wonder Vision 360 (2400x1080)
-        public const string IDENTIFIER_V3 = "SSCRM-V3"; // Peerless Vision 360 (480x480)
+        public const string IDENTIFIER_V1 = "SSCRM-V1"; // Peerless Vision 360 (480x480)
+        public const string IDENTIFIER_V3 = "SSCRM-V3"; // Wonder Vision 360 (1600x720)
 
         public static readonly Dictionary<ThermalrightPanelModel, ThermalrightPanelModelInfo> Models = new()
         {
@@ -17,7 +17,7 @@ namespace InfoPanel.ThermalrightPanel
             {
                 Model = ThermalrightPanelModel.PeerlessVision360,
                 Name = "Peerless Vision 360",
-                DeviceIdentifier = IDENTIFIER_V3,
+                DeviceIdentifier = IDENTIFIER_V1,
                 Width = 480,
                 Height = 480,
                 RenderWidth = 480,
@@ -29,7 +29,7 @@ namespace InfoPanel.ThermalrightPanel
             {
                 Model = ThermalrightPanelModel.WonderVision360,
                 Name = "Wonder Vision 360",
-                DeviceIdentifier = IDENTIFIER_V1,
+                DeviceIdentifier = IDENTIFIER_V3,
                 Width = 2400,
                 Height = 1080,
                 RenderWidth = 1600,  // TRCC uses 1600x720
