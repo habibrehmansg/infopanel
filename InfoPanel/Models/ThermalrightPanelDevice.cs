@@ -22,6 +22,11 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private ThermalrightPanelModel _model = ThermalrightPanelModel.WonderVision360;
 
+        partial void OnModelChanged(ThermalrightPanelModel value)
+        {
+            OnPropertyChanged(nameof(ModelInfo));
+        }
+
         partial void OnDeviceLocationChanged(string value)
         {
             OnPropertyChanged(DevicePort);

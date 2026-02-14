@@ -176,6 +176,10 @@ namespace InfoPanel.Services
                         {
                             _panelWidth = _detectedModel.RenderWidth;
                             _panelHeight = _detectedModel.RenderHeight;
+
+                            // Update device model so UI shows correct dimensions
+                            _device.Model = _detectedModel.Model;
+
                             Logger.Information("ThermalrightPanelDevice {Device}: Detected {Model} - using {Width}x{Height}",
                                 _device, _detectedModel.Name, _panelWidth, _panelHeight);
                         }
