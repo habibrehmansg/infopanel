@@ -3,11 +3,11 @@ namespace InfoPanel.ThermalrightPanel
     public enum ThermalrightPanelModel
     {
         Unknown,
-        // Peerless Vision 360 - 3.95" (480x480) - responds with SSCRM-V1
+        // Grand / Hydro / Peerless Vision 240/360 - 3.95" (480x480) - responds with SSCRM-V1
         PeerlessVision360,
         // Wonder Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3
         WonderVision360,
-        // TL-M10 VISION - 9.16" (1920x462) - responds with SSCRM-V4
+        // TL-M10 Vision - 9.16" (1920x462) - responds with SSCRM-V4
         TLM10Vision,
         // Trofeo Vision 6.86" - HID (VID 0x0416 / PID 0x5302)
         // Resolution determined from init response PM byte
