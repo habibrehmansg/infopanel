@@ -22,16 +22,16 @@ namespace InfoPanel.ThermalrightPanel
         };
 
         // Device identifiers returned in init response
-        public const string IDENTIFIER_V1 = "SSCRM-V1"; // Peerless Vision 360 (480x480)
+        public const string IDENTIFIER_V1 = "SSCRM-V1"; // Grand / Hydro / Peerless Vision 240/360 (480x480)
         public const string IDENTIFIER_V3 = "SSCRM-V3"; // Wonder Vision 360 (2400x1080)
-        public const string IDENTIFIER_V4 = "SSCRM-V4"; // TL-M10 VISION (1920x462)
+        public const string IDENTIFIER_V4 = "SSCRM-V4"; // TL-M10 Vision (1920x462)
 
         public static readonly Dictionary<ThermalrightPanelModel, ThermalrightPanelModelInfo> Models = new()
         {
             [ThermalrightPanelModel.PeerlessVision360] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.PeerlessVision360,
-                Name = "Peerless Vision 360",
+                Name = "Grand / Hydro / Peerless Vision 240/360",
                 DeviceIdentifier = IDENTIFIER_V1,
                 Width = 480,
                 Height = 480,
@@ -55,7 +55,7 @@ namespace InfoPanel.ThermalrightPanel
             [ThermalrightPanelModel.TLM10Vision] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.TLM10Vision,
-                Name = "TL-M10 VISION",
+                Name = "TL-M10 Vision",
                 DeviceIdentifier = IDENTIFIER_V4,
                 Width = 1920,
                 Height = 462,
