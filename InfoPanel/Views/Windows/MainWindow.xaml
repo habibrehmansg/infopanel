@@ -127,6 +127,14 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
+                    Content="Logs"
+                    Tag="logs"
+                    TargetPageType="{x:Type pages:LogsPage}">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="Document20" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+                <ui:NavigationViewItem
                     Content="About"
                     Tag="about"
                     TargetPageType="{x:Type pages:AboutPage}">
@@ -216,6 +224,14 @@
                         </MenuItem.Icon>
                     </MenuItem>
 
+                    <MenuItem
+                        Click="TrayMenuItem_OnClick"
+                        Header="Logs"
+                        Tag="logs">
+                        <MenuItem.Icon>
+                            <ui:SymbolIcon Symbol="Document20" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
                         Header="About"

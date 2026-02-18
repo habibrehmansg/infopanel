@@ -67,6 +67,16 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _turingPanelMultiDeviceMode = false;
 
+        private readonly ObservableCollection<ThermalrightPanelDevice> _thermalrightPanelDevices = [];
+
+        public ObservableCollection<ThermalrightPanelDevice> ThermalrightPanelDevices
+        {
+            get { return _thermalrightPanelDevices; }
+        }
+
+        [ObservableProperty]
+        private bool _thermalrightPanelMultiDeviceMode = false;
+
         [ObservableProperty]
         private bool _webServer = false;
 
@@ -92,6 +102,7 @@ namespace InfoPanel.Models
         {
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
             TuringPanelDevices.CollectionChanged += TuringPanelDevices_CollectionChanged;
+            ThermalrightPanelDevices.CollectionChanged += ThermalrightPanelDevices_CollectionChanged;
         }
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -149,6 +160,35 @@ namespace InfoPanel.Models
             if (e.PropertyName != nameof(TuringPanelDevice.RuntimeProperties))
             {
                 OnPropertyChanged(nameof(TuringPanelDevices));
+            }
+        }
+
+        private void ThermalrightPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (ThermalrightPanelDevice device in e.OldItems)
+                {
+                    device.PropertyChanged -= ThermalrightDevice_PropertyChanged;
+                }
+            }
+
+            if (e.NewItems != null)
+            {
+                foreach (ThermalrightPanelDevice device in e.NewItems)
+                {
+                    device.PropertyChanged += ThermalrightDevice_PropertyChanged;
+                }
+            }
+
+            OnPropertyChanged(nameof(ThermalrightPanelDevices));
+        }
+
+        private void ThermalrightDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ThermalrightPanelDevice.RuntimeProperties))
+            {
+                OnPropertyChanged(nameof(ThermalrightPanelDevices));
             }
         }
     }
