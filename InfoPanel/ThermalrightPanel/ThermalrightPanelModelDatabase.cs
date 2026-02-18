@@ -13,6 +13,9 @@ namespace InfoPanel.ThermalrightPanel
         public const int TROFEO_PRODUCT_ID_686 = 0x5302;  // 6.86" - HID transport
         public const int TROFEO_PRODUCT_ID_916 = 0x5408;  // 9.16" - USB bulk transport
 
+        // HID identifier string reported by Trofeo Vision 6.86" (init response bytes 20-27)
+        public const string TROFEO_686_HID_IDENTIFIER = "BP21940";
+
         // All supported VID/PID pairs for device scanning
         public static readonly (int Vid, int Pid)[] SupportedDevices =
         {
@@ -68,7 +71,7 @@ namespace InfoPanel.ThermalrightPanel
             {
                 Model = ThermalrightPanelModel.TrofeoVision,
                 Name = "Trofeo Vision 6.86\"",
-                DeviceIdentifier = "",  // Resolution determined from init response PM byte
+                DeviceIdentifier = TROFEO_686_HID_IDENTIFIER,  // "BP21940" - from HID init response bytes 20-27
                 Width = 1280,
                 Height = 480,
                 RenderWidth = 1280,

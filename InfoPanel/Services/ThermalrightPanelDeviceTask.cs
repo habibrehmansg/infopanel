@@ -495,13 +495,25 @@ namespace InfoPanel.Services
                             _device, pm, _panelWidth, _panelHeight);
                     }
 
-                    // Log identifier portion (bytes 20+)
+                    // Use identifier (bytes 20+) to refine model detection
                     if (response.Length >= 28)
                     {
                         var identifierBytes = new byte[Math.Min(8, response.Length - 20)];
                         Array.Copy(response, 20, identifierBytes, 0, identifierBytes.Length);
                         var identifier = System.Text.Encoding.ASCII.GetString(identifierBytes).TrimEnd('\0');
                         Logger.Information("ThermalrightPanelDevice {Device}: HID device identifier: {Id}", _device, identifier);
+
+                        var identifiedModel = ThermalrightPanelModelDatabase.GetModelByIdentifier(identifier);
+                        if (identifiedModel != null)
+                        {
+                            _detectedModel = identifiedModel;
+                            _device.Model = identifiedModel.Model;
+                            Logger.Information("ThermalrightPanelDevice {Device}: Identified as {Model} via HID identifier", _device, identifiedModel.Name);
+                        }
+                        else
+                        {
+                            Logger.Warning("ThermalrightPanelDevice {Device}: Unknown HID identifier '{Id}'", _device, identifier);
+                        }
                     }
                 }
 
