@@ -26,8 +26,11 @@ namespace InfoPanel.ThermalrightPanel
 
             foreach (var (vid, pid) in ThermalrightPanelModelDatabase.SupportedDevices)
             {
-                var modelInfo = ThermalrightPanelModelDatabase.GetModelByVidPid(vid, pid);
-                if (modelInfo?.TransportType == ThermalrightTransportType.Hid)
+                // Check if any model with this VID/PID uses HID transport
+                // (many HID models share the same VID/PID, so GetModelByVidPid returns null for ambiguous matches)
+                bool isHid = ThermalrightPanelModelDatabase.Models.Values
+                    .Any(m => m.VendorId == vid && m.ProductId == pid && m.TransportType == ThermalrightTransportType.Hid);
+                if (isHid)
                     hidDevices.Add((vid, pid));
                 else
                     winUsbDevices.Add((vid, pid));
@@ -85,6 +88,16 @@ namespace InfoPanel.ThermalrightPanel
                 foreach (var hidDevice in hidDeviceList)
                 {
                     var modelInfo = ThermalrightPanelModelDatabase.GetModelByVidPid(vendorId, productId);
+
+                    // When multiple models share the same VID/PID (e.g. all Trofeo HID panels on 0416:5302),
+                    // GetModelByVidPid returns null. Use the first matching model so the saved Model enum
+                    // resolves to a valid ModelInfo with the correct transport/protocol/VID/PID.
+                    // The actual model will be determined from the PM byte during HID init.
+                    if (modelInfo == null)
+                    {
+                        modelInfo = ThermalrightPanelModelDatabase.Models.Values
+                            .FirstOrDefault(m => m.VendorId == vendorId && m.ProductId == productId);
+                    }
 
                     // Synthesize a stable device ID and location for HID devices
                     var deviceId = $"HID\\VID_{vendorId:X4}&PID_{productId:X4}";
