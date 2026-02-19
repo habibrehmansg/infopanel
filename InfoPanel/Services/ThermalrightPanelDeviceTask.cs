@@ -123,14 +123,109 @@ namespace InfoPanel.Services
                 // Resize to panel resolution with rotation
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
-                // Encode as JPEG
-                using var image = SKImage.FromBitmap(resizedBitmap);
-                using var data = image.Encode(SKEncodedImageFormat.Jpeg, JPEG_QUALITY);
-
-                return data.ToArray();
+                SKBitmap encodeBitmap = resizedBitmap;
+                SKBitmap? dimmed = null;
+                try
+                {
+                    if (_device.Brightness < 100)
+                    {
+                        dimmed = ApplyBrightness(resizedBitmap);
+                        encodeBitmap = dimmed;
+                    }
+                    using var image = SKImage.FromBitmap(encodeBitmap);
+                    using var data = image.Encode(SKEncodedImageFormat.Jpeg, JPEG_QUALITY);
+                    return data.ToArray();
+                }
+                finally
+                {
+                    dimmed?.Dispose();
+                }
             }
 
-            return null;
+            // No profile — black JPEG as keepalive
+            return _blackFrame ??= GenerateBlackJpeg();
+        }
+
+        private byte[] GenerateRgb565Buffer()
+        {
+            var profileGuid = _device.ProfileGuid;
+            bool bigEndian = _detectedModel?.PixelFormat == ThermalrightPixelFormat.Rgb565BigEndian;
+
+            if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
+            {
+                var rotation = _device.Rotation;
+
+                using var bitmap = PanelDrawTask.RenderSK(profile, false,
+                    colorType: SKColorType.Rgba8888,
+                    alphaType: SKAlphaType.Opaque);
+
+                using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
+
+                SKBitmap convertBitmap = resizedBitmap;
+                SKBitmap? dimmed = null;
+                try
+                {
+                    if (_device.Brightness < 100)
+                    {
+                        dimmed = ApplyBrightness(resizedBitmap);
+                        convertBitmap = dimmed;
+                    }
+                    using var rgb565Bitmap = convertBitmap.Copy(SKColorType.Rgb565);
+                    var bytes = rgb565Bitmap.Bytes;
+                    if (bigEndian) SwapRgb565Endianness(bytes);
+                    return bytes;
+                }
+                finally
+                {
+                    dimmed?.Dispose();
+                }
+            }
+
+            // No profile — black RGB565 as keepalive (0x0000 is black in both endiannesses)
+            return _blackFrame ??= new byte[_panelWidth * _panelHeight * 2];
+        }
+
+        /// <summary>
+        /// Software brightness: dims the image by scaling RGB channels via color matrix.
+        /// Always returns a new bitmap (caller must dispose).
+        /// </summary>
+        private SKBitmap ApplyBrightness(SKBitmap source)
+        {
+            float scale = Math.Clamp(_device.Brightness, 0, 100) / 100f;
+
+            var result = new SKBitmap(source.Width, source.Height, source.ColorType, source.AlphaType);
+            using var canvas = new SKCanvas(result);
+            using var paint = new SKPaint();
+            paint.ColorFilter = SKColorFilter.CreateColorMatrix(
+            [
+                scale, 0,     0,     0, 0,
+                0,     scale, 0,     0, 0,
+                0,     0,     scale, 0, 0,
+                0,     0,     0,     1, 0
+            ]);
+            canvas.DrawBitmap(source, 0, 0, paint);
+            return result;
+        }
+
+        /// <summary>
+        /// Byte-swaps each 16-bit pixel in-place for big-endian RGB565.
+        /// Required for 320x320 panels.
+        /// </summary>
+        private static void SwapRgb565Endianness(byte[] data)
+        {
+            for (int i = 0; i < data.Length - 1; i += 2)
+                (data[i], data[i + 1]) = (data[i + 1], data[i]);
+        }
+
+        private byte[]? _blackFrame;
+
+        private byte[] GenerateBlackJpeg()
+        {
+            using var bitmap = new SKBitmap(_panelWidth, _panelHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
+            bitmap.Erase(SKColors.Black);
+            using var image = SKImage.FromBitmap(bitmap);
+            using var data = image.Encode(SKEncodedImageFormat.Jpeg, JPEG_QUALITY);
+            return data.ToArray();
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
