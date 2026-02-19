@@ -46,6 +46,9 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _brightness = 100;
 
+        [ObservableProperty]
+        private int _targetFrameRate = 15;
+
         // Runtime properties
         [ObservableProperty]
         [property: System.Xml.Serialization.XmlIgnore]
