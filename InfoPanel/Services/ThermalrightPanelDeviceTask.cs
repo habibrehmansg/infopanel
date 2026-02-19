@@ -882,15 +882,14 @@ namespace InfoPanel.Services
                         _frameAvailable.Set();
                     }
 
-                    var targetFrameTime = 1000 / ConfigModel.Instance.Settings.TargetFrameRate;
-                    var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
+                    var targetFrameTime = 1000 / Math.Max(1, _device.TargetFrameRate);
                     var adaptiveFrameTime = 0;
 
                     var elapsedMs = (int)stopwatch.ElapsedMilliseconds;
 
-                    if (elapsedMs < desiredFrameTime)
+                    if (elapsedMs < targetFrameTime)
                     {
-                        adaptiveFrameTime = desiredFrameTime - elapsedMs;
+                        adaptiveFrameTime = targetFrameTime - elapsedMs;
                     }
 
                     if (adaptiveFrameTime > 0)
