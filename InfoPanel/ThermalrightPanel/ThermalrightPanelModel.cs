@@ -5,8 +5,10 @@ namespace InfoPanel.ThermalrightPanel
         Unknown,
         // Grand / Hydro / Peerless Vision 240/360 - 3.95" (480x480) - responds with SSCRM-V1
         PeerlessVision360,
-        // Wonder Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3
+        // Wonder Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x01
         WonderVision360,
+        // Rainbow Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x02
+        RainbowVision360,
         // TL-M10 Vision - 9.16" (1920x462) - responds with SSCRM-V4
         TLM10Vision,
         // Trofeo Vision 6.86" - HID (VID 0x0416 / PID 0x5302)
