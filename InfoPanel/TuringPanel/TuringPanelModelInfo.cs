@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -16,6 +16,8 @@ namespace InfoPanel.TuringPanel
         public int ProductId { get; init; }
 
         public bool IsUsbDevice { get; init; } = false;
+
+        public bool HasPerDeviceTargetFps { get; init; } = false;
 
         public override string ToString() => $"{Name} ({Width}x{Height}) - VID: {VendorId:X4}, PID: {ProductId:X4}";
 

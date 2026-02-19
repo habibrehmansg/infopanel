@@ -185,7 +185,10 @@ namespace InfoPanel
                         fpsCounter.Update(stopwatch.ElapsedMilliseconds);
                         _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
 
-                        var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
+                        var fpsSource = _device.ModelInfo?.HasPerDeviceTargetFps == true
+                            ? _device.TargetFrameRate
+                            : ConfigModel.Instance.Settings.TargetFrameRate;
+                        var targetFrameTime = 1000.0 / Math.Max(1, fpsSource);
                         if (stopwatch.ElapsedMilliseconds < targetFrameTime)
                         {
                             var sleep = (int)(targetFrameTime - stopwatch.ElapsedMilliseconds);
