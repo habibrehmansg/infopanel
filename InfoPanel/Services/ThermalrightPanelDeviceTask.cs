@@ -209,6 +209,11 @@ namespace InfoPanel.Services
                     wholeUsbDevice.SetConfiguration(1);
                     wholeUsbDevice.ClaimInterface(0);
                 }
+                else
+                {
+                    Logger.Warning("ThermalrightPanelDevice {Device}: Device is {Type}, SetConfiguration/ClaimInterface skipped",
+                        _device, usbDevice.GetType().Name);
+                }
 
                 Logger.Information("ThermalrightPanelDevice {Device}: Device opened successfully!", _device);
 
@@ -253,7 +258,11 @@ namespace InfoPanel.Services
 
                 var protocolType = _device.ModelInfo?.ProtocolType ?? ThermalrightProtocolType.ChiZhu;
 
-                if (protocolType == ThermalrightProtocolType.Trofeo)
+                if (protocolType == ThermalrightProtocolType.TrofeoBulk)
+                {
+                    await DoWinUsbTrofeoBulkProtocol(writer, reader, token);
+                }
+                else if (protocolType == ThermalrightProtocolType.Trofeo)
                 {
                     await DoWinUsbTrofeoProtocol(writer, reader, token);
                 }
@@ -439,6 +448,177 @@ namespace InfoPanel.Services
                     offset += chunkSize;
                 }
             }, token);
+        }
+
+        /// <summary>
+        /// Trofeo Bulk protocol for 9.16" (VID 0416, PID 5408).
+        /// Init: 2048-byte packet (02 FF ... 01 ...), response 512 bytes.
+        /// Frame: 4096-byte USB transfers, each containing 8 × 512-byte sub-packets.
+        /// Each sub-packet has a 16-byte header + 496 bytes of JPEG data.
+        /// No response/ACK between frame writes — write-only stream.
+        /// Protocol decoded from TRCC USB capture analysis.
+        /// </summary>
+        private async Task DoWinUsbTrofeoBulkProtocol(UsbEndpointWriter writer, UsbEndpointReader reader, CancellationToken token)
+        {
+            const int INIT_PACKET_SIZE = 2048;
+            const int USB_TRANSFER_SIZE = 4096;    // Each USB bulk write
+            const int SUB_PACKET_SIZE = 512;       // Sub-packets within each transfer
+            const int SUB_HEADER_SIZE = 16;        // Header per sub-packet
+            const int SUB_DATA_SIZE = 496;         // Data per sub-packet (512 - 16)
+            const int SUBS_PER_TRANSFER = 8;       // 4096 / 512
+            const int RESPONSE_SIZE = 512;
+
+            // Reset pipes to clear stale state from previous failed attempts
+            writer.Reset();
+            reader.Reset();
+
+            // Send init command: 2048 bytes, byte[0]=0x02, byte[1]=0xFF, byte[8]=0x01
+            var initPacket = new byte[INIT_PACKET_SIZE];
+            initPacket[0] = 0x02;
+            initPacket[1] = 0xFF;
+            initPacket[8] = 0x01;
+
+            Logger.Information("ThermalrightPanelDevice {Device}: Sending TrofeoBulk init ({Size} bytes)", _device, INIT_PACKET_SIZE);
+
+            // USB capture shows TRCC submits both read and write IRPs concurrently.
+            // The device may require a pending IN transfer before it completes the OUT.
+            // Submit the read first (async), then the write.
+            var responseBuffer = new byte[RESPONSE_SIZE];
+            ErrorCode readEc = ErrorCode.None;
+            int readBytes = 0;
+
+            var readTask = Task.Run(() =>
+            {
+                readEc = reader.Read(responseBuffer, 10000, out readBytes);
+            });
+
+            // Brief delay to ensure the read IRP reaches the USB stack
+            await Task.Delay(50, token);
+
+            var ec = writer.Write(initPacket, 5000, out int initWritten);
+            if (ec != ErrorCode.None)
+            {
+                Logger.Error("ThermalrightPanelDevice {Device}: TrofeoBulk init write failed: {Error}", _device, ec);
+                _device.UpdateRuntimeProperties(errorMessage: $"TrofeoBulk init failed: {ec}");
+                return;
+            }
+            Logger.Information("ThermalrightPanelDevice {Device}: TrofeoBulk init sent ({Bytes} bytes)", _device, initWritten);
+
+            // Wait for read to complete
+            await readTask;
+            if (readEc == ErrorCode.None && readBytes > 0)
+            {
+                var responseHex = BitConverter.ToString(responseBuffer, 0, Math.Min(readBytes, 32)).Replace("-", " ");
+                Logger.Information("ThermalrightPanelDevice {Device}: TrofeoBulk response ({Bytes} bytes): {Hex}",
+                    _device, readBytes, responseHex);
+
+                // Parse resolution from init response: bytes 24-27 = LE32 width, bytes 28-31 = LE32 height
+                if (readBytes >= 32)
+                {
+                    int reportedWidth = BitConverter.ToInt32(responseBuffer, 24);
+                    int reportedHeight = BitConverter.ToInt32(responseBuffer, 28);
+
+                    if (reportedWidth > 0 && reportedWidth <= 4096 && reportedHeight > 0 && reportedHeight <= 4096)
+                    {
+                        _panelWidth = reportedWidth;
+                        _panelHeight = reportedHeight;
+                        Logger.Information("ThermalrightPanelDevice {Device}: Device reports resolution {Width}x{Height}",
+                            _device, reportedWidth, reportedHeight);
+                    }
+                }
+            }
+            else
+            {
+                Logger.Warning("ThermalrightPanelDevice {Device}: No TrofeoBulk response (ec={Error}), continuing anyway", _device, readEc);
+            }
+
+            UpdateDeviceDisplayName();
+            await Task.Delay(100, token);
+
+            // The device requires a pending IN transfer at all times to accept OUT writes.
+            // Keep a background reader submitting read IRPs continuously.
+            var readerCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var backgroundReader = Task.Run(() =>
+            {
+                var readBuf = new byte[RESPONSE_SIZE];
+                while (!readerCts.Token.IsCancellationRequested)
+                {
+                    reader.Read(readBuf, 1000, out _);
+                }
+            }, readerCts.Token);
+
+            try
+            {
+                // Run render+send loop with sub-packet framing
+                await RunRenderSendLoop(jpegData =>
+                {
+                    TrofeoBulkWriteFrame(writer, jpegData, USB_TRANSFER_SIZE, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE, SUBS_PER_TRANSFER);
+                }, token);
+            }
+            finally
+            {
+                readerCts.Cancel();
+                try { await backgroundReader; } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Write a single frame using TrofeoBulk sub-packet framing.
+        /// Each 4096-byte USB transfer contains 8 × 512-byte sub-packets.
+        /// Each sub-packet: 16-byte header + 496 bytes of JPEG data.
+        /// Header format (16 bytes):
+        ///   [0]    0x01 frame command
+        ///   [1]    0xFF protocol marker
+        ///   [2-5]  LE32 total JPEG data size
+        ///   [6-7]  LE16 data per sub-packet (496)
+        ///   [8]    0x01 flag
+        ///   [9-10] LE16 total sub-packet count
+        ///   [11]   sub-packet sequence number (wraps at 256)
+        ///   [12-15] zeros
+        /// </summary>
+        private void TrofeoBulkWriteFrame(UsbEndpointWriter writer, byte[] jpegData,
+            int usbTransferSize, int subPacketSize, int subHeaderSize, int subDataSize, int subsPerTransfer)
+        {
+            int totalChunks = (jpegData.Length + subDataSize - 1) / subDataSize;
+            int jpegOffset = 0;
+            int chunkIndex = 0;
+
+            // Pre-compute header fields that are constant for all sub-packets in this frame
+            var jpegSizeBytes = BitConverter.GetBytes(jpegData.Length);
+            var subDataSizeBytes = BitConverter.GetBytes((ushort)subDataSize);
+            var totalChunksBytes = BitConverter.GetBytes((ushort)totalChunks);
+
+            while (jpegOffset < jpegData.Length)
+            {
+                // Build one 4096-byte USB transfer containing up to 8 sub-packets
+                var transfer = new byte[usbTransferSize];
+
+                for (int sub = 0; sub < subsPerTransfer && jpegOffset < jpegData.Length; sub++)
+                {
+                    int off = sub * subPacketSize;
+
+                    // 16-byte sub-packet header
+                    transfer[off + 0] = 0x01;     // Frame command
+                    transfer[off + 1] = 0xFF;     // Protocol marker
+                    jpegSizeBytes.CopyTo(transfer, off + 2);       // Total JPEG size LE32
+                    subDataSizeBytes.CopyTo(transfer, off + 6);    // Data per sub-packet LE16 (496)
+                    transfer[off + 8] = 0x01;     // Flag
+                    totalChunksBytes.CopyTo(transfer, off + 9);    // Total chunk count LE16
+                    transfer[off + 11] = (byte)(chunkIndex & 0xFF); // Chunk sequence (wraps)
+                    // Bytes 12-15 = zeros (already zeroed)
+
+                    // Copy JPEG data after header
+                    int dataSize = Math.Min(subDataSize, jpegData.Length - jpegOffset);
+                    Array.Copy(jpegData, jpegOffset, transfer, off + subHeaderSize, dataSize);
+
+                    jpegOffset += dataSize;
+                    chunkIndex++;
+                }
+
+                var writeEc = writer.Write(transfer, 5000, out _);
+                if (writeEc != ErrorCode.None)
+                    throw new Exception($"USB write failed: {writeEc}");
+            }
         }
 
         private async Task DoWorkHidAsync(CancellationToken token)

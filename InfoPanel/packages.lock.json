@@ -1126,6 +1126,19 @@
           "Serilog": "[4.3.0, )",
           "ini-parser-netstandard": "[2.5.3, )"
         }
+      },
+      "turingsmartscreenlib": {
+        "type": "Project",
+        "dependencies": {
+          "System.IO.Ports": "[9.0.2, )"
+        }
+      },
+      "turingsmartscreenlib.helpers.skiasharp": {
+        "type": "Project",
+        "dependencies": {
+          "SkiaSharp": "[3.116.1, )",
+          "TuringSmartScreenLib": "[1.0.0, )"
+        }
       }
     },
     "net8.0-windows10.0.19041/win-x64": {
