@@ -11,7 +11,7 @@ namespace InfoPanel.ThermalrightPanel
         // Trofeo Vision panels
         public const int TROFEO_VENDOR_ID = 0x0416;
         public const int TROFEO_PRODUCT_ID_686 = 0x5302;  // 6.86" - HID transport
-        public const int TROFEO_PRODUCT_ID_916 = 0x5408;  // 9.16" - USB bulk transport
+        public const int TROFEO_PRODUCT_ID_916 = 0x5408;  // 9.16" - HID transport
 
         // HID identifier string reported by Trofeo Vision 6.86" (init response bytes 20-27)
         public const string TROFEO_686_HID_IDENTIFIER = "BP21940";
@@ -87,12 +87,13 @@ namespace InfoPanel.ThermalrightPanel
                 Name = "Trofeo Vision 9.16\"",
                 DeviceIdentifier = "",  // Identified by unique VID/PID
                 Width = 1920,
-                Height = 462,
+                Height = 480,
                 RenderWidth = 1920,
-                RenderHeight = 462,
+                RenderHeight = 480,
                 VendorId = TROFEO_VENDOR_ID,
                 ProductId = TROFEO_PRODUCT_ID_916,
-                ProtocolType = ThermalrightProtocolType.Trofeo
+                TransportType = ThermalrightTransportType.WinUsb,
+                ProtocolType = ThermalrightProtocolType.TrofeoBulk  // 02 FF init, 4096-byte JPEG frames
             }
         };
 
