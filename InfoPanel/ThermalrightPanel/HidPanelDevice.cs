@@ -189,6 +189,54 @@ namespace InfoPanel.ThermalrightPanel
         }
 
         /// <summary>
+        /// Sends a raw RGB565 frame using the Trofeo HID protocol.
+        /// Header differs from JPEG: byte[6]=0x01 for RGB565 format flag.
+        /// Used by panels like Frozen Warframe 240/360.
+        /// </summary>
+        public bool SendRgb565Frame(byte[] rgb565Data, int width, int height)
+        {
+            if (_stream == null) return false;
+
+            try
+            {
+                var header = new byte[PACKET_SIZE];
+
+                Array.Copy(MAGIC_BYTES, 0, header, 0, 4);
+                header[4] = 0x02;   // Frame command
+                header[6] = 0x01;   // RGB565 format flag
+
+                // Width at [8-9], height at [10-11] (same order as JPEG header)
+                BitConverter.GetBytes((ushort)width).CopyTo(header, 8);
+                BitConverter.GetBytes((ushort)height).CopyTo(header, 10);
+
+                header[12] = 0x02;
+                BitConverter.GetBytes(rgb565Data.Length).CopyTo(header, 16);
+
+                int firstChunkSize = Math.Min(rgb565Data.Length, PACKET_SIZE - HEADER_JPEG_OFFSET);
+                Array.Copy(rgb565Data, 0, header, HEADER_JPEG_OFFSET, firstChunkSize);
+
+                WritePacket(header);
+
+                int offset = firstChunkSize;
+                while (offset < rgb565Data.Length)
+                {
+                    var chunk = new byte[PACKET_SIZE];
+                    int chunkSize = Math.Min(rgb565Data.Length - offset, PACKET_SIZE);
+                    Array.Copy(rgb565Data, offset, chunk, 0, chunkSize);
+                    WritePacket(chunk);
+                    offset += chunkSize;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "HidPanelDevice: Failed to send RGB565 frame ({Size} bytes)", rgb565Data.Length);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Writes a 512-byte packet to the HID device, prepending the 0x00 report ID.
         /// </summary>
         private void WritePacket(byte[] data)
