@@ -88,30 +88,59 @@ namespace InfoPanel.TuringPanel
                 {
                     List<TuringPanelDevice> devices = [];
                     var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_SerialPort");
-                    foreach (ManagementObject queryObj in searcher.Get().Cast<ManagementObject>())
+                    var serialPorts = searcher.Get().Cast<ManagementObject>().ToList();
+
+                    // Check for CT13INCH identifier port (VID_1A86&PID_CA11)
+                    // When present, the companion 0525:A4A7 port is a 10.2" panel, not an 8.8"
+                    bool hasCt13Inch = serialPorts.Any(obj =>
+                    {
+                        string? pnp = obj["PNPDeviceID"]?.ToString();
+                        return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA11");
+                    });
+
+                    if (hasCt13Inch)
+                    {
+                        Logger.Information("Detected CT13INCH identifier port");
+                    }
+
+                    foreach (ManagementObject queryObj in serialPorts)
                     {
                         string? comPort = queryObj["DeviceID"]?.ToString();
                         string? pnpDeviceId = queryObj["PNPDeviceID"]?.ToString();
                         if (comPort == null || pnpDeviceId == null || !TryParseVidPid(pnpDeviceId, out var vid, out var pid))
                         {
-                            continue; // Skip devices that are not CH340 USB to Serial converters
+                            continue;
+                        }
+
+                        // Skip CT13INCH CH340 port from normal matching
+                        if (vid == 0x1a86 && pid == 0xca11)
+                        {
+                            continue;
                         }
 
                         foreach (var kv in TuringPanelModelDatabase.Models)
                         {
-                            if (kv.Value.VendorId == vid && kv.Value.ProductId == pid)
+                            if (kv.Value.VendorId == vid && kv.Value.ProductId == pid && !kv.Value.IsUsbDevice)
                             {
-                                Logger.Information("Found Turing panel device: {Name} on {ComPort}", kv.Value.Name, comPort);
+                                var model = kv.Key;
+                                // Override to 10.2" when CT13INCH is present
+                                if (hasCt13Inch && vid == 0x0525 && pid == 0xa4a7)
+                                {
+                                    model = TuringPanelModel.REV_13INCH_USB;
+                                }
+
+                                var modelInfo = TuringPanelModelDatabase.Models[model];
+                                Logger.Information("Found Turing panel device: {Name} on {ComPort}", modelInfo.Name, comPort);
 
                                 TuringPanelDevice device = new()
                                 {
                                     DeviceId = pnpDeviceId,
                                     DeviceLocation = comPort,
-                                    Model = kv.Key.ToString()
+                                    Model = model.ToString()
                                 };
 
                                 devices.Add(device);
-
+                                break;
                             }
                         }
                     }
