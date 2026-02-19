@@ -26,7 +26,11 @@ namespace InfoPanel.ThermalrightPanel
 
         // Device identifiers returned in init response
         public const string IDENTIFIER_V1 = "SSCRM-V1"; // Grand / Hydro / Peerless Vision 240/360 (480x480)
-        public const string IDENTIFIER_V3 = "SSCRM-V3"; // Wonder Vision 360 (2400x1080)
+        public const string IDENTIFIER_V3 = "SSCRM-V3"; // Wonder / Rainbow Vision 360 (2400x1080) — SUB byte differentiates
+
+        // SUB byte (init response byte[36]) for SSCRM-V3 models
+        public const byte WONDER_360_SUB_BYTE  = 0x01; // Wonder Vision 360
+        public const byte RAINBOW_360_SUB_BYTE = 0x02; // Rainbow Vision 360
         public const string IDENTIFIER_V4 = "SSCRM-V4"; // TL-M10 Vision (1920x462)
 
         public static readonly Dictionary<ThermalrightPanelModel, ThermalrightPanelModelInfo> Models = new()
@@ -46,14 +50,28 @@ namespace InfoPanel.ThermalrightPanel
             [ThermalrightPanelModel.WonderVision360] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.WonderVision360,
-                Name = "Wonder Vision 360",
+                Name = "Wonder Vision 360 6.67\"",
                 DeviceIdentifier = IDENTIFIER_V3,
                 Width = 2400,
                 Height = 1080,
                 RenderWidth = 1600,  // TRCC uses 1600x720
                 RenderHeight = 720,
                 VendorId = THERMALRIGHT_VENDOR_ID,
-                ProductId = THERMALRIGHT_PRODUCT_ID
+                ProductId = THERMALRIGHT_PRODUCT_ID,
+                SubByte = WONDER_360_SUB_BYTE
+            },
+            [ThermalrightPanelModel.RainbowVision360] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.RainbowVision360,
+                Name = "Rainbow Vision 360 6.67\"",
+                DeviceIdentifier = IDENTIFIER_V3,
+                Width = 2400,
+                Height = 1080,
+                RenderWidth = 1600,  // Same panel hardware as Wonder Vision 360
+                RenderHeight = 720,
+                VendorId = THERMALRIGHT_VENDOR_ID,
+                ProductId = THERMALRIGHT_PRODUCT_ID,
+                SubByte = RAINBOW_360_SUB_BYTE
             },
             [ThermalrightPanelModel.TLM10Vision] = new ThermalrightPanelModelInfo
             {
@@ -123,9 +141,22 @@ namespace InfoPanel.ThermalrightPanel
 
         /// <summary>
         /// Get model info by device identifier string (e.g., "SSCRM-V1", "SSCRM-V3", "SSCRM-V4")
+        /// and optional SUB byte for disambiguation (e.g., SSCRM-V3 + SUB=0x01 = Wonder, SUB=0x02 = Rainbow).
         /// </summary>
-        public static ThermalrightPanelModelInfo? GetModelByIdentifier(string identifier)
+        public static ThermalrightPanelModelInfo? GetModelByIdentifier(string identifier, byte? subByte = null)
         {
+            // If SUB byte provided, try exact match first (identifier + SUB)
+            if (subByte.HasValue)
+            {
+                foreach (var model in Models.Values)
+                {
+                    if (model.DeviceIdentifier == identifier && model.SubByte.HasValue && model.SubByte.Value == subByte.Value)
+                        return model;
+                }
+            }
+
+            // Fallback: match by identifier only (first match wins — for unique identifiers like V1/V4,
+            // or when SUB byte is unknown/not in database)
             foreach (var model in Models.Values)
             {
                 if (model.DeviceIdentifier == identifier)

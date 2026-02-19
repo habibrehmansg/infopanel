@@ -313,12 +313,21 @@ namespace InfoPanel.Services
                 Logger.Information("ThermalrightPanelDevice {Device}: Device response ({Bytes} bytes): {Hex}",
                     _device, bytesRead, responseHex);
 
+                // Parse PM byte at offset 24 and SUB at offset 36 (ChiZhu 1024-byte response)
+                byte? pm = bytesRead >= 25 ? responseBuffer[24] : null;
+                byte? sub = bytesRead >= 37 ? responseBuffer[36] : null;
+
+                if (pm.HasValue)
+                    Logger.Information("ThermalrightPanelDevice {Device}: ChiZhu PM byte at [24]: 0x{PM:X2} ({PMDec})", _device, pm.Value, pm.Value);
+                if (sub.HasValue)
+                    Logger.Information("ThermalrightPanelDevice {Device}: ChiZhu SUB byte at [36]: 0x{SUB:X2} ({SUBDec})", _device, sub.Value, sub.Value);
+
                 if (bytesRead >= 12)
                 {
                     var deviceIdentifier = System.Text.Encoding.ASCII.GetString(responseBuffer, 4, 8).TrimEnd('\0');
                     Logger.Information("ThermalrightPanelDevice {Device}: Device identifier: {Id}", _device, deviceIdentifier);
 
-                    _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifier(deviceIdentifier);
+                    _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifier(deviceIdentifier, sub);
                     if (_detectedModel != null)
                     {
                         _panelWidth = _detectedModel.RenderWidth;
@@ -332,6 +341,18 @@ namespace InfoPanel.Services
                         Logger.Warning("ThermalrightPanelDevice {Device}: Unknown identifier '{Id}', using default {Width}x{Height}",
                             _device, deviceIdentifier, _panelWidth, _panelHeight);
                     }
+                }
+
+                // PM=0x20 on ChiZhu bulk (87AD:70DB) indicates 320x320 RGB565 big-endian variant
+                if (pm.HasValue && pm.Value == ThermalrightPanelModelDatabase.CHIZHU_320X320_PM_BYTE &&
+                    ThermalrightPanelModelDatabase.Models.TryGetValue(ThermalrightPanelModel.ChiZhuVision320x320, out var chizhuModel))
+                {
+                    _detectedModel = chizhuModel;
+                    _panelWidth = chizhuModel.RenderWidth;
+                    _panelHeight = chizhuModel.RenderHeight;
+                    _device.Model = chizhuModel.Model;
+                    Logger.Information("ThermalrightPanelDevice {Device}: PM 0x{PM:X2} -> {Model} ({Width}x{Height})",
+                        _device, pm.Value, chizhuModel.Name, _panelWidth, _panelHeight);
                 }
             }
             else
