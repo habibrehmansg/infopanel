@@ -391,7 +391,7 @@
                                         IsEnabled="{Binding Enabled, Converter={StaticResource InverseBooleanConverter}}"
                                         Tag="{Binding}"
                                         ToolTip="Manage device storage, videos, and settings"
-                                        Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        Visibility="{Binding ModelInfo.HasStorageManagement, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <StackPanel Margin="10,0,0,0">
                                         <!--  Profile selection  -->
                                         <ComboBox
@@ -445,6 +445,27 @@
                                                 </Grid>
                                             </StackPanel>
                                         </Grid>
+                                        <!--  Target FPS (Shiny Snake only)  -->
+                                        <StackPanel
+                                            Margin="0,10,0,0"
+                                            Orientation="Horizontal"
+                                            Visibility="{Binding ModelInfo.HasPerDeviceTargetFps, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock
+                                                Margin="0,0,10,0"
+                                                VerticalAlignment="Center"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Text="Target FPS" />
+                                            <ui:NumberBox
+                                                Width="120"
+                                                FontSize="14"
+                                                LargeChange="5"
+                                                MaxDecimalPlaces="0"
+                                                Maximum="23"
+                                                Minimum="1"
+                                                SmallChange="1"
+                                                Value="{Binding TargetFrameRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
                                     </StackPanel>
                                     <Grid Margin="20,0,0,0">
                                         <Grid.RowDefinitions>
@@ -692,6 +713,33 @@
                                                 Minimum="1"
                                                 SmallChange="1"
                                                 Value="{Binding TargetFrameRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <!--  JPEG Quality  -->
+                                        <StackPanel Margin="0,10,0,0">
+                                            <Slider
+                                                Margin="0,0,0,0"
+                                                IsSnapToTickEnabled="True"
+                                                Maximum="100"
+                                                Minimum="50"
+                                                TickFrequency="5"
+                                                Value="{Binding JpegQuality}" />
+                                            <Grid Margin="0,0,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock
+                                                    Margin="5,0,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Text="JPEG Quality" />
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    Margin="5,0,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Text="{Binding JpegQuality}" />
+                                            </Grid>
                                         </StackPanel>
                                     </StackPanel>
                                     <Grid Margin="20,0,0,0">

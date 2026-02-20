@@ -49,6 +49,9 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _targetFrameRate = 15;
 
+        [ObservableProperty]
+        private int _jpegQuality = 95;  // TRCC default is 95
+
         // Runtime properties
         [ObservableProperty]
         [property: System.Xml.Serialization.XmlIgnore]
@@ -186,6 +189,9 @@ namespace InfoPanel.Models
 
             [ObservableProperty]
             private string _errorMessage = string.Empty;
+
+            [ObservableProperty]
+            private string _serialNumber = string.Empty;
         }
     }
 }

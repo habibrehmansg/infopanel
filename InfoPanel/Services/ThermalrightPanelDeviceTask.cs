@@ -1,4 +1,5 @@
 using InfoPanel.Extensions;
+using System.Buffers;
 using System.Linq;
 using InfoPanel.Models;
 using InfoPanel.ThermalrightPanel;
@@ -23,7 +24,6 @@ namespace InfoPanel.Services
         private static readonly byte[] MAGIC_BYTES = { 0x12, 0x34, 0x56, 0x78 };
         private const int HEADER_SIZE = 64;
         private const int COMMAND_DISPLAY = 0x02;
-        private const int JPEG_QUALITY = 85;
 
         // Trofeo protocol constants (DA DB DC DD magic, 512-byte packets)
         private static readonly byte[] TROFEO_MAGIC_BYTES = { 0xDA, 0xDB, 0xDC, 0xDD };
@@ -145,7 +145,7 @@ namespace InfoPanel.Services
                         encodeBitmap = dimmed;
                     }
                     using var image = SKImage.FromBitmap(encodeBitmap);
-                    using var data = image.Encode(SKEncodedImageFormat.Jpeg, JPEG_QUALITY);
+                    using var data = image.Encode(SKEncodedImageFormat.Jpeg, _device.JpegQuality);
                     return data.ToArray();
                 }
                 finally
@@ -236,7 +236,7 @@ namespace InfoPanel.Services
             using var bitmap = new SKBitmap(_panelWidth, _panelHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
             bitmap.Erase(SKColors.Black);
             using var image = SKImage.FromBitmap(bitmap);
-            using var data = image.Encode(SKEncodedImageFormat.Jpeg, JPEG_QUALITY);
+            using var data = image.Encode(SKEncodedImageFormat.Jpeg, _device.JpegQuality);
             return data.ToArray();
         }
 
@@ -467,6 +467,14 @@ namespace InfoPanel.Services
                 {
                     await DoWinUsbTrofeoBulkProtocol(writer, reader, token);
                 }
+                else if (protocolType == ThermalrightProtocolType.TrofeoBulkLY1)
+                {
+                    await DoWinUsbTrofeoBulkLY1Protocol(writer, reader, token);
+                }
+                else if (protocolType == ThermalrightProtocolType.Ali)
+                {
+                    await DoWinUsbAliProtocol(writer, reader, token);
+                }
                 else if (protocolType == ThermalrightProtocolType.Trofeo)
                 {
                     await DoWinUsbTrofeoProtocol(writer, reader, token);
@@ -502,7 +510,7 @@ namespace InfoPanel.Services
             // Boot detection: device responds A1A2A3A4 while still booting — retry up to 5 times
             ErrorCode ec = ErrorCode.None;
             int bytesRead = 0;
-            var responseBuffer = new byte[1024]; // ChiZhu init response is up to 1024 bytes (PM at [24], SUB at [36])
+            var responseBuffer = new byte[1024]; // ChiZhu init response is up to 1024 bytes (PM at [24], SUB at [28])
             const int MAX_BOOT_RETRIES = 5;
 
             for (int bootAttempt = 0; bootAttempt < MAX_BOOT_RETRIES; bootAttempt++)
@@ -544,16 +552,32 @@ namespace InfoPanel.Services
                 Logger.Information("ThermalrightPanelDevice {Device}: Device response ({Bytes} bytes): {Hex}",
                     _device, bytesRead, responseHex);
 
-                // Parse PM byte at offset 24 and SUB at offset 36 (ChiZhu 1024-byte response)
+                // Parse PM byte at offset 24 and SUB at offset 28 (ChiZhu 1024-byte response)
                 byte? pm = bytesRead >= 25 ? responseBuffer[24] : null;
-                byte? sub = bytesRead >= 37 ? responseBuffer[36] : null;
+                byte? sub = bytesRead >= 29 ? responseBuffer[28] : null;
 
                 if (pm.HasValue)
                     Logger.Information("ThermalrightPanelDevice {Device}: ChiZhu PM byte at [24]: 0x{PM:X2} ({PMDec})", _device, pm.Value, pm.Value);
                 if (sub.HasValue)
-                    Logger.Information("ThermalrightPanelDevice {Device}: ChiZhu SUB byte at [36]: 0x{SUB:X2} ({SUBDec})", _device, sub.Value, sub.Value);
+                    Logger.Information("ThermalrightPanelDevice {Device}: ChiZhu SUB byte at [28]: 0x{SUB:X2} ({SUBDec})", _device, sub.Value, sub.Value);
 
-                if (bytesRead >= 12)
+                // Try ChiZhu PM+SUB table first (covers ~35 SSCRM bulk models)
+                if (pm.HasValue && sub.HasValue)
+                {
+                    var chizhuModel = ThermalrightPanelModelDatabase.GetModelByChiZhuPM(pm.Value, sub.Value);
+                    if (chizhuModel != null)
+                    {
+                        _detectedModel = chizhuModel;
+                        _panelWidth = chizhuModel.RenderWidth;
+                        _panelHeight = chizhuModel.RenderHeight;
+                        _device.Model = chizhuModel.Model;
+                        Logger.Information("ThermalrightPanelDevice {Device}: ChiZhu PM 0x{PM:X2} sub 0x{SUB:X2} -> {Model} ({Width}x{Height})",
+                            _device, pm.Value, sub.Value, chizhuModel.Name, _panelWidth, _panelHeight);
+                    }
+                }
+
+                // Fall back to identifier-based detection (SSCRM-V1/V3/V4)
+                if (_detectedModel == null && bytesRead >= 12)
                 {
                     var deviceIdentifier = System.Text.Encoding.ASCII.GetString(responseBuffer, 4, 8).TrimEnd('\0');
                     Logger.Information("ThermalrightPanelDevice {Device}: Device identifier: {Id}", _device, deviceIdentifier);
@@ -574,16 +598,12 @@ namespace InfoPanel.Services
                     }
                 }
 
-                // PM=0x20 on ChiZhu bulk (87AD:70DB) indicates 320x320 RGB565 big-endian variant
-                if (pm.HasValue && pm.Value == ThermalrightPanelModelDatabase.CHIZHU_320X320_PM_BYTE &&
-                    ThermalrightPanelModelDatabase.Models.TryGetValue(ThermalrightPanelModel.ChiZhuVision320x320, out var chizhuModel))
+                // Parse serial number: bytes[17]==0x10 indicates serial at [21-36]
+                if (bytesRead >= 37 && responseBuffer[17] == 0x10)
                 {
-                    _detectedModel = chizhuModel;
-                    _panelWidth = chizhuModel.RenderWidth;
-                    _panelHeight = chizhuModel.RenderHeight;
-                    _device.Model = chizhuModel.Model;
-                    Logger.Information("ThermalrightPanelDevice {Device}: PM 0x{PM:X2} -> {Model} ({Width}x{Height})",
-                        _device, pm.Value, chizhuModel.Name, _panelWidth, _panelHeight);
+                    var serial = BitConverter.ToString(responseBuffer, 21, 16).Replace("-", "");
+                    _device.RuntimeProperties.SerialNumber = serial;
+                    Logger.Information("ThermalrightPanelDevice {Device}: Serial number: {Serial}", _device, serial);
                 }
             }
             else
@@ -598,20 +618,28 @@ namespace InfoPanel.Services
             await RunRenderSendLoop(frameData =>
             {
                 var header = BuildDisplayHeader(frameData.Length);
-                var packet = new byte[HEADER_SIZE + frameData.Length];
+                int packetSize = HEADER_SIZE + frameData.Length;
+                var packet = ArrayPool<byte>.Shared.Rent(packetSize);
+                try
+                {
                 Array.Copy(header, 0, packet, 0, HEADER_SIZE);
                 Array.Copy(frameData, 0, packet, HEADER_SIZE, frameData.Length);
 
-                var writeEc = writer.Write(packet, 5000, out int bytesWritten);
+                var writeEc = writer.Write(packet, 0, packetSize, 500, out int bytesWritten);
                 if (writeEc != ErrorCode.None)
                     throw new Exception($"USB write failed: {writeEc}");
 
                 // ZLP: USB bulk requires a zero-length packet when total size is a multiple of max packet size (512)
-                if (packet.Length % 512 == 0)
-                    writer.Write(Array.Empty<byte>(), 1000, out _);
+                if (packetSize % 512 == 0)
+                    writer.Write(Array.Empty<byte>(), 500, out _);
 
                 // 15ms inter-frame delay required by ChiZhu bulk protocol
                 Thread.Sleep(15);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(packet);
+                }
             }, token);
         }
 
@@ -647,6 +675,15 @@ namespace InfoPanel.Services
                 {
                     Logger.Information("ThermalrightPanelDevice {Device}: Trofeo response ({Bytes} bytes): {Hex}",
                         _device, bytesRead, BitConverter.ToString(responseBuffer, 0, Math.Min(bytesRead, 36)).Replace("-", " "));
+
+                    // Validate Trofeo magic bytes DA DB DC DD
+                    if (bytesRead >= 4 &&
+                        (responseBuffer[0] != 0xDA || responseBuffer[1] != 0xDB ||
+                         responseBuffer[2] != 0xDC || responseBuffer[3] != 0xDD))
+                    {
+                        Logger.Warning("ThermalrightPanelDevice {Device}: Invalid Trofeo response magic: {Hex} (expected DA DB DC DD)",
+                            _device, BitConverter.ToString(responseBuffer, 0, 4).Replace("-", " "));
+                    }
 
                     // Parse PM byte for resolution detection
                     if (bytesRead >= 6)
@@ -745,6 +782,24 @@ namespace InfoPanel.Services
                 Logger.Information("ThermalrightPanelDevice {Device}: TrofeoBulk response ({Bytes} bytes): {Hex}",
                     _device, readBytes, responseHex);
 
+                // Validate init response: byte[0]==0x03, byte[1]==0xFF, byte[8]==0x01
+                if (readBytes >= 9)
+                {
+                    if (responseBuffer[0] != 0x03 || responseBuffer[1] != 0xFF || responseBuffer[8] != 0x01)
+                    {
+                        Logger.Warning("ThermalrightPanelDevice {Device}: Unexpected TrofeoBulk response header: [{H0:X2} {H1:X2} ... {H8:X2}] (expected 03 FF ... 01)",
+                            _device, responseBuffer[0], responseBuffer[1], responseBuffer[8]);
+                    }
+                }
+
+                // Parse serial number from bytes [16-19]
+                if (readBytes >= 20)
+                {
+                    var serial = BitConverter.ToString(responseBuffer, 16, 4).Replace("-", "");
+                    _device.RuntimeProperties.SerialNumber = serial;
+                    Logger.Information("ThermalrightPanelDevice {Device}: Serial number: {Serial}", _device, serial);
+                }
+
                 // Parse resolution from init response: bytes 24-27 = LE32 width, bytes 28-31 = LE32 height
                 if (readBytes >= 32)
                 {
@@ -826,7 +881,10 @@ namespace InfoPanel.Services
             int totalUsbBytes = paddedChunks * subPacketSize;
 
             // Build the entire padded buffer with sub-packet headers + data
-            var buffer = new byte[totalUsbBytes];
+            var buffer = ArrayPool<byte>.Shared.Rent(totalUsbBytes);
+            try
+            {
+            Array.Clear(buffer, 0, totalUsbBytes);
             var jpegSizeBytes = BitConverter.GetBytes(jpegData.Length);
             var totalChunksBytes = BitConverter.GetBytes((ushort)totalChunks);
 
@@ -863,7 +921,11 @@ namespace InfoPanel.Services
                 writeOffset += usbTransferSize;
                 bytesRemaining -= usbTransferSize;
             }
-
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         /// <summary>
@@ -875,38 +937,375 @@ namespace InfoPanel.Services
             UsbEndpointWriter writer, byte[] frameData, int width, int height,
             ThermalrightPixelFormat pixelFormat = ThermalrightPixelFormat.Jpeg)
         {
-            var header = new byte[TROFEO_PACKET_SIZE];
-            Array.Copy(TROFEO_MAGIC_BYTES, 0, header, 0, 4);
-            header[4] = 0x02; // Frame command
-
-            if (pixelFormat is ThermalrightPixelFormat.Rgb565 or ThermalrightPixelFormat.Rgb565BigEndian)
-                header[6] = 0x01; // RGB565 format flag
-
-            BitConverter.GetBytes((ushort)width).CopyTo(header, 8);
-            BitConverter.GetBytes((ushort)height).CopyTo(header, 10);
-            header[12] = 0x02; // Frame type
-            BitConverter.GetBytes(frameData.Length).CopyTo(header, 16);
-
-            int firstChunkSize = Math.Min(frameData.Length, TROFEO_PACKET_SIZE - TROFEO_HEADER_JPEG_OFFSET);
-            Array.Copy(frameData, 0, header, TROFEO_HEADER_JPEG_OFFSET, firstChunkSize);
-
-            var writeEc = writer.Write(header, 5000, out _);
-            if (writeEc != ErrorCode.None)
-                throw new Exception($"USB bulk write failed: {writeEc}");
-
-            int offset = firstChunkSize;
-            while (offset < frameData.Length)
+            var header = ArrayPool<byte>.Shared.Rent(TROFEO_PACKET_SIZE);
+            try
             {
-                var chunk = new byte[TROFEO_PACKET_SIZE];
-                int chunkSize = Math.Min(frameData.Length - offset, TROFEO_PACKET_SIZE);
-                Array.Copy(frameData, offset, chunk, 0, chunkSize);
+                Array.Clear(header, 0, TROFEO_PACKET_SIZE);
+                Array.Copy(TROFEO_MAGIC_BYTES, 0, header, 0, 4);
+                header[4] = 0x02; // Frame command
 
-                writeEc = writer.Write(chunk, 5000, out _);
+                if (pixelFormat is ThermalrightPixelFormat.Rgb565 or ThermalrightPixelFormat.Rgb565BigEndian)
+                    header[6] = 0x01; // RGB565 format flag
+
+                BitConverter.GetBytes((ushort)width).CopyTo(header, 8);
+                BitConverter.GetBytes((ushort)height).CopyTo(header, 10);
+                header[12] = 0x02; // Frame type
+                BitConverter.GetBytes(frameData.Length).CopyTo(header, 16);
+
+                int firstChunkSize = Math.Min(frameData.Length, TROFEO_PACKET_SIZE - TROFEO_HEADER_JPEG_OFFSET);
+                Array.Copy(frameData, 0, header, TROFEO_HEADER_JPEG_OFFSET, firstChunkSize);
+
+                var writeEc = writer.Write(header, 0, TROFEO_PACKET_SIZE, 500, out _);
                 if (writeEc != ErrorCode.None)
                     throw new Exception($"USB bulk write failed: {writeEc}");
 
-                offset += chunkSize;
+                int offset = firstChunkSize;
+                while (offset < frameData.Length)
+                {
+                    var chunk = ArrayPool<byte>.Shared.Rent(TROFEO_PACKET_SIZE);
+                    try
+                    {
+                        Array.Clear(chunk, 0, TROFEO_PACKET_SIZE);
+                        int chunkSize = Math.Min(frameData.Length - offset, TROFEO_PACKET_SIZE);
+                        Array.Copy(frameData, offset, chunk, 0, chunkSize);
+
+                        writeEc = writer.Write(chunk, 0, TROFEO_PACKET_SIZE, 500, out _);
+                        if (writeEc != ErrorCode.None)
+                            throw new Exception($"USB bulk write failed: {writeEc}");
+
+                        offset += chunkSize;
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(chunk);
+                    }
+                }
             }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(header);
+            }
+        }
+
+        /// <summary>
+        /// TrofeoBulk LY1 protocol for PID 0x5409.
+        /// Init: 512 bytes (16-byte header + 496 zeros), EP2 OUT, EP1 IN.
+        /// Response: 511 bytes. Validation: [0]==0x03, [1]==0xFF, [8]==0x01.
+        /// Frame: 512-byte sub-packets, byte[8]=0x02, no padding, variable-size writes.
+        /// ACK: 511 bytes after each frame.
+        /// </summary>
+        private async Task DoWinUsbTrofeoBulkLY1Protocol(UsbEndpointWriter writer, UsbEndpointReader reader, CancellationToken token)
+        {
+            const int INIT_PACKET_SIZE = 512;  // 16-byte header + 496 zeros
+            const int SUB_PACKET_SIZE = 512;
+            const int SUB_HEADER_SIZE = 16;
+            const int SUB_DATA_SIZE = 496;     // 512 - 16
+            const int RESPONSE_SIZE = 511;
+
+            // Reset pipes
+            writer.Reset();
+            reader.Reset();
+
+            // Build init: byte[0]=0x02, byte[1]=0xFF, byte[8]=0x01
+            var initPacket = new byte[INIT_PACKET_SIZE];
+            initPacket[0] = 0x02;
+            initPacket[1] = 0xFF;
+            initPacket[8] = 0x01;
+
+            Logger.Information("ThermalrightPanelDevice {Device}: Sending TrofeoBulk LY1 init ({Size} bytes)", _device, INIT_PACKET_SIZE);
+
+            // Concurrent init: submit write and read simultaneously (same pattern as LY)
+            var responseBuffer = new byte[RESPONSE_SIZE];
+            ErrorCode readEc = ErrorCode.None;
+            int readBytes = 0;
+
+            var readTask = Task.Run(() =>
+            {
+                readEc = reader.Read(responseBuffer, 10000, out readBytes);
+            });
+
+            await Task.Delay(50, token);
+
+            var ec = writer.Write(initPacket, 5000, out int initWritten);
+            if (ec != ErrorCode.None)
+            {
+                Logger.Error("ThermalrightPanelDevice {Device}: TrofeoBulk LY1 init write failed: {Error}", _device, ec);
+                _device.UpdateRuntimeProperties(errorMessage: $"TrofeoBulk LY1 init failed: {ec}");
+                return;
+            }
+            Logger.Information("ThermalrightPanelDevice {Device}: TrofeoBulk LY1 init sent ({Bytes} bytes)", _device, initWritten);
+
+            await readTask;
+            if (readEc == ErrorCode.None && readBytes > 0)
+            {
+                var responseHex = BitConverter.ToString(responseBuffer, 0, Math.Min(readBytes, 32)).Replace("-", " ");
+                Logger.Information("ThermalrightPanelDevice {Device}: TrofeoBulk LY1 response ({Bytes} bytes): {Hex}",
+                    _device, readBytes, responseHex);
+
+                // Validate: [0]==0x03, [1]==0xFF, [8]==0x01
+                if (readBytes >= 9)
+                {
+                    if (responseBuffer[0] != 0x03 || responseBuffer[1] != 0xFF || responseBuffer[8] != 0x01)
+                    {
+                        Logger.Warning("ThermalrightPanelDevice {Device}: Unexpected LY1 response: [{H0:X2} {H1:X2} ... {H8:X2}]",
+                            _device, responseBuffer[0], responseBuffer[1], responseBuffer[8]);
+                    }
+                }
+
+                // Serial from bytes [16-19]
+                if (readBytes >= 20)
+                {
+                    var serial = BitConverter.ToString(responseBuffer, 16, 4).Replace("-", "");
+                    _device.RuntimeProperties.SerialNumber = serial;
+                    Logger.Information("ThermalrightPanelDevice {Device}: Serial number: {Serial}", _device, serial);
+                }
+
+                // Resolution from bytes 24-31 (same layout as LY)
+                if (readBytes >= 32)
+                {
+                    int reportedWidth = BitConverter.ToInt32(responseBuffer, 24);
+                    int reportedHeight = BitConverter.ToInt32(responseBuffer, 28);
+                    if (reportedWidth > 0 && reportedWidth <= 4096 && reportedHeight > 0 && reportedHeight <= 4096)
+                    {
+                        _panelWidth = reportedWidth;
+                        _panelHeight = reportedHeight;
+                        Logger.Information("ThermalrightPanelDevice {Device}: Device reports resolution {Width}x{Height}",
+                            _device, reportedWidth, reportedHeight);
+                    }
+                }
+            }
+            else
+            {
+                Logger.Warning("ThermalrightPanelDevice {Device}: No TrofeoBulk LY1 response (ec={Error})", _device, readEc);
+            }
+
+            UpdateDeviceDisplayName();
+            await Task.Delay(100, token);
+
+            // Background reader for ACK flow control (same pattern as LY)
+            var ackSemaphore = new SemaphoreSlim(0, 1);
+            var readerCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var backgroundReader = Task.Run(() =>
+            {
+                var readBuf = new byte[RESPONSE_SIZE];
+                while (!readerCts.Token.IsCancellationRequested)
+                {
+                    var ec2 = reader.Read(readBuf, 1000, out int bytesRead);
+                    if (ec2 == ErrorCode.None && bytesRead > 0)
+                    {
+                        try { ackSemaphore.Release(); } catch (SemaphoreFullException) { }
+                    }
+                }
+            }, readerCts.Token);
+
+            try
+            {
+                await RunRenderSendLoop(jpegData =>
+                {
+                    TrofeoBulkLY1WriteFrame(writer, jpegData, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE);
+                    if (!ackSemaphore.Wait(500))
+                        Logger.Warning("ThermalrightPanelDevice {Device}: LY1 frame ACK timeout", _device);
+                }, token);
+            }
+            finally
+            {
+                readerCts.Cancel();
+                try { await backgroundReader; } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Write a single frame using TrofeoBulk LY1 sub-packet framing.
+        /// Key differences from LY: byte[8]=0x02, no padding (num7 % 1 = always 0),
+        /// variable-size writes (write remaining, advance by transferred).
+        /// </summary>
+        private void TrofeoBulkLY1WriteFrame(UsbEndpointWriter writer,
+            byte[] jpegData, int subPacketSize, int subHeaderSize, int subDataSize)
+        {
+            int totalChunks = jpegData.Length / subDataSize + 1;
+            int lastChunkDataSize = jpegData.Length % subDataSize;
+            if (lastChunkDataSize == 0)
+            {
+                lastChunkDataSize = subDataSize;
+                totalChunks = jpegData.Length / subDataSize;
+            }
+
+            // LY1: no padding (TRCC: num7 % 1 == 0 always)
+            int totalBytes = totalChunks * subPacketSize;
+
+            var buffer = ArrayPool<byte>.Shared.Rent(totalBytes);
+            try
+            {
+                Array.Clear(buffer, 0, totalBytes);
+                var jpegSizeBytes = BitConverter.GetBytes(jpegData.Length);
+                var totalChunksBytes = BitConverter.GetBytes((ushort)totalChunks);
+
+                int jpegOffset = 0;
+                for (int i = 0; i < totalChunks; i++)
+                {
+                    int off = i * subPacketSize;
+                    int dataSize = (i == totalChunks - 1) ? lastChunkDataSize : subDataSize;
+
+                    buffer[off + 0] = 0x01;     // Frame command
+                    buffer[off + 1] = 0xFF;     // Protocol marker
+                    jpegSizeBytes.CopyTo(buffer, off + 2);
+                    buffer[off + 6] = (byte)(dataSize & 0xFF);
+                    buffer[off + 7] = (byte)((dataSize >> 8) & 0xFF);
+                    buffer[off + 8] = 0x02;     // LY1 command type (differs from LY's 0x01)
+                    totalChunksBytes.CopyTo(buffer, off + 9);
+                    buffer[off + 11] = (byte)(i & 0xFF);
+                    buffer[off + 12] = (byte)((i >> 8) & 0xFF);
+
+                    Array.Copy(jpegData, jpegOffset, buffer, off + subHeaderSize, dataSize);
+                    jpegOffset += dataSize;
+                }
+
+                // Variable-size writes: write remaining, advance by actually transferred amount
+                int writeOffset = 0;
+                int remaining = totalBytes;
+                while (remaining > 0)
+                {
+                    var writeEc = writer.Write(buffer, writeOffset, remaining, 1000, out int transferred);
+                    if (writeEc != ErrorCode.None)
+                        throw new Exception($"USB write failed: {writeEc}");
+                    if (transferred == 0)
+                        throw new Exception("USB write transferred 0 bytes");
+                    writeOffset += transferred;
+                    remaining -= transferred;
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+
+        /// <summary>
+        /// ALi chipset protocol for PID 0x5406.
+        /// Init: 1040 bytes (F5 header + 1024 zeros), EP2 OUT, EP1 IN.
+        /// Response: 1024 bytes. [0]=device type (54/101/102), [1]=sub, [10-13]=serial.
+        /// Frame: F5 01 header (16 bytes) + raw RGB565 pixel data, single write.
+        /// ACK: 16-byte read after each frame.
+        /// </summary>
+        private async Task DoWinUsbAliProtocol(UsbEndpointWriter writer, UsbEndpointReader reader, CancellationToken token)
+        {
+            const int INIT_HEADER_SIZE = 16;
+            const int INIT_PAYLOAD_SIZE = 1024;
+            const int RESPONSE_SIZE = 1024;
+            const int FRAME_HEADER_SIZE = 16;
+            const int ACK_SIZE = 16;
+
+            // F5 init header
+            byte[] initHeader = { 0xF5, 0x00, 0x01, 0x00, 0xBC, 0xFF, 0xB6, 0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00 };
+
+            // Build init packet: 16-byte header + 1024 zeros = 1040 bytes
+            var initPacket = new byte[INIT_HEADER_SIZE + INIT_PAYLOAD_SIZE];
+            Array.Copy(initHeader, 0, initPacket, 0, INIT_HEADER_SIZE);
+
+            Logger.Information("ThermalrightPanelDevice {Device}: Sending ALi init ({Size} bytes)", _device, initPacket.Length);
+
+            // Concurrent init: read first, then write
+            var responseBuffer = new byte[RESPONSE_SIZE];
+            ErrorCode readEc = ErrorCode.None;
+            int readBytes = 0;
+
+            var readTask = Task.Run(() =>
+            {
+                readEc = reader.Read(responseBuffer, 10000, out readBytes);
+            });
+
+            await Task.Delay(50, token);
+
+            var ec = writer.Write(initPacket, 5000, out int initWritten);
+            if (ec != ErrorCode.None)
+            {
+                Logger.Error("ThermalrightPanelDevice {Device}: ALi init write failed: {Error}", _device, ec);
+                _device.UpdateRuntimeProperties(errorMessage: $"ALi init failed: {ec}");
+                return;
+            }
+            Logger.Information("ThermalrightPanelDevice {Device}: ALi init sent ({Bytes} bytes)", _device, initWritten);
+
+            await readTask;
+
+            int frameSize = 204800; // Default: 320x320x2 RGB565
+            if (readEc == ErrorCode.None && readBytes > 0)
+            {
+                var responseHex = BitConverter.ToString(responseBuffer, 0, Math.Min(readBytes, 16)).Replace("-", " ");
+                Logger.Information("ThermalrightPanelDevice {Device}: ALi response ({Bytes} bytes): {Hex}",
+                    _device, readBytes, responseHex);
+
+                byte deviceType = responseBuffer[0];
+                byte subType = (readBytes >= 2) ? responseBuffer[1] : (byte)0;
+                Logger.Information("ThermalrightPanelDevice {Device}: ALi device type: {Type}, sub: {Sub}",
+                    _device, deviceType, subType);
+
+                // Device type 54 (0x36) = 320x240, else (101/102) = 320x320
+                if (deviceType == 54)
+                {
+                    _panelWidth = 320;
+                    _panelHeight = 240;
+                    frameSize = 153600; // 320*240*2
+                    _device.Model = ThermalrightPanelModel.AliVision320x240;
+                }
+                else
+                {
+                    _panelWidth = 320;
+                    _panelHeight = 320;
+                    frameSize = 204800; // 320*320*2
+                    _device.Model = ThermalrightPanelModel.AliVision320x320;
+                }
+
+                if (ThermalrightPanelModelDatabase.Models.TryGetValue(_device.Model, out var aliModel))
+                    _detectedModel = aliModel;
+
+                // Serial from bytes [10-13]
+                if (readBytes >= 14)
+                {
+                    var serial = BitConverter.ToString(responseBuffer, 10, 4).Replace("-", "");
+                    _device.RuntimeProperties.SerialNumber = serial;
+                    Logger.Information("ThermalrightPanelDevice {Device}: Serial number: {Serial}", _device, serial);
+                }
+            }
+            else
+            {
+                Logger.Warning("ThermalrightPanelDevice {Device}: No ALi init response (ec={Error}), using default 320x320", _device, readEc);
+            }
+
+            UpdateDeviceDisplayName();
+            await Task.Delay(100, token);
+
+            // Frame header template: F5 01 01 00 BC FF B6 C8 [size_LE32] 00 00 00 00
+            byte[] frameHeader = { 0xF5, 0x01, 0x01, 0x00, 0xBC, 0xFF, 0xB6, 0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            BitConverter.GetBytes(frameSize).CopyTo(frameHeader, 12);
+
+            var ackBuffer = new byte[ACK_SIZE];
+            int capturedFrameSize = frameSize;
+
+            await RunRenderSendLoop(frameData =>
+            {
+                // Build frame: 16-byte header + raw RGB565 pixel data
+                int totalSize = FRAME_HEADER_SIZE + capturedFrameSize;
+                var packet = ArrayPool<byte>.Shared.Rent(totalSize);
+                try
+                {
+                    Array.Copy(frameHeader, 0, packet, 0, FRAME_HEADER_SIZE);
+                    int copySize = Math.Min(frameData.Length, capturedFrameSize);
+                    Array.Copy(frameData, 0, packet, FRAME_HEADER_SIZE, copySize);
+
+                    var writeEc = writer.Write(packet, 0, totalSize, 100, out _);
+                    if (writeEc != ErrorCode.None)
+                        throw new Exception($"ALi write failed: {writeEc}");
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(packet);
+                }
+
+                // Read 16-byte ACK
+                var ackEc = reader.Read(ackBuffer, 100, out _);
+                if (ackEc != ErrorCode.None)
+                    throw new Exception($"ALi ACK read failed: {ackEc}");
+            }, token);
         }
 
         private async Task DoWorkHidAsync(CancellationToken token)
@@ -968,6 +1367,21 @@ namespace InfoPanel.Services
                     Logger.Error("ThermalrightPanelDevice {Device}: HID init failed after 3 attempts", _device);
                     _device.UpdateRuntimeProperties(errorMessage: "HID init failed after 3 attempts");
                     return;
+                }
+
+                // Validate Trofeo HID magic bytes: DA DB DC DD at response[0-3] and connect ACK byte[12]==0x01
+                if (response != null && response.Length >= 4)
+                {
+                    if (response[0] != 0xDA || response[1] != 0xDB || response[2] != 0xDC || response[3] != 0xDD)
+                    {
+                        Logger.Warning("ThermalrightPanelDevice {Device}: Invalid HID magic: {Hex} (expected DA DB DC DD)",
+                            _device, BitConverter.ToString(response, 0, 4).Replace("-", " "));
+                    }
+                    if (response.Length >= 13 && response[12] != 0x01)
+                    {
+                        Logger.Warning("ThermalrightPanelDevice {Device}: HID connect ACK byte[12] = 0x{Ack:X2} (expected 0x01)",
+                            _device, response[12]);
+                    }
                 }
 
                 // Read init response to determine panel model from PM byte and identifier
@@ -1032,6 +1446,14 @@ namespace InfoPanel.Services
                                 Logger.Warning("ThermalrightPanelDevice {Device}: Unknown HID identifier '{Id}'", _device, identifier);
                             }
                         }
+                    }
+
+                    // Parse serial number: HID response byte[15]==0x10 indicates serial at [19-34]
+                    if (response.Length >= 35 && response[15] == 0x10)
+                    {
+                        var serial = BitConverter.ToString(response, 19, 16).Replace("-", "");
+                        _device.RuntimeProperties.SerialNumber = serial;
+                        Logger.Information("ThermalrightPanelDevice {Device}: Serial number: {Serial}", _device, serial);
                     }
                 }
 
