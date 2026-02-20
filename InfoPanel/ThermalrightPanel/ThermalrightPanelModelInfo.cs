@@ -3,7 +3,8 @@ namespace InfoPanel.ThermalrightPanel
     public enum ThermalrightTransportType
     {
         WinUsb,
-        Hid
+        Hid,
+        Scsi
     }
 
     public enum ThermalrightProtocolType
@@ -11,6 +12,13 @@ namespace InfoPanel.ThermalrightPanel
         ChiZhu,      // 12 34 56 78 magic, 64-byte header + JPEG (Peerless/Wonder/TL-M10)
         Trofeo,      // DA DB DC DD magic, 512-byte chunked packets (Trofeo Vision HID)
         TrofeoBulk   // 02 FF init, 4096-byte JPEG frames (Trofeo Vision 9.16" WinUSB)
+    }
+
+    public enum ThermalrightPixelFormat
+    {
+        Jpeg,          // JPEG compressed
+        Rgb565,        // Raw 16-bit pixels LE
+        Rgb565BigEndian // Raw 16-bit pixels BE (byte-swapped)
     }
 
     public class ThermalrightPanelModelInfo

@@ -17,6 +17,9 @@ namespace InfoPanel.ThermalrightPanel
         // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5408)
         TrofeoVision916,
 
+        // SCSI pass-through (VID 0x0402 / PID 0x3922) — resolution detected at runtime from poll response
+        EliteVisionScsi,
+
         // Backward compatibility alias (was renamed to TrofeoVision)
         TrofeoVision686 = TrofeoVision,
     }

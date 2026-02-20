@@ -13,6 +13,10 @@ namespace InfoPanel.ThermalrightPanel
         public const int TROFEO_PRODUCT_ID_686 = 0x5302;  // 6.86" - HID transport
         public const int TROFEO_PRODUCT_ID_916 = 0x5408;  // 9.16" - HID transport
 
+        // SCSI pass-through panels (Elite Vision / Frozen Warframe SCSI variant)
+        public const int SCSI_VENDOR_ID = 0x0402;
+        public const int SCSI_PRODUCT_ID = 0x3922;
+
         // HID identifier string reported by Trofeo Vision 6.86" (init response bytes 20-27)
         public const string TROFEO_686_HID_IDENTIFIER = "BP21940";
 
@@ -21,7 +25,8 @@ namespace InfoPanel.ThermalrightPanel
         {
             (THERMALRIGHT_VENDOR_ID, THERMALRIGHT_PRODUCT_ID),
             (TROFEO_VENDOR_ID, TROFEO_PRODUCT_ID_686),
-            (TROFEO_VENDOR_ID, TROFEO_PRODUCT_ID_916)
+            (TROFEO_VENDOR_ID, TROFEO_PRODUCT_ID_916),
+            (SCSI_VENDOR_ID, SCSI_PRODUCT_ID)
         };
 
         // Device identifiers returned in init response
@@ -112,6 +117,20 @@ namespace InfoPanel.ThermalrightPanel
                 ProductId = TROFEO_PRODUCT_ID_916,
                 TransportType = ThermalrightTransportType.WinUsb,
                 ProtocolType = ThermalrightProtocolType.TrofeoBulk  // 02 FF init, 4096-byte JPEG frames
+            },
+            [ThermalrightPanelModel.EliteVisionScsi] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.EliteVisionScsi,
+                Name = "Elite Vision (SCSI)",
+                DeviceIdentifier = "",  // Resolution detected at runtime from SCSI poll response
+                Width = 320,
+                Height = 320,
+                RenderWidth = 320,
+                RenderHeight = 320,
+                VendorId = SCSI_VENDOR_ID,
+                ProductId = SCSI_PRODUCT_ID,
+                TransportType = ThermalrightTransportType.Scsi,
+                PixelFormat = ThermalrightPixelFormat.Rgb565BigEndian
             }
         };
 
@@ -135,6 +154,23 @@ namespace InfoPanel.ThermalrightPanel
             {
                 128 => (1280, 480, "6.86\""),   // FBL 128
                 65 => (1920, 462, "9.16\""),     // FBL 192
+                _ => null
+            };
+        }
+
+        /// <summary>
+        /// Get display resolution from SCSI poll response byte[0].
+        /// Based on USBLCD.exe protocol: poll byte → resolution mapping.
+        /// </summary>
+        public static (int Width, int Height)? GetResolutionFromScsiPollByte(byte pollByte)
+        {
+            return pollByte switch
+            {
+                0x24 => (240, 240),  // '$'
+                0x32 => (320, 240),  // '2'
+                0x33 => (320, 240),  // '3'
+                0x64 => (320, 320),  // 'd'
+                0x65 => (320, 320),  // 'e'
                 _ => null
             };
         }
