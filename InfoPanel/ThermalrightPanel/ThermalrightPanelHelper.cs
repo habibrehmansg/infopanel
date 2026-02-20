@@ -2,6 +2,7 @@ using HidSharp;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
 using Serilog;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -23,9 +24,18 @@ namespace InfoPanel.ThermalrightPanel
             // Partition supported devices by transport type
             var winUsbDevices = new List<(int Vid, int Pid)>();
             var hidDevices = new List<(int Vid, int Pid)>();
+            bool hasScsiDevices = false;
 
             foreach (var (vid, pid) in ThermalrightPanelModelDatabase.SupportedDevices)
             {
+                bool isScsi = ThermalrightPanelModelDatabase.Models.Values
+                    .Any(m => m.VendorId == vid && m.ProductId == pid && m.TransportType == ThermalrightTransportType.Scsi);
+                if (isScsi)
+                {
+                    hasScsiDevices = true;
+                    continue;
+                }
+
                 // Check if any model with this VID/PID uses HID transport
                 // (many HID models share the same VID/PID, so GetModelByVidPid returns null for ambiguous matches)
                 bool isHid = ThermalrightPanelModelDatabase.Models.Values
@@ -118,6 +128,45 @@ namespace InfoPanel.ThermalrightPanel
                         modelInfo?.Name ?? "Unknown", hidDevice.DevicePath);
 
                     devices.Add(discoveryInfo);
+                }
+            }
+
+            // Scan SCSI devices via IOCTL_STORAGE_QUERY_PROPERTY on PhysicalDrive0-15
+            if (hasScsiDevices)
+            {
+                Logger.Information("ThermalrightPanelHelper: Scanning for SCSI LCD devices");
+
+                try
+                {
+                    var scsiDeviceInfos = ScsiPanelDevice.FindDevices();
+                    foreach (var scsiInfo in scsiDeviceInfos)
+                    {
+                        var modelInfo = ThermalrightPanelModelDatabase.Models.Values
+                            .FirstOrDefault(m => m.TransportType == ThermalrightTransportType.Scsi);
+
+                        var deviceId = $"SCSI\\{scsiInfo.VendorId}_{scsiInfo.ProductId}";
+                        var deviceLocation = scsiInfo.DevicePath;
+
+                        var discoveryInfo = new ThermalrightPanelDiscoveryInfo
+                        {
+                            DeviceId = deviceId,
+                            DeviceLocation = deviceLocation,
+                            DevicePath = scsiInfo.DevicePath,
+                            VendorId = ThermalrightPanelModelDatabase.SCSI_VENDOR_ID,
+                            ProductId = ThermalrightPanelModelDatabase.SCSI_PRODUCT_ID,
+                            Model = modelInfo?.Model ?? ThermalrightPanelModel.Unknown,
+                            ModelInfo = modelInfo
+                        };
+
+                        Logger.Information("ThermalrightPanelHelper: Found SCSI {Model} at {Path}",
+                            modelInfo?.Name ?? "Unknown", scsiInfo.DevicePath);
+
+                        devices.Add(discoveryInfo);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "ThermalrightPanelHelper: Error scanning SCSI devices");
                 }
             }
 
