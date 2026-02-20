@@ -777,31 +777,38 @@ namespace InfoPanel.Services
 
             Logger.Information("ThermalrightPanelDevice {Device}: Sending TrofeoBulk init ({Size} bytes)", _device, INIT_PACKET_SIZE);
 
-            // USB capture shows TRCC submits both read and write IRPs concurrently.
-            // The device may require a pending IN transfer before it completes the OUT.
-            // Submit the read first (async), then the write.
+            // TRCC init pattern (ThreadSendDeviceDataLY lines 768-796):
+            //   1. SubmitAsyncTransfer WRITE (100ms timeout) — submitted FIRST
+            //   2. SubmitAsyncTransfer READ (100ms timeout) — submitted SECOND
+            //   3. Thread.Sleep(200)
+            //   4. Wait for both to complete
+            // Match this order: write async first, then read async, then wait.
             var responseBuffer = new byte[RESPONSE_SIZE];
             ErrorCode readEc = ErrorCode.None;
             int readBytes = 0;
 
+            var writeTask = Task.Run(() =>
+            {
+                return writer.Write(initPacket, 5000, out int written) == ErrorCode.None ? written : -1;
+            });
+
+            // TRCC submits read immediately after write (no delay between)
             var readTask = Task.Run(() =>
             {
                 readEc = reader.Read(responseBuffer, 10000, out readBytes);
             });
 
-            // Brief delay to ensure the read IRP reaches the USB stack
-            await Task.Delay(50, token);
+            await Task.Delay(200, token); // TRCC: Thread.Sleep(200) before checking results
 
-            var ec = writer.Write(initPacket, 5000, out int initWritten);
-            if (ec != ErrorCode.None)
+            var initWritten = await writeTask;
+            if (initWritten < 0)
             {
-                Logger.Error("ThermalrightPanelDevice {Device}: TrofeoBulk init write failed: {Error}", _device, ec);
-                _device.UpdateRuntimeProperties(errorMessage: $"TrofeoBulk init failed: {ec}");
+                Logger.Error("ThermalrightPanelDevice {Device}: TrofeoBulk init write failed", _device);
+                _device.UpdateRuntimeProperties(errorMessage: "TrofeoBulk init failed");
                 return;
             }
             Logger.Information("ThermalrightPanelDevice {Device}: TrofeoBulk init sent ({Bytes} bytes)", _device, initWritten);
 
-            // Wait for read to complete
             await readTask;
             if (readEc == ErrorCode.None && readBytes > 0)
             {
@@ -850,33 +857,22 @@ namespace InfoPanel.Services
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
 
-            // TRCC frame loop pattern (ThreadSendDeviceDataLY):
-            //   1. Write all frame data (4096-byte bursts, 100ms timeout)
-            //   2. Synchronous read for 512-byte ACK (100ms timeout)
+            // TRCC frame loop (ThreadSendDeviceDataLY lines 901-932):
+            // Fully sequential on a single thread — no concurrent I/O:
+            //   1. Write all 4096-byte bursts (100ms timeout each)
+            //   2. Synchronous reader.Read(512, 100ms) for ACK
             //   3. If ACK fails → fatal exit
-            //
-            // WinUSB may need a pending IN IRP for OUT writes to complete, so we
-            // submit the read asynchronously before writing (same pattern as init).
-            // The read completes when the device sends the ACK after processing the frame.
+            //   4. Loop
             var ackBuffer = new byte[RESPONSE_SIZE];
             int consecutiveAckFailures = 0;
 
             await RunRenderSendLoop(jpegData =>
             {
-                // Submit async read BEFORE writing — ensures a pending IN IRP
-                // exists during the bulk OUT transfers (required by WinUSB stack)
-                ErrorCode ackEc = ErrorCode.None;
-                int ackBytes = 0;
-                var ackTask = Task.Run(() => ackEc = reader.Read(ackBuffer, 500, out ackBytes));
-
-                // Brief yield to let the read IRP reach the USB stack
-                Thread.Sleep(1);
-
-                // Write all frame data
+                // Write all frame data (synchronous, same thread)
                 TrofeoBulkWriteFrame(writer, jpegData, USB_TRANSFER_SIZE, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE, SUBS_PER_TRANSFER);
 
-                // Wait for device ACK (like TRCC's synchronous read after write)
-                ackTask.Wait();
+                // Synchronous ACK read after all writes complete (matching TRCC exactly)
+                var ackEc = reader.Read(ackBuffer, 500, out int ackBytes);
                 if (ackEc == ErrorCode.None && ackBytes > 0)
                 {
                     consecutiveAckFailures = 0;
@@ -1047,23 +1043,28 @@ namespace InfoPanel.Services
 
             Logger.Information("ThermalrightPanelDevice {Device}: Sending TrofeoBulk LY1 init ({Size} bytes)", _device, INIT_PACKET_SIZE);
 
-            // Concurrent init: submit write and read simultaneously (same pattern as LY)
+            // Match TRCC init order: write first, then read
             var responseBuffer = new byte[RESPONSE_SIZE];
             ErrorCode readEc = ErrorCode.None;
             int readBytes = 0;
+
+            var writeTask = Task.Run(() =>
+            {
+                return writer.Write(initPacket, 5000, out int written) == ErrorCode.None ? written : -1;
+            });
 
             var readTask = Task.Run(() =>
             {
                 readEc = reader.Read(responseBuffer, 10000, out readBytes);
             });
 
-            await Task.Delay(50, token);
+            await Task.Delay(200, token);
 
-            var ec = writer.Write(initPacket, 5000, out int initWritten);
-            if (ec != ErrorCode.None)
+            var initWritten = await writeTask;
+            if (initWritten < 0)
             {
-                Logger.Error("ThermalrightPanelDevice {Device}: TrofeoBulk LY1 init write failed: {Error}", _device, ec);
-                _device.UpdateRuntimeProperties(errorMessage: $"TrofeoBulk LY1 init failed: {ec}");
+                Logger.Error("ThermalrightPanelDevice {Device}: TrofeoBulk LY1 init write failed", _device);
+                _device.UpdateRuntimeProperties(errorMessage: "TrofeoBulk LY1 init failed");
                 return;
             }
             Logger.Information("ThermalrightPanelDevice {Device}: TrofeoBulk LY1 init sent ({Bytes} bytes)", _device, initWritten);
@@ -1115,21 +1116,15 @@ namespace InfoPanel.Services
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
 
-            // Per-frame ACK pattern (matching TRCC ThreadSendDeviceDataLY1):
-            // submit async read → write frame → wait for ACK → loop
+            // Fully sequential frame loop (matching TRCC): write all → read ACK → loop
             var ackBuffer = new byte[RESPONSE_SIZE];
             int consecutiveAckFailures = 0;
 
             await RunRenderSendLoop(jpegData =>
             {
-                ErrorCode ackEc = ErrorCode.None;
-                int ackBytes = 0;
-                var ackTask = Task.Run(() => ackEc = reader.Read(ackBuffer, 500, out ackBytes));
-                Thread.Sleep(1);
-
                 TrofeoBulkLY1WriteFrame(writer, jpegData, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE);
 
-                ackTask.Wait();
+                var ackEc = reader.Read(ackBuffer, 500, out int ackBytes);
                 if (ackEc == ErrorCode.None && ackBytes > 0)
                 {
                     consecutiveAckFailures = 0;
