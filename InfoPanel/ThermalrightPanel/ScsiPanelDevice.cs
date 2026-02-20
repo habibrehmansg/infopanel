@@ -89,29 +89,20 @@ namespace InfoPanel.ThermalrightPanel
             // Followed by variable-length raw data
         }
 
-        // SCSI_PASS_THROUGH_DIRECT with appended sense buffer, explicit layout for x64
-        [StructLayout(LayoutKind.Explicit, Size = 88)]
-        private unsafe struct SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER
-        {
-            [FieldOffset(0)] public ushort Length;
-            [FieldOffset(2)] public byte ScsiStatus;
-            [FieldOffset(3)] public byte PathId;
-            [FieldOffset(4)] public byte TargetId;
-            [FieldOffset(5)] public byte Lun;
-            [FieldOffset(6)] public byte CdbLength;
-            [FieldOffset(7)] public byte SenseInfoLength;
-            [FieldOffset(8)] public byte DataIn;
-            // 3 bytes padding (9-11)
-            [FieldOffset(12)] public uint DataTransferLength;
-            [FieldOffset(16)] public uint TimeOutValue;
-            // 4 bytes padding (20-23) for pointer alignment on x64
-            [FieldOffset(24)] public IntPtr DataBuffer;
-            [FieldOffset(32)] public uint SenseInfoOffset;
-            // CDB at offset 36, 16 bytes
-            [FieldOffset(36)] public fixed byte Cdb[16];
-            // Sense buffer at offset 56, 32 bytes
-            [FieldOffset(56)] public fixed byte SenseBuf[32];
-        }
+        // SCSI_PASS_THROUGH_DIRECT structure layout on x64 (written directly to unmanaged memory):
+        //   Offset  Size  Field
+        //   0       2     Length (= 56)
+        //   2       1     ScsiStatus
+        //   6       1     CdbLength
+        //   7       1     SenseInfoLength
+        //   8       1     DataIn
+        //   12      4     DataTransferLength
+        //   16      4     TimeOutValue
+        //   24      8     DataBuffer (pointer)
+        //   32      4     SenseInfoOffset (= 56)
+        //   36      16    Cdb
+        //   56      32    SenseBuf (appended)
+        //   Total: 88 bytes
 
         #endregion
 
@@ -244,16 +235,24 @@ namespace InfoPanel.ThermalrightPanel
         }
 
         /// <summary>
+        /// Sends a SCSI TEST UNIT READY command (CDB opcode 0x00, 6 bytes, no data).
+        /// Returns true if the device responds, false on timeout/error.
+        /// Used as a diagnostic to verify the SCSI pass-through path works at all.
+        /// </summary>
+        public bool TestUnitReady()
+        {
+            var cdb = new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            var noData = Array.Empty<byte>();
+            return SendScsiCommand(cdb, noData, SCSI_IOCTL_DATA_IN);
+        }
+
+        /// <summary>
         /// Polls the device by sending CDB F5 00 00 00, reading 0xE100 bytes.
         /// Returns the poll response or null on failure.
         /// </summary>
         public byte[]? Poll()
         {
-            var cdb = new byte[16];
-            cdb[0] = SCSI_PROTOCOL_MARKER; // F5
-            cdb[1] = 0x00; // poll/read
-            cdb[2] = 0x00;
-            cdb[3] = 0x00;
+            var cdb = new byte[] { SCSI_PROTOCOL_MARKER, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
             var response = new byte[POLL_BUFFER_SIZE];
             if (SendScsiCommand(cdb, response, SCSI_IOCTL_DATA_IN))
@@ -279,11 +278,7 @@ namespace InfoPanel.ThermalrightPanel
         /// </summary>
         public bool Init()
         {
-            var cdb = new byte[16];
-            cdb[0] = SCSI_PROTOCOL_MARKER; // F5
-            cdb[1] = 0x01; // write/send
-            cdb[2] = 0x00; // init mode
-            cdb[3] = 0x00;
+            var cdb = new byte[] { SCSI_PROTOCOL_MARKER, 0x01, 0x00, 0x00, 0x00, 0x00 };
 
             var data = new byte[POLL_BUFFER_SIZE]; // 0xE100 zero bytes
             return SendScsiCommand(cdb, data, SCSI_IOCTL_DATA_OUT);
@@ -303,11 +298,7 @@ namespace InfoPanel.ThermalrightPanel
                 int remaining = rgb565Data.Length - offset;
                 int chunkSize = Math.Min(FRAME_CHUNK_SIZE, remaining);
 
-                var cdb = new byte[16];
-                cdb[0] = SCSI_PROTOCOL_MARKER; // F5
-                cdb[1] = 0x01; // write/send
-                cdb[2] = 0x01; // raw frame chunk mode
-                cdb[3] = (byte)chunkIndex;
+                var cdb = new byte[] { SCSI_PROTOCOL_MARKER, 0x01, 0x01, (byte)chunkIndex, 0x00, 0x00 };
 
                 var chunk = new byte[chunkSize];
                 Array.Copy(rgb565Data, offset, chunk, 0, chunkSize);
@@ -328,47 +319,79 @@ namespace InfoPanel.ThermalrightPanel
 
         /// <summary>
         /// Sends a SCSI CDB command with data transfer via IOCTL_SCSI_PASS_THROUGH_DIRECT.
+        /// Writes the SCSI_PASS_THROUGH_DIRECT structure directly to unmanaged memory
+        /// to avoid potential issues with Marshal.StructureToPtr and unsafe fixed buffers.
         /// </summary>
-        private unsafe bool SendScsiCommand(byte[] cdb, byte[] data, byte direction)
+        private bool SendScsiCommand(byte[] cdb, byte[] data, byte direction)
         {
-            var dataHandle = GCHandle.Alloc(data, GCHandleType.Pinned);
+            // Pin the data buffer so GC doesn't move it during the ioctl
+            var dataHandle = data.Length > 0 ? GCHandle.Alloc(data, GCHandleType.Pinned) : default;
             try
             {
-                var sptd = new SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER();
-                sptd.Length = (ushort)Marshal.OffsetOf<SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER>(nameof(SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER.SenseBuf));
-                sptd.CdbLength = 16;
-                sptd.SenseInfoLength = 32;
-                sptd.DataIn = direction;
-                sptd.DataTransferLength = (uint)data.Length;
-                sptd.TimeOutValue = 10; // 10 seconds
-                sptd.DataBuffer = dataHandle.AddrOfPinnedObject();
-                sptd.SenseInfoOffset = (uint)Marshal.OffsetOf<SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER>(nameof(SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER.SenseBuf));
+                // SCSI_PASS_THROUGH_DIRECT layout on x64:
+                //   0: USHORT Length          (= 56, size of SCSI_PASS_THROUGH_DIRECT)
+                //   2: UCHAR  ScsiStatus
+                //   3: UCHAR  PathId
+                //   4: UCHAR  TargetId
+                //   5: UCHAR  Lun
+                //   6: UCHAR  CdbLength
+                //   7: UCHAR  SenseInfoLength
+                //   8: UCHAR  DataIn
+                //  12: ULONG  DataTransferLength
+                //  16: ULONG  TimeOutValue
+                //  24: PVOID  DataBuffer       (8 bytes on x64)
+                //  32: ULONG  SenseInfoOffset
+                //  36: UCHAR  Cdb[16]
+                //  -- end of SCSI_PASS_THROUGH_DIRECT at 56 --
+                //  56: UCHAR  SenseBuf[32]
+                //  -- total: 88 bytes --
+                const int SPTD_SIZE = 56;       // sizeof(SCSI_PASS_THROUGH_DIRECT) on x64
+                const int SENSE_SIZE = 32;
+                const int TOTAL_SIZE = SPTD_SIZE + SENSE_SIZE; // 88
 
-                // Copy CDB bytes
-                for (int i = 0; i < Math.Min(cdb.Length, 16); i++)
-                    sptd.Cdb[i] = cdb[i];
-
-                int sptdSize = Marshal.SizeOf<SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER>();
-                var sptdPtr = Marshal.AllocHGlobal(sptdSize);
+                var ptr = Marshal.AllocHGlobal(TOTAL_SIZE);
                 try
                 {
-                    Marshal.StructureToPtr(sptd, sptdPtr, false);
+                    // Zero the entire buffer
+                    for (int i = 0; i < TOTAL_SIZE; i++)
+                        Marshal.WriteByte(ptr, i, 0);
+
+                    // Fill SCSI_PASS_THROUGH_DIRECT fields
+                    Marshal.WriteInt16(ptr, 0, (short)SPTD_SIZE);                    // Length
+                    int cdbLen = Math.Min(cdb.Length, 16);
+                    Marshal.WriteByte(ptr, 6, (byte)cdbLen);                         // CdbLength
+                    Marshal.WriteByte(ptr, 7, SENSE_SIZE);                           // SenseInfoLength
+                    Marshal.WriteByte(ptr, 8, direction);                            // DataIn
+                    Marshal.WriteInt32(ptr, 12, data.Length);                         // DataTransferLength
+                    Marshal.WriteInt32(ptr, 16, 10);                                 // TimeOutValue (seconds)
+                    if (data.Length > 0)
+                        Marshal.WriteIntPtr(ptr, 24, dataHandle.AddrOfPinnedObject()); // DataBuffer
+                    Marshal.WriteInt32(ptr, 32, SPTD_SIZE);                          // SenseInfoOffset
+
+                    // Copy CDB bytes at offset 36
+                    Marshal.Copy(cdb, 0, ptr + 36, cdbLen);
 
                     if (!DeviceIoControl(_handle, IOCTL_SCSI_PASS_THROUGH_DIRECT,
-                        sptdPtr, (uint)sptdSize,
-                        sptdPtr, (uint)sptdSize,
+                        ptr, (uint)TOTAL_SIZE,
+                        ptr, (uint)TOTAL_SIZE,
                         out _, IntPtr.Zero))
                     {
                         int error = Marshal.GetLastWin32Error();
-                        Logger.Warning("ScsiPanelDevice: DeviceIoControl failed, Win32 error {Error}", error);
+                        Logger.Warning("ScsiPanelDevice: DeviceIoControl failed (CDB={Cdb}), Win32 error {Error}",
+                            BitConverter.ToString(cdb, 0, cdbLen), error);
                         return false;
                     }
 
                     // Check SCSI status
-                    var result = Marshal.PtrToStructure<SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER>(sptdPtr);
-                    if (result.ScsiStatus != 0)
+                    byte scsiStatus = Marshal.ReadByte(ptr, 2);
+                    if (scsiStatus != 0)
                     {
-                        Logger.Warning("ScsiPanelDevice: SCSI command failed with status 0x{Status:X2}", result.ScsiStatus);
+                        // Log sense data for diagnostics
+                        byte senseKey = (byte)(Marshal.ReadByte(ptr, SPTD_SIZE + 2) & 0x0F);
+                        byte asc = Marshal.ReadByte(ptr, SPTD_SIZE + 12);
+                        byte ascq = Marshal.ReadByte(ptr, SPTD_SIZE + 13);
+                        Logger.Warning("ScsiPanelDevice: SCSI status 0x{Status:X2}, sense key=0x{Key:X} ASC=0x{ASC:X2} ASCQ=0x{ASCQ:X2}",
+                            scsiStatus, senseKey, asc, ascq);
                         return false;
                     }
 
@@ -376,12 +399,13 @@ namespace InfoPanel.ThermalrightPanel
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(sptdPtr);
+                    Marshal.FreeHGlobal(ptr);
                 }
             }
             finally
             {
-                dataHandle.Free();
+                if (dataHandle.IsAllocated)
+                    dataHandle.Free();
             }
         }
 

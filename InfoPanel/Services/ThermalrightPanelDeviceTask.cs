@@ -304,9 +304,25 @@ namespace InfoPanel.Services
                     return;
                 }
 
-                Logger.Information("ThermalrightPanelDevice {Device}: SCSI device opened, polling...", _device);
+                Logger.Information("ThermalrightPanelDevice {Device}: SCSI device opened, verifying SCSI path...", _device);
+
+                // Diagnostic: verify SCSI pass-through works with a standard TEST UNIT READY
+                if (!scsiDevice.TestUnitReady())
+                {
+                    Logger.Warning("ThermalrightPanelDevice {Device}: TEST UNIT READY failed — SCSI pass-through may be blocked. " +
+                        "Check: (1) running as Administrator, (2) no other app using the device, (3) device not mounted as a drive letter", _device);
+                    _device.UpdateRuntimeProperties(errorMessage:
+                        "SCSI commands timed out. Try:\n" +
+                        "1. Run InfoPanel as Administrator\n" +
+                        "2. Close TRCC or other LCD software\n" +
+                        "3. If the device shows as a drive letter,\n   eject it first in Windows Explorer");
+                    await Task.Delay(OPEN_FAILURE_BACKOFF_MS, token);
+                    return;
+                }
+                Logger.Information("ThermalrightPanelDevice {Device}: TEST UNIT READY OK, polling...", _device);
 
                 // Poll device to detect resolution and boot status
+                bool pollSucceeded = false;
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
                     var pollResponse = scsiDevice.Poll();
@@ -344,7 +360,14 @@ namespace InfoPanel.Services
                         Logger.Warning("ThermalrightPanelDevice {Device}: Unknown poll byte 0x{PollByte:X2}, using default {Width}x{Height}",
                             _device, pollByte, _panelWidth, _panelHeight);
                     }
+                    pollSucceeded = true;
                     break;
+                }
+
+                if (!pollSucceeded)
+                {
+                    Logger.Warning("ThermalrightPanelDevice {Device}: All 5 poll attempts failed, trying init anyway with default {Width}x{Height}",
+                        _device, _panelWidth, _panelHeight);
                 }
 
                 // Initialize display controller
@@ -352,7 +375,11 @@ namespace InfoPanel.Services
                 if (!scsiDevice.Init())
                 {
                     Logger.Error("ThermalrightPanelDevice {Device}: SCSI init failed", _device);
-                    _device.UpdateRuntimeProperties(errorMessage: "SCSI display init failed");
+                    _device.UpdateRuntimeProperties(errorMessage:
+                        "SCSI display init failed. Try:\n" +
+                        "1. Run InfoPanel as Administrator\n" +
+                        "2. Unplug and reconnect the device\n" +
+                        "3. Close any other LCD software");
                     return;
                 }
 
