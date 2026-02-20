@@ -13,7 +13,7 @@ namespace InfoPanel.ThermalrightPanel
         public const int TROFEO_PRODUCT_ID_686 = 0x5302;  // 6.86" - HID transport
         public const int TROFEO_PRODUCT_ID_916 = 0x5408;  // 9.16" - HID transport
 
-        // SCSI pass-through panels (Elite Vision / Frozen Warframe SCSI variant)
+        // SCSI pass-through panels (Elite Vision 360 / Frozen Warframe SCSI variant)
         public const int SCSI_VENDOR_ID = 0x0402;
         public const int SCSI_PRODUCT_ID = 0x3922;
 
@@ -121,7 +121,7 @@ namespace InfoPanel.ThermalrightPanel
             [ThermalrightPanelModel.EliteVisionScsi] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.EliteVisionScsi,
-                Name = "Elite Vision (SCSI)",
+                Name = "Elite Vision 360 2.73\"",
                 DeviceIdentifier = "",  // Resolution detected at runtime from SCSI poll response
                 Width = 320,
                 Height = 320,
