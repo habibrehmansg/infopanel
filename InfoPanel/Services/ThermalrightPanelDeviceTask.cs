@@ -741,22 +741,49 @@ namespace InfoPanel.Services
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
 
-            // TRCC sends frame chunks synchronously then reads a 512-byte ACK before the next frame.
-            // No background reader — the ACK read after each frame provides the flow control.
-            var ackBuffer = new byte[RESPONSE_SIZE];
-            await RunRenderSendLoop(jpegData =>
+            // The WinUSB backend requires a pending IN IRP at all times for OUT writes to complete.
+            // A background reader keeps an IRP pending; a SemaphoreSlim signals when an ACK arrives
+            // so the frame loop waits for the device to finish processing before sending the next frame.
+            var ackSemaphore = new SemaphoreSlim(0, 1);
+            var readerCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var backgroundReader = Task.Run(() =>
             {
-                TrofeoBulkWriteFrame(writer, reader, ackBuffer, jpegData, USB_TRANSFER_SIZE, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE, SUBS_PER_TRANSFER);
-            }, token);
+                var readBuf = new byte[RESPONSE_SIZE];
+                while (!readerCts.Token.IsCancellationRequested)
+                {
+                    var ec2 = reader.Read(readBuf, 1000, out int bytesRead);
+                    if (ec2 == ErrorCode.None && bytesRead > 0)
+                    {
+                        // Signal that an ACK was received (don't block if already signaled)
+                        try { ackSemaphore.Release(); } catch (SemaphoreFullException) { }
+                    }
+                }
+            }, readerCts.Token);
+
+            try
+            {
+                await RunRenderSendLoop(jpegData =>
+                {
+                    TrofeoBulkWriteFrame(writer, jpegData, USB_TRANSFER_SIZE, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE, SUBS_PER_TRANSFER);
+                    // Wait for device ACK before next frame — flow control
+                    if (!ackSemaphore.Wait(500))
+                        Logger.Warning("ThermalrightPanelDevice {Device}: Frame ACK timeout, continuing", _device);
+                }, token);
+            }
+            finally
+            {
+                readerCts.Cancel();
+                try { await backgroundReader; } catch { }
+            }
         }
 
         /// <summary>
-        /// Write a single frame using TrofeoBulk sub-packet framing, then read ACK.
+        /// Write a single frame using TrofeoBulk sub-packet framing.
         /// Matches TRCC's ThreadSendDeviceDataLY: chunks are padded to a multiple of 4,
-        /// written in 4096-byte (or trailing 2048-byte) bursts, followed by a synchronous
-        /// 512-byte ACK read that provides per-frame flow control.
+        /// written in 4096-byte (or trailing 2048-byte) bursts.
+        /// ACK synchronization is handled by the caller via SemaphoreSlim.
         /// </summary>
-        private void TrofeoBulkWriteFrame(UsbEndpointWriter writer, UsbEndpointReader reader, byte[] ackBuffer,
+        private void TrofeoBulkWriteFrame(UsbEndpointWriter writer,
             byte[] jpegData, int usbTransferSize, int subPacketSize, int subHeaderSize, int subDataSize, int subsPerTransfer)
         {
             int totalChunks = (jpegData.Length + subDataSize - 1) / subDataSize;
@@ -810,10 +837,6 @@ namespace InfoPanel.Services
                 bytesRemaining -= usbTransferSize;
             }
 
-            // Wait for device ACK (512 bytes) — flow control before next frame
-            var readEc = reader.Read(ackBuffer, 0, 512, 100, out _);
-            if (readEc != ErrorCode.None)
-                throw new Exception($"USB ACK read failed: {readEc}");
         }
 
         private async Task DoWorkHidAsync(CancellationToken token)
