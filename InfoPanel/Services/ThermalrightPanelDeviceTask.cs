@@ -1550,13 +1550,16 @@ namespace InfoPanel.Services
                     else
                     {
                         // HID fallback: send frames as HID output reports (existing behavior)
+                        // RGB565 HID panels need a longer inter-frame delay: each frame is ~300 HID packets
+                        // (e.g., 153KB for 240x320) and the device's SPI bus needs time to flush to the LCD.
+                        bool isRgb565Hid = pixelFormat is ThermalrightPixelFormat.Rgb565 or ThermalrightPixelFormat.Rgb565BigEndian;
                         await RunRenderSendLoop(frameData =>
                         {
-                            bool ok = pixelFormat is ThermalrightPixelFormat.Rgb565 or ThermalrightPixelFormat.Rgb565BigEndian
+                            bool ok = isRgb565Hid
                                 ? hidDevice.SendRgb565Frame(frameData, width, height)
                                 : hidDevice.SendJpegFrame(frameData, width, height);
                             if (!ok) throw new Exception("HID frame send failed");
-                            Thread.Sleep(1); // 1ms inter-frame delay
+                            Thread.Sleep(isRgb565Hid ? 20 : 1);
                         }, token);
                     }
                 }

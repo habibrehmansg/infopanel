@@ -2,6 +2,7 @@ using HidSharp;
 using Serilog;
 using System;
 using System.Linq;
+using System.Threading;
 
 namespace InfoPanel.ThermalrightPanel
 {
@@ -218,6 +219,7 @@ namespace InfoPanel.ThermalrightPanel
                 WritePacket(header);
 
                 int offset = firstChunkSize;
+                int packetCount = 1;
                 while (offset < rgb565Data.Length)
                 {
                     var chunk = new byte[PACKET_SIZE];
@@ -225,6 +227,12 @@ namespace InfoPanel.ThermalrightPanel
                     Array.Copy(rgb565Data, offset, chunk, 0, chunkSize);
                     WritePacket(chunk);
                     offset += chunkSize;
+
+                    // Pace HID writes: yield every 32 packets to prevent device buffer overflow.
+                    // Large RGB565 frames (e.g. 153KB for 240x320) require ~300 packets;
+                    // blasting them back-to-back can overwhelm the device firmware.
+                    if (++packetCount % 32 == 0)
+                        Thread.Sleep(1);
                 }
 
                 return true;
