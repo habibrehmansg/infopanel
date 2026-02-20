@@ -41,6 +41,7 @@ namespace InfoPanel.Services
         private int _panelWidth = DEFAULT_WIDTH;
         private int _panelHeight = DEFAULT_HEIGHT;
         private ThermalrightPanelModelInfo? _detectedModel;
+        private int _maxJpegSize; // 0 = no limit; set by TrofeoBulk protocols to cap JPEG size
 
         public ThermalrightPanelDevice Device => _device;
 
@@ -145,8 +146,21 @@ namespace InfoPanel.Services
                         encodeBitmap = dimmed;
                     }
                     using var image = SKImage.FromBitmap(encodeBitmap);
-                    using var data = image.Encode(SKEncodedImageFormat.Jpeg, _device.JpegQuality);
-                    return data.ToArray();
+                    int quality = _device.JpegQuality;
+                    using var data = image.Encode(SKEncodedImageFormat.Jpeg, quality);
+                    var result = data.ToArray();
+
+                    // Adaptive quality: if JPEG exceeds device buffer limit, re-encode smaller
+                    // (TRCC drops frames >= 450KB and reduces quality by 5; we re-encode in-place)
+                    if (_maxJpegSize > 0 && result.Length > _maxJpegSize)
+                    {
+                        for (quality -= 5; quality >= 50 && result.Length > _maxJpegSize; quality -= 5)
+                        {
+                            using var smaller = image.Encode(SKEncodedImageFormat.Jpeg, quality);
+                            result = smaller.ToArray();
+                        }
+                    }
+                    return result;
                 }
                 finally
                 {
@@ -857,6 +871,11 @@ namespace InfoPanel.Services
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
 
+            // Cap JPEG size to match TRCC behavior (~225KB typical for 1920x480).
+            // USB capture analysis shows TRCC frames consistently ~225KB while ours
+            // reach 290KB+. Device decode buffer may be limited (~256KB).
+            _maxJpegSize = 230_000;
+
             // TRCC frame loop (ThreadSendDeviceDataLY lines 901-932):
             // Fully sequential on a single thread — no concurrent I/O:
             //   1. Write all 4096-byte bursts (100ms timeout each)
@@ -1115,6 +1134,9 @@ namespace InfoPanel.Services
 
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
+
+            // Cap JPEG size (same as LY protocol)
+            _maxJpegSize = 230_000;
 
             // Fully sequential frame loop (matching TRCC): write all → read ACK → loop
             var ackBuffer = new byte[RESPONSE_SIZE];
