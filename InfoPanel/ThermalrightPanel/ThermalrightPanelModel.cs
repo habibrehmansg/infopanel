@@ -14,8 +14,10 @@ namespace InfoPanel.ThermalrightPanel
         // Trofeo Vision 6.86" - HID (VID 0x0416 / PID 0x5302)
         // Resolution determined from init response PM byte
         TrofeoVision,
-        // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5408)
+        // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5408, LY chipset)
         TrofeoVision916,
+        // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5409, LY1 chipset)
+        TrofeoVision916LY1,
 
         // Frozen Warframe SE - HID (VID 0x0416 / PID 0x5302), PM byte 0x3A, sub 0x00 -> 240x320 (portrait)
         FrozenWarframe,
@@ -49,6 +51,57 @@ namespace InfoPanel.ThermalrightPanel
 
         // SCSI pass-through (VID 0x0402 / PID 0x3922) — Elite Vision 360 2.73", resolution detected at runtime from poll response
         EliteVisionScsi,
+
+        // ALi chipset (VID 0x0416 / PID 0x5406) — F5 protocol, raw RGB565 pixels
+        AliVision320x240,    // Device type 54 -> 320x240
+        AliVision320x320,    // Device type 101/102 -> 320x320
+
+        // ChiZhu bulk (87AD:70DB) models from TRCC USB_ID1_1=257 table
+        // 480x480
+        CoreVision,           // PM 3 -> 480x480
+        HyperVision,          // PM 4, sub 1 -> 480x480
+        RP130Vision,          // PM 4, sub 2 -> 480x480
+        LM16SE,               // PM 4, sub 3 -> 480x480
+        LF10V,                // PM 4, sub 4 -> 480x480
+        LM19SE,               // PM 4, sub 5 -> 480x480
+        GrandVisionBulk,      // PM 129 -> 480x480
+        // 640x480
+        MjolnirVision,        // PM 5 -> 640x480
+        FrozenWarframeUltra,  // PM 6, sub 1 -> 640x480
+        FrozenVisionV2,       // PM 6, sub 2 -> 640x480
+        StreamVision,         // PM 7, sub 1 -> 640x480
+        MjolnirVisionPro,     // PM 7, sub 2 -> 640x480
+        // 854x480
+        LC2JD,                // PM 9, sub <5 -> 854x480
+        LF19,                 // PM 9, sub >=5 -> 854x480
+        LD8,                  // PM 11, sub 6 -> 854x480
+        // 960x540
+        LC3,                  // PM 10, sub <5 -> 960x540
+        LF16,                 // PM 10, sub 5 -> 960x540
+        LF18,                 // PM 10, sub 6 -> 960x540
+        LD6,                  // PM 10, sub 7 -> 960x540
+        CZ2,                  // PM 16 -> 960x540
+        // 800x480
+        LF17,                 // PM 12 -> 800x480
+        // 960x320
+        PC1,                  // PM 13 -> 960x320
+        LC9,                  // PM 17, sub 2 -> 960x320
+        // 640x172
+        LC7,                  // PM 15, sub 1 -> 640x172
+        LC8,                  // PM 15, sub 2 -> 640x172
+        // 1280x480
+        LM24,                 // PM 68 -> 1280x480
+        LM24B,                // PM 128 -> 1280x480
+        // 1600x720
+        LM22,                 // PM 1, sub 48 or PM 64, sub 1 -> 1600x720
+        LM27,                 // PM 64, sub 2 -> 1600x720
+        LM30,                 // PM 64, sub 3 -> 1600x720
+        // 1920x462
+        LF14,                 // PM 1, sub 49 or PM 65, sub 1-2 -> 1920x462
+        LD7,                  // PM 65, sub 3 or PM 66, sub 3-4 -> 1920x462
+        LD10,                 // PM 65, sub 4 -> 1920x462
+        // 1920x440
+        LD9,                  // PM 69, sub 2 -> 1920x440
 
         // Backward compatibility alias (was renamed to TrofeoVision)
         TrofeoVision686 = TrofeoVision,

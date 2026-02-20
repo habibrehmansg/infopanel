@@ -11,7 +11,14 @@ namespace InfoPanel.ThermalrightPanel
         // Trofeo Vision panels
         public const int TROFEO_VENDOR_ID = 0x0416;
         public const int TROFEO_PRODUCT_ID_686 = 0x5302;  // 6.86" - HID transport
-        public const int TROFEO_PRODUCT_ID_916 = 0x5408;  // 9.16" - HID transport
+        public const int TROFEO_PRODUCT_ID_916 = 0x5408;  // 9.16" - WinUSB bulk (LY chipset)
+        public const int TROFEO_PRODUCT_ID_LY1 = 0x5409;  // 9.16" - WinUSB bulk (LY1 chipset)
+        public const int ALI_PRODUCT_ID = 0x5406;          // ALi chipset - WinUSB bulk, raw RGB565
+
+        // Alternate Trofeo vendor ID (0x0418) — same HID protocol as 0x0416
+        public const int TROFEO_VENDOR_ID_2 = 0x0418;
+        public const int TROFEO_PRODUCT_ID_5303 = 0x5303;  // 64-byte HID reports
+        public const int TROFEO_PRODUCT_ID_5304 = 0x5304;  // 512-byte HID reports
 
         // SCSI pass-through panels (Elite Vision 360 / Frozen Warframe SCSI variant)
         public const int SCSI_VENDOR_ID = 0x0402;
@@ -50,6 +57,10 @@ namespace InfoPanel.ThermalrightPanel
             (THERMALRIGHT_VENDOR_ID, THERMALRIGHT_PRODUCT_ID),
             (TROFEO_VENDOR_ID, TROFEO_PRODUCT_ID_686),
             (TROFEO_VENDOR_ID, TROFEO_PRODUCT_ID_916),
+            (TROFEO_VENDOR_ID, TROFEO_PRODUCT_ID_LY1),
+            (TROFEO_VENDOR_ID, ALI_PRODUCT_ID),
+            (TROFEO_VENDOR_ID_2, TROFEO_PRODUCT_ID_5303),
+            (TROFEO_VENDOR_ID_2, TROFEO_PRODUCT_ID_5304),
             (SCSI_VENDOR_ID, SCSI_PRODUCT_ID)
         };
 
@@ -57,7 +68,7 @@ namespace InfoPanel.ThermalrightPanel
         public const string IDENTIFIER_V1 = "SSCRM-V1"; // Grand / Hydro / Peerless Vision 240/360 (480x480)
         public const string IDENTIFIER_V3 = "SSCRM-V3"; // Wonder / Rainbow Vision 360 (2400x1080) — SUB byte differentiates
 
-        // SUB byte (init response byte[36]) for SSCRM-V3 models
+        // SUB byte (init response byte[28]) for SSCRM-V3 models
         public const byte WONDER_360_SUB_BYTE  = 0x01; // Wonder Vision 360
         public const byte RAINBOW_360_SUB_BYTE = 0x02; // Rainbow Vision 360
         public const string IDENTIFIER_V4 = "SSCRM-V4"; // TL-M10 Vision (1920x462)
@@ -425,6 +436,353 @@ namespace InfoPanel.ThermalrightPanel
                 ProductId = SCSI_PRODUCT_ID,
                 TransportType = ThermalrightTransportType.Scsi,
                 PixelFormat = ThermalrightPixelFormat.Rgb565BigEndian
+            },
+
+            // --- TrofeoBulk LY1 (PID 0x5409) ---
+            [ThermalrightPanelModel.TrofeoVision916LY1] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.TrofeoVision916LY1,
+                Name = "Trofeo Vision 9.16\" (LY1)",
+                DeviceIdentifier = "",  // Identified by unique VID/PID
+                Width = 1920,
+                Height = 480,
+                RenderWidth = 1920,
+                RenderHeight = 480,
+                VendorId = TROFEO_VENDOR_ID,
+                ProductId = TROFEO_PRODUCT_ID_LY1,
+                TransportType = ThermalrightTransportType.WinUsb,
+                ProtocolType = ThermalrightProtocolType.TrofeoBulkLY1
+            },
+
+            // --- ALi chipset (PID 0x5406) ---
+            [ThermalrightPanelModel.AliVision320x240] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.AliVision320x240,
+                Name = "ALi Vision 320x240",
+                DeviceIdentifier = "",
+                Width = 320,
+                Height = 240,
+                RenderWidth = 320,
+                RenderHeight = 240,
+                VendorId = TROFEO_VENDOR_ID,
+                ProductId = ALI_PRODUCT_ID,
+                TransportType = ThermalrightTransportType.WinUsb,
+                ProtocolType = ThermalrightProtocolType.Ali,
+                PixelFormat = ThermalrightPixelFormat.Rgb565
+            },
+            [ThermalrightPanelModel.AliVision320x320] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.AliVision320x320,
+                Name = "ALi Vision 320x320",
+                DeviceIdentifier = "",
+                Width = 320,
+                Height = 320,
+                RenderWidth = 320,
+                RenderHeight = 320,
+                VendorId = TROFEO_VENDOR_ID,
+                ProductId = ALI_PRODUCT_ID,
+                TransportType = ThermalrightTransportType.WinUsb,
+                ProtocolType = ThermalrightProtocolType.Ali,
+                PixelFormat = ThermalrightPixelFormat.Rgb565
+            },
+
+            // =========================================================================
+            // ChiZhu bulk (87AD:70DB) models — identified by PM byte[24] and SUB byte[28]
+            // From TRCC USB_ID1_1=257 table (ThreadSendDeviceData)
+            // =========================================================================
+
+            // --- 480x480 ---
+            [ThermalrightPanelModel.CoreVision] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.CoreVision,
+                Name = "Core Vision",
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.HyperVision] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.HyperVision,
+                Name = "Hyper Vision",
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.RP130Vision] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.RP130Vision,
+                Name = "RP130 Vision",
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LM16SE] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LM16SE,
+                Name = "LM16 SE",
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LF10V] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LF10V,
+                Name = "LF10V",
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LM19SE] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LM19SE,
+                Name = "LM19 SE",
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.GrandVisionBulk] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.GrandVisionBulk,
+                Name = "Grand Vision",
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 640x480 ---
+            [ThermalrightPanelModel.MjolnirVision] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.MjolnirVision,
+                Name = "Mjolnir Vision",
+                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.FrozenWarframeUltra] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.FrozenWarframeUltra,
+                Name = "Frozen Warframe Ultra",
+                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.FrozenVisionV2] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.FrozenVisionV2,
+                Name = "Frozen Vision V2",
+                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.StreamVision] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.StreamVision,
+                Name = "Stream Vision",
+                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.MjolnirVisionPro] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.MjolnirVisionPro,
+                Name = "Mjolnir Vision Pro",
+                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 854x480 ---
+            [ThermalrightPanelModel.LC2JD] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LC2JD,
+                Name = "LC2JD",
+                Width = 854, Height = 480, RenderWidth = 854, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LF19] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LF19,
+                Name = "LF19",
+                Width = 854, Height = 480, RenderWidth = 854, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LD8] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LD8,
+                Name = "LD8",
+                Width = 854, Height = 480, RenderWidth = 854, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 960x540 ---
+            [ThermalrightPanelModel.LC3] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LC3,
+                Name = "LC3",
+                Width = 960, Height = 540, RenderWidth = 960, RenderHeight = 540,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LF16] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LF16,
+                Name = "LF16",
+                Width = 960, Height = 540, RenderWidth = 960, RenderHeight = 540,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LF18] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LF18,
+                Name = "LF18",
+                Width = 960, Height = 540, RenderWidth = 960, RenderHeight = 540,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LD6] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LD6,
+                Name = "LD6",
+                Width = 960, Height = 540, RenderWidth = 960, RenderHeight = 540,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.CZ2] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.CZ2,
+                Name = "CZ2",
+                Width = 960, Height = 540, RenderWidth = 960, RenderHeight = 540,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 800x480 ---
+            [ThermalrightPanelModel.LF17] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LF17,
+                Name = "LF17",
+                Width = 800, Height = 480, RenderWidth = 800, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 960x320 ---
+            [ThermalrightPanelModel.PC1] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.PC1,
+                Name = "PC1",
+                Width = 960, Height = 320, RenderWidth = 960, RenderHeight = 320,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LC9] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LC9,
+                Name = "LC9",
+                Width = 960, Height = 320, RenderWidth = 960, RenderHeight = 320,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 640x172 ---
+            [ThermalrightPanelModel.LC7] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LC7,
+                Name = "LC7",
+                Width = 640, Height = 172, RenderWidth = 640, RenderHeight = 172,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LC8] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LC8,
+                Name = "LC8",
+                Width = 640, Height = 172, RenderWidth = 640, RenderHeight = 172,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 1280x480 ---
+            [ThermalrightPanelModel.LM24] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LM24,
+                Name = "LM24",
+                Width = 1280, Height = 480, RenderWidth = 1280, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LM24B] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LM24B,
+                Name = "LM24",
+                Width = 1280, Height = 480, RenderWidth = 1280, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 1600x720 ---
+            [ThermalrightPanelModel.LM22] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LM22,
+                Name = "LM22",
+                Width = 1600, Height = 720, RenderWidth = 1600, RenderHeight = 720,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LM27] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LM27,
+                Name = "LM27",
+                Width = 1600, Height = 720, RenderWidth = 1600, RenderHeight = 720,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LM30] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LM30,
+                Name = "LM30",
+                Width = 1600, Height = 720, RenderWidth = 1600, RenderHeight = 720,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 1920x462 ---
+            [ThermalrightPanelModel.LF14] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LF14,
+                Name = "LF14",
+                Width = 1920, Height = 462, RenderWidth = 1920, RenderHeight = 462,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LD7] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LD7,
+                Name = "LD7",
+                Width = 1920, Height = 462, RenderWidth = 1920, RenderHeight = 462,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+            [ThermalrightPanelModel.LD10] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LD10,
+                Name = "LD10",
+                Width = 1920, Height = 462, RenderWidth = 1920, RenderHeight = 462,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
+
+            // --- 1920x440 ---
+            [ThermalrightPanelModel.LD9] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LD9,
+                Name = "LD9",
+                Width = 1920, Height = 440, RenderWidth = 1920, RenderHeight = 440,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
             }
         };
 
@@ -539,6 +897,101 @@ namespace InfoPanel.ThermalrightPanel
                     return model;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Get model info for ChiZhu bulk (87AD:70DB) devices by PM byte[24] and SUB byte[28].
+        /// From TRCC USB_ID1_1=257 table (ThreadSendDeviceData).
+        /// This is separate from HID GetModelByPM which uses byte[5].
+        /// </summary>
+        public static ThermalrightPanelModelInfo? GetModelByChiZhuPM(byte pm, byte sub)
+        {
+            return (pm, sub) switch
+            {
+                // PM 1: SSCRM identifier-based models (legacy, sub selects resolution tier)
+                (1, 48) => Models[ThermalrightPanelModel.LM22],        // 1600x720
+                (1, 49) => Models[ThermalrightPanelModel.LF14],        // 1920x462
+
+                // PM 3: Core Vision 480x480
+                (3, _) => Models[ThermalrightPanelModel.CoreVision],
+
+                // PM 4: 480x480 variants by sub
+                (4, 1) => Models[ThermalrightPanelModel.HyperVision],
+                (4, 2) => Models[ThermalrightPanelModel.RP130Vision],
+                (4, 3) => Models[ThermalrightPanelModel.LM16SE],
+                (4, 4) => Models[ThermalrightPanelModel.LF10V],
+                (4, 5) => Models[ThermalrightPanelModel.LM19SE],
+
+                // PM 5: Mjolnir Vision 640x480
+                (5, _) => Models[ThermalrightPanelModel.MjolnirVision],
+
+                // PM 6: 640x480 variants
+                (6, 1) => Models[ThermalrightPanelModel.FrozenWarframeUltra],
+                (6, _) => Models[ThermalrightPanelModel.FrozenVisionV2],
+
+                // PM 7: 640x480 variants
+                (7, 1) => Models[ThermalrightPanelModel.StreamVision],
+                (7, _) => Models[ThermalrightPanelModel.MjolnirVisionPro],
+
+                // PM 9: 854x480
+                (9, >= 5) => Models[ThermalrightPanelModel.LF19],
+                (9, _) => Models[ThermalrightPanelModel.LC2JD],
+
+                // PM 10: 960x540 variants
+                (10, 5) => Models[ThermalrightPanelModel.LF16],
+                (10, 6) => Models[ThermalrightPanelModel.LF18],
+                (10, 7) => Models[ThermalrightPanelModel.LD6],
+                (10, _) => Models[ThermalrightPanelModel.LC3],
+
+                // PM 11: 854x480
+                (11, 6) => Models[ThermalrightPanelModel.LD8],
+
+                // PM 12: 800x480
+                (12, _) => Models[ThermalrightPanelModel.LF17],
+
+                // PM 13: 960x320
+                (13, _) => Models[ThermalrightPanelModel.PC1],
+
+                // PM 15: 640x172
+                (15, 1) => Models[ThermalrightPanelModel.LC7],
+                (15, _) => Models[ThermalrightPanelModel.LC8],
+
+                // PM 16: 960x540
+                (16, _) => Models[ThermalrightPanelModel.CZ2],
+
+                // PM 17: 960x320
+                (17, 2) => Models[ThermalrightPanelModel.LC9],
+
+                // PM 32 (0x20): 320x320 RGB565 big-endian
+                (0x20, _) => Models[ThermalrightPanelModel.ChiZhuVision320x320],
+
+                // PM 64: 1600x720 variants
+                (64, 1) => Models[ThermalrightPanelModel.LM22],
+                (64, 2) => Models[ThermalrightPanelModel.LM27],
+                (64, 3) => Models[ThermalrightPanelModel.LM30],
+
+                // PM 65: 1920x462 variants
+                (65, 1) or (65, 2) => Models[ThermalrightPanelModel.LF14],
+                (65, 3) => Models[ThermalrightPanelModel.LD7],
+                (65, 4) => Models[ThermalrightPanelModel.LD10],
+
+                // PM 66: 1920x462 variants
+                (66, 3) or (66, 4) => Models[ThermalrightPanelModel.LD7],
+
+                // PM 68: 1280x480
+                (68, _) => Models[ThermalrightPanelModel.LM24],
+
+                // PM 69: 1920x440
+                (69, 2) => Models[ThermalrightPanelModel.LD9],
+
+                // PM 128: 1280x480
+                (128, _) => Models[ThermalrightPanelModel.LM24B],
+
+                // PM 129: Grand Vision 480x480
+                (129, _) => Models[ThermalrightPanelModel.GrandVisionBulk],
+
+                _ => null
+            };
         }
     }
 }
