@@ -741,90 +741,79 @@ namespace InfoPanel.Services
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
 
-            // The device requires a pending IN transfer at all times to accept OUT writes.
-            // Keep a background reader submitting read IRPs continuously.
-            var readerCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            var backgroundReader = Task.Run(() =>
+            // TRCC sends frame chunks synchronously then reads a 512-byte ACK before the next frame.
+            // No background reader — the ACK read after each frame provides the flow control.
+            var ackBuffer = new byte[RESPONSE_SIZE];
+            await RunRenderSendLoop(jpegData =>
             {
-                var readBuf = new byte[RESPONSE_SIZE];
-                while (!readerCts.Token.IsCancellationRequested)
-                {
-                    reader.Read(readBuf, 1000, out _);
-                }
-            }, readerCts.Token);
-
-            try
-            {
-                // Run render+send loop with sub-packet framing
-                await RunRenderSendLoop(jpegData =>
-                {
-                    TrofeoBulkWriteFrame(writer, jpegData, USB_TRANSFER_SIZE, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE, SUBS_PER_TRANSFER);
-                }, token);
-            }
-            finally
-            {
-                readerCts.Cancel();
-                try { await backgroundReader; } catch { }
-            }
+                TrofeoBulkWriteFrame(writer, reader, ackBuffer, jpegData, USB_TRANSFER_SIZE, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE, SUBS_PER_TRANSFER);
+            }, token);
         }
 
         /// <summary>
-        /// Write a single frame using TrofeoBulk sub-packet framing.
-        /// Each 4096-byte USB transfer contains 8 × 512-byte sub-packets.
-        /// Each sub-packet: 16-byte header + 496 bytes of JPEG data.
-        /// Header format (16 bytes):
-        ///   [0]    0x01 frame command
-        ///   [1]    0xFF protocol marker
-        ///   [2-5]  LE32 total JPEG data size
-        ///   [6-7]  LE16 data per sub-packet (496)
-        ///   [8]    0x01 flag
-        ///   [9-10] LE16 total sub-packet count
-        ///   [11]   sub-packet sequence number (wraps at 256)
-        ///   [12-15] zeros
+        /// Write a single frame using TrofeoBulk sub-packet framing, then read ACK.
+        /// Matches TRCC's ThreadSendDeviceDataLY: chunks are padded to a multiple of 4,
+        /// written in 4096-byte (or trailing 2048-byte) bursts, followed by a synchronous
+        /// 512-byte ACK read that provides per-frame flow control.
         /// </summary>
-        private void TrofeoBulkWriteFrame(UsbEndpointWriter writer, byte[] jpegData,
-            int usbTransferSize, int subPacketSize, int subHeaderSize, int subDataSize, int subsPerTransfer)
+        private void TrofeoBulkWriteFrame(UsbEndpointWriter writer, UsbEndpointReader reader, byte[] ackBuffer,
+            byte[] jpegData, int usbTransferSize, int subPacketSize, int subHeaderSize, int subDataSize, int subsPerTransfer)
         {
             int totalChunks = (jpegData.Length + subDataSize - 1) / subDataSize;
-            int jpegOffset = 0;
-            int chunkIndex = 0;
+            int lastChunkDataSize = jpegData.Length % subDataSize;
+            if (lastChunkDataSize == 0) lastChunkDataSize = subDataSize;
 
-            // Pre-compute header fields that are constant for all sub-packets in this frame
+            // Pad total chunks to multiple of 4 (TRCC pads the USB buffer to fill complete 4096-byte transfers)
+            int paddedChunks = totalChunks;
+            int remainder = paddedChunks % 4;
+            if (remainder != 0)
+                paddedChunks += 4 - remainder;
+
+            int totalUsbBytes = paddedChunks * subPacketSize;
+
+            // Build the entire padded buffer with sub-packet headers + data
+            var buffer = new byte[totalUsbBytes];
             var jpegSizeBytes = BitConverter.GetBytes(jpegData.Length);
-            var subDataSizeBytes = BitConverter.GetBytes((ushort)subDataSize);
             var totalChunksBytes = BitConverter.GetBytes((ushort)totalChunks);
 
-            while (jpegOffset < jpegData.Length)
+            int jpegOffset = 0;
+            for (int i = 0; i < totalChunks; i++)
             {
-                // Build one 4096-byte USB transfer containing up to 8 sub-packets
-                var transfer = new byte[usbTransferSize];
+                int off = i * subPacketSize;
+                int dataSize = (i == totalChunks - 1) ? lastChunkDataSize : subDataSize;
 
-                for (int sub = 0; sub < subsPerTransfer && jpegOffset < jpegData.Length; sub++)
-                {
-                    int off = sub * subPacketSize;
+                buffer[off + 0] = 0x01;     // Frame command
+                buffer[off + 1] = 0xFF;     // Protocol marker
+                jpegSizeBytes.CopyTo(buffer, off + 2);               // Total JPEG size LE32
+                buffer[off + 6] = (byte)(dataSize & 0xFF);           // This chunk's data size LE16
+                buffer[off + 7] = (byte)((dataSize >> 8) & 0xFF);
+                buffer[off + 8] = 0x01;     // Command type (LY)
+                totalChunksBytes.CopyTo(buffer, off + 9);            // Total chunk count LE16
+                buffer[off + 11] = (byte)(i & 0xFF);                 // Chunk index LE16
+                buffer[off + 12] = (byte)((i >> 8) & 0xFF);
 
-                    // 16-byte sub-packet header
-                    transfer[off + 0] = 0x01;     // Frame command
-                    transfer[off + 1] = 0xFF;     // Protocol marker
-                    jpegSizeBytes.CopyTo(transfer, off + 2);       // Total JPEG size LE32
-                    subDataSizeBytes.CopyTo(transfer, off + 6);    // Data per sub-packet LE16 (496)
-                    transfer[off + 8] = 0x01;     // Flag
-                    totalChunksBytes.CopyTo(transfer, off + 9);    // Total chunk count LE16
-                    transfer[off + 11] = (byte)(chunkIndex & 0xFF); // Chunk sequence (wraps)
-                    // Bytes 12-15 = zeros (already zeroed)
+                Array.Copy(jpegData, jpegOffset, buffer, off + subHeaderSize, dataSize);
+                jpegOffset += dataSize;
+            }
+            // Padding chunks (beyond totalChunks) are left as zeros
 
-                    // Copy JPEG data after header
-                    int dataSize = Math.Min(subDataSize, jpegData.Length - jpegOffset);
-                    Array.Copy(jpegData, jpegOffset, transfer, off + subHeaderSize, dataSize);
-
-                    jpegOffset += dataSize;
-                    chunkIndex++;
-                }
-
-                var writeEc = writer.Write(transfer, 5000, out _);
+            // Write in 4096-byte bursts; trailing remainder as 2048 (TRCC minimum burst)
+            int writeOffset = 0;
+            int bytesRemaining = totalUsbBytes;
+            while (bytesRemaining > 0)
+            {
+                int writeSize = (bytesRemaining >= usbTransferSize) ? usbTransferSize : 2048;
+                var writeEc = writer.Write(buffer, writeOffset, writeSize, 100, out _);
                 if (writeEc != ErrorCode.None)
                     throw new Exception($"USB write failed: {writeEc}");
+                writeOffset += usbTransferSize;
+                bytesRemaining -= usbTransferSize;
             }
+
+            // Wait for device ACK (512 bytes) — flow control before next frame
+            var readEc = reader.Read(ackBuffer, 0, 512, 100, out _);
+            if (readEc != ErrorCode.None)
+                throw new Exception($"USB ACK read failed: {readEc}");
         }
 
         private async Task DoWorkHidAsync(CancellationToken token)
