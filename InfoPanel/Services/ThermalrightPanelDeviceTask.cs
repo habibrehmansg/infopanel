@@ -884,22 +884,27 @@ namespace InfoPanel.Services
             _jpegQualityOverride = 90;
             _maxJpegSize = 230_000;
 
-            // TRCC frame loop (ThreadSendDeviceDataLY lines 901-932):
-            // Fully sequential on a single thread — no concurrent I/O:
-            //   1. Write all 4096-byte bursts (100ms timeout each)
-            //   2. Synchronous reader.Read(512, 100ms) for ACK
-            //   3. If ACK fails → fatal exit
-            //   4. Loop
+            // Device firmware requires a pending IN (read) IRP on EP 0x81 before it will
+            // accept OUT writes on EP 0x09.  Submit the ACK read *before* frame writes so
+            // the read IRP is already queued when the first write arrives.
             var ackBuffer = new byte[RESPONSE_SIZE];
             int consecutiveAckFailures = 0;
 
             await RunRenderSendLoop(jpegData =>
             {
-                // Write all frame data (synchronous, same thread)
+                // Submit ACK read first — the pending IRP unblocks the device's OUT endpoint
+                ErrorCode ackEc = ErrorCode.None;
+                int ackBytes = 0;
+                var ackTask = Task.Run(() =>
+                {
+                    ackEc = reader.Read(ackBuffer, 2000, out ackBytes);
+                });
+
+                // Write all frame data while the read IRP is pending
                 TrofeoBulkWriteFrame(writer, jpegData, USB_TRANSFER_SIZE, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE, SUBS_PER_TRANSFER);
 
-                // Synchronous ACK read after all writes complete (matching TRCC exactly)
-                var ackEc = reader.Read(ackBuffer, 500, out int ackBytes);
+                // Wait for ACK to complete
+                ackTask.Wait();
                 if (ackEc == ErrorCode.None && ackBytes > 0)
                 {
                     consecutiveAckFailures = 0;
