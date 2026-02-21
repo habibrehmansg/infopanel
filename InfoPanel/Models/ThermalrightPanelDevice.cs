@@ -25,6 +25,7 @@ namespace InfoPanel.Models
         partial void OnModelChanged(ThermalrightPanelModel value)
         {
             OnPropertyChanged(nameof(ModelInfo));
+            OnPropertyChanged(nameof(IsJpegQualityConfigurable));
         }
 
         partial void OnDeviceLocationChanged(string value)
@@ -67,6 +68,20 @@ namespace InfoPanel.Models
         }
 
         public ThermalrightPanelModelInfo? ModelInfo => ThermalrightPanelModelDatabase.Models.TryGetValue(Model, out var info) ? info : null;
+
+        /// <summary>
+        /// TrofeoBulk protocols force JPEG quality to 90 for firmware compatibility (4:2:0 chroma).
+        /// Hide the quality slider for those models.
+        /// </summary>
+        public bool IsJpegQualityConfigurable
+        {
+            get
+            {
+                var protocol = ModelInfo?.ProtocolType;
+                return protocol != ThermalrightProtocolType.TrofeoBulk
+                    && protocol != ThermalrightProtocolType.TrofeoBulkLY1;
+            }
+        }
 
         public bool IsMatching(string deviceId, string deviceLocation, ThermalrightPanelModel model)
         {

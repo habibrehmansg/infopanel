@@ -42,6 +42,7 @@ namespace InfoPanel.Services
         private int _panelHeight = DEFAULT_HEIGHT;
         private ThermalrightPanelModelInfo? _detectedModel;
         private int _maxJpegSize; // 0 = no limit; set by TrofeoBulk protocols to cap JPEG size
+        private int _jpegQualityOverride; // 0 = use _device.JpegQuality; >0 = forced quality (TrofeoBulk: 90 for 4:2:0 chroma)
 
         public ThermalrightPanelDevice Device => _device;
 
@@ -146,7 +147,7 @@ namespace InfoPanel.Services
                         encodeBitmap = dimmed;
                     }
                     using var image = SKImage.FromBitmap(encodeBitmap);
-                    int quality = _device.JpegQuality;
+                    int quality = _jpegQualityOverride > 0 ? _jpegQualityOverride : _device.JpegQuality;
                     using var data = image.Encode(SKEncodedImageFormat.Jpeg, quality);
                     var result = data.ToArray();
 
@@ -250,7 +251,8 @@ namespace InfoPanel.Services
             using var bitmap = new SKBitmap(_panelWidth, _panelHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
             bitmap.Erase(SKColors.Black);
             using var image = SKImage.FromBitmap(bitmap);
-            using var data = image.Encode(SKEncodedImageFormat.Jpeg, _device.JpegQuality);
+            int quality = _jpegQualityOverride > 0 ? _jpegQualityOverride : _device.JpegQuality;
+            using var data = image.Encode(SKEncodedImageFormat.Jpeg, quality);
             return data.ToArray();
         }
 
@@ -871,9 +873,11 @@ namespace InfoPanel.Services
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
 
-            // Cap JPEG size to match TRCC behavior (~225KB typical for 1920x480).
-            // USB capture analysis shows TRCC frames consistently ~225KB while ours
-            // reach 290KB+. Device decode buffer may be limited (~256KB).
+            // Force quality 90 for TrofeoBulk: at quality >= 95 SkiaSharp/libjpeg-turbo uses
+            // 4:4:4 chroma (no subsampling), while TRCC's GDI+ encoder always produces 4:2:0.
+            // Some panel firmware revisions can't decode 4:4:4 fast enough, causing flicker.
+            // Quality 90 forces libjpeg-turbo into 4:2:0 mode, matching TRCC output.
+            _jpegQualityOverride = 90;
             _maxJpegSize = 230_000;
 
             // TRCC frame loop (ThreadSendDeviceDataLY lines 901-932):
@@ -1135,7 +1139,8 @@ namespace InfoPanel.Services
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
 
-            // Cap JPEG size (same as LY protocol)
+            // Force quality 90 and cap size (same rationale as LY protocol)
+            _jpegQualityOverride = 90;
             _maxJpegSize = 230_000;
 
             // Fully sequential frame loop (matching TRCC): write all → read ACK → loop

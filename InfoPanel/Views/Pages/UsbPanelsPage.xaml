@@ -714,8 +714,9 @@
                                                 SmallChange="1"
                                                 Value="{Binding TargetFrameRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
-                                        <!--  JPEG Quality  -->
-                                        <StackPanel Margin="0,10,0,0">
+                                        <!--  JPEG Quality (hidden for TrofeoBulk — forced to 90 for firmware compat)  -->
+                                        <StackPanel Margin="0,10,0,0"
+                                                    Visibility="{Binding IsJpegQualityConfigurable, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <Slider
                                                 Margin="0,0,0,0"
                                                 IsSnapToTickEnabled="True"
