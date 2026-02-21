@@ -127,7 +127,6 @@ namespace InfoPanel
                     return;
                 }
 
-                screen.Orientation = _screenOrientation;
                 _device.UpdateRuntimeProperties(isRunning: true);
 
                 screen.ScreenOn();
