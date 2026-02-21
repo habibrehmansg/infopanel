@@ -2,6 +2,7 @@ using InfoPanel.BeadaPanel;
 using InfoPanel.Models;
 using InfoPanel.Services;
 using InfoPanel.TuringPanel;
+using InfoPanel.ThermalrightPanel;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
 using LibUsbDotNet;
@@ -205,6 +206,80 @@ public partial class UsbPanelsPage : Page
         {
             var window = new TuringDeviceWindow(device);
             window.ShowDialog();
+        }
+    }
+
+    private Task UpdateThermalrightPanelDeviceList()
+    {
+        var discoveredDevices = ThermalrightPanelHelper.ScanDevices();
+
+        Logger.Information("ThermalrightPanel Discovery: Found {Count} devices", discoveredDevices.Count);
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.ThermalrightPanelDevices.FirstOrDefault(d =>
+                    d.IsMatching(discoveredDevice.DeviceId, discoveredDevice.DeviceLocation, discoveredDevice.Model));
+
+                if (device == null)
+                {
+                    var newDevice = new ThermalrightPanelDevice()
+                    {
+                        DeviceId = discoveredDevice.DeviceId,
+                        DeviceLocation = discoveredDevice.DeviceLocation,
+                        Model = discoveredDevice.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty
+                    };
+
+                    if (discoveredDevice.ModelInfo != null)
+                    {
+                        newDevice.RuntimeProperties.Name = $"Thermalright {discoveredDevice.ModelInfo.Name}";
+                    }
+
+                    settings.ThermalrightPanelDevices.Add(newDevice);
+                    Logger.Information("ThermalrightPanel Discovery: Added new device with DeviceId '{DeviceId}'", discoveredDevice.DeviceId);
+                }
+                else
+                {
+                    // Update location
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+                    Logger.Information("ThermalrightPanel Discovery: Device with DeviceId '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async void ButtonDiscoverThermalrightPanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateThermalrightPanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private void ButtonRemoveThermalrightPanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is ThermalrightPanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.ThermalrightPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (ThermalrightPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = ThermalrightPanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.ThermalrightPanelDevices.Remove(deviceConfig);
+                }
+            });
         }
     }
 }

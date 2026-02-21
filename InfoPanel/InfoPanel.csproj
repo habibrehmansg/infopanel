@@ -75,9 +75,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Reference Include="LibreHardwareMonitorLib">
-			<HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
-		</Reference>
 		<Reference Include="TuringSmartScreenLib">
 			<HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
 		</Reference>
@@ -203,7 +200,7 @@
 		<PackageReference Include="gong-wpf-dragdrop" Version="4.0.0" />
 		<PackageReference Include="HidSharp" Version="2.6.4" />
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.3" />
-		<PackageReference Include="LibreHardwareMonitorLib" Version="0.9.5-pre572" />
+		<PackageReference Include="LibreHardwareMonitorLib" Version="0.9.7-pre641" />
 		<PackageReference Include="LibUsbDotNet" Version="2.2.75" />
 		<PackageReference Include="MahApps.Metro" Version="2.4.11" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
@@ -221,7 +218,7 @@
 		<PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.1" />
 		<PackageReference Include="Svg.Skia" Version="3.2.1" />
 		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.1" />
-		<PackageReference Include="System.IO.Ports" Version="10.0.1" />
+		<PackageReference Include="System.IO.Ports" Version="10.0.3" />
 		<PackageReference Include="TaskScheduler" Version="2.12.2" />
 		<PackageReference Include="Topten.RichTextKit" Version="0.4.167" />
 		<PackageReference Include="WPF-UI" Version="3.1.1" />
