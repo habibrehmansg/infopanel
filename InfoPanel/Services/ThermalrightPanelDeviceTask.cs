@@ -781,7 +781,11 @@ namespace InfoPanel.Services
             const int SUBS_PER_TRANSFER = 8;       // 4096 / 512
             const int RESPONSE_SIZE = 512;
 
-            // Reset pipes to clear stale state from previous failed attempts
+            // Abort pending transfers then reset pipes to clear stale state from previous session.
+            // Without Abort(), WinUSB may have leftover IRPs that cause writes to IoTimedOut
+            // after a stop/restart cycle (device disabled then re-enabled without physical unplug).
+            writer.Abort();
+            reader.Abort();
             writer.Reset();
             reader.Reset();
 
@@ -1054,7 +1058,9 @@ namespace InfoPanel.Services
             const int SUB_DATA_SIZE = 496;     // 512 - 16
             const int RESPONSE_SIZE = 511;
 
-            // Reset pipes
+            // Abort pending transfers then reset pipes (same as LY protocol)
+            writer.Abort();
+            reader.Abort();
             writer.Reset();
             reader.Reset();
 
