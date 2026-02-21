@@ -21,6 +21,9 @@ namespace InfoPanel
         private readonly int _panelWidth;
         private readonly int _panelHeight;
 
+        private readonly int _nativeWidth;
+        private readonly int _nativeHeight;
+        private readonly ScreenOrientation _screenOrientation;
 
         private readonly int _sectorWidth;
         private readonly int _sectorHeight;
@@ -39,6 +42,9 @@ namespace InfoPanel
             {
                 _panelWidth = modelInfo.Width;
                 _panelHeight = modelInfo.Height;
+                _nativeWidth = modelInfo.Width;
+                _nativeHeight = modelInfo.Height;
+                _screenOrientation = ScreenOrientation.Portrait;
 
                 switch (modelInfo.Model)
                 {
@@ -61,6 +67,16 @@ namespace InfoPanel
                     case TuringPanel.TuringPanelModel.REV_8INCH:
                     case TuringPanel.TuringPanelModel.REV_2INCH:
                         _screenType = ScreenType.RevisionE;
+                        _sectorWidth = 32;
+                        _sectorHeight = 32;
+                        _maxSectorWidth = 128;
+                        _maxSectorHeight = 96;
+                        _maxSectors = 38;
+                        break;
+                    case TuringPanel.TuringPanelModel.REV_13INCH_USB:
+                        _screenType = ScreenType.RevisionE;
+                        _nativeWidth = 440;
+                        _nativeHeight = 1920;
                         _sectorWidth = 32;
                         _sectorHeight = 32;
                         _maxSectorWidth = 128;
@@ -100,9 +116,10 @@ namespace InfoPanel
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
+
             try
             {
-                using var screen = ScreenFactory.Create(_screenType, _device.DeviceLocation);
+                using var screen = ScreenFactory.Create(_screenType, _device.DeviceLocation, _nativeWidth, _nativeHeight);
 
                 if (screen == null)
                 {
@@ -143,17 +160,14 @@ namespace InfoPanel
                                 sentBitmap = bitmap;
 
                                 canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
-                                //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                             }
                             else
                             {
                                 var sectors = SKBitmapComparison.GetChangedSectors(sentBitmap, bitmap, _sectorWidth, _sectorHeight, _maxSectorWidth, _maxSectorHeight);
-                                //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
 
                                 if (sectors.Count > _maxSectors)
                                 {
                                     canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
-                                    //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                                 }
                                 else
                                 {
@@ -161,8 +175,6 @@ namespace InfoPanel
                                     {
                                         canDisplayPartialBitmap = screen.DisplayBuffer(sector.Left, sector.Top, screen.CreateBufferFrom(bitmap, sector.Left, sector.Top, sector.Width, sector.Height));
                                     }
-
-                                    //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
                                 }
                                 sentBitmap?.Dispose();
                                 sentBitmap = bitmap;
@@ -172,7 +184,10 @@ namespace InfoPanel
                         fpsCounter.Update(stopwatch.ElapsedMilliseconds);
                         _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
 
-                        var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
+                        var fpsSource = _device.ModelInfo?.HasPerDeviceTargetFps == true
+                            ? _device.TargetFrameRate
+                            : ConfigModel.Instance.Settings.TargetFrameRate;
+                        var targetFrameTime = 1000.0 / Math.Max(1, fpsSource);
                         if (stopwatch.ElapsedMilliseconds < targetFrameTime)
                         {
                             var sleep = (int)(targetFrameTime - stopwatch.ElapsedMilliseconds);
@@ -183,7 +198,7 @@ namespace InfoPanel
                 }
                 catch (TaskCanceledException)
                 {
-                    Logger.Debug("Task cancelled");
+                    Logger.Information("Task cancelled");
                 }
                 catch (Exception ex)
                 {
