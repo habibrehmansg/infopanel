@@ -273,6 +273,14 @@
 			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
 		</EmbeddedResource>
 		<EmbeddedResource Include="Resources\PawnIO_setup.exe" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_left_0.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_left_90.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_left_180.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_left_270.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_all_0.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_all_90.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_all_180.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_all_270.png" />
 	</ItemGroup>
 
 	<ItemGroup>
