@@ -65,7 +65,7 @@ namespace InfoPanel.ThermalrightPanel
         };
 
         // Device identifiers returned in init response
-        public const string IDENTIFIER_V1 = "SSCRM-V1"; // Grand / Hydro / Peerless Vision 240/360 (480x480)
+        public const string IDENTIFIER_V1 = "SSCRM-V1"; // Grand / Hydro / Hyper / Peerless Vision 240/360 (480x480)
         public const string IDENTIFIER_V3 = "SSCRM-V3"; // Wonder / Rainbow Vision 360 (2400x1080) — SUB byte differentiates
 
         // SUB byte (init response byte[28]) for SSCRM-V3 models
@@ -78,7 +78,7 @@ namespace InfoPanel.ThermalrightPanel
             [ThermalrightPanelModel.PeerlessVision360] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.PeerlessVision360,
-                Name = "Grand / Hydro / Peerless Vision 240/360",
+                Name = "Grand / Hydro / Hyper / Peerless Vision 240/360",
                 DeviceIdentifier = IDENTIFIER_V1,
                 Width = 480,
                 Height = 480,

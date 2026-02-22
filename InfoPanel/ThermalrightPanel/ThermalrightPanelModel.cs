@@ -3,7 +3,7 @@ namespace InfoPanel.ThermalrightPanel
     public enum ThermalrightPanelModel
     {
         Unknown,
-        // Grand / Hydro / Peerless Vision 240/360 - 3.95" (480x480) - responds with SSCRM-V1
+        // Grand / Hydro / Hyper / Peerless Vision 240/360 - 3.95" (480x480) - responds with SSCRM-V1
         PeerlessVision360,
         // Wonder Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x01
         WonderVision360,
