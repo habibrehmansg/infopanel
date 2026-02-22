@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Linq;
 using InfoPanel.Models;
 using InfoPanel.ThermalrightPanel;
+using InfoPanel.ViewModels;
 using InfoPanel.Utils;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
@@ -10,6 +11,9 @@ using Serilog;
 using SkiaSharp;
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -18,6 +22,10 @@ namespace InfoPanel.Services
     public sealed class ThermalrightPanelDeviceTask : BackgroundTask
     {
         private static readonly ILogger Logger = Log.ForContext<ThermalrightPanelDeviceTask>();
+
+        // Display mask overlay cache: (mask style, rotation degrees) -> SKBitmap
+        private static readonly Dictionary<(ThermalrightDisplayMask, int), SKBitmap> _maskCache = new();
+        private static readonly object _maskCacheLock = new();
 
         // ChiZhu Tech USBDISPLAY Protocol constants
         // Based on USB capture analysis of TRCC software at boot
@@ -146,6 +154,13 @@ namespace InfoPanel.Services
                         dimmed = ApplyBrightness(resizedBitmap);
                         encodeBitmap = dimmed;
                     }
+
+                    // Apply display mask overlay (punch-hole cover for Wonder/Rainbow Vision 360)
+                    if (_device.DisplayMask != ThermalrightDisplayMask.None)
+                    {
+                        ApplyDisplayMask(encodeBitmap, _device.DisplayMask, _device.Rotation);
+                    }
+
                     using var image = SKImage.FromBitmap(encodeBitmap);
                     int quality = _jpegQualityOverride > 0 ? _jpegQualityOverride : _device.JpegQuality;
                     using var data = image.Encode(SKEncodedImageFormat.Jpeg, quality);
@@ -232,6 +247,58 @@ namespace InfoPanel.Services
             ]);
             canvas.DrawBitmap(source, 0, 0, paint);
             return result;
+        }
+
+        /// <summary>
+        /// Draws a display mask overlay onto the bitmap to hide the camera punch-hole
+        /// on Wonder/Rainbow Vision 360 panels. Modifies the bitmap in-place.
+        /// </summary>
+        private static void ApplyDisplayMask(SKBitmap target, ThermalrightDisplayMask mask, LCD_ROTATION rotation)
+        {
+            if (mask == ThermalrightDisplayMask.None) return;
+
+            int degrees = rotation switch
+            {
+                LCD_ROTATION.Rotate90FlipNone => 90,
+                LCD_ROTATION.Rotate180FlipNone => 180,
+                LCD_ROTATION.Rotate270FlipNone => 270,
+                _ => 0
+            };
+
+            var key = (mask, degrees);
+            SKBitmap? overlay;
+
+            lock (_maskCacheLock)
+            {
+                if (!_maskCache.TryGetValue(key, out overlay))
+                {
+                    overlay = LoadMaskBitmap(mask, degrees);
+                    if (overlay != null)
+                        _maskCache[key] = overlay;
+                }
+            }
+
+            if (overlay != null)
+            {
+                using var canvas = new SKCanvas(target);
+                canvas.DrawBitmap(overlay, 0, 0);
+            }
+        }
+
+        private static SKBitmap? LoadMaskBitmap(ThermalrightDisplayMask mask, int degrees)
+        {
+            string prefix = mask == ThermalrightDisplayMask.RoundedLeft ? "mask_rounded_left" : "mask_rounded_all";
+            string resourceName = $"InfoPanel.Resources.Overlays.{prefix}_{degrees}.png";
+
+            var assembly = Assembly.GetExecutingAssembly();
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+            {
+                Logger.Warning("Display mask resource not found: {Resource}", resourceName);
+                return null;
+            }
+
+            return SKBitmap.Decode(stream);
         }
 
         /// <summary>

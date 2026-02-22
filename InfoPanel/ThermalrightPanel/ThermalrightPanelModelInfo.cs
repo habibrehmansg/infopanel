@@ -1,5 +1,15 @@
 namespace InfoPanel.ThermalrightPanel
 {
+    public enum ThermalrightDisplayMask
+    {
+        [System.ComponentModel.Description("None")]
+        None,
+        [System.ComponentModel.Description("Rounded Left")]
+        RoundedLeft,
+        [System.ComponentModel.Description("Rounded All")]
+        RoundedAll
+    }
+
     public enum ThermalrightTransportType
     {
         WinUsb,

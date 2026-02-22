@@ -26,6 +26,7 @@ namespace InfoPanel.Models
         {
             OnPropertyChanged(nameof(ModelInfo));
             OnPropertyChanged(nameof(IsJpegQualityConfigurable));
+            OnPropertyChanged(nameof(HasDisplayMask));
         }
 
         partial void OnDeviceLocationChanged(string value)
@@ -53,6 +54,9 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _jpegQuality = 95;  // TRCC default is 95
 
+        [ObservableProperty]
+        private ThermalrightDisplayMask _displayMask = ThermalrightDisplayMask.None;
+
         // Runtime properties
         [ObservableProperty]
         [property: System.Xml.Serialization.XmlIgnore]
@@ -68,6 +72,18 @@ namespace InfoPanel.Models
         }
 
         public ThermalrightPanelModelInfo? ModelInfo => ThermalrightPanelModelDatabase.Models.TryGetValue(Model, out var info) ? info : null;
+
+        /// <summary>
+        /// Wonder/Rainbow Vision 360 panels have a camera punch-hole that can be hidden with an overlay mask.
+        /// </summary>
+        public bool HasDisplayMask
+        {
+            get
+            {
+                return Model == ThermalrightPanelModel.WonderVision360
+                    || Model == ThermalrightPanelModel.RainbowVision360;
+            }
+        }
 
         /// <summary>
         /// TrofeoBulk protocols force JPEG quality to 90 for firmware compatibility (4:2:0 chroma).
