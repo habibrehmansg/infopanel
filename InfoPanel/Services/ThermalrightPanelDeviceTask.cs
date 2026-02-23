@@ -951,38 +951,20 @@ namespace InfoPanel.Services
             _jpegQualityOverride = 90;
             _maxJpegSize = 230_000;
 
-            // Device firmware requires a pending IN (read) IRP on EP 0x81 before it will
-            // accept OUT writes on EP 0x09.  Submit the ACK read *before* frame writes so
-            // the read IRP is already queued when the first write arrives.
+            // TRCC uses sequential IO: write all frame chunks, then blocking read for ACK.
+            // Matches DCReadWriteAsync.cs ThreadSendDeviceDataLY (lines 900-932).
             var ackBuffer = new byte[RESPONSE_SIZE];
-            int consecutiveAckFailures = 0;
 
             await RunRenderSendLoop(jpegData =>
             {
-                // Submit ACK read first — the pending IRP unblocks the device's OUT endpoint
-                ErrorCode ackEc = ErrorCode.None;
-                int ackBytes = 0;
-                var ackTask = Task.Run(() =>
-                {
-                    ackEc = reader.Read(ackBuffer, 2000, out ackBytes);
-                });
-
-                // Write all frame data while the read IRP is pending
+                // Write all frame data first (sequential, matching TRCC)
                 TrofeoBulkWriteFrame(writer, jpegData, USB_TRANSFER_SIZE, SUB_PACKET_SIZE, SUB_HEADER_SIZE, SUB_DATA_SIZE, SUBS_PER_TRANSFER);
 
-                // Wait for ACK to complete
-                ackTask.Wait();
-                if (ackEc == ErrorCode.None && ackBytes > 0)
+                // Then read ACK response (100ms timeout, matching TRCC)
+                var ackEc = reader.Read(ackBuffer, 100, out int ackBytes);
+                if (ackEc != ErrorCode.None)
                 {
-                    consecutiveAckFailures = 0;
-                }
-                else
-                {
-                    consecutiveAckFailures++;
-                    Logger.Warning("ThermalrightPanelDevice {Device}: Frame ACK failed (ec={Error}, bytes={Bytes}, consecutive={Count})",
-                        _device, ackEc, ackBytes, consecutiveAckFailures);
-                    if (consecutiveAckFailures >= 5)
-                        throw new Exception($"TrofeoBulk: {consecutiveAckFailures} consecutive ACK failures, device unresponsive");
+                    throw new Exception($"TrofeoBulk: ACK read failed (ec={ackEc}, bytes={ackBytes})");
                 }
             }, token);
         }
