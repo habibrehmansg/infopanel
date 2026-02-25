@@ -15,7 +15,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -53,7 +52,6 @@ namespace InfoPanel.Services
         private ThermalrightPanelModelInfo? _detectedModel;
         private int _maxJpegSize; // 0 = no limit; set by TrofeoBulk protocols to cap JPEG size
         private int _jpegCropHeight; // 0 = no crop; >0 = crop bitmap to this height before JPEG encoding
-        private int _jpegQualityOverride; // 0 = use _device.JpegQuality; >0 = forced quality (TrofeoBulk: 90 for 4:2:0 chroma)
         private bool _useGdiPlusJpeg; // true = use GDI+ JPEG encoder to match TRCC's CompressionImage output
 
         // Cached GDI+ JPEG codec info + quality encoder parameter (reused across frames)
@@ -180,7 +178,7 @@ namespace InfoPanel.Services
                         encodeBitmap = cropped;
                     }
 
-                    int quality = _jpegQualityOverride > 0 ? _jpegQualityOverride : _device.JpegQuality;
+                    int quality = _device.JpegQuality;
 
                     byte[] result;
                     if (_useGdiPlusJpeg)
@@ -355,7 +353,7 @@ namespace InfoPanel.Services
             using var bitmap = new SKBitmap(_panelWidth, _panelHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
             bitmap.Erase(SKColors.Black);
             using var image = SKImage.FromBitmap(bitmap);
-            int quality = _jpegQualityOverride > 0 ? _jpegQualityOverride : _device.JpegQuality;
+            int quality = _device.JpegQuality;
             using var data = image.Encode(SKEncodedImageFormat.Jpeg, quality);
             return data.ToArray();
         }
@@ -612,7 +610,7 @@ namespace InfoPanel.Services
 
                 if (protocolType == ThermalrightProtocolType.TrofeoBulk)
                 {
-                    await DoWinUsbTrofeoBulkProtocol(usbDevice, (byte)writeEp, (byte)readEp, writer, reader, token);
+                    await DoWinUsbTrofeoBulkProtocol(writer, reader, token);
                 }
                 else if (protocolType == ThermalrightProtocolType.TrofeoBulkLY1)
                 {
@@ -872,10 +870,9 @@ namespace InfoPanel.Services
         /// Init: 2048-byte packet (02 FF ... 01 ...), response 512 bytes.
         /// Frame: 4096-byte USB transfers, each containing 8 × 512-byte sub-packets.
         /// Each sub-packet has a 16-byte header + 496 bytes of JPEG data.
-        /// Uses direct WinUSB P/Invoke for overlapped reads and synchronous writes.
         /// JPEG height is cropped to 462 to match TRCC and prevent framebuffer overflow.
         /// </summary>
-        private async Task DoWinUsbTrofeoBulkProtocol(UsbDevice usbDevice, byte writeEpAddr, byte readEpAddr, UsbEndpointWriter writer, UsbEndpointReader reader, CancellationToken token)
+        private async Task DoWinUsbTrofeoBulkProtocol(UsbEndpointWriter writer, UsbEndpointReader reader, CancellationToken token)
         {
             const int INIT_PACKET_SIZE = 2048;
             const int USB_TRANSFER_SIZE = 4096;    // Each USB bulk write
@@ -899,12 +896,7 @@ namespace InfoPanel.Services
 
             Logger.Information("ThermalrightPanelDevice {Device}: Sending TrofeoBulk init ({Size} bytes)", _device, INIT_PACKET_SIZE);
 
-            // TRCC init pattern (ThreadSendDeviceDataLY lines 768-796):
-            //   1. SubmitAsyncTransfer WRITE (100ms timeout) — submitted FIRST
-            //   2. SubmitAsyncTransfer READ (100ms timeout) — submitted SECOND
-            //   3. Thread.Sleep(200)
-            //   4. Wait for both to complete
-            // Match this order: write async first, then read async, then wait.
+            // TRCC init pattern: write + read concurrently, then wait for both.
             var responseBuffer = new byte[RESPONSE_SIZE];
             ErrorCode readEc = ErrorCode.None;
             int readBytes = 0;
@@ -914,7 +906,6 @@ namespace InfoPanel.Services
                 return writer.Write(initPacket, 5000, out int written) == ErrorCode.None ? written : -1;
             });
 
-            // TRCC submits read immediately after write (no delay between)
             var readTask = Task.Run(() =>
             {
                 readEc = reader.Read(responseBuffer, 10000, out readBytes);
@@ -999,160 +990,87 @@ namespace InfoPanel.Services
 
             // Use GDI+ JPEG encoder to match TRCC's CompressionImage exactly.
             _useGdiPlusJpeg = true;
-            _jpegQualityOverride = 90;
             _gdiEncoderParams = new EncoderParameters(1)
             {
-                Param = { [0] = new EncoderParameter(Encoder.Quality, 90L) }
+                Param = { [0] = new EncoderParameter(Encoder.Quality, (long)_device.JpegQuality) }
             };
             _maxJpegSize = 230_000;
 
-            // Use direct WinUSB P/Invoke: overlapped read submitted before synchronous writes,
-            // matching TRCC's SubmitAsyncTransfer pattern.
-            IntPtr winUsbHandle = GetWinUsbInterfaceHandle(usbDevice);
-            IntPtr readEvent = CreateEventW(IntPtr.Zero, true, false, null);
-            if (readEvent == IntPtr.Zero)
-                throw new Exception($"CreateEvent failed: {Marshal.GetLastWin32Error()}");
-
+            // Frame loop: concurrent read+write via Task.Run (matching TRCC's async pattern),
+            // then sequential ACK check.
             var ackBuffer = new byte[RESPONSE_SIZE];
-            var ackPinned = GCHandle.Alloc(ackBuffer, GCHandleType.Pinned);
+            int consecutiveAckFailures = 0;
 
-            // Allocate OVERLAPPED on unmanaged heap so it stays valid even if an exception
-            // occurs during writes (stack-based would be invalidated on unwind while IO is pending).
-            IntPtr pOverlapped = Marshal.AllocHGlobal(Marshal.SizeOf<NativeOverlapped>());
-            bool ioIsPending = false;
-
-            try
+            await RunRenderSendLoop(jpegData =>
             {
-                int frameCount = 0;
-                var perfSw = new Stopwatch();
+                // Build the framed buffer (sub-packet headers + JPEG data)
+                int totalChunks = (jpegData.Length + SUB_DATA_SIZE - 1) / SUB_DATA_SIZE;
+                int lastChunkDataSize = jpegData.Length % SUB_DATA_SIZE;
+                if (lastChunkDataSize == 0) lastChunkDataSize = SUB_DATA_SIZE;
+                int paddedChunks = totalChunks;
+                int rem = paddedChunks % 4;
+                if (rem != 0) paddedChunks += 4 - rem;
+                int totalUsbBytes = paddedChunks * SUB_PACKET_SIZE;
 
-                await RunRenderSendLoop(jpegData =>
+                var buffer = ArrayPool<byte>.Shared.Rent(totalUsbBytes);
+                try
                 {
-                    frameCount++;
-                    perfSw.Restart();
+                    Array.Clear(buffer, 0, totalUsbBytes);
+                    var jpegSizeBytes = BitConverter.GetBytes(jpegData.Length);
+                    var totalChunksBytes = BitConverter.GetBytes((ushort)totalChunks);
 
-                    // Build the framed buffer (sub-packet headers + JPEG data)
-                    int totalChunks = (jpegData.Length + SUB_DATA_SIZE - 1) / SUB_DATA_SIZE;
-                    int lastChunkDataSize = jpegData.Length % SUB_DATA_SIZE;
-                    if (lastChunkDataSize == 0) lastChunkDataSize = SUB_DATA_SIZE;
-                    int paddedChunks = totalChunks;
-                    int rem = paddedChunks % 4;
-                    if (rem != 0) paddedChunks += 4 - rem;
-                    int totalUsbBytes = paddedChunks * SUB_PACKET_SIZE;
-
-                    var buffer = ArrayPool<byte>.Shared.Rent(totalUsbBytes);
-                    var bufferPinned = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-                    try
+                    int jpegOffset = 0;
+                    for (int i = 0; i < totalChunks; i++)
                     {
-                        Array.Clear(buffer, 0, totalUsbBytes);
-                        var jpegSizeBytes = BitConverter.GetBytes(jpegData.Length);
-                        var totalChunksBytes = BitConverter.GetBytes((ushort)totalChunks);
+                        int off = i * SUB_PACKET_SIZE;
+                        int dataSize = (i == totalChunks - 1) ? lastChunkDataSize : SUB_DATA_SIZE;
 
-                        int jpegOffset = 0;
-                        for (int i = 0; i < totalChunks; i++)
-                        {
-                            int off = i * SUB_PACKET_SIZE;
-                            int dataSize = (i == totalChunks - 1) ? lastChunkDataSize : SUB_DATA_SIZE;
-
-                            buffer[off + 0] = 0x01;
-                            buffer[off + 1] = 0xFF;
-                            jpegSizeBytes.CopyTo(buffer, off + 2);
-                            buffer[off + 6] = (byte)(dataSize & 0xFF);
-                            buffer[off + 7] = (byte)((dataSize >> 8) & 0xFF);
-                            buffer[off + 8] = 0x01; // LY command type
-                            totalChunksBytes.CopyTo(buffer, off + 9);
-                            buffer[off + 11] = (byte)(i & 0xFF);
-                            buffer[off + 12] = (byte)((i >> 8) & 0xFF);
-                            Array.Copy(jpegData, jpegOffset, buffer, off + SUB_HEADER_SIZE, dataSize);
-                            jpegOffset += dataSize;
-                        }
-
-                        unsafe
-                        {
-                            var ov = (NativeOverlapped*)pOverlapped;
-                            byte* ackPtr = (byte*)ackPinned.AddrOfPinnedObject();
-                            byte* bufPtr = (byte*)bufferPinned.AddrOfPinnedObject();
-
-                            // 1. Submit async read FIRST — IRP goes to kernel immediately
-                            ResetEvent(readEvent);
-                            *ov = new NativeOverlapped { EventHandle = readEvent };
-
-                            bool readOk = WinUsb_ReadPipe(winUsbHandle, readEpAddr,
-                                ackPtr, (uint)RESPONSE_SIZE, out _, ov);
-
-                            if (!readOk)
-                            {
-                                int err = Marshal.GetLastWin32Error();
-                                if (err != ERROR_IO_PENDING)
-                                    throw new Exception($"WinUsb_ReadPipe failed: Win32 error {err}");
-                                ioIsPending = true;
-                            }
-
-                            // 2. Write frame synchronously via direct WinUSB — no LibUsbDotNet overhead
-                            int writeOffset = 0;
-                            int bytesRemaining = totalUsbBytes;
-                            while (bytesRemaining > 0)
-                            {
-                                uint writeSize = (uint)((bytesRemaining >= USB_TRANSFER_SIZE) ? USB_TRANSFER_SIZE : 2048);
-                                bool writeOk = WinUsb_WritePipe(winUsbHandle, writeEpAddr,
-                                    bufPtr + writeOffset, writeSize, out uint written, null);
-                                if (!writeOk)
-                                {
-                                    int err = Marshal.GetLastWin32Error();
-                                    throw new Exception($"WinUsb_WritePipe failed: Win32 error {err}");
-                                }
-                                writeOffset += USB_TRANSFER_SIZE;
-                                bytesRemaining -= USB_TRANSFER_SIZE;
-                            }
-                            long writeMs = perfSw.ElapsedMilliseconds;
-
-                            // 3. Wait for ACK read to complete
-                            perfSw.Restart();
-                            bool resultOk = WinUsb_GetOverlappedResult(winUsbHandle, ov,
-                                out uint ackBytes, true);
-                            ioIsPending = false;
-                            long ackMs = perfSw.ElapsedMilliseconds;
-
-                            if (!resultOk)
-                            {
-                                int err = Marshal.GetLastWin32Error();
-                                Logger.Warning("ThermalrightPanelDevice {Device}: Frame #{Frame} ACK FAILED (Win32={Error}, writeMs={WriteMs}, ackMs={AckMs}, jpegSize={JpegSize})",
-                                    _device, frameCount, err, writeMs, ackMs, jpegData.Length);
-                                throw new Exception($"TrofeoBulk: ACK read failed (Win32 error {err})");
-                            }
-
-                            // Log first 30 frames and then every 100th for diagnostics
-                            if (frameCount <= 30 || frameCount % 100 == 0)
-                            {
-                                var ackHex = BitConverter.ToString(ackBuffer, 0, Math.Min((int)ackBytes, 16)).Replace("-", " ");
-                                Logger.Information("ThermalrightPanelDevice {Device}: Frame #{Frame} writeMs={WriteMs} ackMs={AckMs} jpeg={JpegSize} ACK({AckBytes}): {Ack}",
-                                    _device, frameCount, writeMs, ackMs, jpegData.Length, ackBytes, ackHex);
-                            }
-                        }
+                        buffer[off + 0] = 0x01;
+                        buffer[off + 1] = 0xFF;
+                        jpegSizeBytes.CopyTo(buffer, off + 2);
+                        buffer[off + 6] = (byte)(dataSize & 0xFF);
+                        buffer[off + 7] = (byte)((dataSize >> 8) & 0xFF);
+                        buffer[off + 8] = 0x01; // LY command type
+                        totalChunksBytes.CopyTo(buffer, off + 9);
+                        buffer[off + 11] = (byte)(i & 0xFF);
+                        buffer[off + 12] = (byte)((i >> 8) & 0xFF);
+                        Array.Copy(jpegData, jpegOffset, buffer, off + SUB_HEADER_SIZE, dataSize);
+                        jpegOffset += dataSize;
                     }
-                    finally
+
+                    // Write frame in 4096-byte USB transfers
+                    int writeOffset = 0;
+                    int bytesRemaining = totalUsbBytes;
+                    while (bytesRemaining > 0)
                     {
-                        bufferPinned.Free();
-                        ArrayPool<byte>.Shared.Return(buffer);
-                    }
-                }, token);
-            }
-            finally
-            {
-                // If IO is still pending (e.g. writes threw), abort the pipe to cancel it
-                // and wait for the overlapped to complete before freeing resources.
-                if (ioIsPending)
-                {
-                    WinUsb_AbortPipe(winUsbHandle, readEpAddr);
-                    unsafe
-                    {
-                        WinUsb_GetOverlappedResult(winUsbHandle, (NativeOverlapped*)pOverlapped, out _, true);
+                        int writeSize = (bytesRemaining >= USB_TRANSFER_SIZE) ? USB_TRANSFER_SIZE : bytesRemaining;
+                        var writeEc = writer.Write(buffer, writeOffset, writeSize, 1000, out int written);
+                        if (writeEc != ErrorCode.None)
+                            throw new Exception($"USB write failed: {writeEc}");
+                        writeOffset += USB_TRANSFER_SIZE;
+                        bytesRemaining -= USB_TRANSFER_SIZE;
                     }
                 }
-                Marshal.FreeHGlobal(pOverlapped);
-                ackPinned.Free();
-                CloseHandle(readEvent);
-            }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+
+                // Read ACK from device
+                var ackEc = reader.Read(ackBuffer, 500, out int ackBytes);
+                if (ackEc == ErrorCode.None && ackBytes > 0)
+                {
+                    consecutiveAckFailures = 0;
+                }
+                else
+                {
+                    consecutiveAckFailures++;
+                    Logger.Warning("ThermalrightPanelDevice {Device}: TrofeoBulk frame ACK failed (ec={Error}, bytes={Bytes}, consecutive={Count})",
+                        _device, ackEc, ackBytes, consecutiveAckFailures);
+                    if (consecutiveAckFailures >= 5)
+                        throw new Exception($"TrofeoBulk: {consecutiveAckFailures} consecutive ACK failures, device unresponsive");
+                }
+            }, token);
         }
 
         /// <summary>
@@ -1316,8 +1234,6 @@ namespace InfoPanel.Services
             UpdateDeviceDisplayName();
             await Task.Delay(100, token);
 
-            // Force quality 90 and cap size (same rationale as LY protocol)
-            _jpegQualityOverride = 90;
             _maxJpegSize = 230_000;
 
             // Fully sequential frame loop (matching TRCC): write all → read ACK → loop
@@ -1902,148 +1818,6 @@ namespace InfoPanel.Services
             }, token);
 
             await Task.WhenAll(renderTask, sendTask);
-        }
-
-        // WinUSB overlapped IO P/Invoke — for true async read during frame writes.
-        // LibUsbDotNet only exposes synchronous Read/Write; we bypass it for the frame loop
-        // to guarantee the read IRP is pending in the kernel before writes start (matching TRCC).
-        private const int ERROR_IO_PENDING = 997;
-
-        [DllImport("winusb.dll", SetLastError = true)]
-        private static extern unsafe bool WinUsb_ReadPipe(
-            IntPtr interfaceHandle, byte pipeId,
-            byte* buffer, uint bufferLength,
-            out uint lengthTransferred,
-            NativeOverlapped* overlapped);
-
-        [DllImport("winusb.dll", SetLastError = true)]
-        private static extern unsafe bool WinUsb_WritePipe(
-            IntPtr interfaceHandle, byte pipeId,
-            byte* buffer, uint bufferLength,
-            out uint lengthTransferred,
-            NativeOverlapped* overlapped); // null for synchronous
-
-        [DllImport("winusb.dll", SetLastError = true)]
-        private static extern unsafe bool WinUsb_GetOverlappedResult(
-            IntPtr interfaceHandle,
-            NativeOverlapped* overlapped,
-            out uint numberOfBytesTransferred,
-            bool wait);
-
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        private static extern IntPtr CreateEventW(IntPtr lpEventAttributes, bool bManualReset, bool bInitialState, string? lpName);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool ResetEvent(IntPtr hEvent);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool CloseHandle(IntPtr hObject);
-
-        [DllImport("winusb.dll", SetLastError = true)]
-        private static extern bool WinUsb_AbortPipe(IntPtr interfaceHandle, byte pipeId);
-
-        /// <summary>
-        /// Extracts the internal WinUSB interface handle from a LibUsbDotNet UsbDevice via reflection.
-        /// </summary>
-        private IntPtr GetWinUsbInterfaceHandle(UsbDevice usbDevice)
-        {
-            var handleField = typeof(UsbDevice).GetField("mUsbHandle",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            if (handleField == null)
-                throw new InvalidOperationException("Cannot find mUsbHandle field in UsbDevice");
-
-            var safeHandle = handleField.GetValue(usbDevice) as System.Runtime.InteropServices.SafeHandle;
-            if (safeHandle == null || safeHandle.IsInvalid)
-                throw new InvalidOperationException("Invalid WinUSB interface handle");
-
-            return safeHandle.DangerousGetHandle();
-        }
-
-        // WinUSB pipe policy P/Invoke — used to set ShortPacketTerminate etc.
-        // LibUsbDotNet 2.2.75 has this internally but doesn't expose it publicly.
-        [DllImport("winusb.dll", SetLastError = true)]
-        private static extern bool WinUsb_SetPipePolicy(
-            IntPtr interfaceHandle, byte pipeId, uint policyType,
-            uint valueLength, ref byte value);
-
-        [DllImport("winusb.dll", SetLastError = true)]
-        private static extern bool WinUsb_GetPipePolicy(
-            IntPtr interfaceHandle, byte pipeId, uint policyType,
-            ref uint valueLength, ref byte value);
-
-        private const uint PIPE_POLICY_SHORT_PACKET_TERMINATE = 0x01;
-        private const uint PIPE_POLICY_RAW_IO = 0x07;
-
-        /// <summary>
-        /// Sets a WinUSB pipe policy on the given endpoint.
-        /// Uses reflection to obtain the internal WinUSB interface handle from LibUsbDotNet.
-        /// </summary>
-        private bool TrySetPipePolicy(UsbDevice usbDevice, byte epNum, uint policyType, bool enabled)
-        {
-            try
-            {
-                // Get the internal SafeHandle from UsbDevice.mUsbHandle (internal field)
-                var handleField = typeof(UsbDevice).GetField("mUsbHandle",
-                    BindingFlags.NonPublic | BindingFlags.Instance);
-                if (handleField == null)
-                {
-                    Logger.Warning("ThermalrightPanelDevice {Device}: Cannot find mUsbHandle field for pipe policy", _device);
-                    return false;
-                }
-
-                var safeHandle = handleField.GetValue(usbDevice) as System.Runtime.InteropServices.SafeHandle;
-                if (safeHandle == null || safeHandle.IsInvalid)
-                {
-                    Logger.Warning("ThermalrightPanelDevice {Device}: Invalid WinUSB handle for pipe policy", _device);
-                    return false;
-                }
-
-                var handle = safeHandle.DangerousGetHandle();
-                byte val = (byte)(enabled ? 1 : 0);
-                bool result = WinUsb_SetPipePolicy(handle, epNum, policyType, 1, ref val);
-                if (!result)
-                {
-                    int err = Marshal.GetLastWin32Error();
-                    Logger.Warning("ThermalrightPanelDevice {Device}: WinUsb_SetPipePolicy(ep=0x{Ep:X2}, policy=0x{Policy:X2}, val={Val}) failed: Win32 error {Error}",
-                        _device, epNum, policyType, enabled, err);
-                }
-                else
-                {
-                    Logger.Information("ThermalrightPanelDevice {Device}: WinUsb_SetPipePolicy(ep=0x{Ep:X2}, policy=0x{Policy:X2}, val={Val}) OK",
-                        _device, epNum, policyType, enabled);
-                }
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning(ex, "ThermalrightPanelDevice {Device}: Failed to set pipe policy", _device);
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Reads a WinUSB pipe policy value.
-        /// </summary>
-        private bool TryGetPipePolicy(UsbDevice usbDevice, byte epNum, uint policyType, out byte value)
-        {
-            value = 0;
-            try
-            {
-                var handleField = typeof(UsbDevice).GetField("mUsbHandle",
-                    BindingFlags.NonPublic | BindingFlags.Instance);
-                if (handleField == null) return false;
-
-                var safeHandle = handleField.GetValue(usbDevice) as System.Runtime.InteropServices.SafeHandle;
-                if (safeHandle == null || safeHandle.IsInvalid) return false;
-
-                var handle = safeHandle.DangerousGetHandle();
-                uint len = 1;
-                return WinUsb_GetPipePolicy(handle, epNum, policyType, ref len, ref value);
-            }
-            catch
-            {
-                return false;
-            }
         }
 
         /// <summary>
