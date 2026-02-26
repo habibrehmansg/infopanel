@@ -27,6 +27,7 @@ namespace InfoPanel.Models
             OnPropertyChanged(nameof(ModelInfo));
             OnPropertyChanged(nameof(IsJpegQualityConfigurable));
             OnPropertyChanged(nameof(HasDisplayMask));
+            OnPropertyChanged(nameof(HasFlickerFix));
         }
 
         partial void OnDeviceLocationChanged(string value)
@@ -57,6 +58,9 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private ThermalrightDisplayMask _displayMask = ThermalrightDisplayMask.None;
 
+        [ObservableProperty]
+        private bool _flickerFix = false;
+
         // Runtime properties
         [ObservableProperty]
         [property: System.Xml.Serialization.XmlIgnore]
@@ -86,17 +90,34 @@ namespace InfoPanel.Models
         }
 
         /// <summary>
-        /// TrofeoBulk protocols force JPEG quality to 90 for firmware compatibility (4:2:0 chroma).
-        /// Hide the quality slider for those models.
+        /// JPEG quality is configurable for all JPEG-based protocols.
+        /// Only RGB565-only panels (ALi) don't use JPEG.
         /// </summary>
         public bool IsJpegQualityConfigurable
         {
             get
             {
-                var protocol = ModelInfo?.ProtocolType;
-                return protocol != ThermalrightProtocolType.TrofeoBulk
-                    && protocol != ThermalrightProtocolType.TrofeoBulkLY1;
+                var pixelFormat = ModelInfo?.PixelFormat;
+                return pixelFormat is null or ThermalrightPixelFormat.Jpeg;
             }
+        }
+
+        /// <summary>
+        /// TrofeoBulk 5408 panels may need a flicker fix (crop JPEG to 462 rows).
+        /// Show the toggle only for that model.
+        /// </summary>
+        public bool HasFlickerFix => Model == ThermalrightPanelModel.TrofeoVision916;
+
+        /// <summary>
+        /// Effective display height accounting for flicker fix crop.
+        /// </summary>
+        public int DisplayHeight => (FlickerFix && HasFlickerFix) ? 462 : (ModelInfo?.Height ?? 0);
+
+        public int DisplayWidth => ModelInfo?.Width ?? 0;
+
+        partial void OnFlickerFixChanged(bool value)
+        {
+            OnPropertyChanged(nameof(DisplayHeight));
         }
 
         public bool IsMatching(string deviceId, string deviceLocation, ThermalrightPanelModel model)
