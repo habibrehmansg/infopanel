@@ -111,9 +111,9 @@ namespace InfoPanel.Models
         /// <summary>
         /// Effective display height accounting for flicker fix crop.
         /// </summary>
-        public int DisplayHeight => (FlickerFix && HasFlickerFix) ? 462 : (ModelInfo?.Height ?? 0);
+        public int DisplayHeight => (FlickerFix && HasFlickerFix) ? 462 : (ModelInfo?.RenderHeight ?? 0);
 
-        public int DisplayWidth => ModelInfo?.Width ?? 0;
+        public int DisplayWidth => ModelInfo?.RenderWidth ?? 0;
 
         partial void OnFlickerFixChanged(bool value)
         {
