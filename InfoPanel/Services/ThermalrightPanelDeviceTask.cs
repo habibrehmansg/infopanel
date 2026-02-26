@@ -51,7 +51,7 @@ namespace InfoPanel.Services
         private int _panelHeight = DEFAULT_HEIGHT;
         private ThermalrightPanelModelInfo? _detectedModel;
         private int _maxJpegSize; // 0 = no limit; set by TrofeoBulk protocols to cap JPEG size
-        private int _jpegCropHeight; // 0 = no crop; >0 = crop bitmap to this height before JPEG encoding
+        private int _flickerFixCropHeight; // 0 = N/A; >0 = crop height when flicker fix is enabled
         private bool _useGdiPlusJpeg; // true = use GDI+ JPEG encoder to match TRCC's CompressionImage output
 
         // Cached GDI+ JPEG codec info + quality encoder parameter (reused across frames)
@@ -169,10 +169,11 @@ namespace InfoPanel.Services
                         ApplyDisplayMask(encodeBitmap, _device.DisplayMask, _device.Rotation);
                     }
 
-                    // Crop to target height if needed (TrofeoBulk: render at 480, crop to 462)
-                    if (_jpegCropHeight > 0 && _jpegCropHeight < encodeBitmap.Height)
+                    // Crop to target height if flicker fix is enabled (TrofeoBulk: render at 480, crop to 462)
+                    int cropHeight = (_device.FlickerFix && _flickerFixCropHeight > 0) ? _flickerFixCropHeight : 0;
+                    if (cropHeight > 0 && cropHeight < encodeBitmap.Height)
                     {
-                        cropped = new SKBitmap(_panelWidth, _jpegCropHeight, encodeBitmap.ColorType, encodeBitmap.AlphaType);
+                        cropped = new SKBitmap(_panelWidth, cropHeight, encodeBitmap.ColorType, encodeBitmap.AlphaType);
                         using var canvas = new SKCanvas(cropped);
                         canvas.DrawBitmap(encodeBitmap, 0, 0);
                         encodeBitmap = cropped;
@@ -978,11 +979,10 @@ namespace InfoPanel.Services
             // The JPEG SOF0 in USB captures confirms height=0x01CE=462.
             // Some panel units have a 462-row framebuffer; sending 480-height JPEGs overflows
             // by 18 rows, wrapping to the top of the display.
-            // We render at full 480 height (so user profiles look correct) then crop to 462.
+            // Flicker fix is toggled live via _device.FlickerFix — checked each frame in GenerateJpegBuffer.
             if (_panelHeight == 480)
             {
-                _jpegCropHeight = 462;
-                Logger.Information("ThermalrightPanelDevice {Device}: Will crop JPEG to {Height}h (TRCC compat)", _device, _jpegCropHeight);
+                _flickerFixCropHeight = 462;
             }
 
             UpdateDeviceDisplayName();
@@ -1733,9 +1733,10 @@ namespace InfoPanel.Services
         private void UpdateDeviceDisplayName()
         {
             var modelName = _detectedModel?.Name ?? "Panel";
-            _device.RuntimeProperties.Name = $"Thermalright {modelName} ({_panelWidth}x{_panelHeight})";
+            int displayHeight = (_device.FlickerFix && _flickerFixCropHeight > 0) ? _flickerFixCropHeight : _panelHeight;
+            _device.RuntimeProperties.Name = $"Thermalright {modelName} ({_panelWidth}x{displayHeight})";
             Logger.Information("ThermalrightPanelDevice {Device}: Connected to {Name}, rendering at {RenderW}x{RenderH}",
-                _device, modelName, _panelWidth, _panelHeight);
+                _device, modelName, _panelWidth, displayHeight);
         }
 
         /// <summary>
@@ -1757,9 +1758,17 @@ namespace InfoPanel.Services
             {
                 Thread.CurrentThread.Name ??= $"Thermalright-Render-{_device.DeviceLocation}";
                 var stopwatch = new Stopwatch();
+                bool lastFlickerFix = _device.FlickerFix;
 
                 while (!renderToken.IsCancellationRequested)
                 {
+                    // Update display name if flicker fix toggle changed
+                    if (_flickerFixCropHeight > 0 && _device.FlickerFix != lastFlickerFix)
+                    {
+                        lastFlickerFix = _device.FlickerFix;
+                        UpdateDeviceDisplayName();
+                    }
+
                     stopwatch.Restart();
                     var frame = GenerateFrameBuffer();
                     Interlocked.Exchange(ref _latestFrame, frame);
