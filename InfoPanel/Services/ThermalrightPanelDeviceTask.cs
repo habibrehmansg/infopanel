@@ -499,6 +499,7 @@ namespace InfoPanel.Services
                         "1. Run InfoPanel as Administrator\n" +
                         "2. Unplug and reconnect the device\n" +
                         "3. Close any other LCD software");
+                    await Task.Delay(OPEN_FAILURE_BACKOFF_MS, token);
                     return;
                 }
 
