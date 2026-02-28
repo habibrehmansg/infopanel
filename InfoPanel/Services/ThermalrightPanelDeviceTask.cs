@@ -163,10 +163,12 @@ namespace InfoPanel.Services
                         encodeBitmap = dimmed;
                     }
 
-                    // Apply display mask overlay (punch-hole cover for Wonder/Rainbow Vision 360)
+                    // Apply display mask overlay (punch-hole cover for Wonder/Rainbow/Levita Vision 360)
                     if (_device.DisplayMask != ThermalrightDisplayMask.None)
                     {
-                        ApplyDisplayMask(encodeBitmap, _device.DisplayMask, _device.Rotation);
+                        // Levita Vision has camera on the right side (180° from Wonder/Rainbow's left side)
+                        int maskRotationOffset = _device.Model == ThermalrightPanelModel.LevitaVision360 ? 180 : 0;
+                        ApplyDisplayMask(encodeBitmap, _device.DisplayMask, _device.Rotation, maskRotationOffset);
                     }
 
                     // Crop to target height if flicker fix is enabled (TrofeoBulk: render at 480, crop to 462)
@@ -289,7 +291,7 @@ namespace InfoPanel.Services
         /// Draws a display mask overlay onto the bitmap to hide the camera punch-hole
         /// on Wonder/Rainbow Vision 360 panels. Modifies the bitmap in-place.
         /// </summary>
-        private static void ApplyDisplayMask(SKBitmap target, ThermalrightDisplayMask mask, LCD_ROTATION rotation)
+        private static void ApplyDisplayMask(SKBitmap target, ThermalrightDisplayMask mask, LCD_ROTATION rotation, int maskRotationOffset = 0)
         {
             if (mask == ThermalrightDisplayMask.None) return;
 
@@ -300,6 +302,7 @@ namespace InfoPanel.Services
                 LCD_ROTATION.Rotate270FlipNone => 270,
                 _ => 0
             };
+            degrees = (degrees + maskRotationOffset) % 360;
 
             var key = (mask, degrees);
             SKBitmap? overlay;
