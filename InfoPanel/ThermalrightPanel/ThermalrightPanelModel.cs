@@ -9,6 +9,8 @@ namespace InfoPanel.ThermalrightPanel
         WonderVision360,
         // Rainbow Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x02
         RainbowVision360,
+        // Levita Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x03
+        LevitaVision360,
         // TL-M10 Vision - 9.16" (1920x462) - responds with SSCRM-V4
         TLM10Vision,
         // Trofeo Vision 6.86" - HID (VID 0x0416 / PID 0x5302)

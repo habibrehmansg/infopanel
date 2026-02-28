@@ -71,6 +71,7 @@ namespace InfoPanel.ThermalrightPanel
         // SUB byte (init response byte[28]) for SSCRM-V3 models
         public const byte WONDER_360_SUB_BYTE  = 0x01; // Wonder Vision 360
         public const byte RAINBOW_360_SUB_BYTE = 0x02; // Rainbow Vision 360
+        public const byte LEVITA_360_SUB_BYTE  = 0x03; // Levita Vision 360
         public const string IDENTIFIER_V4 = "SSCRM-V4"; // TL-M10 Vision (1920x462)
 
         public static readonly Dictionary<ThermalrightPanelModel, ThermalrightPanelModelInfo> Models = new()
@@ -112,6 +113,19 @@ namespace InfoPanel.ThermalrightPanel
                 VendorId = THERMALRIGHT_VENDOR_ID,
                 ProductId = THERMALRIGHT_PRODUCT_ID,
                 SubByte = RAINBOW_360_SUB_BYTE
+            },
+            [ThermalrightPanelModel.LevitaVision360] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.LevitaVision360,
+                Name = "Levita Vision 360 6.67\"",
+                DeviceIdentifier = IDENTIFIER_V3,
+                Width = 2400,
+                Height = 1080,
+                RenderWidth = 1600,
+                RenderHeight = 720,
+                VendorId = THERMALRIGHT_VENDOR_ID,
+                ProductId = THERMALRIGHT_PRODUCT_ID,
+                SubByte = LEVITA_360_SUB_BYTE
             },
             [ThermalrightPanelModel.TLM10Vision] = new ThermalrightPanelModelInfo
             {
