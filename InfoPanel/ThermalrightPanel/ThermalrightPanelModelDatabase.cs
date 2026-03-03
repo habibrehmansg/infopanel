@@ -41,7 +41,7 @@ namespace InfoPanel.ThermalrightPanel
         public const byte TROFEO_FW49_PM_BYTE        = 0x31;  //  49 -> 240x320, RGB565 (SPI, "Frozen Warframe")
         public const byte TROFEO_AS120_PM_BYTE       = 0x32;  //  50 -> 320x320, Jpeg ("Frozen Warframe")
         public const byte TROFEO_AS120B_PM_BYTE      = 0x33;  //  51 -> 320x320, Jpeg ("Frozen Warframe")
-        public const byte TROFEO_BA120_PM_BYTE       = 0x34;  //  52 -> 320x240, RGB565 (SPI, "BA120 Vision")
+        public const byte TROFEO_BA120_PM_BYTE       = 0x34;  //  52 -> 240x320, RGB565 (SPI, "BA120 Vision")
         public const byte TROFEO_BA120B_PM_BYTE      = 0x35;  //  53 -> 320x320, Jpeg ("LF20/LF21/LF22")
         public const byte TROFEO_LC5_PM_BYTE         = 0x36;  //  54 -> 360x360, Jpeg ("LC5" fan LCD)
         public const byte TROFEO_ELITE_1920_PM_BYTE  = 0x41;  //  65 -> 1920x462, Jpeg ("Elite Vision 9.16\"")
@@ -315,10 +315,10 @@ namespace InfoPanel.ThermalrightPanel
                 Model = ThermalrightPanelModel.BA120Vision,
                 Name = "BA120 Vision 2.4\"",
                 DeviceIdentifier = TROFEO_686_HID_IDENTIFIER,
-                Width = 320,
-                Height = 240,
-                RenderWidth = 320,
-                RenderHeight = 240,
+                Width = 240,
+                Height = 320,
+                RenderWidth = 240,
+                RenderHeight = 320,
                 VendorId = TROFEO_VENDOR_ID,
                 ProductId = TROFEO_PRODUCT_ID_686,
                 TransportType = ThermalrightTransportType.Hid,
@@ -834,7 +834,7 @@ namespace InfoPanel.ThermalrightPanel
                 TROFEO_FW49_PM_BYTE        => (240,  320,  "240x320"),
                 TROFEO_AS120_PM_BYTE       => (320,  320,  "320x320"),
                 TROFEO_AS120B_PM_BYTE      => (320,  320,  "320x320"),
-                TROFEO_BA120_PM_BYTE       => (320,  240,  "320x240"),
+                TROFEO_BA120_PM_BYTE       => (240,  320,  "240x320"),
                 TROFEO_BA120B_PM_BYTE      => (320,  320,  "320x320"),
                 TROFEO_LC5_PM_BYTE         => (360,  360,  "360x360"),
                 TROFEO_FWPRO_PM_BYTE       => (320,  320,  "320x320"),
