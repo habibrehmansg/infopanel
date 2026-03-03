@@ -76,6 +76,7 @@ namespace InfoPanel.Services
             return false;
         }
 
+
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);

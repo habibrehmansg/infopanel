@@ -14,6 +14,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using Wpf.Ui;
 
 namespace InfoPanel.Views.Pages;
 
@@ -23,14 +24,16 @@ namespace InfoPanel.Views.Pages;
 public partial class UsbPanelsPage : Page
 {
     private static readonly ILogger Logger = Log.ForContext<UsbPanelsPage>();
+    private readonly ISnackbarService _snackbarService;
     public UsbPanelsViewModel ViewModel { get; }
 
     private static bool deviceInserted = false;
     private static bool deviceRemoved = false;
 
-    public UsbPanelsPage(UsbPanelsViewModel viewModel)
+    public UsbPanelsPage(UsbPanelsViewModel viewModel, ISnackbarService snackbarService)
     {
         ViewModel = viewModel;
+        _snackbarService = snackbarService;
         DataContext = this;
         InitializeComponent();
     }
@@ -256,6 +259,18 @@ public partial class UsbPanelsPage : Page
             });
         }
 
+        // Show snackbar warning for devices with wrong USB driver
+        var driverIssueDevices = discoveredDevices.Where(d => d.DriverIssue != null).ToList();
+        foreach (var d in driverIssueDevices)
+        {
+            _snackbarService.Show(
+                "Wrong USB Driver",
+                $"Thermalright panel has wrong USB driver ({d.DriverIssue}). Use Zadig to install WinUSB driver.",
+                Wpf.Ui.Controls.ControlAppearance.Caution,
+                null,
+                TimeSpan.FromSeconds(10));
+        }
+
         return Task.CompletedTask;
     }
 
@@ -289,4 +304,5 @@ public partial class UsbPanelsPage : Page
             });
         }
     }
+
 }

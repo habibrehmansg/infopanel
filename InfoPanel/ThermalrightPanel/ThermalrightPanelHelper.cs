@@ -1,11 +1,15 @@
 using HidSharp;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
+using Microsoft.Win32;
 using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace InfoPanel.ThermalrightPanel
 {
@@ -68,13 +72,25 @@ namespace InfoPanel.ThermalrightPanel
                             continue;
                         }
 
-                        var modelInfo = ThermalrightPanelModelDatabase.GetModelByVidPid(vendorId, productId);
+                        // Check driver before attempting to open the device
+                        var driverIssue = CheckDriverService(deviceReg);
 
-                        // For ambiguous VID/PID (e.g. ChiZhu 87AD:70DB shared by ~40 models),
-                        // do a quick init probe to determine the exact model from PM/SUB/identifier.
-                        if (modelInfo == null)
+                        ThermalrightPanelModelInfo? modelInfo = null;
+                        if (driverIssue == null)
                         {
-                            modelInfo = ProbeWinUsbModel(deviceReg);
+                            modelInfo = ThermalrightPanelModelDatabase.GetModelByVidPid(vendorId, productId);
+
+                            // For ambiguous VID/PID (e.g. ChiZhu 87AD:70DB shared by ~40 models),
+                            // do a quick init probe to determine the exact model from PM/SUB/identifier.
+                            if (modelInfo == null)
+                            {
+                                modelInfo = ProbeWinUsbModel(deviceReg);
+                            }
+                        }
+                        else
+                        {
+                            Logger.Warning("ThermalrightPanelHelper: Skipping probe for device at {Location} — wrong driver: {Driver}",
+                                deviceLocation, driverIssue);
                         }
 
                         var discoveryInfo = new ThermalrightPanelDiscoveryInfo
@@ -85,11 +101,13 @@ namespace InfoPanel.ThermalrightPanel
                             VendorId = vendorId,
                             ProductId = productId,
                             Model = modelInfo?.Model ?? ThermalrightPanelModel.Unknown,
-                            ModelInfo = modelInfo
+                            ModelInfo = modelInfo,
+                            DriverIssue = driverIssue
                         };
 
-                        Logger.Information("ThermalrightPanelHelper: Found {Model} at {Location}",
-                            modelInfo?.Name ?? "Unknown", deviceLocation);
+                        Logger.Information("ThermalrightPanelHelper: Found {Model} at {Location}{DriverInfo}",
+                            modelInfo?.Name ?? "Unknown", deviceLocation,
+                            driverIssue != null ? $" (wrong driver: {driverIssue})" : "");
 
                         devices.Add(discoveryInfo);
                     }
@@ -183,89 +201,165 @@ namespace InfoPanel.ThermalrightPanel
         }
 
         /// <summary>
-        /// Opens a WinUSB device, sends a ChiZhu init command, and reads the response
-        /// to determine the exact model from PM/SUB bytes and identifier string.
-        /// Returns null if the probe fails (device busy, booting, or not a ChiZhu device).
+        /// Checks whether a WinUSB device has the correct driver (WinUSB) by querying the
+        /// registry Service value. Returns the driver name if it's wrong (e.g. "libusb0", "libusbK"),
+        /// or null if the driver is correct or cannot be determined.
         /// </summary>
-        private static ThermalrightPanelModelInfo? ProbeWinUsbModel(UsbRegistry deviceReg)
+        private static string? CheckDriverService(UsbRegistry deviceReg)
         {
             try
             {
-                using var usbDevice = deviceReg.Device;
-                if (usbDevice == null) return null;
-
-                if (usbDevice is IUsbDevice wholeUsbDevice)
-                {
-                    wholeUsbDevice.SetConfiguration(1);
-                    wholeUsbDevice.ClaimInterface(0);
-                }
-
-                // Find endpoints
-                WriteEndpointID writeEp = WriteEndpointID.Ep01;
-                ReadEndpointID readEp = ReadEndpointID.Ep01;
-
-                foreach (var config in usbDevice.Configs)
-                {
-                    foreach (var iface in config.InterfaceInfoList)
-                    {
-                        foreach (var ep in iface.EndpointInfoList)
-                        {
-                            var addr = (byte)ep.Descriptor.EndpointID;
-                            if ((addr & 0x80) == 0)
-                                writeEp = (WriteEndpointID)addr;
-                            else
-                                readEp = (ReadEndpointID)addr;
-                        }
-                    }
-                }
-
-                using var writer = usbDevice.OpenEndpointWriter(writeEp);
-                using var reader = usbDevice.OpenEndpointReader(readEp);
-
-                // Build ChiZhu init command: magic 12345678 + zeros + 0x01 at offset 56
-                var initCommand = new byte[64];
-                initCommand[0] = 0x12;
-                initCommand[1] = 0x34;
-                initCommand[2] = 0x56;
-                initCommand[3] = 0x78;
-                BitConverter.GetBytes(1).CopyTo(initCommand, 56);
-
-                var ec = writer.Write(initCommand, 3000, out _);
-                if (ec != ErrorCode.None) return null;
-
-                var response = new byte[1024];
-                ec = reader.Read(response, 3000, out int bytesRead);
-                if (ec != ErrorCode.None || bytesRead < 12) return null;
-
-                // Boot indicator: A1A2A3A4 — device not ready
-                if (bytesRead >= 8 &&
-                    response[4] == 0xA1 && response[5] == 0xA2 &&
-                    response[6] == 0xA3 && response[7] == 0xA4)
+                var devicePath = deviceReg.DevicePath;
+                if (string.IsNullOrEmpty(devicePath))
                     return null;
 
-                byte? pm = bytesRead >= 25 ? response[24] : null;
-                byte? sub = bytesRead >= 29 ? response[28] : null;
+                // DevicePath format: \\?\usb#vid_87ad&pid_70db#serial#{guid}
+                // We need: USB\VID_87AD&PID_70DB\serial
+                var match = Regex.Match(devicePath, @"usb#(vid_[0-9a-f]+&pid_[0-9a-f]+)#([^#]+)#", RegexOptions.IgnoreCase);
+                if (!match.Success)
+                    return null;
 
-                Logger.Information("ThermalrightPanelHelper: Probe response PM=0x{PM:X2} SUB=0x{SUB:X2}",
-                    pm ?? 0, sub ?? 0);
+                var vidPid = match.Groups[1].Value.ToUpperInvariant();
+                var serial = match.Groups[2].Value;
+                var regPath = $@"SYSTEM\CurrentControlSet\Enum\USB\{vidPid}\{serial}";
 
-                // Try PM+SUB table first
-                if (pm.HasValue && sub.HasValue)
-                {
-                    var model = ThermalrightPanelModelDatabase.GetModelByChiZhuPM(pm.Value, sub.Value);
-                    if (model != null) return model;
-                }
+                using var key = Registry.LocalMachine.OpenSubKey(regPath);
+                var service = key?.GetValue("Service") as string;
 
-                // Fall back to identifier string at bytes 4-11
-                var identifier = Encoding.ASCII.GetString(response, 4, 8).TrimEnd('\0');
-                Logger.Information("ThermalrightPanelHelper: Probe identifier: {Id}", identifier);
-                return ThermalrightPanelModelDatabase.GetModelByIdentifier(identifier, sub);
+                if (string.IsNullOrEmpty(service))
+                    return null;
+
+                if (service.Equals("WinUSB", StringComparison.OrdinalIgnoreCase))
+                    return null; // Correct driver
+
+                Logger.Warning("ThermalrightPanelHelper: Device at {Path} has wrong driver: {Driver} (expected WinUSB)",
+                    devicePath, service);
+                return service;
             }
             catch (Exception ex)
             {
-                Logger.Debug(ex, "ThermalrightPanelHelper: Probe failed (device may be busy)");
+                Logger.Debug(ex, "ThermalrightPanelHelper: Could not check driver service");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Opens a WinUSB device, sends a ChiZhu init command, and reads the response
+        /// to determine the exact model from PM/SUB bytes and identifier string.
+        /// Runs with a 5-second timeout to prevent hanging the scan.
+        /// Returns null if the probe fails (device busy, booting, timeout, or not a ChiZhu device).
+        /// </summary>
+        private static ThermalrightPanelModelInfo? ProbeWinUsbModel(UsbRegistry deviceReg)
+        {
+            const int PROBE_TIMEOUT_MS = 5000;
+
+            try
+            {
+                var probeTask = Task.Run(() => ProbeWinUsbModelInner(deviceReg));
+                if (probeTask.Wait(PROBE_TIMEOUT_MS))
+                    return probeTask.Result;
+
+                Logger.Warning("ThermalrightPanelHelper: Probe timed out after {Timeout}ms", PROBE_TIMEOUT_MS);
+                return null;
+            }
+            catch (AggregateException ae)
+            {
+                Logger.Debug(ae.InnerException ?? ae, "ThermalrightPanelHelper: Probe failed");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "ThermalrightPanelHelper: Probe failed");
+                return null;
+            }
+        }
+
+        private static ThermalrightPanelModelInfo? ProbeWinUsbModelInner(UsbRegistry deviceReg)
+        {
+            using var usbDevice = deviceReg.Device;
+            if (usbDevice == null)
+            {
+                Logger.Debug("ThermalrightPanelHelper: Probe could not open device");
+                return null;
+            }
+
+            if (usbDevice is IUsbDevice wholeUsbDevice)
+            {
+                wholeUsbDevice.SetConfiguration(1);
+                wholeUsbDevice.ClaimInterface(0);
+            }
+
+            // Find endpoints
+            WriteEndpointID writeEp = WriteEndpointID.Ep01;
+            ReadEndpointID readEp = ReadEndpointID.Ep01;
+
+            foreach (var config in usbDevice.Configs)
+            {
+                foreach (var iface in config.InterfaceInfoList)
+                {
+                    foreach (var ep in iface.EndpointInfoList)
+                    {
+                        var addr = (byte)ep.Descriptor.EndpointID;
+                        if ((addr & 0x80) == 0)
+                            writeEp = (WriteEndpointID)addr;
+                        else
+                            readEp = (ReadEndpointID)addr;
+                    }
+                }
+            }
+
+            using var writer = usbDevice.OpenEndpointWriter(writeEp);
+            using var reader = usbDevice.OpenEndpointReader(readEp);
+
+            // Build ChiZhu init command: magic 12345678 + zeros + 0x01 at offset 56
+            var initCommand = new byte[64];
+            initCommand[0] = 0x12;
+            initCommand[1] = 0x34;
+            initCommand[2] = 0x56;
+            initCommand[3] = 0x78;
+            BitConverter.GetBytes(1).CopyTo(initCommand, 56);
+
+            var ec = writer.Write(initCommand, 3000, out _);
+            if (ec != ErrorCode.None)
+            {
+                Logger.Debug("ThermalrightPanelHelper: Probe write failed: {Error}", ec);
+                return null;
+            }
+
+            var response = new byte[1024];
+            ec = reader.Read(response, 3000, out int bytesRead);
+            if (ec != ErrorCode.None || bytesRead < 12)
+            {
+                Logger.Debug("ThermalrightPanelHelper: Probe read failed: {Error}, bytes={Bytes}", ec, bytesRead);
+                return null;
+            }
+
+            // Boot indicator: A1A2A3A4 — device not ready
+            if (bytesRead >= 8 &&
+                response[4] == 0xA1 && response[5] == 0xA2 &&
+                response[6] == 0xA3 && response[7] == 0xA4)
+            {
+                Logger.Debug("ThermalrightPanelHelper: Probe: device is booting");
+                return null;
+            }
+
+            byte? pm = bytesRead >= 25 ? response[24] : null;
+            byte? sub = bytesRead >= 29 ? response[28] : null;
+
+            Logger.Information("ThermalrightPanelHelper: Probe response PM=0x{PM:X2} SUB=0x{SUB:X2}",
+                pm ?? 0, sub ?? 0);
+
+            // Try PM+SUB table first
+            if (pm.HasValue && sub.HasValue)
+            {
+                var model = ThermalrightPanelModelDatabase.GetModelByChiZhuPM(pm.Value, sub.Value);
+                if (model != null) return model;
+            }
+
+            // Fall back to identifier string at bytes 4-11
+            var identifier = Encoding.ASCII.GetString(response, 4, 8).TrimEnd('\0');
+            Logger.Information("ThermalrightPanelHelper: Probe identifier: {Id}", identifier);
+            return ThermalrightPanelModelDatabase.GetModelByIdentifier(identifier, sub);
         }
     }
 
@@ -278,5 +372,6 @@ namespace InfoPanel.ThermalrightPanel
         public int ProductId { get; init; }
         public ThermalrightPanelModel Model { get; init; }
         public ThermalrightPanelModelInfo? ModelInfo { get; init; }
+        public string? DriverIssue { get; init; }
     }
 }

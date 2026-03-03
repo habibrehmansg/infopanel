@@ -574,6 +574,9 @@
                                                         <Binding Path="RuntimeProperties.Name" />
                                                     </MultiBinding>
                                                 </TextBlock.Text>
+                                                <TextBlock.ToolTip>
+                                                    <TextBlock Text="{Binding RuntimeProperties.DeviceInfo}" />
+                                                </TextBlock.ToolTip>
                                             </TextBlock>
 
                                             <TextBlock
@@ -776,6 +779,7 @@
                                             <ui:ToggleSwitch
                                                 IsChecked="{Binding FlickerFix}" />
                                         </StackPanel>
+
                                     </StackPanel>
                                     <Grid Margin="20,0,0,0">
                                         <Grid.RowDefinitions>

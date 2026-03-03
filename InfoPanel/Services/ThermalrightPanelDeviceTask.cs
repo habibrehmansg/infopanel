@@ -755,6 +755,18 @@ namespace InfoPanel.Services
                     _device.RuntimeProperties.SerialNumber = serial;
                     Logger.Information("ThermalrightPanelDevice {Device}: Serial number: {Serial}", _device, serial);
                 }
+
+                // Parse additional DEV_INFO fields (TRCC DCReadWriteAsync.cs:334-349)
+                byte flags = bytesRead >= 21 ? responseBuffer[20] : (byte)0;
+                byte disp1 = bytesRead >= 33 ? responseBuffer[32] : (byte)0;
+                byte disp2 = bytesRead >= 37 ? responseBuffer[36] : (byte)0;
+                byte disp3 = bytesRead >= 41 ? responseBuffer[40] : (byte)0;
+
+                Logger.Information("ThermalrightPanelDevice {Device}: DEV_INFO flags=0x{Flags:X2} disp1=0x{D1:X2} disp2=0x{D2:X2} disp3=0x{D3:X2}",
+                    _device, flags, disp1, disp2, disp3);
+
+                _device.RuntimeProperties.DeviceFlags = flags;
+                _device.RuntimeProperties.DeviceInfo = $"PM=0x{pm ?? 0:X2} SUB=0x{sub ?? 0:X2} Flags=0x{flags:X2} Disp={disp1:X2}/{disp2:X2}/{disp3:X2}";
             }
             else
             {

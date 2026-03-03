@@ -245,6 +245,12 @@ namespace InfoPanel.Models
 
             [ObservableProperty]
             private string _serialNumber = string.Empty;
+
+            [ObservableProperty]
+            private byte _deviceFlags = 0;
+
+            [ObservableProperty]
+            private string _deviceInfo = string.Empty;
         }
     }
 }
