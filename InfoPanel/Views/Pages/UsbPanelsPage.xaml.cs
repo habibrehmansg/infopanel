@@ -244,6 +244,13 @@ public partial class UsbPanelsPage : Page
                 {
                     // Update location
                     device.DeviceLocation = discoveredDevice.DeviceLocation;
+
+                    // Set name from saved model info (determined during previous init)
+                    if (device.ModelInfo != null)
+                    {
+                        device.RuntimeProperties.Name = $"Thermalright {device.ModelInfo.Name}";
+                    }
+
                     Logger.Information("ThermalrightPanel Discovery: Device with DeviceId '{DeviceId}' already exists", discoveredDevice.DeviceId);
                 }
             });

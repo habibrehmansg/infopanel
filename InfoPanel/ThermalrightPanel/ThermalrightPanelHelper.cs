@@ -5,6 +5,7 @@ using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace InfoPanel.ThermalrightPanel
 {
@@ -68,6 +69,13 @@ namespace InfoPanel.ThermalrightPanel
                         }
 
                         var modelInfo = ThermalrightPanelModelDatabase.GetModelByVidPid(vendorId, productId);
+
+                        // For ambiguous VID/PID (e.g. ChiZhu 87AD:70DB shared by ~40 models),
+                        // do a quick init probe to determine the exact model from PM/SUB/identifier.
+                        if (modelInfo == null)
+                        {
+                            modelInfo = ProbeWinUsbModel(deviceReg);
+                        }
 
                         var discoveryInfo = new ThermalrightPanelDiscoveryInfo
                         {
@@ -172,6 +180,92 @@ namespace InfoPanel.ThermalrightPanel
 
             Logger.Information("ThermalrightPanelHelper: Scan complete, found {Count} device(s)", devices.Count);
             return devices;
+        }
+
+        /// <summary>
+        /// Opens a WinUSB device, sends a ChiZhu init command, and reads the response
+        /// to determine the exact model from PM/SUB bytes and identifier string.
+        /// Returns null if the probe fails (device busy, booting, or not a ChiZhu device).
+        /// </summary>
+        private static ThermalrightPanelModelInfo? ProbeWinUsbModel(UsbRegistry deviceReg)
+        {
+            try
+            {
+                using var usbDevice = deviceReg.Device;
+                if (usbDevice == null) return null;
+
+                if (usbDevice is IUsbDevice wholeUsbDevice)
+                {
+                    wholeUsbDevice.SetConfiguration(1);
+                    wholeUsbDevice.ClaimInterface(0);
+                }
+
+                // Find endpoints
+                WriteEndpointID writeEp = WriteEndpointID.Ep01;
+                ReadEndpointID readEp = ReadEndpointID.Ep01;
+
+                foreach (var config in usbDevice.Configs)
+                {
+                    foreach (var iface in config.InterfaceInfoList)
+                    {
+                        foreach (var ep in iface.EndpointInfoList)
+                        {
+                            var addr = (byte)ep.Descriptor.EndpointID;
+                            if ((addr & 0x80) == 0)
+                                writeEp = (WriteEndpointID)addr;
+                            else
+                                readEp = (ReadEndpointID)addr;
+                        }
+                    }
+                }
+
+                using var writer = usbDevice.OpenEndpointWriter(writeEp);
+                using var reader = usbDevice.OpenEndpointReader(readEp);
+
+                // Build ChiZhu init command: magic 12345678 + zeros + 0x01 at offset 56
+                var initCommand = new byte[64];
+                initCommand[0] = 0x12;
+                initCommand[1] = 0x34;
+                initCommand[2] = 0x56;
+                initCommand[3] = 0x78;
+                BitConverter.GetBytes(1).CopyTo(initCommand, 56);
+
+                var ec = writer.Write(initCommand, 3000, out _);
+                if (ec != ErrorCode.None) return null;
+
+                var response = new byte[1024];
+                ec = reader.Read(response, 3000, out int bytesRead);
+                if (ec != ErrorCode.None || bytesRead < 12) return null;
+
+                // Boot indicator: A1A2A3A4 — device not ready
+                if (bytesRead >= 8 &&
+                    response[4] == 0xA1 && response[5] == 0xA2 &&
+                    response[6] == 0xA3 && response[7] == 0xA4)
+                    return null;
+
+                byte? pm = bytesRead >= 25 ? response[24] : null;
+                byte? sub = bytesRead >= 29 ? response[28] : null;
+
+                Logger.Information("ThermalrightPanelHelper: Probe response PM=0x{PM:X2} SUB=0x{SUB:X2}",
+                    pm ?? 0, sub ?? 0);
+
+                // Try PM+SUB table first
+                if (pm.HasValue && sub.HasValue)
+                {
+                    var model = ThermalrightPanelModelDatabase.GetModelByChiZhuPM(pm.Value, sub.Value);
+                    if (model != null) return model;
+                }
+
+                // Fall back to identifier string at bytes 4-11
+                var identifier = Encoding.ASCII.GetString(response, 4, 8).TrimEnd('\0');
+                Logger.Information("ThermalrightPanelHelper: Probe identifier: {Id}", identifier);
+                return ThermalrightPanelModelDatabase.GetModelByIdentifier(identifier, sub);
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "ThermalrightPanelHelper: Probe failed (device may be busy)");
+                return null;
+            }
         }
     }
 

@@ -73,8 +73,8 @@ namespace InfoPanel.ThermalrightPanel
         FrozenWarframeUltra,  // PM 6, sub 1 -> 480x480
         FrozenVisionV2,       // PM 6, sub 2 -> 480x480
         // 640x480
-        StreamVision,         // PM 7, sub 1 -> 640x480
-        MjolnirVisionPro,     // PM 7, sub 2 -> 640x480
+        StreamVision,         // PM 7/14, sub 1 -> 640x480
+        MjolnirVisionPro,     // PM 7/14, sub 2 -> 640x480
         // 854x480
         LC2JD,                // PM 9, sub <5 -> 854x480
         LF19,                 // PM 9, sub >=5 -> 854x480
@@ -97,12 +97,12 @@ namespace InfoPanel.ThermalrightPanel
         LM24,                 // PM 68 -> 1280x480
         LM24B,                // PM 128 -> 1280x480
         // 1600x720
-        LM22,                 // PM 1, sub 48 or PM 64, sub 1 -> 1600x720
-        LM27,                 // PM 64, sub 2 -> 1600x720
-        LM30,                 // PM 64, sub 3 -> 1600x720
+        LM22,                 // PM 1, sub 48 or PM 63/64, sub 1 -> 1600x720
+        LM27,                 // PM 63/64, sub 2 -> 1600x720
+        LM30,                 // PM 63/64, sub 3 -> 1600x720
         // 1920x462
-        LF14,                 // PM 1, sub 49 or PM 65, sub 1-2 -> 1920x462
-        LD7,                  // PM 65, sub 3 or PM 66, sub 3-4 -> 1920x462
+        LF14,                 // PM 1, sub 49 or PM 65/66, sub 1-2 -> 1920x462
+        LD7,                  // PM 65, sub 3/5 or PM 66, sub 3+ -> 1920x462
         LD10,                 // PM 65, sub 4 -> 1920x462
         // 1920x440
         LD9,                  // PM 69, sub 2 -> 1920x440

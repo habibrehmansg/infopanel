@@ -563,22 +563,20 @@ namespace InfoPanel.ThermalrightPanel
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
 
-            // --- 320x240 ---
+            // --- 640x480 ---
             [ThermalrightPanelModel.MjolnirVision] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.MjolnirVision,
                 Name = "Mjolnir Vision",
-                Width = 320, Height = 240, RenderWidth = 320, RenderHeight = 240,
+                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
                 VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
-
-            // --- 480x480 (PM=6) ---
             [ThermalrightPanelModel.FrozenWarframeUltra] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.FrozenWarframeUltra,
                 Name = "Frozen Warframe Ultra",
-                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
                 VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
@@ -586,12 +584,10 @@ namespace InfoPanel.ThermalrightPanel
             {
                 Model = ThermalrightPanelModel.FrozenVisionV2,
                 Name = "Frozen Vision V2",
-                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
                 VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
-
-            // --- 640x480 ---
             [ThermalrightPanelModel.StreamVision] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.StreamVision,
@@ -940,10 +936,10 @@ namespace InfoPanel.ThermalrightPanel
                 (4, 4) => Models[ThermalrightPanelModel.LF10V],
                 (4, 5) => Models[ThermalrightPanelModel.LM19SE],
 
-                // PM 5: Mjolnir Vision 640x480
+                // PM 5: Mjolnir Vision 320x240
                 (5, _) => Models[ThermalrightPanelModel.MjolnirVision],
 
-                // PM 6: 640x480 variants
+                // PM 6: 480x480 variants
                 (6, 1) => Models[ThermalrightPanelModel.FrozenWarframeUltra],
                 (6, _) => Models[ThermalrightPanelModel.FrozenVisionV2],
 
@@ -963,12 +959,17 @@ namespace InfoPanel.ThermalrightPanel
 
                 // PM 11: 854x480
                 (11, 6) => Models[ThermalrightPanelModel.LD8],
+                (11, _) => Models[ThermalrightPanelModel.LF19],
 
                 // PM 12: 800x480
                 (12, _) => Models[ThermalrightPanelModel.LF17],
 
                 // PM 13: 960x320
                 (13, _) => Models[ThermalrightPanelModel.PC1],
+
+                // PM 14: 640x480 (alias for PM=7)
+                (14, 1) => Models[ThermalrightPanelModel.StreamVision],
+                (14, _) => Models[ThermalrightPanelModel.MjolnirVisionPro],
 
                 // PM 15: 640x172
                 (15, 1) => Models[ThermalrightPanelModel.LC7],
@@ -979,9 +980,15 @@ namespace InfoPanel.ThermalrightPanel
 
                 // PM 17: 960x320
                 (17, 2) => Models[ThermalrightPanelModel.LC9],
+                (17, _) => Models[ThermalrightPanelModel.PC1],
 
                 // PM 32 (0x20): 320x320 RGB565 big-endian
                 (0x20, _) => Models[ThermalrightPanelModel.ChiZhuVision320x320],
+
+                // PM 63: 1600x720 (alias for PM=64)
+                (63, 1) => Models[ThermalrightPanelModel.LM22],
+                (63, 2) => Models[ThermalrightPanelModel.LM27],
+                (63, 3) => Models[ThermalrightPanelModel.LM30],
 
                 // PM 64: 1600x720 variants
                 (64, 1) => Models[ThermalrightPanelModel.LM22],
@@ -990,10 +997,11 @@ namespace InfoPanel.ThermalrightPanel
 
                 // PM 65: 1920x462 variants
                 (65, 1) or (65, 2) => Models[ThermalrightPanelModel.LF14],
-                (65, 3) => Models[ThermalrightPanelModel.LD7],
+                (65, 3) or (65, 5) => Models[ThermalrightPanelModel.LD7],
                 (65, 4) => Models[ThermalrightPanelModel.LD10],
 
                 // PM 66: 1920x462 variants
+                (66, 1) or (66, 2) => Models[ThermalrightPanelModel.LF14],
                 (66, 3) or (66, 4) => Models[ThermalrightPanelModel.LD7],
 
                 // PM 68: 1280x480
