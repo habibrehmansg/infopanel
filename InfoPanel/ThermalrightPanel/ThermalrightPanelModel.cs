@@ -67,10 +67,12 @@ namespace InfoPanel.ThermalrightPanel
         LF10V,                // PM 4, sub 4 -> 480x480
         LM19SE,               // PM 4, sub 5 -> 480x480
         GrandVisionBulk,      // PM 129 -> 480x480
+        // 320x240
+        MjolnirVision,        // PM 5 -> 320x240
+        // 480x480 (PM 6)
+        FrozenWarframeUltra,  // PM 6, sub 1 -> 480x480
+        FrozenVisionV2,       // PM 6, sub 2 -> 480x480
         // 640x480
-        MjolnirVision,        // PM 5 -> 640x480
-        FrozenWarframeUltra,  // PM 6, sub 1 -> 640x480
-        FrozenVisionV2,       // PM 6, sub 2 -> 640x480
         StreamVision,         // PM 7, sub 1 -> 640x480
         MjolnirVisionPro,     // PM 7, sub 2 -> 640x480
         // 854x480
