@@ -13,6 +13,12 @@ using System.Threading.Tasks;
 
 namespace InfoPanel.TuringPanel
 {
+    internal class TuringPanelDiscoveryResult
+    {
+        public List<TuringPanelDevice> Devices { get; init; } = [];
+        public List<string> DriverWarnings { get; init; } = [];
+    }
+
     internal partial class TuringPanelHelper
     {
         private static readonly ILogger Logger = Log.ForContext(typeof(TuringPanelHelper));
@@ -63,7 +69,7 @@ namespace InfoPanel.TuringPanel
         }
 
 
-        public static async Task<List<TuringPanelDevice>> GetSerialDevices()
+        public static async Task<TuringPanelDiscoveryResult> GetSerialDevices()
         {
             await _semaphore.WaitAsync();
             try
@@ -87,6 +93,7 @@ namespace InfoPanel.TuringPanel
                 return await Task.Run(() =>
                 {
                     List<TuringPanelDevice> devices = [];
+                    List<string> driverWarnings = [];
                     var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_SerialPort");
                     var serialPorts = searcher.Get().Cast<ManagementObject>().ToList();
 
@@ -96,34 +103,48 @@ namespace InfoPanel.TuringPanel
                         "SELECT PNPDeviceID FROM Win32_PnPEntity WHERE PNPDeviceID LIKE '%VID_1A86%'");
                     var pnpDevices = pnpSearcher.Get().Cast<ManagementObject>().ToList();
 
-                    bool hasCt13Inch = serialPorts.Any(obj =>
-                    {
-                        string? pnp = obj["PNPDeviceID"]?.ToString();
-                        return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA11");
-                    }) || pnpDevices.Any(obj =>
+                    bool hasCt13InchSerial = serialPorts.Any(obj =>
                     {
                         string? pnp = obj["PNPDeviceID"]?.ToString();
                         return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA11");
                     });
+                    bool hasCt13InchPnp = pnpDevices.Any(obj =>
+                    {
+                        string? pnp = obj["PNPDeviceID"]?.ToString();
+                        return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA11");
+                    });
+                    bool hasCt13Inch = hasCt13InchSerial || hasCt13InchPnp;
 
                     if (hasCt13Inch)
                     {
-                        Logger.Information("Detected CT13INCH identifier port");
+                        Logger.Information("Detected CT13INCH identifier port (serial={Serial}, pnp={Pnp})", hasCt13InchSerial, hasCt13InchPnp);
+                        if (hasCt13InchPnp && !hasCt13InchSerial)
+                        {
+                            Logger.Warning("CT13INCH companion port (1A86:CA11) has wrong driver — not visible as serial port. Install the CH340 serial driver.");
+                            driverWarnings.Add("Shiny Snake companion port (CH340) has wrong USB driver. Install the CH340 serial driver for reliable operation.");
+                        }
                     }
 
-                    bool hasCt21Inch = serialPorts.Any(obj =>
-                    {
-                        string? pnp = obj["PNPDeviceID"]?.ToString();
-                        return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA21");
-                    }) || pnpDevices.Any(obj =>
+                    bool hasCt21InchSerial = serialPorts.Any(obj =>
                     {
                         string? pnp = obj["PNPDeviceID"]?.ToString();
                         return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA21");
                     });
+                    bool hasCt21InchPnp = pnpDevices.Any(obj =>
+                    {
+                        string? pnp = obj["PNPDeviceID"]?.ToString();
+                        return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA21");
+                    });
+                    bool hasCt21Inch = hasCt21InchSerial || hasCt21InchPnp;
 
                     if (hasCt21Inch)
                     {
-                        Logger.Information("Detected CT21INCH identifier port");
+                        Logger.Information("Detected CT21INCH identifier port (serial={Serial}, pnp={Pnp})", hasCt21InchSerial, hasCt21InchPnp);
+                        if (hasCt21InchPnp && !hasCt21InchSerial)
+                        {
+                            Logger.Warning("CT21INCH companion port (1A86:CA21) has wrong driver — not visible as serial port. Install the CH340 serial driver.");
+                            driverWarnings.Add("CT21INCH companion port (CH340) has wrong USB driver. Install the CH340 serial driver for reliable operation.");
+                        }
                     }
 
                     foreach (ManagementObject queryObj in serialPorts)
@@ -135,8 +156,8 @@ namespace InfoPanel.TuringPanel
                             continue;
                         }
 
-                        // Skip CT13INCH CH340 port from normal matching
-                        if (vid == 0x1a86 && pid == 0xca11)
+                        // Skip CT13INCH/CT21INCH CH340 companion ports from normal matching
+                        if (vid == 0x1a86 && (pid == 0xca11 || pid == 0xca21))
                         {
                             continue;
                         }
@@ -169,13 +190,13 @@ namespace InfoPanel.TuringPanel
                     }
 
                     Logger.Information("Found {Count} Turing panel devices", devices.Count);
-                    return devices;
+                    return new TuringPanelDiscoveryResult { Devices = devices, DriverWarnings = driverWarnings };
                 });
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "TuringPanelHelper: Error getting Turing panel devices");
-                return [];
+                return new TuringPanelDiscoveryResult();
             }
             finally
             {
