@@ -42,6 +42,7 @@ namespace InfoPanel.Views.Common
         private bool _isLoaded = false;
         private bool _isProgrammaticSizeChange = false;
 
+        private volatile bool _renderInvalidationPending = false;
         private Timer? _renderTimer;
         private readonly FpsCounter FpsCounter = new();
 
@@ -337,13 +338,16 @@ namespace InfoPanel.Views.Common
 
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
+            if (_renderInvalidationPending) return;
+            _renderInvalidationPending = true;
+
             if (!OpenGL)
             {
-                Dispatcher.Invoke(() => _sKElement?.InvalidateVisual(), DispatcherPriority.Input);
+                _dispatcher.BeginInvoke(() => _sKElement?.InvalidateVisual(), DispatcherPriority.Render);
             }
             else
             {
-                Dispatcher.Invoke(() => _skGlElement?.InvalidateVisual(), DispatcherPriority.Input);
+                _dispatcher.BeginInvoke(() => _skGlElement?.InvalidateVisual(), DispatcherPriority.Render);
             }
         }
 
@@ -359,6 +363,8 @@ namespace InfoPanel.Views.Common
 
         private void PaintSurface(SKCanvas canvas)
         {
+            _renderInvalidationPending = false;
+
             if (_renderTimer == null || !_renderTimer.Enabled)
             {
                 return;
