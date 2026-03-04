@@ -359,6 +359,59 @@
                         Content="Check Status" />
                 </StackPanel>
             </ui:CardControl>
+
+            <StackPanel Margin="0,10,0,0" Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitor, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <ui:CardControl>
+                    <ui:CardControl.Icon>
+                        <ui:SymbolIcon Symbol="Database20" />
+                    </ui:CardControl.Icon>
+                    <ui:CardControl.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock FontSize="13" FontWeight="Medium" Text="Storage Monitoring" />
+                                <TextBlock Margin="0,5,0,0" FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="Enable storage/disk monitoring. Disable if not needed." />
+                            </StackPanel>
+                        </Grid>
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitorStorage}" />
+                </ui:CardControl>
+
+                <ui:CardControl Margin="0,10,0,0" Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitorStorage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ui:CardControl.Icon>
+                        <ui:SymbolIcon Symbol="Timer20" />
+                    </ui:CardControl.Icon>
+                    <ui:CardControl.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock FontSize="13" FontWeight="Medium" Text="Storage Polling Interval" />
+                                <TextBlock Margin="0,5,0,0" FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Text="How often to poll storage devices (seconds). Higher values reduce HDD activity." />
+                            </StackPanel>
+                        </Grid>
+                    </ui:CardControl.Header>
+                    <ui:NumberBox
+                        Width="150"
+                        FontSize="14"
+                        LargeChange="10"
+                        Maximum="300"
+                        MaxDecimalPlaces="0"
+                        Minimum="1"
+                        SmallChange="5"
+                        Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitorStorageInterval}"
+                        Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.LibreHardwareMonitorStorageInterval}" />
+                </ui:CardControl>
+            </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Row="1" Margin="0,40,0,0">
