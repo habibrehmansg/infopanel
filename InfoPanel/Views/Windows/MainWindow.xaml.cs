@@ -1,12 +1,14 @@
-﻿using System.Reflection;
-using System;
-using System.Windows;
-using Wpf.Ui;
-using System.Windows.Controls;
-using Wpf.Ui.Controls;
+﻿using System;
 using System.ComponentModel;
-using System.Threading.Tasks;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
 using InfoPanel.Utils;
+using Serilog;
+using Wpf.Ui;
+using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Windows
 {
@@ -15,7 +17,19 @@ namespace InfoPanel.Views.Windows
     /// </summary>
     public partial class MainWindow: FluentWindow, INavigationWindow
     {
+        private static readonly ILogger Logger = Log.ForContext<MainWindow>();
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern uint RegisterWindowMessage(string lpString);
+
+        [DllImport("user32.dll")]
+        private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr changeFilterStruct);
+
+        private const uint MSGFLT_ALLOW = 1;
+
         private readonly ITaskBarService _taskBarService;
+        private uint _taskbarCreatedMessageId;
+        private HwndSource? _hwndSource;
 
         public MainWindow(INavigationService navigationService, IPageService pageService, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
@@ -72,10 +86,42 @@ namespace InfoPanel.Views.Windows
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            _taskbarCreatedMessageId = RegisterWindowMessage("TaskbarCreated");
+            var hwnd = new WindowInteropHelper(this).Handle;
+            _hwndSource = HwndSource.FromHwnd(hwnd);
+            _hwndSource?.AddHook(WndProc);
+
+            // Allow the TaskbarCreated message through UIPI since we run elevated
+            if (_taskbarCreatedMessageId != 0)
+            {
+                ChangeWindowMessageFilterEx(hwnd, _taskbarCreatedMessageId, MSGFLT_ALLOW, IntPtr.Zero);
+            }
+
             if (ConfigModel.Instance.Settings.StartMinimized)
             {
                 this.WindowState = WindowState.Minimized;
             }
+        }
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (_taskbarCreatedMessageId != 0 && msg == (int)_taskbarCreatedMessageId)
+            {
+                Logger.Information("Taskbar recreated (explorer.exe restarted), re-registering tray icon");
+                try
+                {
+                    TrayIcon.Unregister();
+                    TrayIcon.Register();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Failed to re-register tray icon after taskbar recreation");
+                }
+
+                handled = false;
+            }
+
+            return IntPtr.Zero;
         }
 
         private void Window_ContentRendered(object sender, EventArgs e)
@@ -197,6 +243,8 @@ namespace InfoPanel.Views.Windows
 
         private async void MainWindow_Closing(object sender, CancelEventArgs e)
         {
+            _hwndSource?.RemoveHook(WndProc);
+
             e.Cancel = true;
             //perform shutdown operations here
 
