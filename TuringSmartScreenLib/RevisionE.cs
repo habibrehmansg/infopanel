@@ -11,7 +11,6 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
 {
     private const int WriteSize = 250;
     private const int ReadSize = 1024;
-    private const int ReadHelloSize = 24;
     private const int PartialBlockSize = 80;
 
     private static readonly byte[] CommandHello = [0x01, 0xef, 0x69, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc5, 0xd3];
@@ -111,8 +110,8 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
         Write(CommandHello);
         Flush();
 
-        var response = ReadResponse(ReadHelloSize);
-        if ((response.Length != ReadHelloSize) || (!response.StartsWith("chs_88inch"u8) && !response.StartsWith("chs_113inch"u8)))
+        var response = ReadResponse();
+        if ((response.Length < 4) || !response.StartsWith("chs_"u8))
         {
             throw new IOException($"Unknown response. response=[{Convert.ToHexString(response)}]");
         }
