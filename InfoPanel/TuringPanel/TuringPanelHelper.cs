@@ -90,9 +90,17 @@ namespace InfoPanel.TuringPanel
                     var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_SerialPort");
                     var serialPorts = searcher.Get().Cast<ManagementObject>().ToList();
 
-                    // Check for CT13INCH identifier port (VID_1A86&PID_CA11)
-                    // When present, the companion 0525:A4A7 port is a 10.2" panel, not an 8.8"
+                    // Check for CT13INCH/CT21INCH companion ports via PnP entity search
+                    // These may have WinUSB or serial drivers, so search all USB devices
+                    var pnpSearcher = new ManagementObjectSearcher(
+                        "SELECT PNPDeviceID FROM Win32_PnPEntity WHERE PNPDeviceID LIKE '%VID_1A86%'");
+                    var pnpDevices = pnpSearcher.Get().Cast<ManagementObject>().ToList();
+
                     bool hasCt13Inch = serialPorts.Any(obj =>
+                    {
+                        string? pnp = obj["PNPDeviceID"]?.ToString();
+                        return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA11");
+                    }) || pnpDevices.Any(obj =>
                     {
                         string? pnp = obj["PNPDeviceID"]?.ToString();
                         return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA11");
@@ -101,6 +109,21 @@ namespace InfoPanel.TuringPanel
                     if (hasCt13Inch)
                     {
                         Logger.Information("Detected CT13INCH identifier port");
+                    }
+
+                    bool hasCt21Inch = serialPorts.Any(obj =>
+                    {
+                        string? pnp = obj["PNPDeviceID"]?.ToString();
+                        return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA21");
+                    }) || pnpDevices.Any(obj =>
+                    {
+                        string? pnp = obj["PNPDeviceID"]?.ToString();
+                        return pnp != null && pnp.Contains("VID_1A86") && pnp.Contains("PID_CA21");
+                    });
+
+                    if (hasCt21Inch)
+                    {
+                        Logger.Information("Detected CT21INCH identifier port");
                     }
 
                     foreach (ManagementObject queryObj in serialPorts)
