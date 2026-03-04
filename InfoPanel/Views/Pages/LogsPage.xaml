@@ -21,8 +21,18 @@
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
             <ui:Button
                 Appearance="Primary"
+                Command="{Binding ViewModel.LoadLogsCommand}"
+                Content="Load Logs"
+                Margin="0,0,8,0">
+                <ui:Button.Icon>
+                    <ui:SymbolIcon Symbol="ArrowDownload20" />
+                </ui:Button.Icon>
+            </ui:Button>
+            <ui:Button
+                Appearance="Primary"
                 Command="{Binding ViewModel.CopyToClipboardCommand}"
-                Content="Copy to Clipboard">
+                Content="Copy to Clipboard"
+                IsEnabled="{Binding ViewModel.HasLogs}">
                 <ui:Button.Icon>
                     <ui:SymbolIcon Symbol="Copy20" />
                 </ui:Button.Icon>
