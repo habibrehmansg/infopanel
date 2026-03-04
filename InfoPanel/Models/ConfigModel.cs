@@ -199,6 +199,15 @@ namespace InfoPanel
                     await LibreMonitor.Instance.StartAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.LibreHardwareMonitorStorage)
+                  || e.PropertyName == nameof(Settings.LibreHardwareMonitorStorageInterval))
+            {
+                if (Settings.LibreHardwareMonitor)
+                {
+                    await LibreMonitor.Instance.StopAsync();
+                    await LibreMonitor.Instance.StartAsync();
+                }
+            }
             else if (e.PropertyName == nameof(Settings.TuringPanelMultiDeviceMode))
             {
                 if (Settings.TuringPanelMultiDeviceMode)
@@ -400,6 +409,8 @@ namespace InfoPanel
                             Settings.GridLinesSpacing = settings.GridLinesSpacing;
 
                             Settings.LibreHardwareMonitor = settings.LibreHardwareMonitor;
+                            Settings.LibreHardwareMonitorStorage = settings.LibreHardwareMonitorStorage;
+                            Settings.LibreHardwareMonitorStorageInterval = settings.LibreHardwareMonitorStorageInterval;
                             Settings.WebServer = settings.WebServer;
                             Settings.WebServerListenIp = settings.WebServerListenIp;
                             Settings.WebServerListenPort = settings.WebServerListenPort;
