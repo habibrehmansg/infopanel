@@ -127,6 +127,11 @@ namespace InfoPanel
                     return;
                 }
 
+                if (ScreenFactory.LastHelloResponse != null)
+                {
+                    Logger.Information("TuringPanelE: Hello response on {Port}: {Response}", _device.DeviceLocation, ScreenFactory.LastHelloResponse);
+                }
+
                 _device.UpdateRuntimeProperties(isRunning: true);
 
                 screen.ScreenOn();

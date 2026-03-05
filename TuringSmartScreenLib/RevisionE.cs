@@ -36,6 +36,8 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
 
     public int Height { get; }
 
+    public string HelloResponse { get; private set; } = string.Empty;
+
     private readonly byte[] commandDisplayBitmap;
 
     public TuringSmartScreenRevisionE(string name, int width = 480, int height = 1920)
@@ -111,6 +113,7 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
         Flush();
 
         var response = ReadResponse();
+        HelloResponse = $"{Convert.ToHexString(response)} ({System.Text.Encoding.ASCII.GetString(response)})";
         if ((response.Length < 4) || !response.StartsWith("chs_"u8))
         {
             throw new IOException($"Unknown response. response=[{Convert.ToHexString(response)}]");

@@ -2,6 +2,8 @@ namespace TuringSmartScreenLib;
 
 public static class ScreenFactory
 {
+    public static string? LastHelloResponse { get; private set; }
+
     public static IScreen Create(ScreenType type, string name, int width = 0, int height = 0)
     {
         if (type == ScreenType.RevisionE)
@@ -12,6 +14,7 @@ public static class ScreenFactory
             try
             {
                 screen.Open();
+                LastHelloResponse = screen.HelloResponse;
             }
             catch
             {
