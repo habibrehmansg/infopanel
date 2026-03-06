@@ -269,7 +269,7 @@
                                                 FontSize="14"
                                                 LargeChange="10"
                                                 MaxDecimalPlaces="0"
-                                                Maximum="3840"
+                                                Maximum="10000"
                                                 Minimum="0"
                                                 SmallChange="1"
                                                 Text="{Binding Width}"
@@ -285,7 +285,7 @@
                                             <ui:NumberBox
                                                 FontSize="14"
                                                 MaxDecimalPlaces="0"
-                                                Maximum="3840"
+                                                Maximum="10000"
                                                 Minimum="0"
                                                 SmallChange="1"
                                                 Text="{Binding Height}"
