@@ -599,6 +599,7 @@ namespace InfoPanel
                     var exportProfile = new Profile(SelectedProfile.Name, SelectedProfile.Width, SelectedProfile.Height)
                     {
                         ShowFps = SelectedProfile.ShowFps,
+                        ShowThousandsSeparator = SelectedProfile.ShowThousandsSeparator,
                         BackgroundColor = SelectedProfile.BackgroundColor,
                         Font = SelectedProfile.Font,
                         FontSize = SelectedProfile.FontSize,
