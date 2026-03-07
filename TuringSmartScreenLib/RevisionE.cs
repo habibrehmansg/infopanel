@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO.Ports;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 
 public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
 {
@@ -423,39 +424,51 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
         Flush();
     }
 
-    private string ReadStringResponse(int length = ReadSize)
+    private string ReadStringResponse(int bufferSize = ReadSize, int readTimeout = 100)
     {
-        if (length <= ReadSize)
-        {
-            var response = ReadResponse(length);
-            var nullIndex = response.IndexOf((byte)0);
-            return Encoding.ASCII.GetString(nullIndex >= 0 ? response[..nullIndex] : response);
-        }
-
-        // Allocate temporary buffer for large responses (e.g. ListDirectory)
-        var buffer = ArrayPool<byte>.Shared.Rent(length);
+        // Loop with short inter-read timeout to collect the full response.
+        // First read waits up to readTimeout for data to start arriving.
+        // Subsequent reads use a short timeout (50ms) to catch remaining bytes
+        // without blocking for seconds like the original ReadResponse loop.
+        var originalTimeout = port.ReadTimeout;
+        port.ReadTimeout = readTimeout;
         try
         {
-            var offset = 0;
+            var buffer = bufferSize <= ReadSize
+                ? readBuffer
+                : ArrayPool<byte>.Shared.Rent(bufferSize);
             try
             {
-                while (offset < length)
+                var offset = 0;
+                try
                 {
-                    var read = port.Read(buffer, offset, length - offset);
-                    if (read <= 0) break;
-                    offset += read;
+                    while (offset < bufferSize)
+                    {
+                        var read = port.Read(buffer, offset, bufferSize - offset);
+                        if (read <= 0) break;
+                        offset += read;
+                        // After first data arrives, use short timeout for remaining chunks
+                        port.ReadTimeout = 50;
+                    }
+                }
+                catch (TimeoutException) { }
+                catch (IOException) { }
+
+                var span = buffer.AsSpan(0, offset);
+                var nullIndex = span.IndexOf((byte)0);
+                return Encoding.ASCII.GetString(nullIndex >= 0 ? span[..nullIndex] : span);
+            }
+            finally
+            {
+                if (bufferSize > ReadSize)
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
                 }
             }
-            catch (TimeoutException) { }
-            catch (IOException) { }
-
-            var span = buffer.AsSpan(0, offset);
-            var idx = span.IndexOf((byte)0);
-            return Encoding.ASCII.GetString(idx >= 0 ? span[..idx] : span);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            port.ReadTimeout = originalTimeout;
         }
     }
 
@@ -463,13 +476,13 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
     {
         Write(CommandQueryStorageInfo);
         Flush();
-        return ReadStringResponse();
+        return ReadStringResponse(readTimeout: 2000);
     }
 
     public List<string> ListDirectory(string path)
     {
         SendPathCommand(0x65, path);
-        var response = ReadStringResponse(ReadListDirSize);
+        var response = ReadStringResponse(ReadListDirSize, readTimeout: 2000);
 
         var files = new List<string>();
         const string prefix = "result:dir:file:";
@@ -493,37 +506,46 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
     public void DeleteFile(string path)
     {
         SendPathCommand(0x66, path);
-        ReadStringResponse();
+        ReadStringResponse(readTimeout: 5000);
+        try { port.DiscardInBuffer(); } catch { }
     }
 
-    public void UploadFile(string devicePath, byte[] fileData)
+    public void UploadFile(string devicePath, byte[] fileData, CancellationToken cancellationToken = default)
     {
         // Build CreateFile command with file size after path
         Span<byte> sizeBytes = stackalloc byte[4];
         BinaryPrimitives.WriteInt32LittleEndian(sizeBytes, fileData.Length);
         SendPathCommand(0x6f, devicePath, sizeBytes);
 
-        var createResponse = ReadStringResponse();
+        var createResponse = ReadStringResponse(readTimeout: 5000);
         if (!createResponse.StartsWith("create_success"))
         {
             throw new IOException($"CreateFile failed: {createResponse}");
         }
 
-        // Temporarily increase write timeout for large file transfers.
-        // At 115200 baud, effective throughput is ~11.5KB/s.
-        // Use ~5KB/s estimate with a 30s minimum for safety margin.
+        // Temporarily increase write timeout for chunked transfers.
         var originalWriteTimeout = port.WriteTimeout;
         var originalReadTimeout = port.ReadTimeout;
         try
         {
-            port.WriteTimeout = Math.Max(30000, fileData.Length / 5);
-            port.ReadTimeout = Math.Max(10000, originalReadTimeout);
+            port.WriteTimeout = 30000;
 
-            // Write raw file data directly to the serial port (not 250-byte framed)
-            port.Write(fileData, 0, fileData.Length);
+            // Write raw file data in chunks to allow cancellation
+            const int chunkSize = 4096;
+            var offset = 0;
+            while (offset < fileData.Length)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var count = Math.Min(chunkSize, fileData.Length - offset);
+                port.Write(fileData, offset, count);
+                offset += count;
+            }
 
-            // Read completion response
-            ReadStringResponse();
+            // Read completion response (longer timeout — device writes to flash)
+            ReadStringResponse(readTimeout: 10000);
+
+            // Discard any leftover data so the next command gets a clean response
+            try { port.DiscardInBuffer(); } catch { }
         }
         catch
         {
