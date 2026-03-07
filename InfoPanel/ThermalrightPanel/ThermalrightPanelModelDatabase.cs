@@ -209,9 +209,9 @@ namespace InfoPanel.ThermalrightPanel
                 Name = "Trofeo Vision 9.16\" v2",
                 DeviceIdentifier = "",
                 Width = 1920,
-                Height = 599,
+                Height = 462,
                 RenderWidth = 1920,
-                RenderHeight = 599,
+                RenderHeight = 462,
                 TransportType = ThermalrightTransportType.WinUsb,
                 ProtocolType = ThermalrightProtocolType.TrofeoBulk
             },

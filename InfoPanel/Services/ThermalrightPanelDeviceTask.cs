@@ -993,14 +993,17 @@ namespace InfoPanel.Services
 
             // Re-identify model variant based on device-reported resolution.
             // v1 (480) and v2 (599) share the same VID/PID but have different panels.
+            // TRCC forces 462 for all 5408 variants (byte[20] <= 3 -> pm=65 -> 1920x462).
             if (_panelHeight != 480 && _device.Model == ThermalrightPanelModel.TrofeoVision916
                 && ThermalrightPanelModelDatabase.Models.TryGetValue(ThermalrightPanelModel.TrofeoVision916V2, out var v2Model))
             {
                 _detectedModel = v2Model;
                 _device.Model = v2Model.Model;
+                _panelWidth = v2Model.RenderWidth;
+                _panelHeight = v2Model.RenderHeight;
             }
 
-            // TRCC sends 1920x462 JPEGs for the v1 panel, NOT 1920x480 as reported by the device.
+            // TRCC sends 1920x462 JPEGs for v1, NOT 1920x480 as reported by the device.
             // The JPEG SOF0 in USB captures confirms height=0x01CE=462.
             // Some panel units have a 462-row framebuffer; sending 480-height JPEGs overflows
             // by 18 rows, wrapping to the top of the display.
