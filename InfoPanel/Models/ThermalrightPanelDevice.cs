@@ -25,6 +25,8 @@ namespace InfoPanel.Models
         partial void OnModelChanged(ThermalrightPanelModel value)
         {
             OnPropertyChanged(nameof(ModelInfo));
+            OnPropertyChanged(nameof(DisplayWidth));
+            OnPropertyChanged(nameof(DisplayHeight));
             OnPropertyChanged(nameof(IsJpegQualityConfigurable));
             OnPropertyChanged(nameof(HasDisplayMask));
             OnPropertyChanged(nameof(HasFlickerFix));
