@@ -201,17 +201,17 @@ namespace InfoPanel.ThermalrightPanel
                 TransportType = ThermalrightTransportType.WinUsb,
                 ProtocolType = ThermalrightProtocolType.TrofeoBulk  // 02 FF init, 4096-byte JPEG frames
             },
+            // v2 is NOT in the VID/PID lookup (same PID as v1 would break GetModelByVidPid).
+            // Detected at runtime after init when device reports height != 480.
             [ThermalrightPanelModel.TrofeoVision916V2] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.TrofeoVision916V2,
                 Name = "Trofeo Vision 9.16\" v2",
-                DeviceIdentifier = "",  // Same VID/PID as v1, differentiated by device-reported height
+                DeviceIdentifier = "",
                 Width = 1920,
                 Height = 599,
                 RenderWidth = 1920,
                 RenderHeight = 599,
-                VendorId = TROFEO_VENDOR_ID,
-                ProductId = TROFEO_PRODUCT_ID_916,
                 TransportType = ThermalrightTransportType.WinUsb,
                 ProtocolType = ThermalrightProtocolType.TrofeoBulk
             },
