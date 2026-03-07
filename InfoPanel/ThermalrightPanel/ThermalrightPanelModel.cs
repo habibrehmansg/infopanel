@@ -75,7 +75,7 @@ namespace InfoPanel.ThermalrightPanel
         FrozenWarframeUltra,  // PM 6, sub 1 -> 480x480
         FrozenVisionV2,       // PM 6, sub 2 -> 480x480
         // 640x480
-        StreamVision,         // PM 7/14, sub 1 -> 640x480
+        StreamVision,         // PM 7/14, sub 1 or other -> 640x480
         MjolnirVisionPro,     // PM 7/14, sub 2 -> 640x480
         // 854x480
         LC2JD,                // PM 9, sub <5 -> 854x480

@@ -959,7 +959,8 @@ namespace InfoPanel.ThermalrightPanel
 
                 // PM 7: 640x480 variants
                 (7, 1) => Models[ThermalrightPanelModel.StreamVision],
-                (7, _) => Models[ThermalrightPanelModel.MjolnirVisionPro],
+                (7, 2) => Models[ThermalrightPanelModel.MjolnirVisionPro],
+                (7, _) => Models[ThermalrightPanelModel.StreamVision],
 
                 // PM 9: 854x480
                 (9, >= 5) => Models[ThermalrightPanelModel.LF19],
@@ -983,7 +984,8 @@ namespace InfoPanel.ThermalrightPanel
 
                 // PM 14: 640x480 (alias for PM=7)
                 (14, 1) => Models[ThermalrightPanelModel.StreamVision],
-                (14, _) => Models[ThermalrightPanelModel.MjolnirVisionPro],
+                (14, 2) => Models[ThermalrightPanelModel.MjolnirVisionPro],
+                (14, _) => Models[ThermalrightPanelModel.StreamVision],
 
                 // PM 15: 640x172
                 (15, 1) => Models[ThermalrightPanelModel.LC7],
