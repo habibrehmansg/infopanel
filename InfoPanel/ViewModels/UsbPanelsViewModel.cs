@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
+using InfoPanel.ThermalrightPanel;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -23,10 +24,12 @@ public enum LCD_ROTATION
 public partial class UsbPanelsViewModel : ObservableObject, INavigationAware
 {
     public ObservableCollection<LCD_ROTATION> RotationValues { get; set; }
+    public ObservableCollection<ThermalrightDisplayMask> DisplayMaskValues { get; set; }
 
     public UsbPanelsViewModel()
     {
         RotationValues = new ObservableCollection<LCD_ROTATION>(Enum.GetValues(typeof(LCD_ROTATION)).Cast<LCD_ROTATION>());
+        DisplayMaskValues = new ObservableCollection<ThermalrightDisplayMask>(Enum.GetValues(typeof(ThermalrightDisplayMask)).Cast<ThermalrightDisplayMask>());
     }
 
     public ObservableCollection<BeadaPanelDevice> RuntimeBeadaPanelDevices

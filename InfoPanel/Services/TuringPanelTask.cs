@@ -16,6 +16,7 @@ namespace InfoPanel.Services
         private static readonly Lazy<TuringPanelTask> _instance = new(() => new TuringPanelTask());
 
         private readonly ConcurrentDictionary<string, BackgroundTask> _deviceTasks = new();
+        private readonly HashSet<string> _unsupportedDevices = new();
 
         public static TuringPanelTask Instance => _instance.Value;
 
@@ -51,7 +52,8 @@ namespace InfoPanel.Services
                         deviceTask = new TuringPanelSerialTask(device);
                         break;
                     default:
-                        Logger.Error("TuringPanel: Unsupported model {Model} for device {DeviceId}", modelInfo.Model, device.Id);
+                        if (_unsupportedDevices.Add(device.Id))
+                            Logger.Warning("TuringPanel: Unsupported model {Model} for device {DeviceId} — skipping", modelInfo.Model, device.Id);
                         return;
                 }
 
@@ -63,8 +65,9 @@ namespace InfoPanel.Services
             }
             else
             {
-                Logger.Error("TuringPanel: Unknown device model {Model} for device {DeviceId}",
-                    device.Model, device.Id);
+                if (_unsupportedDevices.Add(device.Id))
+                    Logger.Warning("TuringPanel: Unknown device model {Model} for device {DeviceId} — skipping",
+                        device.Model, device.Id);
                 return;
             }
         }
@@ -156,7 +159,7 @@ namespace InfoPanel.Services
                     foreach (var config in enabledConfigs)
                     {
                         var configId = config.Id;
-                        if (!IsDeviceRunning(configId))
+                        if (!IsDeviceRunning(configId) && !_unsupportedDevices.Contains(configId))
                         {
                             await StartDevice(config);
                         }
