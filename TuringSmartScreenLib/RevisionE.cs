@@ -3,6 +3,7 @@ namespace TuringSmartScreenLib;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO.Ports;
 using System.Reflection;
 using System.Text;
@@ -21,6 +22,13 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
     private static readonly byte[] CommandQueryStatus = [0xcf, 0xef, 0x69, 0x00, 0x00, 0x00, 0x01];
 
     private static readonly byte[] CommandUpdateBitmapTerminate = [0xef, 0x69];
+
+    // Storage management commands
+    private static readonly byte[] CommandQueryStorageInfo = [0x64, 0xef, 0x69, 0x00, 0x00, 0x00, 0x01];
+    private static readonly byte[] CommandStopMedia = [0x79, 0xef, 0x69, 0x00, 0x00, 0x00, 0x01];
+    private static readonly byte[] CommandStartMedia = [0x96, 0xef, 0x69, 0x00, 0x00, 0x00, 0x01];
+
+    private const int ReadListDirSize = 10240;
 
     private readonly SerialPort port;
 
@@ -144,6 +152,28 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
         {
             // Ignore
         }
+
+        return readBuffer.AsSpan(0, offset);
+    }
+
+    private ReadOnlySpan<byte> ReadTo(byte terminator = 0x00)
+    {
+        var offset = 0;
+        try
+        {
+            while (offset < readBuffer.Length)
+            {
+                var value = port.ReadByte();
+                if (value == terminator)
+                {
+                    break;
+                }
+                readBuffer[offset] = (byte)value;
+                offset++;
+            }
+        }
+        catch (TimeoutException) { }
+        catch (IOException) { }
 
         return readBuffer.AsSpan(0, offset);
     }
@@ -372,4 +402,158 @@ public sealed unsafe class TuringSmartScreenRevisionE : IDisposable
         return !response.StartsWith("needReSend:1"u8);
     }
 
+    // Storage management
+
+    private void SendPathCommand(byte commandByte, string path, ReadOnlySpan<byte> extraData = default)
+    {
+        var pathBytes = Encoding.ASCII.GetBytes(path);
+        Span<byte> header = stackalloc byte[10];
+        header[0] = commandByte;
+        header[1] = 0xef;
+        header[2] = 0x69;
+        // bytes 3-5 = 0
+        header[6] = (byte)pathBytes.Length;
+        // bytes 7-9 = 0
+        Write(header);
+        Write(pathBytes);
+        if (extraData.Length > 0)
+        {
+            Write(extraData);
+        }
+        Flush();
+    }
+
+    private string ReadStringResponse(int length = ReadSize)
+    {
+        if (length <= ReadSize)
+        {
+            var response = ReadResponse(length);
+            var nullIndex = response.IndexOf((byte)0);
+            return Encoding.ASCII.GetString(nullIndex >= 0 ? response[..nullIndex] : response);
+        }
+
+        // Allocate temporary buffer for large responses (e.g. ListDirectory)
+        var buffer = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            var offset = 0;
+            try
+            {
+                while (offset < length)
+                {
+                    var read = port.Read(buffer, offset, length - offset);
+                    if (read <= 0) break;
+                    offset += read;
+                }
+            }
+            catch (TimeoutException) { }
+            catch (IOException) { }
+
+            var span = buffer.AsSpan(0, offset);
+            var idx = span.IndexOf((byte)0);
+            return Encoding.ASCII.GetString(idx >= 0 ? span[..idx] : span);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    public string QueryStorageInfo()
+    {
+        Write(CommandQueryStorageInfo);
+        Flush();
+        return ReadStringResponse();
+    }
+
+    public List<string> ListDirectory(string path)
+    {
+        SendPathCommand(0x65, path);
+        var response = ReadStringResponse(ReadListDirSize);
+
+        var files = new List<string>();
+        const string prefix = "result:dir:file:";
+        if (response.StartsWith(prefix))
+        {
+            var fileList = response[prefix.Length..];
+            if (!string.IsNullOrEmpty(fileList))
+            {
+                foreach (var name in fileList.Split('/'))
+                {
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        files.Add(name);
+                    }
+                }
+            }
+        }
+        return files;
+    }
+
+    public void DeleteFile(string path)
+    {
+        SendPathCommand(0x66, path);
+        ReadStringResponse();
+    }
+
+    public void UploadFile(string devicePath, byte[] fileData)
+    {
+        // Build CreateFile command with file size after path
+        Span<byte> sizeBytes = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(sizeBytes, fileData.Length);
+        SendPathCommand(0x6f, devicePath, sizeBytes);
+
+        var createResponse = ReadStringResponse();
+        if (!createResponse.StartsWith("create_success"))
+        {
+            throw new IOException($"CreateFile failed: {createResponse}");
+        }
+
+        // Temporarily increase write timeout for large file transfers.
+        // At 115200 baud, effective throughput is ~11.5KB/s.
+        // Use ~5KB/s estimate with a 30s minimum for safety margin.
+        var originalWriteTimeout = port.WriteTimeout;
+        var originalReadTimeout = port.ReadTimeout;
+        try
+        {
+            port.WriteTimeout = Math.Max(30000, fileData.Length / 5);
+            port.ReadTimeout = Math.Max(10000, originalReadTimeout);
+
+            // Write raw file data directly to the serial port (not 250-byte framed)
+            port.Write(fileData, 0, fileData.Length);
+
+            // Read completion response
+            ReadStringResponse();
+        }
+        catch
+        {
+            // On failure, try to recover port state
+            try
+            {
+                port.DiscardInBuffer();
+                port.DiscardOutBuffer();
+            }
+            catch { }
+            throw;
+        }
+        finally
+        {
+            port.WriteTimeout = originalWriteTimeout;
+            port.ReadTimeout = originalReadTimeout;
+        }
+    }
+
+    public void StopMedia()
+    {
+        Write(CommandStopMedia);
+        Flush();
+        ReadStringResponse();
+    }
+
+    public void StartMedia()
+    {
+        Write(CommandStartMedia);
+        Flush();
+        ReadStringResponse();
+    }
 }
