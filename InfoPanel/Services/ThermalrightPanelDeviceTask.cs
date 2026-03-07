@@ -991,11 +991,20 @@ namespace InfoPanel.Services
                 Logger.Warning("ThermalrightPanelDevice {Device}: No TrofeoBulk response (ec={Error}), continuing anyway", _device, readEc);
             }
 
-            // TRCC sends 1920x462 JPEGs for this panel, NOT 1920x480 as reported by the device.
+            // Re-identify model variant based on device-reported resolution.
+            // v1 (480) and v2 (599) share the same VID/PID but have different panels.
+            if (_panelHeight != 480 && _device.Model == ThermalrightPanelModel.TrofeoVision916
+                && ThermalrightPanelModelDatabase.Models.TryGetValue(ThermalrightPanelModel.TrofeoVision916V2, out var v2Model))
+            {
+                _detectedModel = v2Model;
+                _device.Model = v2Model.Model;
+            }
+
+            // TRCC sends 1920x462 JPEGs for the v1 panel, NOT 1920x480 as reported by the device.
             // The JPEG SOF0 in USB captures confirms height=0x01CE=462.
             // Some panel units have a 462-row framebuffer; sending 480-height JPEGs overflows
             // by 18 rows, wrapping to the top of the display.
-            // Flicker fix is toggled live via _device.FlickerFix — checked each frame in GenerateJpegBuffer.
+            // Flicker fix is toggled live via _device.FlickerFix, checked each frame in GenerateJpegBuffer.
             if (_panelHeight == 480)
             {
                 _flickerFixCropHeight = 462;

@@ -18,6 +18,8 @@ namespace InfoPanel.ThermalrightPanel
         TrofeoVision,
         // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5408, LY chipset)
         TrofeoVision916,
+        // Trofeo Vision 9.16" v2 - USB bulk (VID 0x0416 / PID 0x5408, 1920x599 variant)
+        TrofeoVision916V2,
         // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5409, LY1 chipset)
         TrofeoVision916LY1,
 

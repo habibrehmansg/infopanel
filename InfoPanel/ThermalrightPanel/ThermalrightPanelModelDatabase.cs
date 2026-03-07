@@ -201,6 +201,20 @@ namespace InfoPanel.ThermalrightPanel
                 TransportType = ThermalrightTransportType.WinUsb,
                 ProtocolType = ThermalrightProtocolType.TrofeoBulk  // 02 FF init, 4096-byte JPEG frames
             },
+            [ThermalrightPanelModel.TrofeoVision916V2] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.TrofeoVision916V2,
+                Name = "Trofeo Vision 9.16\" v2",
+                DeviceIdentifier = "",  // Same VID/PID as v1, differentiated by device-reported height
+                Width = 1920,
+                Height = 599,
+                RenderWidth = 1920,
+                RenderHeight = 599,
+                VendorId = TROFEO_VENDOR_ID,
+                ProductId = TROFEO_PRODUCT_ID_916,
+                TransportType = ThermalrightTransportType.WinUsb,
+                ProtocolType = ThermalrightProtocolType.TrofeoBulk
+            },
             [ThermalrightPanelModel.TrofeoVision320] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.TrofeoVision320,
