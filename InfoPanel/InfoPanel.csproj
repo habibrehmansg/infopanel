@@ -78,12 +78,11 @@
 		<Reference Include="LibreHardwareMonitorLib">
 			<HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
 		</Reference>
-		<Reference Include="TuringSmartScreenLib">
-			<HintPath>Lib\TuringSmartScreenLib.dll</HintPath>
-		</Reference>
-		<Reference Include="TuringSmartScreenLib.Helpers.SkiaSharp">
-		  <HintPath>Lib\TuringSmartScreenLib.Helpers.SkiaSharp.dll</HintPath>
-		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\TuringSmartScreenLib\TuringSmartScreenLib.csproj" />
+		<ProjectReference Include="..\TuringSmartScreenLib.Helpers.SkiaSharp\TuringSmartScreenLib.Helpers.SkiaSharp.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
