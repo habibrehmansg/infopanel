@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Drawing.Imaging;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -530,6 +531,19 @@ namespace InfoPanel.Services
             {
                 var vendorId = _device.ModelInfo?.VendorId ?? ThermalrightPanelModelDatabase.THERMALRIGHT_VENDOR_ID;
                 var productId = _device.ModelInfo?.ProductId ?? ThermalrightPanelModelDatabase.THERMALRIGHT_PRODUCT_ID;
+
+                // Runtime variant models (e.g. TrofeoVision916V2) may not have VID/PID in their model entry
+                // to avoid breaking GetModelByVidPid scan. Extract from saved DeviceId instead.
+                if (vendorId == 0 || productId == 0)
+                {
+                    var vidPidMatch = Regex.Match(_device.DeviceId, @"VID_([0-9A-Fa-f]{4})&PID_([0-9A-Fa-f]{4})");
+                    if (vidPidMatch.Success)
+                    {
+                        vendorId = Convert.ToInt32(vidPidMatch.Groups[1].Value, 16);
+                        productId = Convert.ToInt32(vidPidMatch.Groups[2].Value, 16);
+                    }
+                }
+
                 Logger.Information("ThermalrightPanelDevice {Device}: Opening device via LibUsbDotNet (VID={Vid:X4} PID={Pid:X4})...",
                     _device, vendorId, productId);
 
