@@ -343,6 +343,7 @@ namespace InfoPanel
             Exit += App_Exit;
 
             await StartPanels();
+            Services.GlobalHotkeyService.Instance.Start();
 
             //var window = new SkiaDisplayWindow();
             //window.Show();
@@ -486,6 +487,7 @@ namespace InfoPanel
 
         public static async Task CleanShutDown()
         {
+            Services.GlobalHotkeyService.Instance.Stop();
             DisplayWindowManager.Instance.CloseAll();
             await StopPanels();
             await LibreMonitor.Instance.StopAsync();

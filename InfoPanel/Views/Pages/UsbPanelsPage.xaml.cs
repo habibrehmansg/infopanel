@@ -14,6 +14,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Wpf.Ui;
 
 namespace InfoPanel.Views.Pages;
@@ -30,12 +31,16 @@ public partial class UsbPanelsPage : Page
     private static bool deviceInserted = false;
     private static bool deviceRemoved = false;
 
+    private ModifierKeys _capturedModifiers = ModifierKeys.None;
+    private Key _capturedKey = Key.None;
+
     public UsbPanelsPage(UsbPanelsViewModel viewModel, ISnackbarService snackbarService)
     {
         ViewModel = viewModel;
         _snackbarService = snackbarService;
         DataContext = this;
         InitializeComponent();
+        PopulateDeviceCombo();
     }
 
     private async Task UpdateBeadaPanelDeviceList()
@@ -305,4 +310,117 @@ public partial class UsbPanelsPage : Page
         }
     }
 
+    // --- Global Hotkeys ---
+
+    private void PopulateDeviceCombo()
+    {
+        var items = new List<Tuple<string, string>>();
+
+        foreach (var d in ConfigModel.Instance.Settings.BeadaPanelDevices)
+        {
+            var name = d.RuntimeProperties?.PanelInfo?.ModelInfo?.Name ?? d.Model;
+            items.Add(Tuple.Create($"Beada|{d.DeviceId}|{d.DeviceLocation}", $"Beada: {name}"));
+        }
+
+        foreach (var d in ConfigModel.Instance.Settings.TuringPanelDevices)
+        {
+            var name = d.Name ?? d.DeviceId;
+            items.Add(Tuple.Create($"Turing|{d.DeviceId}|", $"Turing: {name}"));
+        }
+
+        foreach (var d in ConfigModel.Instance.Settings.ThermalrightPanelDevices)
+        {
+            var name = d.RuntimeProperties?.Name ?? d.DeviceId;
+            items.Add(Tuple.Create($"Thermalright|{d.DeviceId}|{d.DeviceLocation}", $"TR: {name}"));
+        }
+
+        HotkeyDeviceCombo.ItemsSource = items;
+    }
+
+    private void HotkeyCapture_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox tb)
+        {
+            tb.Text = "Press a key combo...";
+            _capturedModifiers = ModifierKeys.None;
+            _capturedKey = Key.None;
+        }
+    }
+
+    private void HotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        // Ignore pure modifier keys
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+            or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+            return;
+
+        _capturedModifiers = Keyboard.Modifiers;
+        _capturedKey = key;
+
+        var binding = new HotkeyBinding { ModifierKeys = _capturedModifiers, Key = _capturedKey };
+        if (sender is TextBox tb)
+        {
+            tb.Text = binding.HotkeyDisplayText;
+        }
+    }
+
+    private void ButtonAddHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        if (_capturedKey == Key.None)
+        {
+            _snackbarService.Show("Error", "Please capture a hotkey first.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        if (HotkeyDeviceCombo.SelectedValue is not string deviceKey)
+        {
+            _snackbarService.Show("Error", "Please select a panel.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        if (HotkeyProfileCombo.SelectedValue is not Guid profileGuid)
+        {
+            _snackbarService.Show("Error", "Please select a profile.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        var parts = deviceKey.Split('|');
+        if (parts.Length < 3) return;
+
+        var binding = new HotkeyBinding
+        {
+            ModifierKeys = _capturedModifiers,
+            Key = _capturedKey,
+            DeviceType = parts[0],
+            DeviceId = parts[1],
+            DeviceLocation = parts[2],
+            ProfileGuid = profileGuid
+        };
+
+        ConfigModel.Instance.Settings.HotkeyBindings.Add(binding);
+        ConfigModel.Instance.SaveSettings();
+
+        // Reset capture
+        _capturedModifiers = ModifierKeys.None;
+        _capturedKey = Key.None;
+        HotkeyCapture.Text = "Click and press a key combo";
+        HotkeyDeviceCombo.SelectedIndex = -1;
+        HotkeyProfileCombo.SelectedIndex = -1;
+
+        // Refresh device combo in case devices changed
+        PopulateDeviceCombo();
+    }
+
+    private void ButtonRemoveHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is HotkeyBinding binding)
+        {
+            ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
+            ConfigModel.Instance.SaveSettings();
+        }
+    }
 }
