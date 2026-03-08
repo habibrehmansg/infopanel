@@ -1016,6 +1016,12 @@ namespace InfoPanel.Services
                 _panelWidth = v2Model.RenderWidth;
                 _panelHeight = v2Model.RenderHeight;
             }
+            // On restart, model is already v2 but device still reports 599. Override to model's render size.
+            else if (_device.Model == ThermalrightPanelModel.TrofeoVision916V2 && _device.ModelInfo != null)
+            {
+                _panelWidth = _device.ModelInfo.RenderWidth;
+                _panelHeight = _device.ModelInfo.RenderHeight;
+            }
 
             // TRCC sends 1920x462 JPEGs for v1, NOT 1920x480 as reported by the device.
             // The JPEG SOF0 in USB captures confirms height=0x01CE=462.
