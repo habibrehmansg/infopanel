@@ -68,6 +68,7 @@ namespace InfoPanel.ThermalrightPanel
         LM16SE,               // PM 4, sub 3 -> 480x480
         LF10V,                // PM 4, sub 4 -> 480x480
         LM19SE,               // PM 4, sub 5 -> 480x480
+        PhantomSpirit120Vision, // PM 4, sub 0x2E (46) -> 480x480
         GrandVisionBulk,      // PM 129 -> 480x480
         // 320x240
         MjolnirVision,        // PM 5 -> 320x240

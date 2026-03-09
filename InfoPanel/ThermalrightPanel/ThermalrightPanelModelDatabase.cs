@@ -568,6 +568,14 @@ namespace InfoPanel.ThermalrightPanel
                 VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
+            [ThermalrightPanelModel.PhantomSpirit120Vision] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.PhantomSpirit120Vision,
+                Name = "Phantom Spirit 120 Vision EVO",
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
+                VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu
+            },
             [ThermalrightPanelModel.GrandVisionBulk] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.GrandVisionBulk,
@@ -949,6 +957,7 @@ namespace InfoPanel.ThermalrightPanel
                 (4, 3) => Models[ThermalrightPanelModel.LM16SE],
                 (4, 4) => Models[ThermalrightPanelModel.LF10V],
                 (4, 5) => Models[ThermalrightPanelModel.LM19SE],
+                (4, 0x2E) => Models[ThermalrightPanelModel.PhantomSpirit120Vision],
 
                 // PM 5: Mjolnir Vision 320x240
                 (5, _) => Models[ThermalrightPanelModel.MjolnirVision],
