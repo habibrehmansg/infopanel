@@ -6,6 +6,7 @@ using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
@@ -124,13 +125,18 @@ namespace InfoPanel.ViewModels
         private string _description;
         [ObservableProperty]
         private string? _configFilePath;
-      
+
         public ObservableCollection<PluginActionCommand> Actions { get; } = [];
+        public ObservableCollection<PluginConfigPropertyViewModel> ConfigProperties { get; } = [];
+
+        [ObservableProperty]
+        private bool _hasConfigProperties;
 
         [RelayCommand]
         public async Task Reload()
         {
             await PluginMonitor.Instance.ReloadPluginModule(_wrapper);
+            RefreshConfigProperties();
         }
 
         public PluginModuleViewModel(PluginWrapper wrapper)
@@ -151,6 +157,26 @@ namespace InfoPanel.ViewModels
                 var command = new RelayCommand(() => method.Invoke(wrapper.Plugin, null));
                 Actions.Add(new PluginActionCommand { DisplayName = displayName, Command = command });
             }
+
+            RefreshConfigProperties();
+        }
+
+        private void RefreshConfigProperties()
+        {
+            if (_wrapper.Plugin is IPluginConfigurable configurable)
+            {
+                var properties = configurable.ConfigProperties;
+                ConfigProperties.Clear();
+                foreach (var prop in properties)
+                {
+                    ConfigProperties.Add(new PluginConfigPropertyViewModel(configurable, prop));
+                }
+                HasConfigProperties = ConfigProperties.Count > 0;
+            }
+            else
+            {
+                HasConfigProperties = false;
+            }
         }
 
         public void Refresh()
@@ -159,6 +185,20 @@ namespace InfoPanel.ViewModels
             Name = _wrapper.Name;
             Description = _wrapper.Description;
             ConfigFilePath = _wrapper.ConfigFilePath;
+
+            if (_wrapper.Plugin is IPluginConfigurable configurable)
+            {
+                var properties = configurable.ConfigProperties;
+                foreach (var prop in properties)
+                {
+                    var existing = ConfigProperties.FirstOrDefault(x => x.Key == prop.Key);
+                    if (existing != null)
+                    {
+                        existing.RefreshValue(prop.Value);
+                    }
+                }
+                HasConfigProperties = ConfigProperties.Count > 0;
+            }
         }
     }
 
@@ -166,6 +206,94 @@ namespace InfoPanel.ViewModels
     {
         public required string DisplayName { get; set; }
         public required ICommand Command { get; set; }
+    }
+
+    public partial class PluginConfigPropertyViewModel : ObservableObject
+    {
+        private readonly IPluginConfigurable _configurable;
+        private readonly PluginConfigProperty _property;
+
+        public string Key => _property.Key;
+        public string DisplayName => _property.DisplayName;
+        public string? Description => _property.Description;
+        public PluginConfigType Type => _property.Type;
+        public double? MinValue => _property.MinValue;
+        public double? MaxValue => _property.MaxValue;
+        public double? Step => _property.Step;
+        public string[]? Options => _property.Options;
+
+        [ObservableProperty]
+        private object? _value;
+
+        public bool BoolValue
+        {
+            get => Value is true;
+            set { Value = value; OnPropertyChanged(); Apply(); }
+        }
+
+        public string StringValue
+        {
+            get => Value?.ToString() ?? "";
+            set { Value = value; OnPropertyChanged(); Apply(); }
+        }
+
+        public double NumericValue
+        {
+            get => Convert.ToDouble(Value ?? 0.0);
+            set
+            {
+                if (Type == PluginConfigType.Integer)
+                    Value = (int)Math.Round(value);
+                else
+                    Value = value;
+                OnPropertyChanged();
+                Apply();
+            }
+        }
+
+        public int SelectedIndex
+        {
+            get
+            {
+                if (Options == null || Value == null) return -1;
+                return Array.IndexOf(Options, Value.ToString());
+            }
+            set
+            {
+                if (Options != null && value >= 0 && value < Options.Length)
+                {
+                    Value = Options[value];
+                    OnPropertyChanged();
+                    Apply();
+                }
+            }
+        }
+
+        public PluginConfigPropertyViewModel(IPluginConfigurable configurable, PluginConfigProperty property)
+        {
+            _configurable = configurable;
+            _property = property;
+            _value = property.Value;
+        }
+
+        [RelayCommand]
+        private void Apply()
+        {
+            try
+            {
+                _configurable.ApplyConfig(Key, Value);
+            }
+            catch { }
+        }
+
+        public void RefreshValue(object? newValue)
+        {
+            Value = newValue;
+            OnPropertyChanged(nameof(BoolValue));
+            OnPropertyChanged(nameof(StringValue));
+            OnPropertyChanged(nameof(NumericValue));
+            OnPropertyChanged(nameof(SelectedIndex));
+        }
     }
 
     public partial class PluginViewModel : ObservableObject
