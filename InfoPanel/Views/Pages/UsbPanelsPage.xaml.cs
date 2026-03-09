@@ -315,6 +315,35 @@ public partial class UsbPanelsPage : Page
         PopulateDeviceCombo();
     }
 
+    private void ButtonEditHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is HotkeyBinding binding)
+        {
+            // Populate the add form with the existing binding's values
+            _capturedModifiers = binding.ModifierKeys;
+            _capturedKey = binding.Key;
+            HotkeyCapture.Text = binding.HotkeyDisplayText;
+
+            // Select the matching device in the combo
+            var deviceKey = $"{binding.DeviceType}|{binding.DeviceId}|{binding.DeviceLocation}";
+            HotkeyDeviceCombo.SelectedValue = deviceKey;
+
+            // Select the matching profile in the combo
+            foreach (var profile in ConfigModel.Instance.Profiles)
+            {
+                if (profile.Guid == binding.ProfileGuid)
+                {
+                    HotkeyProfileCombo.SelectedItem = profile;
+                    break;
+                }
+            }
+
+            // Remove the old binding so the user can re-add with changes
+            ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
+            ConfigModel.Instance.SaveSettings();
+        }
+    }
+
     private void ButtonRemoveHotkey_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button button && button.Tag is HotkeyBinding binding)

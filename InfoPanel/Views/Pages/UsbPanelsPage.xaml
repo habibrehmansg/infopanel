@@ -513,20 +513,30 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="10" />
+                                        <ColumnDefinition Width="20" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="10" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="5" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock
                                         Grid.Column="0"
                                         MinWidth="120"
                                         VerticalAlignment="Center"
-                                        FontSize="13"
-                                        FontWeight="Medium"
+                                        FontSize="14"
+                                        FontWeight="SemiBold"
                                         Text="{Binding HotkeyDisplayText, Mode=OneWay}" />
                                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                        <TextBlock FontSize="12">
+                                            <TextBlock.Text>
+                                                <MultiBinding StringFormat="{}Switch {0} to profile {1}">
+                                                    <Binding Path="DeviceDisplayName" Mode="OneWay" />
+                                                    <Binding Path="ProfileDisplayName" Mode="OneWay" />
+                                                </MultiBinding>
+                                            </TextBlock.Text>
+                                        </TextBlock>
+                                        <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
                                             <TextBlock.Text>
                                                 <MultiBinding StringFormat="{}{0}: {1}">
                                                     <Binding Path="DeviceType" />
@@ -537,6 +547,13 @@
                                     </StackPanel>
                                     <ui:Button
                                         Grid.Column="4"
+                                        BorderThickness="0"
+                                        Click="ButtonEditHotkey_Click"
+                                        Icon="{ui:SymbolIcon Edit20}"
+                                        Tag="{Binding}"
+                                        ToolTip="Edit Hotkey" />
+                                    <ui:Button
+                                        Grid.Column="6"
                                         Appearance="Danger"
                                         BorderThickness="0"
                                         Click="ButtonRemoveHotkey_Click"

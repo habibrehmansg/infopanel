@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
+using System.Linq;
 using System.Windows.Input;
 using System.Xml.Serialization;
 
@@ -53,7 +54,44 @@ namespace InfoPanel.Models
             }
         }
 
+        [XmlIgnore]
+        public string ProfileDisplayName
+        {
+            get
+            {
+                var profile = ConfigModel.Instance.Profiles.FirstOrDefault(p => p.Guid == ProfileGuid);
+                return profile?.Name ?? ProfileGuid.ToString("D")[..8];
+            }
+        }
+
+        [XmlIgnore]
+        public string DeviceDisplayName
+        {
+            get
+            {
+                return DeviceType switch
+                {
+                    "Beada" => ConfigModel.Instance.Settings.BeadaPanelDevices
+                        .Where(d => d.DeviceId == DeviceId)
+                        .Select(d => d.RuntimeProperties?.PanelInfo?.ModelInfo?.Name ?? d.Model)
+                        .FirstOrDefault() ?? DeviceId,
+                    "Turing" => ConfigModel.Instance.Settings.TuringPanelDevices
+                        .Where(d => d.DeviceId == DeviceId)
+                        .Select(d => d.Name ?? d.DeviceId)
+                        .FirstOrDefault() ?? DeviceId,
+                    "Thermalright" => ConfigModel.Instance.Settings.ThermalrightPanelDevices
+                        .Where(d => d.DeviceId == DeviceId)
+                        .Select(d => d.RuntimeProperties?.Name ?? d.DeviceId)
+                        .FirstOrDefault() ?? DeviceId,
+                    _ => DeviceId
+                };
+            }
+        }
+
         partial void OnModifierKeysChanged(ModifierKeys value) => OnPropertyChanged(nameof(HotkeyDisplayText));
         partial void OnKeyChanged(Key value) => OnPropertyChanged(nameof(HotkeyDisplayText));
+        partial void OnProfileGuidChanged(Guid value) => OnPropertyChanged(nameof(ProfileDisplayName));
+        partial void OnDeviceIdChanged(string value) => OnPropertyChanged(nameof(DeviceDisplayName));
+        partial void OnDeviceTypeChanged(string value) => OnPropertyChanged(nameof(DeviceDisplayName));
     }
 }
