@@ -43,12 +43,10 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Text="{Binding DisplayName}" />
-                        <ui:NumberBox
+                        <TextBox
                             Grid.Column="1"
                             FontSize="12"
-                            MaxDecimalPlaces="0"
-                            SmallChange="{Binding Step, TargetNullValue=1}"
-                            Value="{Binding NumericValue}" />
+                            Text="{Binding StringValue, UpdateSourceTrigger=LostFocus}" />
                     </Grid>
                 </DataTemplate>
             </converters:PluginConfigTemplateSelector.IntegerTemplate>
@@ -63,12 +61,10 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Text="{Binding DisplayName}" />
-                        <ui:NumberBox
+                        <TextBox
                             Grid.Column="1"
                             FontSize="12"
-                            MaxDecimalPlaces="2"
-                            SmallChange="{Binding Step, TargetNullValue=0.1}"
-                            Value="{Binding NumericValue}" />
+                            Text="{Binding StringValue, UpdateSourceTrigger=LostFocus}" />
                     </Grid>
                 </DataTemplate>
             </converters:PluginConfigTemplateSelector.DoubleTemplate>

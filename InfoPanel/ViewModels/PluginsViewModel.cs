@@ -185,20 +185,6 @@ namespace InfoPanel.ViewModels
             Name = _wrapper.Name;
             Description = _wrapper.Description;
             ConfigFilePath = _wrapper.ConfigFilePath;
-
-            if (_wrapper.Plugin is IPluginConfigurable configurable)
-            {
-                var properties = configurable.ConfigProperties;
-                foreach (var prop in properties)
-                {
-                    var existing = ConfigProperties.FirstOrDefault(x => x.Key == prop.Key);
-                    if (existing != null)
-                    {
-                        existing.RefreshValue(prop.Value);
-                    }
-                }
-                HasConfigProperties = ConfigProperties.Count > 0;
-            }
         }
     }
 
@@ -281,7 +267,15 @@ namespace InfoPanel.ViewModels
         {
             try
             {
-                _configurable.ApplyConfig(Key, Value);
+                object? typedValue = Type switch
+                {
+                    PluginConfigType.Integer when int.TryParse(Value?.ToString(), out var i) => i,
+                    PluginConfigType.Double when double.TryParse(Value?.ToString(),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var d) => d,
+                    _ => Value
+                };
+                _configurable.ApplyConfig(Key, typedValue);
             }
             catch { }
         }
