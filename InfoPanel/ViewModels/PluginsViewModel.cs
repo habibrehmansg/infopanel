@@ -171,6 +171,10 @@ namespace InfoPanel.ViewModels
                 {
                     ConfigProperties.Add(new PluginConfigPropertyViewModel(configurable, prop));
                 }
+                foreach (var vm in ConfigProperties)
+                {
+                    vm.SetSiblings(ConfigProperties);
+                }
                 HasConfigProperties = ConfigProperties.Count > 0;
             }
             else
@@ -276,9 +280,25 @@ namespace InfoPanel.ViewModels
                     _ => Value
                 };
                 _configurable.ApplyConfig(Key, typedValue);
+
+                // Re-read source properties to pick up cross-property changes (e.g. mutual exclusion)
+                foreach (var sourceProp in _configurable.ConfigProperties)
+                {
+                    if (sourceProp.Key != Key && _siblings != null)
+                    {
+                        var sibling = _siblings.FirstOrDefault(vm => vm.Key == sourceProp.Key);
+                        if (sibling != null && !Equals(sibling.Value, sourceProp.Value))
+                        {
+                            sibling.RefreshValue(sourceProp.Value);
+                        }
+                    }
+                }
             }
             catch { }
         }
+
+        private IEnumerable<PluginConfigPropertyViewModel>? _siblings;
+        internal void SetSiblings(IEnumerable<PluginConfigPropertyViewModel> siblings) => _siblings = siblings;
 
         public void RefreshValue(object? newValue)
         {
