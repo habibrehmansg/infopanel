@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	<TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+	<EnableDynamicLoading>true</EnableDynamicLoading>
+	<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+	<Platforms>x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ini-parser-netstandard" Version="2.5.3" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <PackageReference Include="OpenWeatherMap.Standard" Version="3.0.91" />
+    <PackageReference Include="Sentry" Version="5.16.1" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+	  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj">
+		  <Private>false</Private>
+		  <ExcludeAssets>runtime</ExcludeAssets>
+	  </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="PluginInfo.ini">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

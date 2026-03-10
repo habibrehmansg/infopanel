@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Viewer</title>
+    <style>
+        #image-container img {
+            position: absolute;
+            top: 0;
+            left: 0;
+    </style>
+    <script>
+        const path = window.location.pathname; // Get the path from the current URL
+        const id = path.replace(/^\/([^\/]*).*$/, '$1'); // Extract the first segment as the ID
+
+        var count = 0;
+
+        function loadImage() {
+            var img = new Image();
+            img.onload = function () {
+                document.getElementById("image-container").innerHTML = "";
+                document.getElementById("image-container").appendChild(img);
+                setTimeout(loadImage, {{REFRESH_RATE}}); // Load the next image after 100ms
+            };
+            img.onerror = function () {
+                setTimeout(loadImage, 1000); // Try loading the image again after 1000ms
+            };
+            img.src = '';
+            img.src = `/${id}/image`;
+
+            count++;
+        }
+        window.onload = loadImage;
+    </script>
+</head>
+<body>
+    <div id="image-container"></div>
+</body>
+</html>

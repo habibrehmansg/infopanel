@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0-windows7.0": {
+      "ini-parser-netstandard": {
+        "type": "Direct",
+        "requested": "[2.5.3, )",
+        "resolved": "2.5.3",
+        "contentHash": "Ht3UqRCqizBPbB5pvQ/yCNZIChY6Cy5nLn7TKIlJzWnf4pbqGKqDO+AY6MDTD+fXgEzzMb64Qzl4/Hy7vEqfLA=="
+      },
+      "NAudio.Wasapi": {
+        "type": "Direct",
+        "requested": "[2.2.1, )",
+        "resolved": "2.2.1",
+        "contentHash": "lFfXoqacZZe0WqNChJgGYI+XV/n/61LzPHT3C1CJp4khoxeo2sziyX5wzNYWeCMNbsWxFvT3b3iXeY1UYjBhZw==",
+        "dependencies": {
+          "NAudio.Core": "2.2.1"
+        }
+      },
+      "OpenWeatherMap.Standard": {
+        "type": "Direct",
+        "requested": "[3.0.91, )",
+        "resolved": "3.0.91",
+        "contentHash": "8WAmpABokiTx82MyZ9z3CsSMNeV+5+a/MnbYmZ/40oVV6/ElUfQEj4eb54EHPOTD99cjcCCEh98hrGhs50uoqA==",
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.3"
+        }
+      },
+      "Sentry": {
+        "type": "Direct",
+        "requested": "[5.16.1, )",
+        "resolved": "5.16.1",
+        "contentHash": "Ji9rBurSp5pUTHkZg1KLyODVQWeGlZfLHybpdfWvUEfrNlVyBvujOPi2sZVb6Y+KfphpKtuUF+138gqIkO0K5A=="
+      },
+      "Serilog": {
+        "type": "Direct",
+        "requested": "[4.3.0, )",
+        "resolved": "4.3.0",
+        "contentHash": "+cDryFR0GRhsGOnZSKwaDzRRl4MupvJ42FhCE4zhQRVanX0Jpg6WuCBk59OVhVDPmab1bB+nRykAnykYELA9qQ=="
+      },
+      "System.Diagnostics.PerformanceCounter": {
+        "type": "Direct",
+        "requested": "[9.0.10, )",
+        "resolved": "9.0.10",
+        "contentHash": "35eXaOLXv8ATGDVr946gK0sNEEOwuFzhjFjTQftWh0swhLiyIjAD1pu17tu/SVENpKPZwqJ2e7IIcLpIs0GEzQ==",
+        "dependencies": {
+          "System.Configuration.ConfigurationManager": "9.0.10"
+        }
+      },
+      "NAudio.Core": {
+        "type": "Transitive",
+        "resolved": "2.2.1",
+        "contentHash": "GgkdP6K/7FqXFo7uHvoqGZTJvW4z8g2IffhOO4JHaLzKCdDOUEzVKtveoZkCuUX8eV2HAINqi7VFqlFndrnz/g=="
+      },
+      "Newtonsoft.Json": {
+        "type": "Transitive",
+        "resolved": "13.0.3",
+        "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
+      },
+      "System.Configuration.ConfigurationManager": {
+        "type": "Transitive",
+        "resolved": "9.0.10",
+        "contentHash": "5CBhl5dWmckKEtvk8F6GXtmHxNBoqAC8xILxIntNm7AzHiXQ09CXSLhncIJ/cQWaiNYzLjHZCgtMfx9tkCKHdA==",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "9.0.10",
+          "System.Security.Cryptography.ProtectedData": "9.0.10"
+        }
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "9.0.10",
+        "contentHash": "Jc+az1pTMujPLDn2j5eqSfzlO7j/T1K/LB7THxdfRWOxujE4zaitUqBs7sv1t6/xmmvpU6Xx3IofCs4owYH0yQ=="
+      },
+      "System.Security.Cryptography.ProtectedData": {
+        "type": "Transitive",
+        "resolved": "9.0.10",
+        "contentHash": "iC0InhfWdk0nHlbcTAAUyWt9X4+CsaZz9elQy0otFcsUkd/Wm+DmEwjqyH9PgFl1XcSowzhv67njCstABTc3Hw=="
+      },
+      "infopanel.plugins": {
+        "type": "Project"
+      }
+    },
+    "net8.0-windows7.0/win-x64": {
+      "System.Diagnostics.PerformanceCounter": {
+        "type": "Direct",
+        "requested": "[9.0.10, )",
+        "resolved": "9.0.10",
+        "contentHash": "35eXaOLXv8ATGDVr946gK0sNEEOwuFzhjFjTQftWh0swhLiyIjAD1pu17tu/SVENpKPZwqJ2e7IIcLpIs0GEzQ==",
+        "dependencies": {
+          "System.Configuration.ConfigurationManager": "9.0.10"
+        }
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "9.0.10",
+        "contentHash": "Jc+az1pTMujPLDn2j5eqSfzlO7j/T1K/LB7THxdfRWOxujE4zaitUqBs7sv1t6/xmmvpU6Xx3IofCs4owYH0yQ=="
+      }
+    }
+  }
+}

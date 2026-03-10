@@ -1,0 +1,89 @@
+﻿<UserControl
+    x:Class="InfoPanel.Views.Components.SensorActions"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:InfoPanel"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    d:DesignWidth="600"
+    mc:Ignorable="d">
+    <Grid
+        x:Name="GridActions"
+        Margin="0,10,0,0"
+        IsEnabled="{Binding Path=SelectedSensorItem, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource NullToBooleanConverter}}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <ui:Button
+            x:Name="ButtonSelect"
+            Grid.Column="1"
+            Appearance="Success"
+            Click="ButtonSelect_Click"
+            Icon="{ui:SymbolIcon Temperature20}"
+            IsEnabled="True"
+            ToolTip="Add selected sensor as a text item" />
+        <ui:Button
+            x:Name="ButtonAddBar"
+            Grid.Column="2"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonAddBar_Click"
+            Icon="{ui:SymbolIcon DataBarHorizontal20}"
+            IsEnabled="True"
+            ToolTip="Add selected sensor as a bar" />
+        <ui:Button
+            x:Name="ButtonAddDonut"
+            Grid.Column="3"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonAddDonut_Click"
+            Icon="{ui:SymbolIcon DataPie20}"
+            IsEnabled="True"
+            ToolTip="Add selected sensor as a donut" />
+        <ui:Button
+            x:Name="ButtonAddGraph"
+            Grid.Column="4"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonAddGraph_Click"
+            Icon="{ui:SymbolIcon DataBarVertical20}"
+            IsEnabled="True"
+            ToolTip="Add selected sensor as a graph" />
+        <ui:Button
+            x:Name="ButtonAddCustom"
+            Grid.Column="5"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonAddCustom_Click"
+            Icon="{ui:SymbolIcon Gauge20}"
+            IsEnabled="True"
+            ToolTip="Add selected sensor as gauge" />
+        <ui:Button
+            x:Name="ButtonAddSensorImage"
+            Grid.Column="6"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonAddSensorImage_Click"
+            Icon="{ui:SymbolIcon CircleImage20}"
+            IsEnabled="True"
+            ToolTip="Add selected sensor as sensor image" />
+        <ui:Button
+            x:Name="ButtonReplace"
+            Grid.Column="7"
+            Margin="10,0,0,0"
+            Appearance="Caution"
+            Click="ButtonReplace_Click"
+            Icon="{ui:SymbolIcon ArrowSwap20}"
+            IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource IsSensorConverter}}"
+            ToolTip="Replace selected sensor" />
+    </Grid>
+</UserControl>

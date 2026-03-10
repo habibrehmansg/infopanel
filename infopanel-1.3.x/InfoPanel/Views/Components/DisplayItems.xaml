@@ -1,0 +1,399 @@
+<UserControl
+    x:Class="InfoPanel.Views.Components.DisplayItems"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="clr-namespace:InfoPanel"
+    xmlns:components="clr-namespace:InfoPanel.Views.Components"
+    xmlns:converters="clr-namespace:InfoPanel.Views.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:dd="urn:gong-wpf-dragdrop"
+    xmlns:local="clr-namespace:InfoPanel.Views.Components"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="clr-namespace:InfoPanel.Models"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!--  CollectionViewSource for filtering display items  -->
+        <CollectionViewSource x:Key="DisplayItemsViewSource" Source="{Binding Source={x:Static app:SharedModel.Instance}, Path=DisplayItems}" />
+
+        <DataTemplate x:Key="SimpleItemTemplate_MarginA">
+            <local:DisplayItemView Width="375" Margin="10,0,30,0" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="SimpleItemTemplate_MarginB">
+            <local:DisplayItemView Width="365" Margin="0,0,10,0" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="GroupItemTemplate">
+            <Expander
+                Margin="0,0,0,0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Background="#601A1a1a"
+                IsExpanded="{Binding IsExpanded}">
+
+                <Expander.Header>
+                    <Grid Margin="0,-8,0,-10" HorizontalAlignment="Stretch">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="auto" />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
+                        <!--  Group Header  -->
+                        <Border
+                            Grid.Column="0"
+                            Background="#00FFFFFF"
+                            PreviewMouseLeftButtonDown="Border_MouseDown">
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:SymbolIcon
+                                    Width="20"
+                                    Height="20"
+                                    Margin="0,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Symbol="Group24" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    MaxWidth="180"
+                                    Margin="5,2,0,5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Text="{Binding Name}" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Margin="5,2,0,5"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="Gray"
+                                    Text="{Binding DisplayItemsCount, StringFormat={} {0} Items}" />
+                            </Grid>
+                        </Border>
+
+                        <Button
+                            Grid.Column="1"
+                            Width="20"
+                            Height="20"
+                            Margin="40,0,-5,0"
+                            Padding="0"
+                            VerticalAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Command="{Binding ToggleLockCommand}"
+                            Cursor="Hand"
+                            ToolTip="Lock items from moving in and out">
+                            <ui:SymbolIcon Foreground="{Binding IsLocked, Converter={StaticResource LockColorConverter}}" Symbol="{Binding IsLocked, Converter={StaticResource LockSymbolConverter}}" />
+                        </Button>
+
+                        <!--  Visibility Checkbox  -->
+                        <CheckBox
+                            Grid.Column="2"
+                            Margin="5,0,8,0"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding Hidden, Converter={StaticResource InverseBooleanConverter}}" />
+                    </Grid>
+                </Expander.Header>
+                <!--  Child Items ListView  -->
+                <ListView
+                    Margin="0,-10,0,-10"
+                    HorizontalContentAlignment="Stretch"
+                    dd:DragDrop.DropHandler="{Binding RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    dd:DragDrop.IsDragSource="True"
+                    dd:DragDrop.IsDropTarget="True"
+                    dd:DragDrop.SelectDroppedItems="True"
+                    dd:DragDrop.UseDefaultDragAdorner="True"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    ItemTemplate="{StaticResource SimpleItemTemplate_MarginB}"
+                    ItemsSource="{Binding DisplayItems}"
+                    PreviewMouseWheel="InnerListView_PreviewMouseWheel"
+                    ScrollViewer.CanContentScroll="False"
+                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                    SelectionChanged="ListViewGroupItems_SelectionChanged"
+                    SelectionMode="Extended"
+                    VirtualizingStackPanel.IsVirtualizing="False"
+                    VirtualizingStackPanel.IsVirtualizingWhenGrouping="False">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Margin" Value="0,1,0,1" />
+                            <Setter Property="FontSize" Value="12" />
+                            <Setter Property="IsSelected" Value="{Binding Selected}" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                </ListView>
+            </Expander>
+        </DataTemplate>
+
+        <local:PanelItemTemplateSelector
+            x:Key="PanelItemsSelector"
+            GroupTemplate="{StaticResource GroupItemTemplate}"
+            SimpleTemplate="{StaticResource SimpleItemTemplate_MarginA}" />
+
+
+    </UserControl.Resources>
+
+    <Grid Margin="10,10,10,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="auto" />
+            <RowDefinition Height="auto" />
+            <RowDefinition Height="auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="auto" />
+                    <ColumnDefinition Width="auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ui:TextBox
+                    Name="TextBoxSearch"
+                    Grid.Column="0"
+                    Width="200"
+                    Margin="0,0,0,0"
+                    PlaceholderText="Search Items"
+                    TextChanged="TextBoxSearch_TextChanged" />
+                <StackPanel
+                    Grid.Column="2"
+                    Margin="0,0,0,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Active}"
+                    Orientation="Horizontal">
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.OpenGL}"
+                        ToolTip="OpenGL">
+                        <ui:SymbolIcon Symbol="FastAcceleration20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.ShowFps}"
+                        ToolTip="Show Panel Overlay">
+                        <ui:SymbolIcon Symbol="Info20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.StrictWindowMatching}"
+                        ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
+                        <ui:SymbolIcon Symbol="WindowInprivate20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Topmost}"
+                        ToolTip="Keep panel visible on top of all other windows.">
+                        <ui:SymbolIcon Symbol="ShareScreenStart20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Drag}"
+                        ToolTip="Enables drag and drop placement of panel.">
+                        <ui:SymbolIcon Symbol="Drag20" />
+                    </ToggleButton>
+
+                    <ToggleButton
+                        Margin="10,0,0,0"
+                        IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Resize}"
+                        ToolTip="Enables drag resizing of panel.">
+                        <ui:SymbolIcon Symbol="Resize20" />
+                    </ToggleButton>
+
+                </StackPanel>
+            </Grid>
+
+            <Separator Grid.Row="2" Margin="0,5,0,0" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="auto" />
+
+            </Grid.ColumnDefinitions>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <ListView
+                    x:Name="ListViewItems"
+                    Grid.Row="1"
+                    Width="auto"
+                    HorizontalContentAlignment="Stretch"
+                    dd:DragDrop.DropHandler="{Binding}"
+                    dd:DragDrop.IsDragSource="True"
+                    dd:DragDrop.IsDropTarget="True"
+                    dd:DragDrop.SelectDroppedItems="True"
+                    dd:DragDrop.UseDefaultDragAdorner="True"
+                    Background="Transparent"
+                    ItemTemplateSelector="{StaticResource PanelItemsSelector}"
+                    ItemsSource="{Binding Source={StaticResource DisplayItemsViewSource}}"
+                    ScrollViewer.CanContentScroll="False"
+                    ScrollViewer.VerticalScrollBarVisibility="Visible"
+                    SelectionChanged="ListViewItems_SelectionChanged"
+                    SelectionMode="Extended"
+                    VirtualizingStackPanel.IsVirtualizing="False"
+                    VirtualizingStackPanel.IsVirtualizingWhenGrouping="False">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Margin" Value="0,1,0,1" />
+                            <Setter Property="IsSelected" Value="{Binding Selected}" />
+                            <!--  Only apply the border style to GroupDisplayItem  -->
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Kind}" Value="Group">
+                                    <Setter Property="Margin" Value="0,0,0,0" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListViewItem">
+                                                <Border
+                                                    x:Name="Border"
+                                                    Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                                    <ContentPresenter
+                                                        Margin="2"
+                                                        HorizontalAlignment="Stretch"
+                                                        VerticalAlignment="Center" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Border" Property="BorderThickness" Value="1" />
+                                                        <Setter Property="BorderBrush" Value="LightSkyBlue" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Border" Property="BorderThickness" Value="1" />
+                                                        <Setter Property="BorderBrush" Value="DeepSkyBlue" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                </ListView>
+            </Grid>
+
+            <StackPanel
+                Grid.Column="1"
+                Margin="5,0,0,0"
+                VerticalAlignment="Bottom">
+
+                <ui:Button
+                    x:Name="ButtonPushBack"
+                    Margin="0,10,0,0"
+                    Click="ButtonPushBack_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon ArrowUpload20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
+                    ToolTip="Push selected item to the top (overlapped by items below)" />
+                <ui:Button
+                    x:Name="ButtonPushUp"
+                    Margin="0,10,0,0"
+                    Click="ButtonPushUp_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon ArrowUp20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
+                    ToolTip="Push selected item up (overlapped by items below)" />
+                <ui:Button
+                    x:Name="ButtonPushDown"
+                    Margin="0,10,0,0"
+                    Click="ButtonPushDown_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon ArrowDown20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
+                    ToolTip="Bring selected item down (overlap items above)" />
+                <ui:Button
+                    x:Name="ButtonPushFront"
+                    Margin="0,10,0,0"
+                    Click="ButtonPushFront_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon ArrowDownload20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
+                    ToolTip="Bring selected item to bottom (overlap items above)" />
+                <ui:Button
+                    x:Name="ButtonDuplicate"
+                    Margin="0,10,0,0"
+                    Click="ButtonDuplicate_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon Copy20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
+                    ToolTip="Duplicate selected item" />
+                <ui:Button
+                    x:Name="ButtonDelete"
+                    Margin="0,10,0,0"
+                    Appearance="Danger"
+                    Click="ButtonDelete_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon Delete20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
+                    ToolTip="Delete selected item" />
+            </StackPanel>
+
+        </Grid>
+
+        <Separator Grid.Row="2" Margin="0,5,0,0" />
+
+        <Grid Grid.Row="4" Margin="0,8,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="auto" />
+            </Grid.ColumnDefinitions>
+
+            <components:CommonActions Grid.Column="0" HorizontalAlignment="Left" />
+
+            <StackPanel
+                Grid.Column="1"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal">
+                <ui:Button
+                    x:Name="ButtonSave"
+                    Width="140"
+                    Margin="0,0,0,0"
+                    Appearance="Primary"
+                    Click="ButtonSave_Click"
+                    Content="Save"
+                    ToolTip="Make your changes permanent" />
+                <ui:Button
+                    x:Name="ButtonUndo"
+                    Margin="10,0,0,0"
+                    Click="ButtonUndo_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon ArrowUndo20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=CanUndo}"
+                    ToolTip="Undo" />
+                <ui:Button
+                    x:Name="ButtonRedo"
+                    Margin="5,0,0,0"
+                    Click="ButtonRedo_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon ArrowRedo20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=CanRedo}"
+                    ToolTip="Redo" />
+                <ui:Button
+                    x:Name="ButtonReload"
+                    Margin="5,0,0,0"
+                    Appearance="Danger"
+                    Click="ButtonReload_Click"
+                    Content="Reload from disk"
+                    ToolTip="Discard all changes and reload from disk" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

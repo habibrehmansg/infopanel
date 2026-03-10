@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "ini-parser-netstandard": {
+        "type": "Direct",
+        "requested": "[2.5.3, )",
+        "resolved": "2.5.3",
+        "contentHash": "Ht3UqRCqizBPbB5pvQ/yCNZIChY6Cy5nLn7TKIlJzWnf4pbqGKqDO+AY6MDTD+fXgEzzMb64Qzl4/Hy7vEqfLA=="
+      },
+      "Serilog": {
+        "type": "Direct",
+        "requested": "[4.3.0, )",
+        "resolved": "4.3.0",
+        "contentHash": "+cDryFR0GRhsGOnZSKwaDzRRl4MupvJ42FhCE4zhQRVanX0Jpg6WuCBk59OVhVDPmab1bB+nRykAnykYELA9qQ=="
+      },
+      "infopanel.plugins": {
+        "type": "Project"
+      }
+    }
+  }
+}
