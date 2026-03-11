@@ -437,7 +437,18 @@ namespace InfoPanel.ViewModels
                     _ => value
                 };
             }
-            return value;
+
+            // StreamJsonRpc deserializes JSON integers as Int64 (long) and floats as double.
+            // Coerce raw CLR values to the types the UI controls expect.
+            return type switch
+            {
+                PluginConfigType.Boolean => value is bool ? value : Convert.ToBoolean(value),
+                PluginConfigType.Integer => value is int ? value : Convert.ToInt32(value),
+                PluginConfigType.Double => value is double ? value : Convert.ToDouble(value),
+                PluginConfigType.String => value?.ToString(),
+                PluginConfigType.Choice => value?.ToString(),
+                _ => value
+            };
         }
     }
 
