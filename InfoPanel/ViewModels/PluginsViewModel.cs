@@ -15,6 +15,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Threading;
+using Serilog;
 
 namespace InfoPanel.ViewModels
 {
@@ -271,14 +272,42 @@ namespace InfoPanel.ViewModels
         {
             try
             {
-                object? typedValue = Type switch
+                object? typedValue;
+                switch (Type)
                 {
-                    PluginConfigType.Integer when int.TryParse(Value?.ToString(), out var i) => i,
-                    PluginConfigType.Double when double.TryParse(Value?.ToString(),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var d) => d,
-                    _ => Value
-                };
+                    case PluginConfigType.Integer:
+                        if (int.TryParse(Value?.ToString(), out var i))
+                        {
+                            if (MinValue.HasValue) i = Math.Max((int)MinValue.Value, i);
+                            if (MaxValue.HasValue) i = Math.Min((int)MaxValue.Value, i);
+                            typedValue = i;
+                        }
+                        else
+                        {
+                            Log.Warning("Plugin config '{Key}': could not parse '{Value}' as integer", Key, Value);
+                            return;
+                        }
+                        break;
+                    case PluginConfigType.Double:
+                        if (double.TryParse(Value?.ToString(),
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var d))
+                        {
+                            if (MinValue.HasValue) d = Math.Max(MinValue.Value, d);
+                            if (MaxValue.HasValue) d = Math.Min(MaxValue.Value, d);
+                            typedValue = d;
+                        }
+                        else
+                        {
+                            Log.Warning("Plugin config '{Key}': could not parse '{Value}' as double", Key, Value);
+                            return;
+                        }
+                        break;
+                    default:
+                        typedValue = Value;
+                        break;
+                }
+
                 _configurable.ApplyConfig(Key, typedValue);
 
                 // Re-read source properties to pick up cross-property changes (e.g. mutual exclusion)
@@ -294,7 +323,10 @@ namespace InfoPanel.ViewModels
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Plugin config '{Key}': ApplyConfig failed", Key);
+            }
         }
 
         private IEnumerable<PluginConfigPropertyViewModel>? _siblings;

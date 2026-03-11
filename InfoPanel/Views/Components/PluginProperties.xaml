@@ -24,7 +24,8 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Text="{Binding DisplayName}" />
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description}" />
                         <TextBox
                             Grid.Column="1"
                             FontSize="12"
@@ -42,7 +43,8 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Text="{Binding DisplayName}" />
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description}" />
                         <TextBox
                             Grid.Column="1"
                             FontSize="12"
@@ -60,7 +62,8 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Text="{Binding DisplayName}" />
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description}" />
                         <TextBox
                             Grid.Column="1"
                             FontSize="12"
@@ -78,7 +81,8 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Text="{Binding DisplayName}" />
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description}" />
                         <ui:ToggleSwitch
                             Grid.Column="1"
                             IsChecked="{Binding BoolValue}" />
@@ -95,7 +99,8 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Text="{Binding DisplayName}" />
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description}" />
                         <ComboBox
                             Grid.Column="1"
                             FontSize="12"
