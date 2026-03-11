@@ -6,6 +6,7 @@ using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
@@ -14,6 +15,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Threading;
+using Serilog;
 
 namespace InfoPanel.ViewModels
 {
@@ -124,13 +126,21 @@ namespace InfoPanel.ViewModels
         private string _description;
         [ObservableProperty]
         private string? _configFilePath;
-      
+
         public ObservableCollection<PluginActionCommand> Actions { get; } = [];
+        public ObservableCollection<PluginConfigPropertyViewModel> ConfigProperties { get; } = [];
+
+        [ObservableProperty]
+        private bool _hasConfigProperties;
+
+        [ObservableProperty]
+        private bool _configLoaded = false;
 
         [RelayCommand]
         public async Task Reload()
         {
             await PluginMonitor.Instance.ReloadPluginModule(_wrapper);
+            RefreshConfigProperties();
         }
 
         public PluginModuleViewModel(PluginWrapper wrapper)
@@ -151,6 +161,41 @@ namespace InfoPanel.ViewModels
                 var command = new RelayCommand(() => method.Invoke(wrapper.Plugin, null));
                 Actions.Add(new PluginActionCommand { DisplayName = displayName, Command = command });
             }
+
+            RefreshConfigProperties();
+        }
+
+        private void RefreshConfigProperties()
+        {
+            if (!_wrapper.IsLoaded)
+            {
+                ConfigProperties.Clear();
+                HasConfigProperties = false;
+                ConfigLoaded = false;
+                return;
+            }
+
+            if (_wrapper.Plugin is IPluginConfigurable configurable)
+            {
+                var properties = configurable.ConfigProperties;
+                ConfigProperties.Clear();
+                foreach (var prop in properties)
+                {
+                    ConfigProperties.Add(new PluginConfigPropertyViewModel(configurable, prop));
+                }
+                foreach (var vm in ConfigProperties)
+                {
+                    vm.SetSiblings(ConfigProperties);
+                }
+                HasConfigProperties = ConfigProperties.Count > 0;
+                ConfigLoaded = HasConfigProperties;
+            }
+            else
+            {
+                ConfigProperties.Clear();
+                HasConfigProperties = false;
+                ConfigLoaded = false;
+            }
         }
 
         public void Refresh()
@@ -159,6 +204,11 @@ namespace InfoPanel.ViewModels
             Name = _wrapper.Name;
             Description = _wrapper.Description;
             ConfigFilePath = _wrapper.ConfigFilePath;
+
+            if (!_configLoaded)
+            {
+                RefreshConfigProperties();
+            }
         }
     }
 
@@ -166,6 +216,202 @@ namespace InfoPanel.ViewModels
     {
         public required string DisplayName { get; set; }
         public required ICommand Command { get; set; }
+    }
+
+    public partial class PluginConfigPropertyViewModel : ObservableObject
+    {
+        private static readonly ILogger Logger = Log.ForContext<PluginConfigPropertyViewModel>();
+
+        private readonly IPluginConfigurable _configurable;
+        private readonly PluginConfigProperty _property;
+
+        public string Key => _property.Key;
+        public string DisplayName => _property.DisplayName;
+        public string? Description => _property.Description;
+        public PluginConfigType Type => _property.Type;
+        public double? MinValue => _property.MinValue;
+        public double? MaxValue => _property.MaxValue;
+        public double? Step => _property.Step;
+        public string[]? Options => _property.Options;
+
+        [ObservableProperty]
+        private object? _value;
+
+        public bool BoolValue
+        {
+            get => Value is true;
+            set { Value = value; OnPropertyChanged(); Apply(); }
+        }
+
+        public string StringValue
+        {
+            get => Value?.ToString() ?? "";
+            set { Value = value; OnPropertyChanged(); Apply(); }
+        }
+
+        public double NumericValue
+        {
+            get => Convert.ToDouble(Value ?? 0.0);
+            set
+            {
+                if (Type == PluginConfigType.Integer)
+                {
+                    var i = (int)Math.Round(value);
+                    if (MinValue.HasValue && MaxValue.HasValue)
+                        i = Math.Clamp(i, (int)Math.Ceiling(MinValue.Value), (int)Math.Floor(MaxValue.Value));
+                    else if (MinValue.HasValue)
+                        i = Math.Max((int)Math.Ceiling(MinValue.Value), i);
+                    else if (MaxValue.HasValue)
+                        i = Math.Min((int)Math.Floor(MaxValue.Value), i);
+                    Value = i;
+                }
+                else
+                {
+                    var d = value;
+                    if (MinValue.HasValue && MaxValue.HasValue)
+                        d = Math.Clamp(d, MinValue.Value, MaxValue.Value);
+                    else if (MinValue.HasValue)
+                        d = Math.Max(MinValue.Value, d);
+                    else if (MaxValue.HasValue)
+                        d = Math.Min(MaxValue.Value, d);
+                    Value = d;
+                }
+                OnPropertyChanged();
+                Apply();
+            }
+        }
+
+        public int SelectedIndex
+        {
+            get
+            {
+                if (Options == null || Value == null) return -1;
+                return Array.IndexOf(Options, Value.ToString());
+            }
+            set
+            {
+                if (Options != null && value >= 0 && value < Options.Length)
+                {
+                    Value = Options[value];
+                    OnPropertyChanged();
+                    Apply();
+                }
+            }
+        }
+
+        public PluginConfigPropertyViewModel(IPluginConfigurable configurable, PluginConfigProperty property)
+        {
+            _configurable = configurable;
+            _property = property;
+            _value = property.Value;
+        }
+
+        [RelayCommand]
+        private void Apply()
+        {
+            try
+            {
+                object? typedValue;
+                switch (Type)
+                {
+                    case PluginConfigType.Integer:
+                        if (int.TryParse(Value?.ToString(), out var i))
+                        {
+                            if (MinValue.HasValue && MaxValue.HasValue)
+                                i = Math.Clamp(i, (int)Math.Ceiling(MinValue.Value), (int)Math.Floor(MaxValue.Value));
+                            else if (MinValue.HasValue)
+                                i = Math.Max((int)Math.Ceiling(MinValue.Value), i);
+                            else if (MaxValue.HasValue)
+                                i = Math.Min((int)Math.Floor(MaxValue.Value), i);
+                            typedValue = i;
+                        }
+                        else
+                        {
+                            Logger.Warning("Plugin config '{ConfigKey}': could not parse '{RawValue}' as integer", Key, Value);
+                            return;
+                        }
+                        break;
+                    case PluginConfigType.Double:
+                        double d;
+                        switch (Value)
+                        {
+                            case double directDouble:
+                                d = directDouble;
+                                break;
+                            case float floatValue:
+                                d = floatValue;
+                                break;
+                            case int intValue:
+                                d = intValue;
+                                break;
+                            case long longValue:
+                                d = longValue;
+                                break;
+                            case string stringValue when double.TryParse(
+                                stringValue,
+                                System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture,
+                                out var parsedFromString):
+                                d = parsedFromString;
+                                break;
+                            default:
+                                if (!double.TryParse(
+                                    Value?.ToString()?? "",
+                                    System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture,
+                                    out var parsedFromOther))
+                                {
+                                    Logger.Warning("Plugin config '{ConfigKey}': could not parse '{RawValue}' as double", Key, Value);
+                                    return;
+                                }
+                                d = parsedFromOther;
+                                break;
+                        }
+                        if (MinValue.HasValue && MaxValue.HasValue)
+                            d = Math.Clamp(d, MinValue.Value, MaxValue.Value);
+                        else if (MinValue.HasValue)
+                            d = Math.Max(MinValue.Value, d);
+                        else if (MaxValue.HasValue)
+                            d = Math.Min(MaxValue.Value, d);
+                        typedValue = d;
+                        break;
+                    default:
+                        typedValue = Value;
+                        break;
+                }
+
+                _configurable.ApplyConfig(Key, typedValue);
+
+                // Re-read source properties to pick up cross-property changes (e.g. mutual exclusion)
+                foreach (var sourceProp in _configurable.ConfigProperties)
+                {
+                    if (sourceProp.Key != Key && _siblings != null)
+                    {
+                        var sibling = _siblings.FirstOrDefault(vm => vm.Key == sourceProp.Key);
+                        if (sibling != null && !Equals(sibling.Value, sourceProp.Value))
+                        {
+                            sibling.RefreshValue(sourceProp.Value);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Plugin config '{ConfigKey}': ApplyConfig failed", Key);
+            }
+        }
+
+        private IEnumerable<PluginConfigPropertyViewModel>? _siblings;
+        internal void SetSiblings(IEnumerable<PluginConfigPropertyViewModel> siblings) => _siblings = siblings;
+
+        public void RefreshValue(object? newValue)
+        {
+            Value = newValue;
+            OnPropertyChanged(nameof(BoolValue));
+            OnPropertyChanged(nameof(StringValue));
+            OnPropertyChanged(nameof(NumericValue));
+            OnPropertyChanged(nameof(SelectedIndex));
+        }
     }
 
     public partial class PluginViewModel : ObservableObject
