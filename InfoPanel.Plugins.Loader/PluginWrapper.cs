@@ -1,7 +1,6 @@
-﻿using Serilog;
+﻿using AsyncKeyedLock;
+using Serilog;
 using System.Diagnostics;
-using System.Threading;
-using System.Reflection;
 
 namespace InfoPanel.Plugins.Loader
 {
@@ -23,7 +22,7 @@ namespace InfoPanel.Plugins.Loader
         private long _updateTimeMilliseconds = 0;
         public long UpdateTimeMilliseconds => _updateTimeMilliseconds;
 
-        private static readonly SemaphoreSlim _startStopSemaphore = new(1, 1);
+        private static readonly AsyncNonKeyedLocker _startStopLock = new(1);
 
         private CancellationTokenSource? _cts;
         private Task? _task;
@@ -45,59 +44,45 @@ namespace InfoPanel.Plugins.Loader
             }
             catch (Exception ex)
             {
-                
+
             }
         }
 
         public async Task Initialize()
         {
-            await _startStopSemaphore.WaitAsync();
-            try
-            {
-                Plugin.Initialize();
-                Plugin.Load(PluginContainers);
-                IsLoaded = true;
+            using var _ = await _startStopLock.LockAsync();
+            Plugin.Initialize();
+            Plugin.Load(PluginContainers);
+            IsLoaded = true;
 
-                // If the plugin is running or the interval is not set to >0, we don't want to start it
-                if (IsRunning || Plugin.UpdateInterval.TotalMilliseconds <= 0) return;
-                _cts = new CancellationTokenSource();
-                _task = Task.Run(() => DoWorkAsync(_cts.Token), _cts.Token);
-            }
-            finally
-            {
-                _startStopSemaphore.Release();
-            }
+            // If the plugin is running or the interval is not set to >0, we don't want to start it
+            if (IsRunning || Plugin.UpdateInterval.TotalMilliseconds <= 0) return;
+            _cts = new CancellationTokenSource();
+            _task = Task.Run(() => DoWorkAsync(_cts.Token), _cts.Token);
         }
 
         public async Task StopAsync()
         {
-            await _startStopSemaphore.WaitAsync();
+            using var _ = await _startStopLock.LockAsync();
+            if (_cts is null || _task is null) return;
+
+            _cts.Cancel();
+
             try
             {
-                if (_cts is null || _task is null) return;
-
-                _cts.Cancel();
-
-                try
-                {
-                    await _task;
-                }
-                catch (OperationCanceledException)
-                {
-                    // Task was canceled
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "Exception during plugin task stop for {PluginName}", Name);
-                }
-                finally
-                {
-                    DisposeResources();
-                }
+                await _task;
+            }
+            catch (OperationCanceledException)
+            {
+                // Task was canceled
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Exception during plugin task stop for {PluginName}", Name);
             }
             finally
             {
-                _startStopSemaphore.Release();
+                DisposeResources();
             }
         }
 
@@ -134,13 +119,15 @@ namespace InfoPanel.Plugins.Loader
         {
             _cts?.Dispose();
             _task?.Dispose();
+            _startStopLock?.Dispose();
             _cts = null;
             _task = null;
 
             try
             {
                 Plugin.Close();
-            }catch { }
+            }
+            catch { }
 
             PluginContainers.Clear();
         }
