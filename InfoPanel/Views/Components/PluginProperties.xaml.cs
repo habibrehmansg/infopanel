@@ -41,13 +41,10 @@ namespace InfoPanel.Views.Components
         {
             if (sender is NumberBox numBox
                 && numBox.DataContext is PluginConfigPropertyViewModel vm
-                && double.TryParse(numBox.Text, out double newValue))
+                && numBox.Value is double newValue)
             {
-                if (numBox.Value == newValue)
-                {
-                    // Spinner click — NumberBox already updated Value, push to VM
-                    vm.NumericValue = newValue;
-                }
+                // NumberBox has a valid numeric value, push to VM
+                vm.NumericValue = newValue;
             }
         }
     }

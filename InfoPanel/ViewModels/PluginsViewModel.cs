@@ -169,6 +169,9 @@ namespace InfoPanel.ViewModels
         {
             if (!_wrapper.IsLoaded)
             {
+                ConfigProperties.Clear();
+                HasConfigProperties = false;
+                ConfigLoaded = false;
                 return;
             }
 
@@ -189,7 +192,9 @@ namespace InfoPanel.ViewModels
             }
             else
             {
+                ConfigProperties.Clear();
                 HasConfigProperties = false;
+                ConfigLoaded = false;
             }
         }
 
@@ -327,23 +332,48 @@ namespace InfoPanel.ViewModels
                         }
                         break;
                     case PluginConfigType.Double:
-                        if (double.TryParse(Value?.ToString(),
-                            System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out var d))
+                        double d;
+                        switch (Value)
                         {
-                            if (MinValue.HasValue && MaxValue.HasValue)
-                                d = Math.Clamp(d, MinValue.Value, MaxValue.Value);
-                            else if (MinValue.HasValue)
-                                d = Math.Max(MinValue.Value, d);
-                            else if (MaxValue.HasValue)
-                                d = Math.Min(MaxValue.Value, d);
-                            typedValue = d;
+                            case double directDouble:
+                                d = directDouble;
+                                break;
+                            case float floatValue:
+                                d = floatValue;
+                                break;
+                            case int intValue:
+                                d = intValue;
+                                break;
+                            case long longValue:
+                                d = longValue;
+                                break;
+                            case string stringValue when double.TryParse(
+                                stringValue,
+                                System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture,
+                                out var parsedFromString):
+                                d = parsedFromString;
+                                break;
+                            default:
+                                if (!double.TryParse(
+                                    Value?.ToString()?? "",
+                                    System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture,
+                                    out var parsedFromOther))
+                                {
+                                    Logger.Warning("Plugin config '{ConfigKey}': could not parse '{RawValue}' as double", Key, Value);
+                                    return;
+                                }
+                                d = parsedFromOther;
+                                break;
                         }
-                        else
-                        {
-                            Logger.Warning("Plugin config '{ConfigKey}': could not parse '{RawValue}' as double", Key, Value);
-                            return;
-                        }
+                        if (MinValue.HasValue && MaxValue.HasValue)
+                            d = Math.Clamp(d, MinValue.Value, MaxValue.Value);
+                        else if (MinValue.HasValue)
+                            d = Math.Max(MinValue.Value, d);
+                        else if (MaxValue.HasValue)
+                            d = Math.Min(MaxValue.Value, d);
+                        typedValue = d;
                         break;
                     default:
                         typedValue = Value;
