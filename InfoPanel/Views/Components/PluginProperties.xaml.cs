@@ -41,9 +41,10 @@ namespace InfoPanel.Views.Components
         {
             if (sender is NumberBox numBox
                 && numBox.DataContext is PluginConfigPropertyViewModel vm
-                && numBox.Value is double newValue)
+                && numBox.Value is double newValue
+                && newValue != vm.NumericValue)
             {
-                // NumberBox has a valid numeric value, push to VM
+                // Spinner click — NumberBox already updated Value, push to VM
                 vm.NumericValue = newValue;
             }
         }
