@@ -9,7 +9,7 @@ namespace InfoPanel
     public abstract class BackgroundTask
     {
         private static readonly ILogger Logger = Log.ForContext<BackgroundTask>();
-        private static readonly AsyncNonKeyedLocker _startStopLock = new(1);
+        private readonly AsyncNonKeyedLocker _startStopLock = new(1);
 
         private CancellationTokenSource? _cts;
         private Task? _task;
@@ -83,7 +83,6 @@ namespace InfoPanel
             Logger.Debug("Disposing resources for {TaskName}", this.GetType().Name);
             _cts?.Dispose();
             _task?.Dispose();
-            _startStopLock?.Dispose();
             _cts = null;
             _task = null;
         }

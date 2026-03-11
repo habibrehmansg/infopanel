@@ -111,10 +111,14 @@ namespace InfoPanel.Extras
                 if (result != null)
                 {
                     _name.Value = result.CityName;
-                    _weather.Value = result.Weather[0].Main;
-                    _weatherDesc.Value = result.Weather[0].Description;
-                    _weatherIcon.Value = result.Weather[0].IconId;
-                    _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weather[0].IconId}@2x.png";
+
+                    if (result.Weather is { Count: > 0 })
+                    {
+                        _weather.Value = result.Weather[0].Main;
+                        _weatherDesc.Value = result.Weather[0].Description;
+                        _weatherIcon.Value = result.Weather[0].IconId;
+                        _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weather[0].IconId}@2x.png";
+                    }
 
                     _temp.Value = Convert.ToSingle(result.Temperature.DegreesCelsius);
                     _maxTemp.Value = Convert.ToSingle(result.MaximumTemperature.DegreesCelsius);
