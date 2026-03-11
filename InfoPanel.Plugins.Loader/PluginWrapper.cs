@@ -22,7 +22,7 @@ namespace InfoPanel.Plugins.Loader
         private long _updateTimeMilliseconds = 0;
         public long UpdateTimeMilliseconds => _updateTimeMilliseconds;
 
-        private static readonly AsyncNonKeyedLocker _startStopLock = new(1);
+        private readonly AsyncNonKeyedLocker _startStopLock = new(1);
 
         private CancellationTokenSource? _cts;
         private Task? _task;
@@ -119,7 +119,6 @@ namespace InfoPanel.Plugins.Loader
         {
             _cts?.Dispose();
             _task?.Dispose();
-            _startStopLock?.Dispose();
             _cts = null;
             _task = null;
 
