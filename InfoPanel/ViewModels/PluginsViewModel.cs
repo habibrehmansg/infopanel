@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Extensions;
+using Serilog;
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Loader;
@@ -206,17 +207,27 @@ namespace InfoPanel.ViewModels
         private async Task OnActivatedChanged()
         {
             ControlEnabled = false;
-            if (!_activated)
+            try
             {
-                await PluginMonitor.Instance.StopPluginModulesAsync(_pluginDescriptor);
-            }
-            else
-            {
-                await PluginMonitor.Instance.StartPluginModulesAsync(_pluginDescriptor);
-            }
+                if (!_activated)
+                {
+                    await PluginMonitor.Instance.StopPluginModulesAsync(_pluginDescriptor);
+                }
+                else
+                {
+                    await PluginMonitor.Instance.StartPluginModulesAsync(_pluginDescriptor);
+                }
 
-            PluginMonitor.Instance.SavePluginState();
-            ControlEnabled = true;
+                PluginMonitor.Instance.SavePluginState();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error toggling plugin {PluginName}", _pluginDescriptor.FileName);
+            }
+            finally
+            {
+                ControlEnabled = true;
+            }
         }
 
         public PluginViewModel(PluginDescriptor pluginDescriptor)
