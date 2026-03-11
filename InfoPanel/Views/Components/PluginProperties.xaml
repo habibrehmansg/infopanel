@@ -25,7 +25,7 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Text="{Binding DisplayName}"
-                            ToolTip="{Binding Description}" />
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
                         <TextBox
                             Grid.Column="1"
                             FontSize="12"
@@ -44,7 +44,7 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Text="{Binding DisplayName}"
-                            ToolTip="{Binding Description}" />
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
                         <TextBox
                             Grid.Column="1"
                             FontSize="12"
@@ -63,7 +63,7 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Text="{Binding DisplayName}"
-                            ToolTip="{Binding Description}" />
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
                         <TextBox
                             Grid.Column="1"
                             FontSize="12"
@@ -82,7 +82,7 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Text="{Binding DisplayName}"
-                            ToolTip="{Binding Description}" />
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
                         <ui:ToggleSwitch
                             Grid.Column="1"
                             IsChecked="{Binding BoolValue}" />
@@ -100,7 +100,7 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Text="{Binding DisplayName}"
-                            ToolTip="{Binding Description}" />
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
                         <ComboBox
                             Grid.Column="1"
                             FontSize="12"

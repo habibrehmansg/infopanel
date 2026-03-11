@@ -201,6 +201,8 @@ namespace InfoPanel.ViewModels
 
     public partial class PluginConfigPropertyViewModel : ObservableObject
     {
+        private static readonly ILogger Logger = Log.ForContext<PluginConfigPropertyViewModel>();
+
         private readonly IPluginConfigurable _configurable;
         private readonly PluginConfigProperty _property;
 
@@ -278,13 +280,17 @@ namespace InfoPanel.ViewModels
                     case PluginConfigType.Integer:
                         if (int.TryParse(Value?.ToString(), out var i))
                         {
-                            if (MinValue.HasValue) i = Math.Max((int)MinValue.Value, i);
-                            if (MaxValue.HasValue) i = Math.Min((int)MaxValue.Value, i);
+                            if (MinValue.HasValue && MaxValue.HasValue)
+                                i = Math.Clamp(i, (int)Math.Ceiling(MinValue.Value), (int)Math.Floor(MaxValue.Value));
+                            else if (MinValue.HasValue)
+                                i = Math.Max((int)Math.Ceiling(MinValue.Value), i);
+                            else if (MaxValue.HasValue)
+                                i = Math.Min((int)Math.Floor(MaxValue.Value), i);
                             typedValue = i;
                         }
                         else
                         {
-                            Log.Warning("Plugin config '{Key}': could not parse '{Value}' as integer", Key, Value);
+                            Logger.Warning("Plugin config '{ConfigKey}': could not parse '{RawValue}' as integer", Key, Value);
                             return;
                         }
                         break;
@@ -293,13 +299,17 @@ namespace InfoPanel.ViewModels
                             System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out var d))
                         {
-                            if (MinValue.HasValue) d = Math.Max(MinValue.Value, d);
-                            if (MaxValue.HasValue) d = Math.Min(MaxValue.Value, d);
+                            if (MinValue.HasValue && MaxValue.HasValue)
+                                d = Math.Clamp(d, MinValue.Value, MaxValue.Value);
+                            else if (MinValue.HasValue)
+                                d = Math.Max(MinValue.Value, d);
+                            else if (MaxValue.HasValue)
+                                d = Math.Min(MaxValue.Value, d);
                             typedValue = d;
                         }
                         else
                         {
-                            Log.Warning("Plugin config '{Key}': could not parse '{Value}' as double", Key, Value);
+                            Logger.Warning("Plugin config '{ConfigKey}': could not parse '{RawValue}' as double", Key, Value);
                             return;
                         }
                         break;
@@ -325,7 +335,7 @@ namespace InfoPanel.ViewModels
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Plugin config '{Key}': ApplyConfig failed", Key);
+                Logger.Error(ex, "Plugin config '{ConfigKey}': ApplyConfig failed", Key);
             }
         }
 
