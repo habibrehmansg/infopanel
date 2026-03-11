@@ -263,6 +263,7 @@
 
                             <ItemsControl
                                 Margin="0,0,0,0"
+                                IsEnabled="{Binding ConfigLoaded}"
                                 ItemsSource="{Binding ConfigProperties}"
                                 ItemTemplateSelector="{StaticResource PluginConfigTemplateSelector}" />
 

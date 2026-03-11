@@ -133,6 +133,9 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private bool _hasConfigProperties;
 
+        [ObservableProperty]
+        private bool _configLoaded = false;
+
         [RelayCommand]
         public async Task Reload()
         {
@@ -164,6 +167,11 @@ namespace InfoPanel.ViewModels
 
         private void RefreshConfigProperties()
         {
+            if (!_wrapper.IsLoaded)
+            {
+                return;
+            }
+
             if (_wrapper.Plugin is IPluginConfigurable configurable)
             {
                 var properties = configurable.ConfigProperties;
@@ -177,6 +185,7 @@ namespace InfoPanel.ViewModels
                     vm.SetSiblings(ConfigProperties);
                 }
                 HasConfigProperties = ConfigProperties.Count > 0;
+                ConfigLoaded = HasConfigProperties;
             }
             else
             {
@@ -190,6 +199,11 @@ namespace InfoPanel.ViewModels
             Name = _wrapper.Name;
             Description = _wrapper.Description;
             ConfigFilePath = _wrapper.ConfigFilePath;
+
+            if (!_configLoaded)
+            {
+                RefreshConfigProperties();
+            }
         }
     }
 
