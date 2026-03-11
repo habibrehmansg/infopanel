@@ -1,4 +1,5 @@
 using System.Reflection;
+using Newtonsoft.Json.Linq;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using Serilog;
@@ -68,7 +69,11 @@ namespace InfoPanel.Plugins.Host
                         Description = wrapper.Description,
                         ConfigFilePath = wrapper.ConfigFilePath,
                         UpdateIntervalMs = wrapper.UpdateInterval.TotalMilliseconds,
-                        Actions = actions
+                        Actions = actions,
+                        IsConfigurable = plugin is IPluginConfigurable,
+                        ConfigProperties = plugin is IPluginConfigurable configurable
+                            ? configurable.ConfigProperties.Select(ConvertConfigPropertyToDto).ToList()
+                            : []
                     };
                     metadataList.Add(metadata);
 
@@ -102,6 +107,84 @@ namespace InfoPanel.Plugins.Host
             _updateTask = Task.Run(() => UpdateLoopAsync(_updateCts.Token));
 
             return metadataList;
+        }
+
+        public Task<List<PluginConfigPropertyDto>> GetConfigPropertiesAsync(string pluginId)
+        {
+            var wrapper = _wrappers.FirstOrDefault(w => w.Id == pluginId);
+            if (wrapper?.Plugin is IPluginConfigurable configurable)
+            {
+                return Task.FromResult(configurable.ConfigProperties.Select(ConvertConfigPropertyToDto).ToList());
+            }
+            return Task.FromResult(new List<PluginConfigPropertyDto>());
+        }
+
+        public Task<List<PluginConfigPropertyDto>> ApplyConfigAsync(string pluginId, string key, object? value)
+        {
+            Logger.Information("ApplyConfigAsync called: pluginId={PluginId}, key={Key}, valueType={ValueType}, value={Value}",
+                pluginId, key, value?.GetType().Name ?? "null", value);
+
+            var wrapper = _wrappers.FirstOrDefault(w => w.Id == pluginId);
+            if (wrapper?.Plugin is IPluginConfigurable configurable)
+            {
+                // Find the property type so we can coerce the JSON-RPC value to the correct CLR type.
+                // Values arrive as JToken over StreamJsonRpc and must be converted before
+                // passing to the plugin's ApplyConfig.
+                var prop = configurable.ConfigProperties.FirstOrDefault(p => p.Key == key);
+                var nativeValue = prop != null ? CoerceValue(value, prop.Type) : value;
+
+                Logger.Information("Config coercion: key={Key}, rawType={RawType}, nativeType={NativeType}, nativeValue={NativeValue}",
+                    key, value?.GetType().Name ?? "null", nativeValue?.GetType().Name ?? "null", nativeValue);
+
+                try
+                {
+                    configurable.ApplyConfig(key, nativeValue);
+                    Logger.Information("Config applied successfully for key={Key}", key);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error applying config key {Key} on plugin {PluginId}", key, pluginId);
+                    NotifyError(pluginId, $"Config '{key}' apply failed: {ex.Message}");
+                }
+                // Return refreshed properties (ApplyConfig may change other properties)
+                return Task.FromResult(configurable.ConfigProperties.Select(ConvertConfigPropertyToDto).ToList());
+            }
+
+            Logger.Warning("ApplyConfigAsync: plugin {PluginId} not found or not configurable", pluginId);
+            return Task.FromResult(new List<PluginConfigPropertyDto>());
+        }
+
+        private static object? CoerceValue(object? value, PluginConfigType type)
+        {
+            if (value is JToken jt)
+            {
+                return type switch
+                {
+                    PluginConfigType.Boolean => jt.Type == JTokenType.Boolean ? jt.Value<bool>() : value,
+                    PluginConfigType.Integer => jt.Type == JTokenType.Integer ? jt.Value<int>()
+                                              : jt.Type == JTokenType.Float ? (int)Math.Round(jt.Value<double>())
+                                              : int.TryParse(jt.ToString(), out var i) ? i : value,
+                    PluginConfigType.Double => jt.Type == JTokenType.Float || jt.Type == JTokenType.Integer
+                                              ? jt.Value<double>()
+                                              : double.TryParse(jt.ToString(), System.Globalization.NumberStyles.Float,
+                                                  System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : value,
+                    PluginConfigType.String => jt.ToString(),
+                    PluginConfigType.Choice => jt.ToString(),
+                    _ => value
+                };
+            }
+
+            // StreamJsonRpc deserializes JSON integers as Int64 (long) and floats as double.
+            // Coerce raw CLR values to the types plugins expect.
+            return type switch
+            {
+                PluginConfigType.Boolean => value is bool ? value : Convert.ToBoolean(value),
+                PluginConfigType.Integer => value is int ? value : Convert.ToInt32(value),
+                PluginConfigType.Double => value is double ? value : Convert.ToDouble(value),
+                PluginConfigType.String => value?.ToString(),
+                PluginConfigType.Choice => value?.ToString(),
+                _ => value
+            };
         }
 
         public Task InvokeActionAsync(string pluginId, string methodName)
@@ -312,6 +395,22 @@ namespace InfoPanel.Plugins.Host
             }
 
             return dto;
+        }
+
+        private static PluginConfigPropertyDto ConvertConfigPropertyToDto(PluginConfigProperty prop)
+        {
+            return new PluginConfigPropertyDto
+            {
+                Key = prop.Key,
+                DisplayName = prop.DisplayName,
+                Description = prop.Description,
+                Type = prop.Type.ToString(),
+                Value = prop.Value,
+                MinValue = prop.MinValue,
+                MaxValue = prop.MaxValue,
+                Step = prop.Step,
+                Options = prop.Options
+            };
         }
 
         private void NotifyPluginsLoaded(List<PluginMetadataDto> plugins, Dictionary<string, List<ContainerDto>> containers)

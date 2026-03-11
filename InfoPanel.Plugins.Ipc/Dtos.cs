@@ -10,6 +10,8 @@ namespace InfoPanel.Plugins.Ipc
         public string? ConfigFilePath { get; set; }
         public double UpdateIntervalMs { get; set; }
         public List<PluginActionDto> Actions { get; set; } = [];
+        public bool IsConfigurable { get; set; }
+        public List<PluginConfigPropertyDto> ConfigProperties { get; set; } = [];
     }
 
     public class PluginActionDto
@@ -90,5 +92,18 @@ namespace InfoPanel.Plugins.Ipc
     {
         public string PluginId { get; set; } = "";
         public long UpdateTimeMilliseconds { get; set; }
+    }
+
+    public class PluginConfigPropertyDto
+    {
+        public string Key { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string? Description { get; set; }
+        public string Type { get; set; } = ""; // "String", "Integer", "Double", "Boolean", "Choice"
+        public object? Value { get; set; }
+        public double? MinValue { get; set; }
+        public double? MaxValue { get; set; }
+        public double? Step { get; set; }
+        public string[]? Options { get; set; }
     }
 }

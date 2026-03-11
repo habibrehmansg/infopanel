@@ -402,7 +402,7 @@ namespace InfoPanel.ViewModels
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Plugin config '{ConfigKey}': ApplyConfig failed", Key);
+                Logger.Error(ex, "Plugin config '{ConfigKey}': ApplyConfig IPC failed (type={ExType})", Key, ex.GetType().Name);
             }
         }
 

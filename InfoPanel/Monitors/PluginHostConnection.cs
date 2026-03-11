@@ -156,6 +156,20 @@ namespace InfoPanel.Monitors
             await _jsonRpc.InvokeAsync(nameof(IPluginHostService.InvokeActionAsync), pluginId, methodName);
         }
 
+        public async Task<List<PluginConfigPropertyDto>> GetConfigPropertiesAsync(string pluginId)
+        {
+            if (_jsonRpc == null || _jsonRpc.IsDisposed) return [];
+            return await _jsonRpc.InvokeAsync<List<PluginConfigPropertyDto>>(
+                nameof(IPluginHostService.GetConfigPropertiesAsync), pluginId);
+        }
+
+        public async Task<List<PluginConfigPropertyDto>> ApplyConfigAsync(string pluginId, string key, object? value)
+        {
+            if (_jsonRpc == null || _jsonRpc.IsDisposed) return [];
+            return await _jsonRpc.InvokeAsync<List<PluginConfigPropertyDto>>(
+                nameof(IPluginHostService.ApplyConfigAsync), pluginId, key, value);
+        }
+
         private void RaiseDisconnectedOnce()
         {
             if (_intentionalStop) return;
