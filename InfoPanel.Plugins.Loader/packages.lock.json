@@ -2,6 +2,15 @@
   "version": 1,
   "dependencies": {
     "net8.0": {
+      "AsyncKeyedLock": {
+        "type": "Direct",
+        "requested": "[8.0.0, )",
+        "resolved": "8.0.0",
+        "contentHash": "7OvOXY8M4lUDi12P6P1/WbD5AgpCpMjY2zn6USSiaQW45YRoM11MruCqQXdbbDmMIHt3v2v1YCUqIJK44YYeyg==",
+        "dependencies": {
+          "System.Threading.Tasks.Extensions": "4.6.3"
+        }
+      },
       "ini-parser-netstandard": {
         "type": "Direct",
         "requested": "[2.5.3, )",
@@ -13,6 +22,11 @@
         "requested": "[4.3.0, )",
         "resolved": "4.3.0",
         "contentHash": "+cDryFR0GRhsGOnZSKwaDzRRl4MupvJ42FhCE4zhQRVanX0Jpg6WuCBk59OVhVDPmab1bB+nRykAnykYELA9qQ=="
+      },
+      "System.Threading.Tasks.Extensions": {
+        "type": "Transitive",
+        "resolved": "4.6.3",
+        "contentHash": "7sCiwilJLYbTZELaKnc7RecBBXWXA+xMLQWZKWawBxYjp6DBlSE3v9/UcvKBvr1vv2tTOhipiogM8rRmxlhrVA=="
       },
       "infopanel.plugins": {
         "type": "Project"
