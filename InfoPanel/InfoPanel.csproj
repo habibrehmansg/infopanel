@@ -58,6 +58,43 @@
 
 	<Target Name="CleanPluginsDirectory" BeforeTargets="Clean">
 		<RemoveDir Directories="$(OutputPath)\plugins" />
+		<RemoveDir Directories="$(OutputPath)\tools" />
+	</Target>
+
+	<!-- Build InfoPanel.Plugins.Host and get its output path -->
+	<Target Name="BuildPluginHost" BeforeTargets="Build">
+		<MSBuild Projects="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=$(Platform)" />
+		<MSBuild Projects="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration);Platform=$(Platform)">
+			<Output TaskParameter="TargetOutputs" PropertyName="_PluginHostAssemblyPath" />
+		</MSBuild>
+		<PropertyGroup>
+			<PluginHostOutputDir>$([System.IO.Path]::GetDirectoryName('$(_PluginHostAssemblyPath)'))</PluginHostOutputDir>
+		</PropertyGroup>
+		<Message Text="InfoPanel.Plugins.Host output directory: $(PluginHostOutputDir)" Importance="High" />
+	</Target>
+
+	<!-- Copy InfoPanel.Plugins.Host to build output tools dir -->
+	<Target Name="CopyPluginHostToBuildOutput" AfterTargets="BuildPluginHost">
+		<MakeDir Directories="$(OutputPath)\tools" />
+		<ItemGroup>
+			<PluginHostFiles Include="$(PluginHostOutputDir)\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(PluginHostFiles)" DestinationFolder="$(OutputPath)\tools" SkipUnchangedFiles="true" />
+	</Target>
+
+	<!-- Copy InfoPanel.Plugins.Host to publish dir -->
+	<Target Name="CopyPluginHostToPublishOutput" AfterTargets="Publish">
+		<MSBuild Projects="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration);Platform=$(Platform)">
+			<Output TaskParameter="TargetOutputs" PropertyName="_PluginHostAssemblyPath" />
+		</MSBuild>
+		<PropertyGroup>
+			<PluginHostOutputDir>$([System.IO.Path]::GetDirectoryName('$(_PluginHostAssemblyPath)'))</PluginHostOutputDir>
+		</PropertyGroup>
+		<MakeDir Directories="$(PublishDir)\tools" />
+		<ItemGroup>
+			<PluginHostFiles Include="$(PluginHostOutputDir)\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(PluginHostFiles)" DestinationFolder="$(PublishDir)\tools" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="Sign" AfterTargets="Publish">
@@ -197,6 +234,7 @@
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 		<PackageReference Include="AutoMapper" Version="14.0.0" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
+		<PackageReference Include="StreamJsonRpc" Version="2.19.27" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
 		<PackageReference Include="FlyleafLib" Version="3.9.7" />
@@ -230,6 +268,7 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
+	  <ProjectReference Include="..\InfoPanel.Plugins.Ipc\InfoPanel.Plugins.Ipc.csproj" />
 	</ItemGroup>
 	
 	<ItemGroup>

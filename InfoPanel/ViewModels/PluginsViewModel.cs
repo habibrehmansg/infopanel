@@ -1,8 +1,9 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Extensions;
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
+using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
 using System;
@@ -83,7 +84,7 @@ namespace InfoPanel.ViewModels
             }
         }
 
-       
+
         [RelayCommand]
         public void AddPluginFromZip()
         {
@@ -115,7 +116,8 @@ namespace InfoPanel.ViewModels
 
     public partial class PluginModuleViewModel : ObservableObject
     {
-        private PluginWrapper _wrapper;
+        private readonly RemotePluginWrapper _wrapper;
+        private readonly PluginDescriptor _pluginDescriptor;
         public string Id { get; set; }
 
         [ObservableProperty]
@@ -124,32 +126,29 @@ namespace InfoPanel.ViewModels
         private string _description;
         [ObservableProperty]
         private string? _configFilePath;
-      
+
         public ObservableCollection<PluginActionCommand> Actions { get; } = [];
 
         [RelayCommand]
         public async Task Reload()
         {
-            await PluginMonitor.Instance.ReloadPluginModule(_wrapper);
+            await PluginMonitor.Instance.ReloadPluginModule(_pluginDescriptor);
         }
 
-        public PluginModuleViewModel(PluginWrapper wrapper)
+        internal PluginModuleViewModel(RemotePluginWrapper wrapper, PluginDescriptor pluginDescriptor)
         {
             _wrapper = wrapper;
+            _pluginDescriptor = pluginDescriptor;
             Id = wrapper.Id;
             Name = wrapper.Name;
             Description = wrapper.Description;
             ConfigFilePath = wrapper.ConfigFilePath;
 
-            var methods = wrapper.Plugin.GetType().GetMethods().Where(m => m.GetCustomAttributes(typeof(PluginActionAttribute), false).Length > 0);
-
-            foreach (var method in methods)
+            foreach (var action in wrapper.Actions)
             {
-                var attribute = (PluginActionAttribute)method.GetCustomAttributes(typeof(PluginActionAttribute), false).First();
-                string displayName = attribute.DisplayName;
-
-                var command = new RelayCommand(() => method.Invoke(wrapper.Plugin, null));
-                Actions.Add(new PluginActionCommand { DisplayName = displayName, Command = command });
+                var methodName = action.MethodName;
+                var command = new RelayCommand(() => _ = wrapper.InvokeActionAsync(methodName));
+                Actions.Add(new PluginActionCommand { DisplayName = action.DisplayName, Command = command });
             }
         }
 
@@ -229,11 +228,14 @@ namespace InfoPanel.ViewModels
             Description = pluginDescriptor.PluginInfo?.Description;
             Version = pluginDescriptor.PluginInfo?.Version;
             Website = pluginDescriptor.PluginInfo?.Website;
-            _activated = pluginDescriptor.PluginWrappers.Any(x => x.Value.IsRunning);
+            _activated = PluginMonitor.Instance.ProcessManager.IsHostRunning(pluginDescriptor.FilePath);
 
-            foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
+            if (PluginMonitor.Instance.RemoteWrappers.TryGetValue(pluginDescriptor.FilePath, out var wrappers))
             {
-                Plugins.Add(new PluginModuleViewModel(wrapper));
+                foreach (var wrapper in wrappers)
+                {
+                    Plugins.Add(new PluginModuleViewModel(wrapper, pluginDescriptor));
+                }
             }
         }
 
@@ -241,19 +243,22 @@ namespace InfoPanel.ViewModels
         {
             if (!ControlEnabled) { return; }
 
-            _activated = _pluginDescriptor.PluginWrappers.Any(x => x.Value.IsRunning);
+            _activated = PluginMonitor.Instance.ProcessManager.IsHostRunning(_pluginDescriptor.FilePath);
             OnPropertyChanged(nameof(Activated));
 
-            foreach (var wrapper in _pluginDescriptor.PluginWrappers.Values)
+            if (PluginMonitor.Instance.RemoteWrappers.TryGetValue(_pluginDescriptor.FilePath, out var wrappers))
             {
-                var plugin = Plugins.SingleOrDefault(x => x.Id == wrapper.Id);
-                if (plugin != null)
+                foreach (var wrapper in wrappers)
                 {
-                    plugin.Refresh();
-                }
-                else
-                {
-                    Plugins.Add(new PluginModuleViewModel(wrapper));
+                    var plugin = Plugins.SingleOrDefault(x => x.Id == wrapper.Id);
+                    if (plugin != null)
+                    {
+                        plugin.Refresh();
+                    }
+                    else
+                    {
+                        Plugins.Add(new PluginModuleViewModel(wrapper, _pluginDescriptor));
+                    }
                 }
             }
         }
