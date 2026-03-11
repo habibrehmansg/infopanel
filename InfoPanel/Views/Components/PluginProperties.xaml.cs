@@ -14,6 +14,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Components
 {
@@ -34,6 +35,20 @@ namespace InfoPanel.Views.Components
         public PluginProperties()
         {
             InitializeComponent();
+        }
+
+        private void NumberBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is NumberBox numBox
+                && numBox.DataContext is PluginConfigPropertyViewModel vm
+                && double.TryParse(numBox.Text, out double newValue))
+            {
+                if (numBox.Value == newValue)
+                {
+                    // Spinner click — NumberBox already updated Value, push to VM
+                    vm.NumericValue = newValue;
+                }
+            }
         }
     }
 }

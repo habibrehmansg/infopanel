@@ -236,9 +236,27 @@ namespace InfoPanel.ViewModels
             set
             {
                 if (Type == PluginConfigType.Integer)
-                    Value = (int)Math.Round(value);
+                {
+                    var i = (int)Math.Round(value);
+                    if (MinValue.HasValue && MaxValue.HasValue)
+                        i = Math.Clamp(i, (int)Math.Ceiling(MinValue.Value), (int)Math.Floor(MaxValue.Value));
+                    else if (MinValue.HasValue)
+                        i = Math.Max((int)Math.Ceiling(MinValue.Value), i);
+                    else if (MaxValue.HasValue)
+                        i = Math.Min((int)Math.Floor(MaxValue.Value), i);
+                    Value = i;
+                }
                 else
-                    Value = value;
+                {
+                    var d = value;
+                    if (MinValue.HasValue && MaxValue.HasValue)
+                        d = Math.Clamp(d, MinValue.Value, MaxValue.Value);
+                    else if (MinValue.HasValue)
+                        d = Math.Max(MinValue.Value, d);
+                    else if (MaxValue.HasValue)
+                        d = Math.Min(MaxValue.Value, d);
+                    Value = d;
+                }
                 OnPropertyChanged();
                 Apply();
             }

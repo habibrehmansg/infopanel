@@ -45,10 +45,16 @@
                             FontSize="12"
                             Text="{Binding DisplayName}"
                             ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
-                        <TextBox
+                        <ui:NumberBox
                             Grid.Column="1"
                             FontSize="12"
-                            Text="{Binding StringValue, UpdateSourceTrigger=LostFocus}" />
+                            MaxDecimalPlaces="0"
+                            Minimum="{Binding MinValue}"
+                            Maximum="{Binding MaxValue}"
+                            SmallChange="{Binding Step, TargetNullValue=1}"
+                            Text="{Binding NumericValue}"
+                            TextChanged="NumberBox_TextChanged"
+                            Value="{Binding NumericValue, Mode=OneWay}" />
                     </Grid>
                 </DataTemplate>
             </converters:PluginConfigTemplateSelector.IntegerTemplate>
@@ -64,10 +70,16 @@
                             FontSize="12"
                             Text="{Binding DisplayName}"
                             ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
-                        <TextBox
+                        <ui:NumberBox
                             Grid.Column="1"
                             FontSize="12"
-                            Text="{Binding StringValue, UpdateSourceTrigger=LostFocus}" />
+                            MaxDecimalPlaces="2"
+                            Minimum="{Binding MinValue}"
+                            Maximum="{Binding MaxValue}"
+                            SmallChange="{Binding Step, TargetNullValue=0.1}"
+                            Text="{Binding NumericValue}"
+                            TextChanged="NumberBox_TextChanged"
+                            Value="{Binding NumericValue, Mode=OneWay}" />
                     </Grid>
                 </DataTemplate>
             </converters:PluginConfigTemplateSelector.DoubleTemplate>
