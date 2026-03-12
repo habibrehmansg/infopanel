@@ -25,6 +25,9 @@ namespace InfoPanel.Views.Windows
         [DllImport("user32.dll")]
         private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr changeFilterStruct);
 
+        [DllImport("kernel32.dll")]
+        private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
+
         private const uint MSGFLT_ALLOW = 1;
 
         private readonly ITaskBarService _taskBarService;
@@ -76,11 +79,14 @@ namespace InfoPanel.Views.Windows
             if (WindowState == WindowState.Minimized)
             {
                 SharedModel.Instance.SelectedItem = null;
-                
+
                 if (ConfigModel.Instance.Settings.MinimizeToTray)
                 {
                     Hide();
                 }
+
+                // Trim working set — releases physical pages the OS can reclaim
+                SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1));
             }
         }
 
