@@ -51,12 +51,12 @@ namespace InfoPanel.Plugins.Host
             foreach (var plugin in plugins)
             {
                 var wrapper = new PluginWrapper(descriptor, plugin);
-                descriptor.PluginWrappers.TryAdd(wrapper.Id, wrapper);
-                _wrappers.Add(wrapper);
 
                 try
                 {
                     await wrapper.Initialize();
+                    descriptor.PluginWrappers.TryAdd(wrapper.Id, wrapper);
+                    _wrappers.Add(wrapper);
                     Logger.Information("Plugin {PluginName} initialized successfully", wrapper.Name);
 
                     // Discover actions

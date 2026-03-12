@@ -256,8 +256,7 @@ namespace InfoPanel.Monitors
 
         internal void SetPrivateWorkingSetCounter(PerformanceCounter? counter)
         {
-            var old = _privateWorkingSetCounter;
-            _privateWorkingSetCounter = counter;
+            var old = Interlocked.Exchange(ref _privateWorkingSetCounter, counter);
             old?.Dispose();
         }
 

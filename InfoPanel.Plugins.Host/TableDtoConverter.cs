@@ -15,6 +15,8 @@ namespace InfoPanel.Plugins.Host
             };
 
             var dt = table.Value;
+            if (dt == null) return dto;
+
             foreach (DataColumn col in dt.Columns)
             {
                 dto.Columns.Add(col.ColumnName);
