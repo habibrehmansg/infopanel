@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
@@ -35,9 +36,9 @@ namespace InfoPanel.Monitors
         private Dictionary<string, List<ContainerDto>>? _containersByPluginId;
 
         // Proxy data indexed by plugin ID -> container ID -> entry ID
-        private readonly Dictionary<string, Dictionary<string, ProxyPluginContainer>> _proxyContainers = [];
-        private readonly Dictionary<string, Dictionary<string, IPluginData>> _proxyEntries = [];
-        private readonly Dictionary<string, long> _performanceData = [];
+        private readonly ConcurrentDictionary<string, Dictionary<string, ProxyPluginContainer>> _proxyContainers = new();
+        private readonly ConcurrentDictionary<string, Dictionary<string, IPluginData>> _proxyEntries = new();
+        private readonly ConcurrentDictionary<string, long> _performanceData = new();
 
         private readonly TaskCompletionSource _pluginsLoadedTcs = new();
         private volatile bool _intentionalStop;
@@ -90,8 +91,8 @@ namespace InfoPanel.Monitors
                         Arguments = arguments,
                         UseShellExecute = false,
                         CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
+                        RedirectStandardOutput = false,
+                        RedirectStandardError = false
                     },
                 };
                 _hostProcess.Start();
@@ -291,7 +292,9 @@ namespace InfoPanel.Monitors
                             text.Value = update.TextValue;
                             break;
                         case "table" when entry is ProxyPluginTable table && update.TableValue != null:
+                            var oldTable = table.Value;
                             table.Value = RebuildDataTable(update.TableValue);
+                            oldTable?.Dispose();
                             break;
                     }
                 }
@@ -420,12 +423,20 @@ namespace InfoPanel.Monitors
         public void Dispose()
         {
             _jsonRpc?.Dispose();
+            _jsonRpc = null;
+
             _pipeServer?.Dispose();
-            if (_hostProcess != null && !_hostProcess.HasExited)
+            _pipeServer = null;
+
+            if (_hostProcess != null)
             {
-                try { _hostProcess.Kill(entireProcessTree: true); } catch { }
+                if (!_hostProcess.HasExited)
+                {
+                    try { _hostProcess.Kill(entireProcessTree: true); } catch { }
+                }
+                _hostProcess.Dispose();
+                _hostProcess = null;
             }
-            _hostProcess?.Dispose();
         }
     }
 }

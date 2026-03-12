@@ -38,6 +38,11 @@ namespace InfoPanel.Monitors
             }
         }
 
+        /// <summary>
+        /// Persists the list of deactivated plugins. A plugin is considered "deactivated" when
+        /// its host process is NOT currently running, so we save those file paths to disk.
+        /// On next startup, plugins in this list will be skipped.
+        /// </summary>
         public void SavePluginState()
         {
             try
@@ -48,7 +53,10 @@ namespace InfoPanel.Monitors
                     .ToList();
                 File.WriteAllLines(FileUtil.GetPluginStateFile(), deactivatedPlugins);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to save plugin state");
+            }
         }
 
         public string[] GetPluginState()
@@ -75,7 +83,10 @@ namespace InfoPanel.Monitors
                     File.Delete(file);
                 }
             }
-            catch (Exception e) { }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to unzip plugin archives");
+            }
         }
 
         private static bool UnzipPluginArchive(string filePath)
@@ -138,7 +149,7 @@ namespace InfoPanel.Monitors
             }
         }
 
-        private static readonly string[] _bundledPlugins = ["plugins\\InfoPanel.Extras"];
+        private static readonly string[] _bundledPlugins = [Path.Combine("plugins", "InfoPanel.Extras")];
         internal void FindPlugins()
         {
             UnzipPluginArchives();

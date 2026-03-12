@@ -17,6 +17,11 @@ namespace InfoPanel.Plugins.Host
         private CancellationTokenSource? _updateCts;
         private Task? _updateTask;
 
+        /// <summary>
+        /// Called after plugin shutdown completes to signal the host process to exit gracefully.
+        /// </summary>
+        public Action? OnShutdownRequested { get; set; }
+
         public HostService(string pluginPath)
         {
             _pluginPath = pluginPath;
@@ -158,33 +163,64 @@ namespace InfoPanel.Plugins.Host
         {
             if (value is JToken jt)
             {
-                return type switch
+                try
                 {
-                    PluginConfigType.Boolean => jt.Type == JTokenType.Boolean ? jt.Value<bool>() : value,
-                    PluginConfigType.Integer => jt.Type == JTokenType.Integer ? jt.Value<int>()
-                                              : jt.Type == JTokenType.Float ? (int)Math.Round(jt.Value<double>())
-                                              : int.TryParse(jt.ToString(), out var i) ? i : value,
-                    PluginConfigType.Double => jt.Type == JTokenType.Float || jt.Type == JTokenType.Integer
-                                              ? jt.Value<double>()
-                                              : double.TryParse(jt.ToString(), System.Globalization.NumberStyles.Float,
-                                                  System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : value,
-                    PluginConfigType.String => jt.ToString(),
-                    PluginConfigType.Choice => jt.ToString(),
-                    _ => value
-                };
+                    return type switch
+                    {
+                        PluginConfigType.Boolean => jt.Type == JTokenType.Boolean ? jt.Value<bool>()
+                                                  : bool.TryParse(jt.ToString(), out var b) ? b : false,
+                        PluginConfigType.Integer => jt.Type == JTokenType.Integer ? jt.Value<int>()
+                                                  : jt.Type == JTokenType.Float ? (int)Math.Round(jt.Value<double>())
+                                                  : int.TryParse(jt.ToString(), out var i) ? i : 0,
+                        PluginConfigType.Double => jt.Type == JTokenType.Float || jt.Type == JTokenType.Integer
+                                                  ? jt.Value<double>()
+                                                  : double.TryParse(jt.ToString(), System.Globalization.NumberStyles.Float,
+                                                      System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0.0,
+                        PluginConfigType.String => jt.ToString(),
+                        PluginConfigType.Choice => jt.ToString(),
+                        _ => jt.ToString()
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Failed to coerce JToken value {Value} to {Type}, returning default", jt, type);
+                    return type switch
+                    {
+                        PluginConfigType.Boolean => false,
+                        PluginConfigType.Integer => 0,
+                        PluginConfigType.Double => 0.0,
+                        _ => jt.ToString()
+                    };
+                }
             }
 
             // StreamJsonRpc deserializes JSON integers as Int64 (long) and floats as double.
             // Coerce raw CLR values to the types plugins expect.
-            return type switch
+            try
             {
-                PluginConfigType.Boolean => value is bool ? value : Convert.ToBoolean(value),
-                PluginConfigType.Integer => value is int ? value : Convert.ToInt32(value),
-                PluginConfigType.Double => value is double ? value : Convert.ToDouble(value),
-                PluginConfigType.String => value?.ToString(),
-                PluginConfigType.Choice => value?.ToString(),
-                _ => value
-            };
+                return type switch
+                {
+                    PluginConfigType.Boolean => value is bool ? value : Convert.ToBoolean(value),
+                    PluginConfigType.Integer => value is int ? value : Convert.ToInt32(value),
+                    PluginConfigType.Double => value is double ? value : Convert.ToDouble(value),
+                    PluginConfigType.String => value?.ToString(),
+                    PluginConfigType.Choice => value?.ToString(),
+                    _ => value
+                };
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to coerce CLR value {Value} to {Type}, returning default", value, type);
+                return type switch
+                {
+                    PluginConfigType.Boolean => false,
+                    PluginConfigType.Integer => 0,
+                    PluginConfigType.Double => 0.0,
+                    PluginConfigType.String => value?.ToString(),
+                    PluginConfigType.Choice => value?.ToString(),
+                    _ => value
+                };
+            }
         }
 
         public Task InvokeActionAsync(string pluginId, string methodName)
@@ -198,8 +234,18 @@ namespace InfoPanel.Plugins.Host
 
             try
             {
-                var method = wrapper.Plugin.GetType().GetMethod(methodName);
-                method?.Invoke(wrapper.Plugin, null);
+                var method = wrapper.Plugin.GetType().GetMethod(methodName, Type.EmptyTypes);
+                if (method == null)
+                {
+                    Logger.Warning("Action method {MethodName} not found on plugin {PluginId}", methodName, pluginId);
+                    return Task.CompletedTask;
+                }
+                method.Invoke(wrapper.Plugin, null);
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                Logger.Error(ex.InnerException, "Error invoking action {MethodName} on plugin {PluginId}", methodName, pluginId);
+                NotifyError(pluginId, $"Action '{methodName}' failed: {ex.InnerException.Message}");
             }
             catch (Exception ex)
             {
@@ -236,12 +282,9 @@ namespace InfoPanel.Plugins.Host
                 }
             }
 
-            // Give time for the shutdown response to be sent before exiting
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(500);
-                Environment.Exit(0);
-            });
+            // Signal the host process to exit gracefully by disposing the JsonRpc connection.
+            // This causes jsonRpc.Completion in Program.cs to complete naturally.
+            OnShutdownRequested?.Invoke();
         }
 
         private async Task UpdateLoopAsync(CancellationToken token)
@@ -261,7 +304,10 @@ namespace InfoPanel.Plugins.Host
                             {
                                 wrapper.Update();
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                Logger.Warning(ex, "Error updating plugin {PluginName}", wrapper.Name);
+                            }
                         }
                     }
 
@@ -337,61 +383,7 @@ namespace InfoPanel.Plugins.Host
             else if (entry is IPluginTable table)
             {
                 dto.Type = "table";
-                dto.TableValue = ConvertTableToDto(table);
-            }
-
-            return dto;
-        }
-
-        private static TableValueDto ConvertTableToDto(IPluginTable table)
-        {
-            var dto = new TableValueDto
-            {
-                DefaultFormat = table.DefaultFormat,
-                Columns = [],
-                Rows = []
-            };
-
-            var dt = table.Value;
-            foreach (System.Data.DataColumn col in dt.Columns)
-            {
-                dto.Columns.Add(col.ColumnName);
-            }
-
-            foreach (System.Data.DataRow row in dt.Rows)
-            {
-                var rowCells = new List<TableCellDto>();
-                for (int i = 0; i < dt.Columns.Count; i++)
-                {
-                    var cell = new TableCellDto();
-                    var value = row[i];
-                    if (value is IPluginSensor cellSensor)
-                    {
-                        cell.Type = "sensor";
-                        cell.SensorName = cellSensor.Name;
-                        cell.SensorUnit = cellSensor.Unit;
-                        cell.SensorValue = new SensorValueDto
-                        {
-                            Value = cellSensor.Value,
-                            ValueMin = cellSensor.ValueMin,
-                            ValueMax = cellSensor.ValueMax,
-                            ValueAvg = cellSensor.ValueAvg,
-                            Unit = cellSensor.Unit
-                        };
-                    }
-                    else if (value is IPluginText cellText)
-                    {
-                        cell.Type = "text";
-                        cell.TextValue = cellText.Value;
-                    }
-                    else
-                    {
-                        cell.Type = "text";
-                        cell.TextValue = value?.ToString() ?? "";
-                    }
-                    rowCells.Add(cell);
-                }
-                dto.Rows.Add(rowCells);
+                dto.TableValue = TableDtoConverter.ConvertTableToDto(table);
             }
 
             return dto;

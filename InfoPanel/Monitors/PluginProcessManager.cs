@@ -24,6 +24,7 @@ namespace InfoPanel.Monitors
         private readonly ConcurrentDictionary<string, PluginHostConnection> _connections = new();
         private readonly ConcurrentDictionary<string, int> _retryCounts = new();
         private readonly ConcurrentDictionary<string, DateTime> _retryWindows = new();
+        private readonly ConcurrentDictionary<string, bool> _restarting = new();
 
         private const int MaxRetries = 3;
         private static readonly TimeSpan RetryWindow = TimeSpan.FromSeconds(60);
@@ -70,26 +71,25 @@ namespace InfoPanel.Monitors
 
         public async Task StopAllAsync()
         {
-            var tasks = new List<Task>();
-            foreach (var kvp in _connections)
+            // Snapshot and clear immediately to prevent new operations on stale connections
+            var snapshot = _connections.ToArray();
+            _connections.Clear();
+
+            var tasks = snapshot.Select(kvp => Task.Run(async () =>
             {
-                tasks.Add(Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        await kvp.Value.StopAsync();
-                    }
-                    finally
-                    {
-                        kvp.Value.Dispose();
-                    }
-                }));
-            }
+                    await kvp.Value.StopAsync();
+                }
+                finally
+                {
+                    kvp.Value.Dispose();
+                }
+            }));
 
             // Cap total shutdown time so the app exits promptly.
             // The job object will kill any remaining child processes.
             await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(TimeSpan.FromSeconds(2)));
-            _connections.Clear();
         }
 
         public void Dispose()
@@ -138,6 +138,13 @@ namespace InfoPanel.Monitors
                 return;
             }
 
+            // Guard against concurrent restart attempts for the same plugin
+            if (!_restarting.TryAdd(descriptor.FilePath, true))
+            {
+                Logger.Debug("Restart already in progress for {PluginPath}, skipping", descriptor.FilePath);
+                return;
+            }
+
             Logger.Warning("Host disconnected unexpectedly for {PluginPath}, checking retry policy", descriptor.FilePath);
 
             // Clean up SENSORHASH entries for this plugin
@@ -157,6 +164,7 @@ namespace InfoPanel.Monitors
             {
                 Logger.Error("Max retries ({MaxRetries}) exceeded for {PluginPath}, not restarting",
                     MaxRetries, descriptor.FilePath);
+                _restarting.TryRemove(descriptor.FilePath, out _);
                 return;
             }
 
@@ -165,9 +173,10 @@ namespace InfoPanel.Monitors
             // Schedule restart
             _ = Task.Run(async () =>
             {
-                await Task.Delay(2000); // Brief delay before restart
                 try
                 {
+                    await Task.Delay(2000); // Brief delay before restart
+
                     Logger.Information("Auto-restarting plugin host for {PluginPath} (attempt {Attempt}/{Max})",
                         descriptor.FilePath, retryCount + 1, MaxRetries);
 
@@ -183,6 +192,10 @@ namespace InfoPanel.Monitors
                 catch (Exception ex)
                 {
                     Logger.Error(ex, "Failed to auto-restart plugin host for {PluginPath}", descriptor.FilePath);
+                }
+                finally
+                {
+                    _restarting.TryRemove(descriptor.FilePath, out _);
                 }
             });
         }

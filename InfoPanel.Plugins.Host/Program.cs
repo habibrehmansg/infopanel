@@ -35,10 +35,13 @@ rootCommand.SetHandler(async (string pipeName, string pluginPath) =>
 
         var hostService = new HostService(pluginPath);
 
-        using var jsonRpc = JsonRpc.Attach(pipeStream, hostService);
+        using var jsonRpc = new JsonRpc(pipeStream, pipeStream);
+        jsonRpc.AddLocalRpcTarget(hostService);
         hostService.SetJsonRpc(jsonRpc);
+        hostService.OnShutdownRequested = () => jsonRpc.Dispose();
+        jsonRpc.StartListening();
 
-        Log.Information("JSON-RPC attached, waiting for requests...");
+        Log.Information("JSON-RPC started, waiting for requests...");
         await jsonRpc.Completion;
     }
     catch (Exception ex)

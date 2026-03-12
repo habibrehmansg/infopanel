@@ -197,7 +197,7 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-		<PackageReference Include="AsyncKeyedLock" Version="8.0.0" />
+		<PackageReference Include="AsyncKeyedLock" Version="8.0.2" />
 		<PackageReference Include="AutoMapper" Version="14.0.0" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
 		<PackageReference Include="StreamJsonRpc" Version="2.19.27" />
@@ -231,6 +231,7 @@
 		<PackageReference Include="Topten.RichTextKit" Version="0.4.167" />
 		<PackageReference Include="WPF-UI" Version="3.1.1" />
 		<PackageReference Include="WPF-UI.Tray" Version="3.1.1" />
+		<PackageReference Include="System.Threading.Tasks.Extensions" Version="4.6.3" />
 	</ItemGroup>
 
 	<ItemGroup>

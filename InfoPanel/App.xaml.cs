@@ -214,9 +214,10 @@ namespace InfoPanel
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
 
             Process proc = Process.GetCurrentProcess();
+            var pluginHostIds = GetPluginHostProcessIds();
             var otherInstances = Process.GetProcesses()
                 .Where(p => p.ProcessName == proc.ProcessName && p.Id != proc.Id)
-                .Where(p => !IsPluginHostProcess(p))
+                .Where(p => !pluginHostIds.Contains(p.Id))
                 .ToList();
 
             if (otherInstances.Count > 0)
@@ -474,26 +475,28 @@ namespace InfoPanel
             }
         }
 
-        private static bool IsPluginHostProcess(Process process)
+        private static HashSet<int> GetPluginHostProcessIds()
         {
+            var ids = new HashSet<int>();
             try
             {
+                var currentName = Process.GetCurrentProcess().ProcessName;
                 using var searcher = new ManagementObjectSearcher(
-                    $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {process.Id}");
+                    $"SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = '{currentName}.exe'");
                 foreach (var obj in searcher.Get())
                 {
-                    var commandLine = obj["CommandLine"]?.ToString();
-                    if (commandLine != null && commandLine.Contains("--plugin-host"))
+                    var cmd = obj["CommandLine"]?.ToString();
+                    if (cmd != null && cmd.Contains("--plugin-host"))
                     {
-                        return true;
+                        ids.Add(Convert.ToInt32(obj["ProcessId"]));
                     }
                 }
             }
             catch
             {
-                // If we can't read the command line, assume it's not a plugin host
+                // If WMI fails, return empty set — no processes will be excluded
             }
-            return false;
+            return ids;
         }
 
         public static async Task CleanShutDown()
