@@ -1,4 +1,4 @@
-﻿using FlyleafLib;
+using FlyleafLib;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
@@ -203,6 +203,7 @@ namespace InfoPanel
         protected override void OnExit(ExitEventArgs e)
         {
             Logger.Information("Application exiting");
+            ConfigModel.Instance.Cleanup();
             Log.CloseAndFlush();
             base.OnExit(e);
         }

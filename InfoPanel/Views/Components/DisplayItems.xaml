@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="InfoPanel.Views.Components.DisplayItems"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -371,12 +371,27 @@
                     Content="Save"
                     ToolTip="Make your changes permanent" />
                 <ui:Button
-                    x:Name="ButtonReload"
+                    x:Name="ButtonUndo"
                     Margin="10,0,0,0"
-                    Appearance="Danger"
-                    Click="ButtonReload_Click"
+                    Click="ButtonUndo_Click"
                     Content=""
                     Icon="{ui:SymbolIcon ArrowUndo20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=CanUndo}"
+                    ToolTip="Undo" />
+                <ui:Button
+                    x:Name="ButtonRedo"
+                    Margin="5,0,0,0"
+                    Click="ButtonRedo_Click"
+                    Content=""
+                    Icon="{ui:SymbolIcon ArrowRedo20}"
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=CanRedo}"
+                    ToolTip="Redo" />
+                <ui:Button
+                    x:Name="ButtonReload"
+                    Margin="5,0,0,0"
+                    Appearance="Danger"
+                    Click="ButtonReload_Click"
+                    Content="Reload from disk"
                     ToolTip="Discard all changes and reload from disk" />
             </StackPanel>
         </Grid>

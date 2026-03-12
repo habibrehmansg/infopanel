@@ -1,4 +1,4 @@
-﻿using GongSolutions.Wpf.DragDrop;
+using GongSolutions.Wpf.DragDrop;
 using InfoPanel.Models;
 using Serilog;
 using System;
@@ -292,6 +292,18 @@ namespace InfoPanel.Views.Components
             {
                 SharedModel.Instance.RemoveDisplayItem(SelectedItem);
             }
+        }
+
+        private void ButtonUndo_Click(object sender, RoutedEventArgs e)
+        {
+            SharedModel.Instance.Undo();
+            _displayItemsViewSource?.View?.Refresh();
+        }
+
+        private void ButtonRedo_Click(object sender, RoutedEventArgs e)
+        {
+            SharedModel.Instance.Redo();
+            _displayItemsViewSource?.View?.Refresh();
         }
 
         private async void ButtonReload_Click(object sender, RoutedEventArgs e)
@@ -710,6 +722,14 @@ namespace InfoPanel.Views.Components
                     return;
                 }
 
+                // Push undo snapshot before any drop mutation
+                if (SharedModel.Instance.SelectedProfile is Profile profile)
+                {
+                    var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile);
+                    if (copy.Count > 0)
+                        InfoPanel.Services.UndoManager.Instance.PushUndo(profile, copy.ToList());
+                }
+
                 // Get parent groups
                 var sourceParent = SharedModel.Instance.GetParent(sourceItem);
                 var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
@@ -721,6 +741,8 @@ namespace InfoPanel.Views.Components
                     if (targetParentGroup == sourceGroup)
                     {
                         dropHandler.Drop(dropInfo);
+                        SharedModel.Instance.UpdateLastStateSnapshot();
+                        SharedModel.Instance.MarkDirty();
                         return;
                     }
 
@@ -769,12 +791,16 @@ namespace InfoPanel.Views.Components
                         // Move the item into the group
                         SharedModel.Instance.RemoveDisplayItem(sourceItem);
                         groupItem.DisplayItems.Add(sourceItem);
+                        SharedModel.Instance.UpdateLastStateSnapshot();
+                        SharedModel.Instance.MarkDirty();
                         return;
                     }
                 }
 
                 // Use the default drop handler for all other cases
                 dropHandler.Drop(dropInfo);
+                SharedModel.Instance.UpdateLastStateSnapshot();
+                SharedModel.Instance.MarkDirty();
             }
         }
     }

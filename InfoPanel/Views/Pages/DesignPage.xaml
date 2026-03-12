@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     x:Class="InfoPanel.Views.Pages.DesignPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -387,7 +387,7 @@
                                                         All updates are live not auto-saved.<LineBreak /><LineBreak />
                                                         <Bold>2.</Bold> <Bold Foreground="Orange">Remember to save your changes.</Bold>
                                                         <LineBreak /><LineBreak />
-                                                        <Bold>3.</Bold> <Bold Foreground="IndianRed">Pressing the revert button will revert to your last saved state.</Bold>
+                                                        <Bold>3.</Bold> <Bold Foreground="IndianRed">Undo/Redo revert design steps. Reload from disk resets to the last saved file.</Bold>
                                                         <LineBreak /><LineBreak />
                                                         <Bold>4.</Bold>
                                                         Panel items are drawn over one another in order from top to bottom. Put your background first!<LineBreak /><LineBreak />

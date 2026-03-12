@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using Microsoft.Win32;
@@ -44,6 +44,8 @@ namespace InfoPanel
         private Timer? _saveDebounceTimer;
         private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
         private const int SaveDebounceDelayMs = 500;
+
+        private DispatcherTimer? _autosaveTimer;
 
         private ConfigModel()
         {
@@ -220,6 +222,10 @@ namespace InfoPanel
                 {
                     await WebServerTask.Instance.StopAsync();
                 }
+            }
+            else if (e.PropertyName == nameof(Settings.AutosaveEnabled) || e.PropertyName == nameof(Settings.AutosaveIntervalSeconds))
+            {
+                RestartAutosaveTimer();
             }
             else if (e.PropertyName == nameof(Settings.BeadaPanelMultiDeviceMode))
             {
@@ -407,6 +413,8 @@ namespace InfoPanel
                             Settings.TargetFrameRate = settings.TargetFrameRate;
                             Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
                             Settings.Version = settings.Version;
+                            Settings.AutosaveEnabled = settings.AutosaveEnabled;
+                            Settings.AutosaveIntervalSeconds = settings.AutosaveIntervalSeconds;
 
                             // Load BeadaPanel multi-device settings
                             Settings.BeadaPanelMultiDeviceMode = settings.BeadaPanelMultiDeviceMode;
@@ -657,11 +665,38 @@ namespace InfoPanel
             }
         }
 
+        private void StartAutosaveTimer()
+        {
+            _autosaveTimer?.Stop();
+            _autosaveTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(Math.Max(1, Settings.AutosaveIntervalSeconds))
+            };
+            _autosaveTimer.Tick += async (s, e) =>
+            {
+                if (Settings.AutosaveEnabled && SharedModel.Instance.IsDirty)
+                {
+                    ConfigModel.Instance.SaveProfiles();
+                    SharedModel.Instance.SaveDisplayItems();
+                    SharedModel.Instance.ClearDirty();
+                }
+            };
+            _autosaveTimer.Start();
+        }
+
+        private void RestartAutosaveTimer()
+        {
+            StartAutosaveTimer();
+        }
+
         /// <summary>
         /// Cleanup resources when application shuts down
         /// </summary>
         public void Cleanup()
         {
+            _autosaveTimer?.Stop();
+            _autosaveTimer = null;
+
             // Dispose the debounce timer
             _saveDebounceTimer?.Dispose();
             _saveDebounceTimer = null;
