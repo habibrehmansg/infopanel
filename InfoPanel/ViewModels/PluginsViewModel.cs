@@ -119,7 +119,7 @@ namespace InfoPanel.ViewModels
 
     public partial class PluginModuleViewModel : ObservableObject
     {
-        private readonly RemotePluginWrapper _wrapper;
+        private RemotePluginWrapper _wrapper;
         private readonly PluginDescriptor _pluginDescriptor;
         public string Id { get; set; }
 
@@ -143,6 +143,17 @@ namespace InfoPanel.ViewModels
         public async Task Reload()
         {
             await PluginMonitor.Instance.ReloadPluginModule(_pluginDescriptor);
+
+            // The old wrapper is now stale — grab the new one created by StartPluginModulesAsync
+            if (PluginMonitor.Instance.RemoteWrappers.TryGetValue(_pluginDescriptor.FilePath, out var wrappers))
+            {
+                var newWrapper = wrappers.FirstOrDefault(w => w.Id == Id);
+                if (newWrapper != null)
+                {
+                    _wrapper = newWrapper;
+                }
+            }
+
             RefreshConfigProperties();
         }
 
@@ -189,8 +200,14 @@ namespace InfoPanel.ViewModels
             ConfigLoaded = HasConfigProperties;
         }
 
-        public void Refresh()
+        internal void Refresh(RemotePluginWrapper? newWrapper = null)
         {
+            if (newWrapper != null && newWrapper != _wrapper)
+            {
+                _wrapper = newWrapper;
+                _configLoaded = false;
+            }
+
             Id = _wrapper.Id;
             Name = _wrapper.Name;
             Description = _wrapper.Description;
@@ -584,7 +601,7 @@ namespace InfoPanel.ViewModels
                     var plugin = Plugins.SingleOrDefault(x => x.Id == wrapper.Id);
                     if (plugin != null)
                     {
-                        plugin.Refresh();
+                        plugin.Refresh(wrapper);
                     }
                     else
                     {
