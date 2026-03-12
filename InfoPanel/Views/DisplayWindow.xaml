@@ -10,6 +10,8 @@
     Title="DisplayWindow"
     Width="{Binding Profile.Width, Mode=OneWay}"
     Height="{Binding Profile.Height, Mode=OneWay}"
+    MaxWidth="10000"
+    MaxHeight="10000"
     Background="Transparent"
     DataContext="{Binding RelativeSource={RelativeSource self}}"
     KeyUp="Window_KeyUp"

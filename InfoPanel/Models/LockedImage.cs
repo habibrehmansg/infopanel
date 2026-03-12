@@ -146,6 +146,8 @@ namespace InfoPanel.Models
                         _backgroundVideoPlayer.Audio.Volume = 0; // Start muted
                         _backgroundVideoPlayer.Open(ImagePath);
 
+                        Thread.Sleep(50);
+
                         Width = _backgroundVideoPlayer.Video.Width;
                         Height = _backgroundVideoPlayer.Video.Height;
                         Frames = _backgroundVideoPlayer.Video.FramesTotal;
