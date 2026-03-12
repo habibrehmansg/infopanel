@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using InfoPanel.Monitors.PluginProxies;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Ipc;
+using InfoPanel.Utils;
 using Serilog;
 using StreamJsonRpc;
 
@@ -24,6 +25,7 @@ namespace InfoPanel.Monitors
 
         private readonly string _pluginDllPath;
         private readonly string _pipeName;
+        private readonly JobObject? _jobObject;
 
         private Process? _hostProcess;
         private NamedPipeServerStream? _pipeServer;
@@ -48,10 +50,11 @@ namespace InfoPanel.Monitors
         public event Action? OnDisconnected;
         public event Action<string, string>? OnError;
 
-        public PluginHostConnection(string pluginDllPath)
+        public PluginHostConnection(string pluginDllPath, JobObject? jobObject = null)
         {
             _pluginDllPath = pluginDllPath;
             _pipeName = $"InfoPanel.Plugin.{Guid.NewGuid():N}";
+            _jobObject = jobObject;
         }
 
         public async Task<List<PluginMetadataDto>> StartAsync(CancellationToken token = default)
@@ -69,30 +72,37 @@ namespace InfoPanel.Monitors
                 throw new FileNotFoundException($"Plugin host executable not found: {hostExePath}");
             }
 
-            var parentPid = Environment.ProcessId;
+            var arguments = $"--plugin-host --pipe \"{_pipeName}\" --plugin \"{_pluginDllPath}\"";
 
-            _hostProcess = new Process
+            Logger.Information("Starting plugin host for {PluginPath} on pipe {PipeName}", _pluginDllPath, _pipeName);
+
+            if (_jobObject != null)
             {
-                StartInfo = new ProcessStartInfo
+                _hostProcess = _jobObject.CreateChildProcess(hostExePath, arguments);
+            }
+            else
+            {
+                _hostProcess = new Process
                 {
-                    FileName = hostExePath,
-                    Arguments = $"--pipe \"{_pipeName}\" --plugin \"{_pluginDllPath}\" --parent-pid {parentPid}",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                },
-                EnableRaisingEvents = true
-            };
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = hostExePath,
+                        Arguments = arguments,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    },
+                };
+                _hostProcess.Start();
+            }
 
+            _hostProcess.EnableRaisingEvents = true;
             _hostProcess.Exited += (_, _) =>
             {
                 Logger.Warning("Plugin host process exited for {PluginPath}", _pluginDllPath);
                 RaiseDisconnectedOnce();
             };
-
-            Logger.Information("Starting plugin host for {PluginPath} on pipe {PipeName}", _pluginDllPath, _pipeName);
-            _hostProcess.Start();
 
             // Wait for host to connect
             using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -404,7 +414,7 @@ namespace InfoPanel.Monitors
 
         private static string GetHostExePath()
         {
-            return Path.Combine(AppContext.BaseDirectory, "tools", "InfoPanel.Plugins.Host.exe");
+            return Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "InfoPanel.exe");
         }
 
         public void Dispose()

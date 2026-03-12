@@ -18,6 +18,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Management;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -215,6 +216,7 @@ namespace InfoPanel
             Process proc = Process.GetCurrentProcess();
             var otherInstances = Process.GetProcesses()
                 .Where(p => p.ProcessName == proc.ProcessName && p.Id != proc.Id)
+                .Where(p => !IsPluginHostProcess(p))
                 .ToList();
 
             if (otherInstances.Count > 0)
@@ -470,6 +472,28 @@ namespace InfoPanel
             {
                 Logger.Error(ex, "Error checking or installing PawniO");
             }
+        }
+
+        private static bool IsPluginHostProcess(Process process)
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher(
+                    $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {process.Id}");
+                foreach (var obj in searcher.Get())
+                {
+                    var commandLine = obj["CommandLine"]?.ToString();
+                    if (commandLine != null && commandLine.Contains("--plugin-host"))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // If we can't read the command line, assume it's not a plugin host
+            }
+            return false;
         }
 
         public static async Task CleanShutDown()

@@ -8,6 +8,7 @@ using InfoPanel.Monitors.PluginProxies;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
+using InfoPanel.Utils;
 using Serilog;
 
 namespace InfoPanel.Monitors
@@ -15,10 +16,11 @@ namespace InfoPanel.Monitors
     /// <summary>
     /// Manages all plugin host process connections.
     /// </summary>
-    internal class PluginProcessManager
+    internal class PluginProcessManager : IDisposable
     {
         private static readonly ILogger Logger = Log.ForContext<PluginProcessManager>();
 
+        private readonly JobObject _jobObject = new();
         private readonly ConcurrentDictionary<string, PluginHostConnection> _connections = new();
         private readonly ConcurrentDictionary<string, int> _retryCounts = new();
         private readonly ConcurrentDictionary<string, DateTime> _retryWindows = new();
@@ -28,7 +30,7 @@ namespace InfoPanel.Monitors
 
         public async Task<PluginHostConnection> LaunchHostAsync(PluginDescriptor descriptor, CancellationToken token = default)
         {
-            var connection = new PluginHostConnection(descriptor.FilePath);
+            var connection = new PluginHostConnection(descriptor.FilePath, _jobObject);
 
             connection.OnDisconnected += () => OnHostDisconnected(descriptor);
 
@@ -83,8 +85,16 @@ namespace InfoPanel.Monitors
                     }
                 }));
             }
-            await Task.WhenAll(tasks);
+
+            // Cap total shutdown time so the app exits promptly.
+            // The job object will kill any remaining child processes.
+            await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(TimeSpan.FromSeconds(2)));
             _connections.Clear();
+        }
+
+        public void Dispose()
+        {
+            _jobObject.Dispose();
         }
 
         public PluginHostConnection? GetConnection(string filePath)

@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.Diagnostics;
 using System.IO.Pipes;
 using InfoPanel.Plugins.Host;
 using Serilog;
@@ -7,14 +6,12 @@ using StreamJsonRpc;
 
 var pipeOption = new Option<string>("--pipe", "Named pipe name") { IsRequired = true };
 var pluginOption = new Option<string>("--plugin", "Path to plugin DLL") { IsRequired = true };
-var parentPidOption = new Option<int>("--parent-pid", "Parent process ID for watchdog") { IsRequired = true };
 
 var rootCommand = new RootCommand("InfoPanel Plugin Host Process");
 rootCommand.AddOption(pipeOption);
 rootCommand.AddOption(pluginOption);
-rootCommand.AddOption(parentPidOption);
 
-rootCommand.SetHandler(async (string pipeName, string pluginPath, int parentPid) =>
+rootCommand.SetHandler(async (string pipeName, string pluginPath) =>
 {
     var logPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -27,23 +24,6 @@ rootCommand.SetHandler(async (string pipeName, string pluginPath, int parentPid)
         .CreateLogger();
 
     Log.Information("Plugin host starting for {PluginPath} on pipe {PipeName}", pluginPath, pipeName);
-
-    // Parent process watchdog
-    _ = Task.Run(async () =>
-    {
-        try
-        {
-            var parentProcess = Process.GetProcessById(parentPid);
-            await parentProcess.WaitForExitAsync();
-            Log.Warning("Parent process {Pid} exited, shutting down", parentPid);
-            Environment.Exit(0);
-        }
-        catch (ArgumentException)
-        {
-            Log.Warning("Parent process {Pid} not found, shutting down", parentPid);
-            Environment.Exit(0);
-        }
-    });
 
     using var pipeStream = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
 
@@ -70,6 +50,6 @@ rootCommand.SetHandler(async (string pipeName, string pluginPath, int parentPid)
         Log.Information("Plugin host shutting down");
         Log.CloseAndFlush();
     }
-}, pipeOption, pluginOption, parentPidOption);
+}, pipeOption, pluginOption);
 
 return await rootCommand.InvokeAsync(args);

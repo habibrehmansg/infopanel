@@ -16,6 +16,7 @@
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
 		<DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+		<StartupObject>InfoPanel.Program</StartupObject>
 	</PropertyGroup>
 
 	<!-- Build InfoPanel.Extras and get its output path -->
@@ -58,44 +59,8 @@
 
 	<Target Name="CleanPluginsDirectory" BeforeTargets="Clean">
 		<RemoveDir Directories="$(OutputPath)\plugins" />
-		<RemoveDir Directories="$(OutputPath)\tools" />
 	</Target>
 
-	<!-- Build InfoPanel.Plugins.Host and get its output path -->
-	<Target Name="BuildPluginHost" BeforeTargets="Build">
-		<MSBuild Projects="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=$(Platform)" />
-		<MSBuild Projects="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration);Platform=$(Platform)">
-			<Output TaskParameter="TargetOutputs" PropertyName="_PluginHostAssemblyPath" />
-		</MSBuild>
-		<PropertyGroup>
-			<PluginHostOutputDir>$([System.IO.Path]::GetDirectoryName('$(_PluginHostAssemblyPath)'))</PluginHostOutputDir>
-		</PropertyGroup>
-		<Message Text="InfoPanel.Plugins.Host output directory: $(PluginHostOutputDir)" Importance="High" />
-	</Target>
-
-	<!-- Copy InfoPanel.Plugins.Host to build output tools dir -->
-	<Target Name="CopyPluginHostToBuildOutput" AfterTargets="BuildPluginHost">
-		<MakeDir Directories="$(OutputPath)\tools" />
-		<ItemGroup>
-			<PluginHostFiles Include="$(PluginHostOutputDir)\**\*.*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(PluginHostFiles)" DestinationFolder="$(OutputPath)\tools" SkipUnchangedFiles="true" />
-	</Target>
-
-	<!-- Copy InfoPanel.Plugins.Host to publish dir -->
-	<Target Name="CopyPluginHostToPublishOutput" AfterTargets="Publish">
-		<MSBuild Projects="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration);Platform=$(Platform)">
-			<Output TaskParameter="TargetOutputs" PropertyName="_PluginHostAssemblyPath" />
-		</MSBuild>
-		<PropertyGroup>
-			<PluginHostOutputDir>$([System.IO.Path]::GetDirectoryName('$(_PluginHostAssemblyPath)'))</PluginHostOutputDir>
-		</PropertyGroup>
-		<MakeDir Directories="$(PublishDir)\tools" />
-		<ItemGroup>
-			<PluginHostFiles Include="$(PluginHostOutputDir)\**\*.*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(PluginHostFiles)" DestinationFolder="$(PublishDir)\tools" SkipUnchangedFiles="true" />
-	</Target>
 
 	<Target Name="Sign" AfterTargets="Publish">
 		 <!--<Exec WorkingDirectory="$(PublishDir)" Command="&quot;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe&quot; sign /a /t http://timestamp.sectigo.com /fd SHA256 /d &quot;InfoPanel&quot; /v InfoPanel.exe" />--> 
@@ -260,6 +225,7 @@
 		<PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.1" />
 		<PackageReference Include="Svg.Skia" Version="3.2.1" />
 		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.3" />
+		<PackageReference Include="System.Management" Version="10.0.3" />
 		<PackageReference Include="System.IO.Ports" Version="10.0.3" />
 		<PackageReference Include="TaskScheduler" Version="2.12.2" />
 		<PackageReference Include="Topten.RichTextKit" Version="0.4.167" />
@@ -270,6 +236,7 @@
 	<ItemGroup>
 	  <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Ipc\InfoPanel.Plugins.Ipc.csproj" />
+	  <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
 	</ItemGroup>
 	
 	<ItemGroup>

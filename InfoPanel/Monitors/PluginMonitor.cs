@@ -134,6 +134,7 @@ namespace InfoPanel.Monitors
             finally
             {
                 await ProcessManager.StopAllAsync();
+                ProcessManager.Dispose();
             }
         }
 
