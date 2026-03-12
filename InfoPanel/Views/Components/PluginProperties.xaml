@@ -170,7 +170,8 @@
                                 VerticalAlignment="Center"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                Text="{Binding Description}" />
+                                Text="{Binding Description}"
+                                TextWrapping="Wrap" />
 
                             <ui:HyperlinkButton
                                 Margin="0,5,0,0"
@@ -184,6 +185,68 @@
                             </ui:HyperlinkButton>
                         </StackPanel>
 
+
+                        <StackPanel
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Margin="0,0,20,0"
+                            Visibility="{Binding ShowMetrics, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border
+                                Width="120"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="8,4">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Symbol="TopSpeed20" />
+                                    <TextBlock
+                                        Margin="5,0,0,0"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="CPU" />
+                                    <TextBlock
+                                        Margin="6,0,0,0"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        FontWeight="Medium"
+                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                        Text="{Binding CpuUsage, StringFormat='{}{0:F1}%'}" />
+                                </StackPanel>
+                            </Border>
+                            <Border
+                                Width="120"
+                                Margin="0,4,0,0"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="8,4">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Symbol="Memory16" />
+                                    <TextBlock
+                                        Margin="5,0,0,0"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="MEM" />
+                                    <TextBlock
+                                        Margin="6,0,0,0"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        FontWeight="Medium"
+                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                        Text="{Binding MemoryUsage}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
 
                         <ui:ToggleSwitch
                             Grid.Column="2"
@@ -199,7 +262,8 @@
             <ItemsControl
                 Margin="0,0,0,0"
                 d:ItemsSource="{Binding Plugins}"
-                ItemsSource="{Binding Plugins}">
+                ItemsSource="{Binding Plugins}"
+                Visibility="{Binding Activated, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <ui:CardExpander Margin="0,10,0,0" IsExpanded="{Binding HasConfigProperties, Mode=OneTime}">

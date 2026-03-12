@@ -1,11 +1,12 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Extensions;
-using Serilog;
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
+using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -16,7 +17,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Threading;
-using Serilog;
+using Newtonsoft.Json.Linq;
 
 namespace InfoPanel.ViewModels
 {
@@ -86,7 +87,7 @@ namespace InfoPanel.ViewModels
             }
         }
 
-       
+
         [RelayCommand]
         public void AddPluginFromZip()
         {
@@ -118,7 +119,8 @@ namespace InfoPanel.ViewModels
 
     public partial class PluginModuleViewModel : ObservableObject
     {
-        private PluginWrapper _wrapper;
+        private RemotePluginWrapper _wrapper;
+        private readonly PluginDescriptor _pluginDescriptor;
         public string Id { get; set; }
 
         [ObservableProperty]
@@ -140,27 +142,35 @@ namespace InfoPanel.ViewModels
         [RelayCommand]
         public async Task Reload()
         {
-            await PluginMonitor.Instance.ReloadPluginModule(_wrapper);
+            await PluginMonitor.Instance.ReloadPluginModule(_pluginDescriptor);
+
+            // The old wrapper is now stale — grab the new one created by StartPluginModulesAsync
+            if (PluginMonitor.Instance.RemoteWrappers.TryGetValue(_pluginDescriptor.FilePath, out var wrappers))
+            {
+                var newWrapper = wrappers.FirstOrDefault(w => w.Id == Id);
+                if (newWrapper != null)
+                {
+                    _wrapper = newWrapper;
+                }
+            }
+
             RefreshConfigProperties();
         }
 
-        public PluginModuleViewModel(PluginWrapper wrapper)
+        internal PluginModuleViewModel(RemotePluginWrapper wrapper, PluginDescriptor pluginDescriptor)
         {
             _wrapper = wrapper;
+            _pluginDescriptor = pluginDescriptor;
             Id = wrapper.Id;
             Name = wrapper.Name;
             Description = wrapper.Description;
             ConfigFilePath = wrapper.ConfigFilePath;
 
-            var methods = wrapper.Plugin.GetType().GetMethods().Where(m => m.GetCustomAttributes(typeof(PluginActionAttribute), false).Length > 0);
-
-            foreach (var method in methods)
+            foreach (var action in wrapper.Actions)
             {
-                var attribute = (PluginActionAttribute)method.GetCustomAttributes(typeof(PluginActionAttribute), false).First();
-                string displayName = attribute.DisplayName;
-
-                var command = new RelayCommand(() => method.Invoke(wrapper.Plugin, null));
-                Actions.Add(new PluginActionCommand { DisplayName = displayName, Command = command });
+                var methodName = action.MethodName;
+                var command = new RelayCommand(() => _ = wrapper.InvokeActionAsync(methodName));
+                Actions.Add(new PluginActionCommand { DisplayName = action.DisplayName, Command = command });
             }
 
             RefreshConfigProperties();
@@ -168,7 +178,7 @@ namespace InfoPanel.ViewModels
 
         private void RefreshConfigProperties()
         {
-            if (!_wrapper.IsLoaded)
+            if (!_wrapper.IsLoaded || !_wrapper.IsConfigurable)
             {
                 ConfigProperties.Clear();
                 HasConfigProperties = false;
@@ -176,31 +186,28 @@ namespace InfoPanel.ViewModels
                 return;
             }
 
-            if (_wrapper.Plugin is IPluginConfigurable configurable)
+            var dtos = _wrapper.ConfigProperties;
+            ConfigProperties.Clear();
+            foreach (var dto in dtos)
             {
-                var properties = configurable.ConfigProperties;
-                ConfigProperties.Clear();
-                foreach (var prop in properties)
-                {
-                    ConfigProperties.Add(new PluginConfigPropertyViewModel(configurable, prop));
-                }
-                foreach (var vm in ConfigProperties)
-                {
-                    vm.SetSiblings(ConfigProperties);
-                }
-                HasConfigProperties = ConfigProperties.Count > 0;
-                ConfigLoaded = HasConfigProperties;
+                ConfigProperties.Add(new PluginConfigPropertyViewModel(_wrapper, dto));
             }
-            else
+            foreach (var vm in ConfigProperties)
             {
-                ConfigProperties.Clear();
-                HasConfigProperties = false;
-                ConfigLoaded = false;
+                vm.SetSiblings(ConfigProperties);
             }
+            HasConfigProperties = ConfigProperties.Count > 0;
+            ConfigLoaded = HasConfigProperties;
         }
 
-        public void Refresh()
+        internal void Refresh(RemotePluginWrapper? newWrapper = null)
         {
+            if (newWrapper != null && newWrapper != _wrapper)
+            {
+                _wrapper = newWrapper;
+                _configLoaded = false;
+            }
+
             Id = _wrapper.Id;
             Name = _wrapper.Name;
             Description = _wrapper.Description;
@@ -223,13 +230,13 @@ namespace InfoPanel.ViewModels
     {
         private static readonly ILogger Logger = Log.ForContext<PluginConfigPropertyViewModel>();
 
-        private readonly IPluginConfigurable _configurable;
-        private readonly PluginConfigProperty _property;
+        private readonly RemotePluginWrapper _wrapper;
+        private readonly PluginConfigPropertyDto _property;
 
         public string Key => _property.Key;
         public string DisplayName => _property.DisplayName;
         public string? Description => _property.Description;
-        public PluginConfigType Type => _property.Type;
+        public PluginConfigType Type { get; }
         public double? MinValue => _property.MinValue;
         public double? MaxValue => _property.MaxValue;
         public double? Step => _property.Step;
@@ -300,15 +307,21 @@ namespace InfoPanel.ViewModels
             }
         }
 
-        public PluginConfigPropertyViewModel(IPluginConfigurable configurable, PluginConfigProperty property)
+        internal PluginConfigPropertyViewModel(RemotePluginWrapper wrapper, PluginConfigPropertyDto property)
         {
-            _configurable = configurable;
+            _wrapper = wrapper;
             _property = property;
-            _value = property.Value;
+            Type = Enum.TryParse<PluginConfigType>(property.Type, out var t) ? t : PluginConfigType.String;
+            _value = CoerceFromDto(property.Value, Type);
         }
 
         [RelayCommand]
         private void Apply()
+        {
+            _ = ApplyAsync();
+        }
+
+        private async Task ApplyAsync()
         {
             try
             {
@@ -357,7 +370,7 @@ namespace InfoPanel.ViewModels
                                 break;
                             default:
                                 if (!double.TryParse(
-                                    Value?.ToString()?? "",
+                                    Value?.ToString() ?? "",
                                     System.Globalization.NumberStyles.Float,
                                     System.Globalization.CultureInfo.InvariantCulture,
                                     out var parsedFromOther))
@@ -381,24 +394,32 @@ namespace InfoPanel.ViewModels
                         break;
                 }
 
-                _configurable.ApplyConfig(Key, typedValue);
+                // Send config change to host process via IPC
+                var updatedProperties = await _wrapper.ApplyConfigAsync(Key, typedValue);
 
                 // Re-read source properties to pick up cross-property changes (e.g. mutual exclusion)
-                foreach (var sourceProp in _configurable.ConfigProperties)
+                if (_siblings != null)
                 {
-                    if (sourceProp.Key != Key && _siblings != null)
+                    foreach (var updatedProp in updatedProperties)
                     {
-                        var sibling = _siblings.FirstOrDefault(vm => vm.Key == sourceProp.Key);
-                        if (sibling != null && !Equals(sibling.Value, sourceProp.Value))
+                        if (updatedProp.Key != Key)
                         {
-                            sibling.RefreshValue(sourceProp.Value);
+                            var sibling = _siblings.FirstOrDefault(vm => vm.Key == updatedProp.Key);
+                            if (sibling != null)
+                            {
+                                var coerced = CoerceFromDto(updatedProp.Value, sibling.Type);
+                                if (!Equals(sibling.Value, coerced))
+                                {
+                                    sibling.RefreshValue(coerced);
+                                }
+                            }
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Plugin config '{ConfigKey}': ApplyConfig failed", Key);
+                Logger.Error(ex, "Plugin config '{ConfigKey}': ApplyConfig IPC failed (type={ExType})", Key, ex.GetType().Name);
             }
         }
 
@@ -407,11 +428,44 @@ namespace InfoPanel.ViewModels
 
         public void RefreshValue(object? newValue)
         {
-            Value = newValue;
+            Value = CoerceFromDto(newValue, Type);
             OnPropertyChanged(nameof(BoolValue));
             OnPropertyChanged(nameof(StringValue));
             OnPropertyChanged(nameof(NumericValue));
             OnPropertyChanged(nameof(SelectedIndex));
+        }
+
+        private static object? CoerceFromDto(object? value, PluginConfigType type)
+        {
+            if (value is JToken jt)
+            {
+                return type switch
+                {
+                    PluginConfigType.Boolean => jt.Type == JTokenType.Boolean ? jt.Value<bool>() : value,
+                    PluginConfigType.Integer => jt.Type == JTokenType.Integer ? jt.Value<int>()
+                                              : jt.Type == JTokenType.Float ? (int)Math.Round(jt.Value<double>())
+                                              : int.TryParse(jt.ToString(), out var i) ? i : value,
+                    PluginConfigType.Double => jt.Type == JTokenType.Float || jt.Type == JTokenType.Integer
+                                              ? jt.Value<double>()
+                                              : double.TryParse(jt.ToString(), System.Globalization.NumberStyles.Float,
+                                                  System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : value,
+                    PluginConfigType.String => jt.ToString(),
+                    PluginConfigType.Choice => jt.ToString(),
+                    _ => value
+                };
+            }
+
+            // StreamJsonRpc deserializes JSON integers as Int64 (long) and floats as double.
+            // Coerce raw CLR values to the types the UI controls expect.
+            return type switch
+            {
+                PluginConfigType.Boolean => value is bool ? value : Convert.ToBoolean(value),
+                PluginConfigType.Integer => value is int ? value : Convert.ToInt32(value),
+                PluginConfigType.Double => value is double ? value : Convert.ToDouble(value),
+                PluginConfigType.String => value?.ToString(),
+                PluginConfigType.Choice => value?.ToString(),
+                _ => value
+            };
         }
     }
 
@@ -449,6 +503,23 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private bool _controlEnabled = true;
 
+        [ObservableProperty]
+        private double _cpuUsage;
+
+        [ObservableProperty]
+        private string _memoryUsage = "";
+
+        [ObservableProperty]
+        private bool _showMetrics;
+
+        private static string FormatMemory(long bytes)
+        {
+            const double MB = 1024 * 1024;
+            const double GB = 1024 * 1024 * 1024;
+            if (bytes >= GB)
+                return $"{bytes / GB:F1} GB";
+            return $"{bytes / MB:F1} MB";
+        }
 
         private async Task OnActivatedChanged()
         {
@@ -486,11 +557,14 @@ namespace InfoPanel.ViewModels
             Description = pluginDescriptor.PluginInfo?.Description;
             Version = pluginDescriptor.PluginInfo?.Version;
             Website = pluginDescriptor.PluginInfo?.Website;
-            _activated = pluginDescriptor.PluginWrappers.Any(x => x.Value.IsRunning);
+            _activated = PluginMonitor.Instance.ProcessManager.IsHostRunning(pluginDescriptor.FilePath);
 
-            foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
+            if (PluginMonitor.Instance.RemoteWrappers.TryGetValue(pluginDescriptor.FilePath, out var wrappers))
             {
-                Plugins.Add(new PluginModuleViewModel(wrapper));
+                foreach (var wrapper in wrappers)
+                {
+                    Plugins.Add(new PluginModuleViewModel(wrapper, pluginDescriptor));
+                }
             }
         }
 
@@ -498,19 +572,41 @@ namespace InfoPanel.ViewModels
         {
             if (!ControlEnabled) { return; }
 
-            _activated = _pluginDescriptor.PluginWrappers.Any(x => x.Value.IsRunning);
+            _activated = PluginMonitor.Instance.ProcessManager.IsHostRunning(_pluginDescriptor.FilePath);
             OnPropertyChanged(nameof(Activated));
 
-            foreach (var wrapper in _pluginDescriptor.PluginWrappers.Values)
+            if (_activated)
             {
-                var plugin = Plugins.SingleOrDefault(x => x.Id == wrapper.Id);
-                if (plugin != null)
+                var metrics = PluginMonitor.Instance.ProcessManager.GetProcessMetrics(_pluginDescriptor.FilePath);
+                if (metrics != null)
                 {
-                    plugin.Refresh();
+                    CpuUsage = Math.Round(metrics.CpuPercent, 1);
+                    MemoryUsage = FormatMemory(metrics.MemoryBytes);
+                    ShowMetrics = true;
                 }
                 else
                 {
-                    Plugins.Add(new PluginModuleViewModel(wrapper));
+                    ShowMetrics = false;
+                }
+            }
+            else
+            {
+                ShowMetrics = false;
+            }
+
+            if (PluginMonitor.Instance.RemoteWrappers.TryGetValue(_pluginDescriptor.FilePath, out var wrappers))
+            {
+                foreach (var wrapper in wrappers)
+                {
+                    var plugin = Plugins.SingleOrDefault(x => x.Id == wrapper.Id);
+                    if (plugin != null)
+                    {
+                        plugin.Refresh(wrapper);
+                    }
+                    else
+                    {
+                        Plugins.Add(new PluginModuleViewModel(wrapper, _pluginDescriptor));
+                    }
                 }
             }
         }

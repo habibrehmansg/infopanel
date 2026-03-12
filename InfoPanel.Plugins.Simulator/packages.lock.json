@@ -34,6 +34,7 @@
           "AsyncKeyedLock": "[8.0.0, )",
           "InfoPanel.Plugins": "[1.0.0, )",
           "Serilog": "[4.3.0, )",
+          "System.Threading.Tasks.Extensions": "[4.6.3, )",
           "ini-parser-netstandard": "[2.5.3, )"
         }
       }

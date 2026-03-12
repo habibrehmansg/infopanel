@@ -18,6 +18,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Management;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -213,8 +214,10 @@ namespace InfoPanel
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
 
             Process proc = Process.GetCurrentProcess();
+            var pluginHostIds = GetPluginHostProcessIds();
             var otherInstances = Process.GetProcesses()
                 .Where(p => p.ProcessName == proc.ProcessName && p.Id != proc.Id)
+                .Where(p => !pluginHostIds.Contains(p.Id))
                 .ToList();
 
             if (otherInstances.Count > 0)
@@ -470,6 +473,30 @@ namespace InfoPanel
             {
                 Logger.Error(ex, "Error checking or installing PawniO");
             }
+        }
+
+        private static HashSet<int> GetPluginHostProcessIds()
+        {
+            var ids = new HashSet<int>();
+            try
+            {
+                var currentName = Process.GetCurrentProcess().ProcessName;
+                using var searcher = new ManagementObjectSearcher(
+                    $"SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = '{currentName}.exe'");
+                foreach (var obj in searcher.Get())
+                {
+                    var cmd = obj["CommandLine"]?.ToString();
+                    if (cmd != null && cmd.Contains("--plugin-host"))
+                    {
+                        ids.Add(Convert.ToInt32(obj["ProcessId"]));
+                    }
+                }
+            }
+            catch
+            {
+                // If WMI fails, return empty set — no processes will be excluded
+            }
+            return ids;
         }
 
         public static async Task CleanShutDown()

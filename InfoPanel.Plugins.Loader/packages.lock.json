@@ -24,7 +24,8 @@
         "contentHash": "+cDryFR0GRhsGOnZSKwaDzRRl4MupvJ42FhCE4zhQRVanX0Jpg6WuCBk59OVhVDPmab1bB+nRykAnykYELA9qQ=="
       },
       "System.Threading.Tasks.Extensions": {
-        "type": "Transitive",
+        "type": "Direct",
+        "requested": "[4.6.3, )",
         "resolved": "4.6.3",
         "contentHash": "7sCiwilJLYbTZELaKnc7RecBBXWXA+xMLQWZKWawBxYjp6DBlSE3v9/UcvKBvr1vv2tTOhipiogM8rRmxlhrVA=="
       },

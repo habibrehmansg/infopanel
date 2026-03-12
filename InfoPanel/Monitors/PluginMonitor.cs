@@ -1,4 +1,5 @@
-﻿using InfoPanel.Plugins;
+using InfoPanel.Plugins;
+using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
 using Serilog;
@@ -25,6 +26,11 @@ namespace InfoPanel.Monitors
 
         public List<PluginDescriptor> Plugins { get; private set; } = [];
 
+        internal PluginProcessManager ProcessManager { get; } = new();
+
+        // Track remote wrappers per descriptor for ViewModel access
+        internal readonly ConcurrentDictionary<string, List<RemotePluginWrapper>> RemoteWrappers = new();
+
         private PluginMonitor() {
             if(!Directory.Exists(FileUtil.GetExternalPluginFolder()))
             {
@@ -32,14 +38,25 @@ namespace InfoPanel.Monitors
             }
         }
 
+        /// <summary>
+        /// Persists the list of deactivated plugins. A plugin is considered "deactivated" when
+        /// its host process is NOT currently running, so we save those file paths to disk.
+        /// On next startup, plugins in this list will be skipped.
+        /// </summary>
         public void SavePluginState()
         {
             try
             {
-                var deactivatedPlugins = Plugins.Where(p => p.PluginWrappers.All(w => !w.Value.IsRunning)).Select(p => p.FilePath).ToList();
+                var deactivatedPlugins = Plugins
+                    .Where(p => !ProcessManager.IsHostRunning(p.FilePath))
+                    .Select(p => p.FilePath)
+                    .ToList();
                 File.WriteAllLines(FileUtil.GetPluginStateFile(), deactivatedPlugins);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to save plugin state");
+            }
         }
 
         public string[] GetPluginState()
@@ -66,7 +83,10 @@ namespace InfoPanel.Monitors
                     File.Delete(file);
                 }
             }
-            catch (Exception e) { }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to unzip plugin archives");
+            }
         }
 
         private static bool UnzipPluginArchive(string filePath)
@@ -80,11 +100,6 @@ namespace InfoPanel.Monitors
                 return false;
             }
 
-            //if (Directory.Exists(Path.Combine(FileUtil.GetExternalPluginFolder(), entry.FullName)))
-            //{
-            //    return false;
-            //}
-
             za.ExtractToDirectory(FileUtil.GetExternalPluginFolder(), true);
             return true;
         }
@@ -96,7 +111,6 @@ namespace InfoPanel.Monitors
             try
             {
                 var stopwatch = Stopwatch.StartNew();
-                //await LoadAllPluginsAsync();
                 FindPlugins();
 
                 var deactivatedPlugins = GetPluginState();
@@ -113,28 +127,13 @@ namespace InfoPanel.Monitors
                 stopwatch.Stop();
                 Logger.Information("Plugins loaded in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
 
+                ProcessManager.StartMetricsLoop();
+
+                // No polling loop needed - host processes handle their own update scheduling
+                // Just keep alive until cancellation
                 while (!token.IsCancellationRequested)
                 {
-                    stopwatch.Restart();
-
-                    foreach(var pluginDescriptor in Plugins)
-                    {
-                        foreach(var wrapper in pluginDescriptor.PluginWrappers.Values)
-                        {
-                            if (wrapper.IsLoaded)
-                            {
-                                try
-                                {
-                                    wrapper.Update();
-                                }
-                                catch { }
-                            }
-                        }
-                    }
-                   
-                    stopwatch.Stop();
-                    //Trace.WriteLine($"Plugins updated: {stopwatch.ElapsedMilliseconds}ms");
-                    await Task.Delay(100, token);
+                    await Task.Delay(1000, token);
                 }
             }
             catch (TaskCanceledException)
@@ -145,9 +144,15 @@ namespace InfoPanel.Monitors
             {
                 Logger.Error(ex, "Exception during PluginMonitor work");
             }
+            finally
+            {
+                await ProcessManager.StopMetricsLoopAsync();
+                await ProcessManager.StopAllAsync();
+                ProcessManager.Dispose();
+            }
         }
 
-        private static readonly string[] _bundledPlugins = ["plugins\\InfoPanel.Extras"];
+        private static readonly string[] _bundledPlugins = [Path.Combine("plugins", "InfoPanel.Extras")];
         internal void FindPlugins()
         {
             UnzipPluginArchives();
@@ -175,124 +180,63 @@ namespace InfoPanel.Monitors
             var pluginFile = Path.Combine(directory, Path.GetFileName(directory) + ".dll");
             var pluginDescriptor = new PluginDescriptor(pluginFile, pluginInfo);
 
-            var plugins = PluginLoader.InitializePlugin(pluginFile);
-
-            foreach (var plugin in plugins)
-            {
-                PluginWrapper wrapper = new(pluginDescriptor, plugin);
-                pluginDescriptor.PluginWrappers.TryAdd(wrapper.Id, wrapper);
-            }
-
+            // Don't load the assembly in the main process - host process will do that
             return pluginDescriptor;
         }
 
         public async Task StopPluginModulesAsync(PluginDescriptor pluginDescriptor)
         {
-            foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
-            {
-                foreach (var container in wrapper.PluginContainers)
+            // Clean up SENSORHASH entries
+            var keysToRemove = SENSORHASH.Keys
+                .Where(k =>
                 {
-                    foreach (var entry in container.Entries)
-                    {
-                        var id = BuildEntryId(wrapper, container, entry);
-                        SENSORHASH.TryRemove(id, out _);
-                    }
-                }
+                    if (RemoteWrappers.TryGetValue(pluginDescriptor.FilePath, out var wrappers))
+                        return wrappers.Any(w => k.StartsWith($"/{w.Id}/"));
+                    return false;
+                })
+                .ToList();
 
-                await wrapper.StopAsync();
+            foreach (var key in keysToRemove)
+            {
+                SENSORHASH.TryRemove(key, out _);
             }
+
+            RemoteWrappers.TryRemove(pluginDescriptor.FilePath, out _);
+            await ProcessManager.StopHostAsync(pluginDescriptor);
         }
 
         public async Task StartPluginModulesAsync(PluginDescriptor pluginDescriptor)
         {
-            foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
-            {
-                try
-                {
-                    await wrapper.Initialize();
-                    Log.Information("Plugin {PluginName} loaded successfully", wrapper.Name);
-
-                    int indexOrder = 0;
-                    foreach (var container in wrapper.PluginContainers)
-                    {
-                        foreach (var entry in container.Entries)
-                        {
-                            var id = BuildEntryId(wrapper, container, entry);
-                            SENSORHASH[id] = new()
-                            {
-                                Id = id,
-                                Name = entry.Name,
-                                ContainerId = container.Id,
-                                ContainerName = container.Name,
-                                PluginId = wrapper.Id,
-                                PluginName = wrapper.Name,
-                                Data = entry,
-                                IndexOrder = indexOrder++
-                            };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Plugin {PluginName} failed to load", wrapper.Name);
-                }
-            }
-        }
-
-
-
-        public async Task ReloadPluginModule(PluginWrapper wrapper)
-        {
-            foreach (var container in wrapper.PluginContainers)
-            {
-                foreach (var entry in container.Entries)
-                {
-                    var id = BuildEntryId(wrapper, container, entry);
-                    SENSORHASH.TryRemove(id, out _);
-                }
-            }
-
-            await wrapper.StopAsync();
-
             try
             {
-                await wrapper.Initialize();
-                Log.Information("Plugin {PluginName} reloaded successfully", wrapper.Name);
+                var connection = await ProcessManager.LaunchHostAsync(pluginDescriptor);
 
-                int indexOrder = 0;
-                foreach (var container in wrapper.PluginContainers)
+                // Register proxy entries in SENSORHASH
+                PluginProcessManager.RegisterProxiesInSensorHash(pluginDescriptor, connection);
+
+                // Build remote wrappers for ViewModel access
+                var wrappers = new List<RemotePluginWrapper>();
+                if (connection.PluginMetadata != null)
                 {
-                    foreach (var entry in container.Entries)
+                    foreach (var metadata in connection.PluginMetadata)
                     {
-                        var id = BuildEntryId(wrapper, container, entry);
-                        SENSORHASH[id] = new()
-                        {
-                            Id = id,
-                            Name = entry.Name,
-                            ContainerId = container.Id,
-                            ContainerName = container.Name,
-                            PluginId = wrapper.Id,
-                            PluginName = wrapper.Name,
-                            Data = entry,
-                            IndexOrder = indexOrder++
-                        };
+                        wrappers.Add(new RemotePluginWrapper(connection, metadata));
                     }
                 }
+                RemoteWrappers[pluginDescriptor.FilePath] = wrappers;
+
+                Logger.Information("Plugin modules started for {PluginPath}", pluginDescriptor.FilePath);
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Plugin {PluginName} failed to load", wrapper.Name);
+                Logger.Error(ex, "Failed to start plugin modules for {PluginPath}", pluginDescriptor.FilePath);
             }
         }
 
-        private static string BuildEntryId(PluginWrapper wrapper, IPluginContainer container, IPluginData entry)
+        public async Task ReloadPluginModule(PluginDescriptor pluginDescriptor)
         {
-            if(container.IsEphemeralPath)
-            {
-                return $"/{wrapper.Id}/{entry.Id}";
-            }
-
-            return $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+            await StopPluginModulesAsync(pluginDescriptor);
+            await StartPluginModulesAsync(pluginDescriptor);
         }
 
         public static List<PluginReading> GetOrderedList()
