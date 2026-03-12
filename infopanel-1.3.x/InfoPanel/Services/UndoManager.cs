@@ -38,6 +38,40 @@ public sealed class UndoManager
     private UndoManager() { }
 
     /// <summary>
+    /// Push a pre-serialized XML snapshot onto the undo stack. Used when we have the state-before-edit as XML.
+    /// </summary>
+    public void PushUndoSnapshot(Profile profile, string? snapshot)
+    {
+        PushUndoSnapshotInternal(profile, snapshot, clearRedo: true);
+    }
+
+    /// <summary>
+    /// Push a snapshot onto the undo stack without clearing the redo stack. Used when redoing so undo becomes available again.
+    /// </summary>
+    public void PushUndoSnapshotWithoutClearingRedo(Profile profile, string? snapshot)
+    {
+        PushUndoSnapshotInternal(profile, snapshot, clearRedo: false);
+    }
+
+    private void PushUndoSnapshotInternal(Profile profile, string? snapshot, bool clearRedo)
+    {
+        if (profile == null || string.IsNullOrEmpty(snapshot)) return;
+        lock (_lock)
+        {
+            var guid = profile.Guid;
+            if (!_undoStacks.TryGetValue(guid, out var stack))
+            {
+                stack = new Stack<string>();
+                _undoStacks[guid] = stack;
+            }
+            TrimStack(stack);
+            stack.Push(snapshot);
+            if (clearRedo && _redoStacks.TryGetValue(guid, out var redoStack))
+                redoStack.Clear();
+        }
+    }
+
+    /// <summary>
     /// Push current display items state onto the undo stack for the given profile.
     /// Call before performing a mutable operation.
     /// </summary>
@@ -112,9 +146,12 @@ public sealed class UndoManager
             if (!_undoStacks.TryGetValue(profile.Guid, out var stack) || stack.Count == 0)
                 return null;
 
-            var snapshot = stack.Pop();
+            var snapshot = stack.Peek();
             var items = DeserializeDisplayItems(snapshot, profile);
-            if (items == null) return null;
+            if (items == null)
+                return null;
+
+            stack.Pop();
 
             if (!string.IsNullOrEmpty(currentStateXmlForRedo))
             {
@@ -187,10 +224,11 @@ public sealed class UndoManager
         {
             var list = displayItems.ToList();
             using var ms = new MemoryStream();
-            var settings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true, OmitXmlDeclaration = true };
+            var utf8NoBom = new System.Text.UTF8Encoding(false);
+            var settings = new XmlWriterSettings { Encoding = utf8NoBom, Indent = true, OmitXmlDeclaration = true };
             using (var wr = XmlWriter.Create(ms, settings))
                 Serializer.Serialize(wr, list);
-            return Encoding.UTF8.GetString(ms.ToArray());
+            return utf8NoBom.GetString(ms.ToArray());
         }
         catch (Exception ex)
         {
@@ -202,6 +240,8 @@ public sealed class UndoManager
     private static List<DisplayItem>? DeserializeDisplayItems(string? xml, Profile profile)
     {
         if (string.IsNullOrWhiteSpace(xml) || profile == null) return null;
+        if (xml.Length > 0 && xml[0] == '\uFEFF')
+            xml = xml[1..];
 
         try
         {

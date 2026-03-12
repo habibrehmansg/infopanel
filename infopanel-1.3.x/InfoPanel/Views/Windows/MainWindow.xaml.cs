@@ -1,6 +1,7 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System;
 using System.Windows;
+using System.Windows.Input;
 using Wpf.Ui;
 using System.Windows.Controls;
 using Wpf.Ui.Controls;
@@ -46,6 +47,7 @@ namespace InfoPanel.Views.Windows
 
             Loaded += MainWindow_Loaded;
             StateChanged += MainWindow_StateChanged;
+            PreviewKeyDown += MainWindow_PreviewKeyDown;
 
             var screenHeight = SystemParameters.PrimaryScreenHeight;
             var desiredHeight = screenHeight * 0.80;
@@ -75,6 +77,24 @@ namespace InfoPanel.Views.Windows
             if (ConfigModel.Instance.Settings.StartMinimized)
             {
                 this.WindowState = WindowState.Minimized;
+            }
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == 0 || e.Handled) return;
+            if (e.Key == Key.Z)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                    SharedModel.Instance.Redo();
+                else
+                    SharedModel.Instance.Undo();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Y)
+            {
+                SharedModel.Instance.Redo();
+                e.Handled = true;
             }
         }
 

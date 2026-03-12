@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
@@ -20,6 +21,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 using System.Xml;
 using System.Xml.Linq;
@@ -38,6 +40,8 @@ namespace InfoPanel
         private bool _isUndoRedoInProgress;
         private bool _isDirty;
         private readonly ConcurrentDictionary<Guid, Debouncer> _propertyChangeDebouncers = [];
+        /// <summary>Last serialized state per profile. When debouncer fires, we push this (state before edit) then update to current.</summary>
+        private readonly ConcurrentDictionary<Guid, string> _lastStateSnapshotPerProfile = [];
 
         public bool IsDirty => _isDirty;
         public void MarkDirty() { _isDirty = true; OnPropertyChanged(nameof(IsDirty)); }
@@ -171,14 +175,52 @@ namespace InfoPanel
                 var copy = GetProfileDisplayItemsCopy(profile);
                 if (copy.Count > 0)
                 {
-                    UndoManager.Instance.PushUndo(profile, copy.ToList());
+                    var currentXml = UndoManager.SerializeDisplayItemsForProfile(copy.ToList());
+                    if (!string.IsNullOrEmpty(currentXml))
+                    {
+                        if (_lastStateSnapshotPerProfile.TryGetValue(profile.Guid, out var prevXml) && !string.IsNullOrEmpty(prevXml))
+                            UndoManager.Instance.PushUndoSnapshot(profile, prevXml);
+                        _lastStateSnapshotPerProfile[profile.Guid] = currentXml;
+                    }
                     MarkDirty();
+                    void NotifyUndoRedo()
+                    {
+                        OnPropertyChanged(nameof(CanUndo));
+                        OnPropertyChanged(nameof(CanRedo));
+                        CommandManager.InvalidateRequerySuggested();
+                    }
+                    if (Application.Current?.Dispatcher?.CheckAccess() == true)
+                        NotifyUndoRedo();
+                    else
+                        Application.Current?.Dispatcher?.BeginInvoke(NotifyUndoRedo);
                 }
             }, 400);
         }
 
         public bool CanUndo => SelectedProfile != null && UndoManager.Instance.CanUndo(SelectedProfile);
         public bool CanRedo => SelectedProfile != null && UndoManager.Instance.CanRedo(SelectedProfile);
+
+        [RelayCommand(CanExecute = nameof(CanUndo))]
+        private void UndoCommand() => Undo();
+
+        [RelayCommand(CanExecute = nameof(CanRedo))]
+        private void RedoCommand() => Redo();
+
+        /// <summary>Call after a mutation that bypasses the property-change debouncer (e.g. drop/reorder) to keep last-state cache in sync.</summary>
+        public void UpdateLastStateSnapshot()
+        {
+            if (SelectedProfile is not Profile profile) return;
+            AccessDisplayItems(profile, collection =>
+            {
+                if (collection.Count == 0) return;
+                var xml = UndoManager.SerializeDisplayItemsForProfile(collection.ToList());
+                if (!string.IsNullOrEmpty(xml))
+                    _lastStateSnapshotPerProfile[profile.Guid] = xml;
+            });
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+            CommandManager.InvalidateRequerySuggested();
+        }
 
         public async Task ReloadDisplayItems()
         {
@@ -209,6 +251,7 @@ namespace InfoPanel
         {
             var displayItems = await LoadDisplayItemsAsync(profile);
             UndoManager.Instance.ClearHistory(profile);
+            _lastStateSnapshotPerProfile.TryRemove(profile.Guid, out _);
             AccessDisplayItems(profile, collection =>
             {
                 foreach (var item in collection)
@@ -220,11 +263,15 @@ namespace InfoPanel
                     SubscribeDisplayItemForUndo(item, profile);
                 }
             });
+            var initialXml = UndoManager.SerializeDisplayItemsForProfile(displayItems);
+            if (!string.IsNullOrEmpty(initialXml))
+                _lastStateSnapshotPerProfile[profile.Guid] = initialXml;
         }
 
         public void Undo()
         {
             if (SelectedProfile is not Profile profile) return;
+            var selectedIndices = CaptureSelectedIndices(profile);
             var currentXml = UndoManager.SerializeDisplayItemsForProfile(GetProfileDisplayItemsCopy(profile).ToList());
             var items = UndoManager.Instance.Undo(profile, currentXml);
             if (items == null) return;
@@ -242,8 +289,13 @@ namespace InfoPanel
                         SubscribeDisplayItemForUndo(item, profile);
                     }
                 });
+                var restoredXml = UndoManager.SerializeDisplayItemsForProfile(items);
+                if (!string.IsNullOrEmpty(restoredXml))
+                    _lastStateSnapshotPerProfile[profile.Guid] = restoredXml;
+                RestoreSelectionByIndices(items, selectedIndices);
                 OnPropertyChanged(nameof(CanUndo));
                 OnPropertyChanged(nameof(CanRedo));
+                CommandManager.InvalidateRequerySuggested();
             }
             finally
             {
@@ -254,8 +306,12 @@ namespace InfoPanel
         public void Redo()
         {
             if (SelectedProfile is not Profile profile) return;
+            var selectedIndices = CaptureSelectedIndices(profile);
+            var currentXml = UndoManager.SerializeDisplayItemsForProfile(GetProfileDisplayItemsCopy(profile).ToList());
             var items = UndoManager.Instance.Redo(profile);
             if (items == null) return;
+            if (!string.IsNullOrEmpty(currentXml))
+                UndoManager.Instance.PushUndoSnapshotWithoutClearingRedo(profile, currentXml);
             _isUndoRedoInProgress = true;
             try
             {
@@ -270,13 +326,54 @@ namespace InfoPanel
                         SubscribeDisplayItemForUndo(item, profile);
                     }
                 });
+                var restoredXml = UndoManager.SerializeDisplayItemsForProfile(items);
+                if (!string.IsNullOrEmpty(restoredXml))
+                    _lastStateSnapshotPerProfile[profile.Guid] = restoredXml;
+                RestoreSelectionByIndices(items, selectedIndices);
                 OnPropertyChanged(nameof(CanUndo));
                 OnPropertyChanged(nameof(CanRedo));
+                CommandManager.InvalidateRequerySuggested();
             }
             finally
             {
                 _isUndoRedoInProgress = false;
             }
+        }
+
+        /// <summary>Flatten in same order as SelectedItems (group + its DisplayItems, one level per group).</summary>
+        private static List<DisplayItem> FlattenForSelection(IEnumerable<DisplayItem> items)
+        {
+            return items
+                .SelectMany(item =>
+                    item is GroupDisplayItem group && group.DisplayItems != null
+                        ? group.DisplayItems.Prepend(group)
+                        : [item])
+                .ToList();
+        }
+
+        private List<int> CaptureSelectedIndices(Profile profile)
+        {
+            var indices = new List<int>();
+            AccessDisplayItems(profile, collection =>
+            {
+                var flat = FlattenForSelection(collection);
+                for (int i = 0; i < flat.Count; i++)
+                    if (flat[i].Selected)
+                        indices.Add(i);
+            });
+            return indices;
+        }
+
+        private void RestoreSelectionByIndices(List<DisplayItem> restoredItems, List<int> selectedIndices)
+        {
+            if (selectedIndices.Count == 0) return;
+            var flat = FlattenForSelection(restoredItems);
+            foreach (var idx in selectedIndices)
+            {
+                if (idx >= 0 && idx < flat.Count)
+                    flat[idx].Selected = true;
+            }
+            NotifySelectedItemChange();
         }
 
         public DisplayItem? SelectedItem

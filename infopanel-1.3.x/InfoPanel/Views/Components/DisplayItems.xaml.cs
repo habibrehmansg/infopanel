@@ -741,6 +741,8 @@ namespace InfoPanel.Views.Components
                     if (targetParentGroup == sourceGroup)
                     {
                         dropHandler.Drop(dropInfo);
+                        SharedModel.Instance.UpdateLastStateSnapshot();
+                        SharedModel.Instance.MarkDirty();
                         return;
                     }
 
@@ -789,12 +791,16 @@ namespace InfoPanel.Views.Components
                         // Move the item into the group
                         SharedModel.Instance.RemoveDisplayItem(sourceItem);
                         groupItem.DisplayItems.Add(sourceItem);
+                        SharedModel.Instance.UpdateLastStateSnapshot();
+                        SharedModel.Instance.MarkDirty();
                         return;
                     }
                 }
 
                 // Use the default drop handler for all other cases
                 dropHandler.Drop(dropInfo);
+                SharedModel.Instance.UpdateLastStateSnapshot();
+                SharedModel.Instance.MarkDirty();
             }
         }
     }
