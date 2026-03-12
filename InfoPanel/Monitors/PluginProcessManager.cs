@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +26,9 @@ namespace InfoPanel.Monitors
         private readonly ConcurrentDictionary<string, int> _retryCounts = new();
         private readonly ConcurrentDictionary<string, DateTime> _retryWindows = new();
         private readonly ConcurrentDictionary<string, bool> _restarting = new();
+
+        private CancellationTokenSource? _metricsCts;
+        private Task? _metricsTask;
 
         private const int MaxRetries = 3;
         private static readonly TimeSpan RetryWindow = TimeSpan.FromSeconds(60);
@@ -92,8 +96,96 @@ namespace InfoPanel.Monitors
             await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(TimeSpan.FromSeconds(2)));
         }
 
+        public void StartMetricsLoop()
+        {
+            _metricsCts = new CancellationTokenSource();
+            _metricsTask = Task.Run(() => MetricsLoopAsync(_metricsCts.Token));
+        }
+
+        public async Task StopMetricsLoopAsync()
+        {
+            if (_metricsCts != null)
+            {
+                _metricsCts.Cancel();
+                if (_metricsTask != null)
+                    try { await _metricsTask; } catch (OperationCanceledException) { }
+                _metricsCts.Dispose();
+                _metricsCts = null;
+                _metricsTask = null;
+            }
+        }
+
+        private async Task MetricsLoopAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    InitializeMetricsCounters();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Debug(ex, "Failed to refresh metrics counters");
+                }
+
+                await Task.Delay(100, token);
+            }
+        }
+
+        private void InitializeMetricsCounters()
+        {
+            // Collect connections that still need a perf counter, grouped by process name
+            var needsInit = new List<(int Pid, string ProcessName, PluginHostConnection Connection)>();
+            foreach (var conn in _connections.Values)
+            {
+                if (conn.ProcessMetrics == null)
+                {
+                    var pid = conn.GetProcessId();
+                    var name = conn.GetProcessName();
+                    if (pid > 0 && name != null)
+                        needsInit.Add((pid, name, conn));
+                }
+            }
+
+            if (needsInit.Count == 0) return;
+
+            // Group by process name so we only probe instances matching each name
+            var byName = needsInit.GroupBy(x => x.ProcessName, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var group in byName)
+            {
+                var processName = group.Key;
+                var pidMap = group.ToDictionary(x => x.Pid, x => x.Connection);
+
+                // Perf counter instance names: "Name", "Name#1", "Name#2", ...
+                // Try the base name first, then numbered suffixes
+                for (int i = 0; pidMap.Count > 0; i++)
+                {
+                    var instance = i == 0 ? processName : $"{processName}#{i}";
+                    try
+                    {
+                        using var idCounter = new PerformanceCounter("Process", "ID Process", instance, readOnly: true);
+                        var pid = (int)idCounter.RawValue;
+                        if (pidMap.TryGetValue(pid, out var conn))
+                        {
+                            conn.SetPrivateWorkingSetCounter(
+                                new PerformanceCounter("Process", "Working Set - Private", instance, readOnly: true));
+                            pidMap.Remove(pid);
+                        }
+                    }
+                    catch
+                    {
+                        // Instance doesn't exist — no more instances with this name
+                        break;
+                    }
+                }
+            }
+        }
+
         public void Dispose()
         {
+            _metricsCts?.Cancel();
+            _metricsCts?.Dispose();
             _jobObject.Dispose();
         }
 
@@ -120,6 +212,13 @@ namespace InfoPanel.Monitors
             if (_connections.TryGetValue(filePath, out var conn))
                 return conn.GetProxyContainers(pluginId);
             return [];
+        }
+
+        public ProcessMetrics? GetProcessMetrics(string filePath)
+        {
+            if (_connections.TryGetValue(filePath, out var conn))
+                return conn.ProcessMetrics;
+            return null;
         }
 
         public long GetUpdateTimeMilliseconds(string filePath, string pluginId)

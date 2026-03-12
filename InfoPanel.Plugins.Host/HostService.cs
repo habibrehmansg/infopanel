@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
 using InfoPanel.Plugins.Ipc;
@@ -16,6 +17,11 @@ namespace InfoPanel.Plugins.Host
         private readonly SensorSnapshotManager _snapshotManager = new();
         private CancellationTokenSource? _updateCts;
         private Task? _updateTask;
+
+        // CPU metrics
+        private Process? _currentProcess;
+        private TimeSpan _lastCpuTime;
+        private DateTime _lastCheckTime = DateTime.UtcNow;
 
         /// <summary>
         /// Called after plugin shutdown completes to signal the host process to exit gracefully.
@@ -102,6 +108,18 @@ namespace InfoPanel.Plugins.Host
                     Logger.Error(ex, "Failed to initialize plugin {PluginName}", wrapper.Name);
                     NotifyError(wrapper.Id, ex.Message);
                 }
+            }
+
+            // Initialize CPU baseline
+            try
+            {
+                _currentProcess = Process.GetCurrentProcess();
+                _lastCpuTime = _currentProcess.TotalProcessorTime;
+                _lastCheckTime = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to initialize CPU baseline");
             }
 
             // Notify main app about loaded plugins
@@ -315,6 +333,8 @@ namespace InfoPanel.Plugins.Host
                     var batches = new List<SensorUpdateBatchDto>();
                     var performances = new List<PluginPerformanceDto>();
 
+                    var cpuPercent = GetCpuPercent();
+
                     foreach (var wrapper in _wrappers)
                     {
                         if (!wrapper.IsLoaded) continue;
@@ -332,7 +352,8 @@ namespace InfoPanel.Plugins.Host
                         performances.Add(new PluginPerformanceDto
                         {
                             PluginId = wrapper.Id,
-                            UpdateTimeMilliseconds = wrapper.UpdateTimeMilliseconds
+                            UpdateTimeMilliseconds = wrapper.UpdateTimeMilliseconds,
+                            CpuPercent = cpuPercent
                         });
                     }
 
@@ -353,6 +374,37 @@ namespace InfoPanel.Plugins.Host
 
                 await Task.Delay(100, token);
             }
+        }
+
+        private double GetCpuPercent()
+        {
+            var proc = _currentProcess;
+            if (proc == null) return 0;
+
+            try
+            {
+                proc.Refresh();
+                var now = DateTime.UtcNow;
+                var cpuTime = proc.TotalProcessorTime;
+                var elapsed = now - _lastCheckTime;
+
+                if (elapsed.TotalMilliseconds > 0)
+                {
+                    var cpuDelta = (cpuTime - _lastCpuTime).TotalMilliseconds;
+                    var cpuPercent = cpuDelta / (elapsed.TotalMilliseconds * Environment.ProcessorCount) * 100.0;
+
+                    _lastCpuTime = cpuTime;
+                    _lastCheckTime = now;
+
+                    return Math.Clamp(cpuPercent, 0, 100);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "Failed to compute CPU metrics");
+            }
+
+            return 0;
         }
 
         private EntryDto ConvertEntryToDto(IPluginData entry)

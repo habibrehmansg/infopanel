@@ -486,6 +486,23 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private bool _controlEnabled = true;
 
+        [ObservableProperty]
+        private double _cpuUsage;
+
+        [ObservableProperty]
+        private string _memoryUsage = "";
+
+        [ObservableProperty]
+        private bool _showMetrics;
+
+        private static string FormatMemory(long bytes)
+        {
+            const double MB = 1024 * 1024;
+            const double GB = 1024 * 1024 * 1024;
+            if (bytes >= GB)
+                return $"{bytes / GB:F1} GB";
+            return $"{bytes / MB:F1} MB";
+        }
 
         private async Task OnActivatedChanged()
         {
@@ -540,6 +557,25 @@ namespace InfoPanel.ViewModels
 
             _activated = PluginMonitor.Instance.ProcessManager.IsHostRunning(_pluginDescriptor.FilePath);
             OnPropertyChanged(nameof(Activated));
+
+            if (_activated)
+            {
+                var metrics = PluginMonitor.Instance.ProcessManager.GetProcessMetrics(_pluginDescriptor.FilePath);
+                if (metrics != null)
+                {
+                    CpuUsage = Math.Round(metrics.CpuPercent, 1);
+                    MemoryUsage = FormatMemory(metrics.MemoryBytes);
+                    ShowMetrics = true;
+                }
+                else
+                {
+                    ShowMetrics = false;
+                }
+            }
+            else
+            {
+                ShowMetrics = false;
+            }
 
             if (PluginMonitor.Instance.RemoteWrappers.TryGetValue(_pluginDescriptor.FilePath, out var wrappers))
             {

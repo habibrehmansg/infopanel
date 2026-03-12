@@ -92,6 +92,7 @@ namespace InfoPanel.Plugins.Ipc
     {
         public string PluginId { get; set; } = "";
         public long UpdateTimeMilliseconds { get; set; }
+        public double CpuPercent { get; set; }
     }
 
     public class PluginConfigPropertyDto

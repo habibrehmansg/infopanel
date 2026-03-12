@@ -17,6 +17,8 @@ using StreamJsonRpc;
 
 namespace InfoPanel.Monitors
 {
+    internal record ProcessMetrics(double CpuPercent, long MemoryBytes);
+
     /// <summary>
     /// Manages a single host process and its JSON-RPC connection.
     /// </summary>
@@ -39,6 +41,8 @@ namespace InfoPanel.Monitors
         private readonly ConcurrentDictionary<string, Dictionary<string, ProxyPluginContainer>> _proxyContainers = new();
         private readonly ConcurrentDictionary<string, Dictionary<string, IPluginData>> _proxyEntries = new();
         private readonly ConcurrentDictionary<string, long> _performanceData = new();
+        private volatile PerformanceCounter? _privateWorkingSetCounter;
+        private double _pushedCpuPercent;
 
         private readonly TaskCompletionSource _pluginsLoadedTcs = new();
         private volatile bool _intentionalStop;
@@ -218,6 +222,45 @@ namespace InfoPanel.Monitors
             return [];
         }
 
+        public ProcessMetrics? ProcessMetrics
+        {
+            get
+            {
+                var counter = _privateWorkingSetCounter;
+                if (counter == null) return null;
+
+                try
+                {
+                    return new ProcessMetrics(_pushedCpuPercent, counter.RawValue);
+                }
+                catch
+                {
+                    _privateWorkingSetCounter = null;
+                    counter.Dispose();
+                    return null;
+                }
+            }
+        }
+
+        public int GetProcessId()
+        {
+            try { return _hostProcess?.Id ?? 0; }
+            catch { return 0; }
+        }
+
+        public string? GetProcessName()
+        {
+            try { return _hostProcess?.ProcessName; }
+            catch { return null; }
+        }
+
+        internal void SetPrivateWorkingSetCounter(PerformanceCounter? counter)
+        {
+            var old = _privateWorkingSetCounter;
+            _privateWorkingSetCounter = counter;
+            old?.Dispose();
+        }
+
         public long GetUpdateTimeMilliseconds(string pluginId)
         {
             return _performanceData.GetValueOrDefault(pluginId, 0);
@@ -312,6 +355,12 @@ namespace InfoPanel.Monitors
             foreach (var perf in performances)
             {
                 _performanceData[perf.PluginId] = perf.UpdateTimeMilliseconds;
+            }
+
+            var first = performances.FirstOrDefault();
+            if (first != null)
+            {
+                _pushedCpuPercent = first.CpuPercent;
             }
         }
 
@@ -422,6 +471,9 @@ namespace InfoPanel.Monitors
 
         public void Dispose()
         {
+            _privateWorkingSetCounter?.Dispose();
+            _privateWorkingSetCounter = null;
+
             _jsonRpc?.Dispose();
             _jsonRpc = null;
 

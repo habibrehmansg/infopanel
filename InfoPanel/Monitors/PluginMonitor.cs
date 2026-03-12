@@ -127,6 +127,8 @@ namespace InfoPanel.Monitors
                 stopwatch.Stop();
                 Logger.Information("Plugins loaded in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
 
+                ProcessManager.StartMetricsLoop();
+
                 // No polling loop needed - host processes handle their own update scheduling
                 // Just keep alive until cancellation
                 while (!token.IsCancellationRequested)
@@ -144,6 +146,7 @@ namespace InfoPanel.Monitors
             }
             finally
             {
+                await ProcessManager.StopMetricsLoopAsync();
                 await ProcessManager.StopAllAsync();
                 ProcessManager.Dispose();
             }

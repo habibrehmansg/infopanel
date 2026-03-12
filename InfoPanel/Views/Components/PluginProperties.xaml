@@ -185,6 +185,35 @@
                         </StackPanel>
 
 
+                        <StackPanel
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="0,0,20,0"
+                            Visibility="{Binding ShowMetrics, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                Text="CPU " />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                Text="{Binding CpuUsage, StringFormat='{}{0:F1}%'}" />
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                Text="MEM " />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                Text="{Binding MemoryUsage}" />
+                        </StackPanel>
+
                         <ui:ToggleSwitch
                             Grid.Column="2"
                             Margin="0,0,0,0"
