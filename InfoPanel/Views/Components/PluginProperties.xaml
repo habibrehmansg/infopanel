@@ -262,7 +262,8 @@
             <ItemsControl
                 Margin="0,0,0,0"
                 d:ItemsSource="{Binding Plugins}"
-                ItemsSource="{Binding Plugins}">
+                ItemsSource="{Binding Plugins}"
+                Visibility="{Binding Activated, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <ui:CardExpander Margin="0,10,0,0" IsExpanded="{Binding HasConfigProperties, Mode=OneTime}">
