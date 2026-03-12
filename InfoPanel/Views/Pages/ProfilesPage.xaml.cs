@@ -1,6 +1,6 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Utils;
 using InfoPanel.ViewModels;
-using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -27,7 +27,6 @@ namespace InfoPanel.Views.Pages
             ViewModel = viewModel;
             DataContext = this;
 
-            LoadAllFonts();
             _contentDialogService = contentDialogService;
             _snackbarService = snackbarService;
 
@@ -37,20 +36,16 @@ namespace InfoPanel.Views.Pages
             Unloaded += ProfilesPage_Unloaded;
         }
 
-        private void LoadAllFonts()
+        private async void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
         {
-            var allFonts = SKFontManager.Default.GetFontFamilies()
-                .OrderBy(f => f)
-                .ToList();
-
-            foreach (var font in allFonts)
+            if (InstalledFonts.Count == 0)
             {
-                InstalledFonts.Add(font);
+                var fonts = await FontCache.GetFontsAsync();
+                foreach (var font in fonts)
+                {
+                    InstalledFonts.Add(font);
+                }
             }
-        }
-
-        private void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
-        {
         }
 
         private void ProfilesPage_Unloaded(object sender, RoutedEventArgs e)

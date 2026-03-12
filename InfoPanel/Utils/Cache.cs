@@ -143,6 +143,22 @@ namespace InfoPanel
             Logger.Debug("Image '{Path}' loaded successfully (Persistent: {Persistent})", path, imageDisplayItem?.PersistentCache ?? false);
         }
 
+        public static void TouchImage(ImageDisplayItem imageDisplayItem)
+        {
+            if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
+            {
+                var sensorReading = httpImageDisplayItem.GetValue();
+                if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText) && sensorReading.Value.ValueText.IsUrl())
+                {
+                    ImageCache.TryGetValue(sensorReading.Value.ValueText, out _);
+                }
+            }
+            else if (!string.IsNullOrEmpty(imageDisplayItem.CalculatedPath))
+            {
+                ImageCache.TryGetValue(imageDisplayItem.CalculatedPath, out _);
+            }
+        }
+
         public static void InvalidateImage(ImageDisplayItem imageDisplayItem)
         {
             var path = imageDisplayItem.CalculatedPath;
