@@ -126,7 +126,7 @@ namespace InfoPanel.Views.Components
                         }
                     }
 
-                    parent = new TreeItem(hash.ParentUniqueID, parentName);
+                    parent = new HwInfoHardwareTreeItem(hash.ParentUniqueID, parentName);
                     ViewModel.Sensors.Add(parent);
                 }
 
@@ -138,7 +138,7 @@ namespace InfoPanel.Views.Components
 
                     if (group == null)
                     {
-                        group = new TreeItem(hash.ReadingType, hash.ReadingType);
+                        group = new HwInfoGroupTreeItem(hash.ReadingType, hash.ReadingType, hash.ReadingType);
                         parent.Children.Add(group);
                     }
                 } else

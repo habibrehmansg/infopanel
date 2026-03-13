@@ -43,13 +43,19 @@
             x:Name="TreeViewInfo"
             Grid.Row="1"
             Margin="0,10,0,0"
-            Padding="0,0,0,0"
+            Padding="0,0,0,20"
             Focusable="False"
             ItemsSource="{Binding Sensors}"
             SelectedItemChanged="TreeViewInfo_SelectedItemChanged">
             <TreeView.ItemTemplate>
                 <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                     <StackPanel Orientation="Horizontal">
+                        <Image
+                            Width="15"
+                            Height="15"
+                            Margin="0,0,10,0"
+                            Source="{Binding Icon}"
+                            Visibility="{Binding Icon, Converter={StaticResource NullToVisibilityConverter}}" />
                         <TextBlock
                             Margin="0,0,0,0"
                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
