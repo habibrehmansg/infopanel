@@ -3,7 +3,8 @@ using InfoPanel.Models;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using Wpf.Ui.Controls;
+using System.Threading.Tasks;
+using Wpf.Ui.Abstractions.Controls;
 
 namespace InfoPanel.ViewModels
 {
@@ -24,12 +25,14 @@ namespace InfoPanel.ViewModels
         {
         }
 
-        public void OnNavigatedFrom()
+        public Task OnNavigatedFromAsync()
         {
+            return Task.CompletedTask;
         }
 
-        public void OnNavigatedTo()
+        public Task OnNavigatedToAsync()
         {
+            return Task.CompletedTask;
         }
     }
 }

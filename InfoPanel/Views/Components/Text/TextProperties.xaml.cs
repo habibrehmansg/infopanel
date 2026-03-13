@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using SkiaSharp;
 using System.Collections.ObjectModel;
 using Serilog;
@@ -55,7 +56,7 @@ namespace InfoPanel.Views.Components
 
         public TextProperties()
         {
-            LoadAllFonts();
+            LoadAllFontsAsync();
             InitializeComponent();
 
             SetBinding(CurrentFontProperty, new Binding
@@ -198,11 +199,9 @@ namespace InfoPanel.Views.Components
             }
         }
 
-        private void LoadAllFonts()
+        private async void LoadAllFontsAsync()
         {
-            var allFonts = SKFontManager.Default.GetFontFamilies()
-                .OrderBy(f => f)
-                .ToList();
+            var allFonts = await FontCache.GetFontsAsync();
 
             foreach (var font in allFonts)
             {

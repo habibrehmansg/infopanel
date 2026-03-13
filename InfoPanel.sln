@@ -17,6 +17,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TuringSmartScreenLib", "Tur
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TuringSmartScreenLib.Helpers.SkiaSharp", "TuringSmartScreenLib.Helpers.SkiaSharp\TuringSmartScreenLib.Helpers.SkiaSharp.csproj", "{B2C3D4E5-F6A7-8901-BCDE-F12345678901}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel.Plugins.Ipc", "InfoPanel.Plugins.Ipc\InfoPanel.Plugins.Ipc.csproj", "{C3D4E5F6-A7B8-9012-CDEF-123456789012}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InfoPanel.Plugins.Host", "InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj", "{D4E5F6A7-B8C9-0123-DEFA-234567890123}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -51,6 +55,14 @@ Global
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Debug|x64.Build.0 = Debug|x64
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Release|x64.ActiveCfg = Release|x64
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Release|x64.Build.0 = Release|x64
+		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Debug|x64.ActiveCfg = Debug|x64
+		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Debug|x64.Build.0 = Debug|x64
+		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|x64.ActiveCfg = Release|x64
+		{C3D4E5F6-A7B8-9012-CDEF-123456789012}.Release|x64.Build.0 = Release|x64
+		{D4E5F6A7-B8C9-0123-DEFA-234567890123}.Debug|x64.ActiveCfg = Debug|x64
+		{D4E5F6A7-B8C9-0123-DEFA-234567890123}.Debug|x64.Build.0 = Debug|x64
+		{D4E5F6A7-B8C9-0123-DEFA-234567890123}.Release|x64.ActiveCfg = Release|x64
+		{D4E5F6A7-B8C9-0123-DEFA-234567890123}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

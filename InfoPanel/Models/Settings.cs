@@ -18,6 +18,9 @@ namespace InfoPanel.Models
         private float _uiScale = 1.0f;
 
         [ObservableProperty]
+        private int _appTheme = 1; // 0=Light, 1=Dark
+
+        [ObservableProperty]
         private bool _isPaneOpen = true;
 
         [ObservableProperty]
@@ -46,6 +49,12 @@ namespace InfoPanel.Models
 
         [ObservableProperty]
         private bool _libreHardwareMonitor = true;
+
+        [ObservableProperty]
+        private bool _libreHardwareMonitorStorage = true;
+
+        [ObservableProperty]
+        private int _libreHardwareMonitorStorageInterval = 30;
 
         private readonly ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = [];
 

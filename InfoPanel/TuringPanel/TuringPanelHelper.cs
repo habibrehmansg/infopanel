@@ -1,4 +1,5 @@
-﻿using InfoPanel.Models;
+﻿using AsyncKeyedLock;
+using InfoPanel.Models;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
 using Serilog;
@@ -8,7 +9,6 @@ using System.IO.Ports;
 using System.Linq;
 using System.Management;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace InfoPanel.TuringPanel
@@ -22,12 +22,11 @@ namespace InfoPanel.TuringPanel
     internal partial class TuringPanelHelper
     {
         private static readonly ILogger Logger = Log.ForContext(typeof(TuringPanelHelper));
-        private static readonly SemaphoreSlim _semaphore = new(1, 1);
+        private static readonly AsyncNonKeyedLocker _lock = new(1);
 
         public static async Task<List<TuringPanelDevice>> GetUsbDevices()
         {
-            await _semaphore.WaitAsync();
-
+            using var _ = await _lock.LockAsync();
             try
             {
                 List<TuringPanelDevice> devices = [];
@@ -62,16 +61,12 @@ namespace InfoPanel.TuringPanel
                 Logger.Error(ex, "TuringPanelHelper: Error getting USB devices");
                 return [];
             }
-            finally
-            {
-                _semaphore.Release();
-            }
         }
 
 
         public static async Task<TuringPanelDiscoveryResult> GetSerialDevices()
         {
-            await _semaphore.WaitAsync();
+            using var _ = await _lock.LockAsync();
             try
             {
                 var wakeCount = await WakeSerialDevices();
@@ -197,10 +192,6 @@ namespace InfoPanel.TuringPanel
             {
                 Logger.Error(ex, "TuringPanelHelper: Error getting Turing panel devices");
                 return new TuringPanelDiscoveryResult();
-            }
-            finally
-            {
-                _semaphore.Release();
             }
         }
 

@@ -38,7 +38,7 @@
                 <TextBlock
                     Margin="5,0,0,0"
                     FontSize="12"
-                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                     Text="Custom Format" />
 
             </StackPanel>
@@ -51,7 +51,7 @@
                 <TextBlock
                     Margin="0,0,0,5"
                     FontSize="12"
-                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                     Text="Quick Templates" />
             </StackPanel>
 

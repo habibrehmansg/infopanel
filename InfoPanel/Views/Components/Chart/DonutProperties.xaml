@@ -46,7 +46,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Radius" />
                 </StackPanel>
 
@@ -62,7 +62,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Thickness" />
                 </StackPanel>
             </Grid>
@@ -146,13 +146,13 @@
                             Grid.Column="0"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Span °" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding Span, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
@@ -174,13 +174,13 @@
                             Grid.Column="0"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Rotation °" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding Rotation, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
@@ -209,8 +209,14 @@
                 <TextBlock
                     Margin="5,0,0,0"
                     FontSize="12"
-                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                    Text="Sensor" />
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource SensorSourceConverter}">
+                            <Binding Path="SensorType" />
+                            <Binding Path="HwInfoRemoteIndex" FallbackValue="-1" />
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
             </StackPanel>
 
             <Grid Grid.Row="1" Margin="0,10,0,0">
@@ -232,7 +238,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Min" />
                 </StackPanel>
 
@@ -249,7 +255,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Max" />
                     <ToggleButton
                         Grid.Column="2"

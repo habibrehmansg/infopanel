@@ -632,6 +632,18 @@ namespace InfoPanel.Models
                     {
                         using var image = SKImage.FromBitmap(resizedBitmap);
                         bitmapFrame.Image = image.ToTextureImage(grContext);
+
+                        // Evict other GPU texture frames for animated images to prevent VRAM accumulation
+                        if (Frames > 1 && bitmapFrame.Image != null)
+                        {
+                            for (int i = 0; i < SKBitmapCache.Length; i++)
+                            {
+                                if (i != frame)
+                                {
+                                    SKBitmapCache[i].Invalidate();
+                                }
+                            }
+                        }
                     }
                     else
                     {

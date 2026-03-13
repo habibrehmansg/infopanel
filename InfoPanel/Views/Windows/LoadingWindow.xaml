@@ -33,7 +33,7 @@
             Grid.Row="0"
             Margin="0,0,0,0"
             FontSize="16"
-            Foreground="LightGray" />
+            Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
         <StackPanel Grid.Row="1">
             <ProgressBar
                 Height="10"

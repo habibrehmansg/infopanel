@@ -1,11 +1,12 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Utils;
 using InfoPanel.ViewModels;
-using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Forms;
+using Wpf.Ui.Abstractions.Controls;
 using Wpf.Ui.Controls;
 using Wpf.Ui;
 
@@ -27,7 +28,6 @@ namespace InfoPanel.Views.Pages
             ViewModel = viewModel;
             DataContext = this;
 
-            LoadAllFonts();
             _contentDialogService = contentDialogService;
             _snackbarService = snackbarService;
 
@@ -35,22 +35,39 @@ namespace InfoPanel.Views.Pages
 
             Loaded += ProfilesPage_Loaded;
             Unloaded += ProfilesPage_Unloaded;
+
+            ListViewProfiles.SelectionChanged += ListViewProfiles_SelectionChanged;
         }
 
-        private void LoadAllFonts()
+        private void ListViewProfiles_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            var allFonts = SKFontManager.Default.GetFontFamilies()
-                .OrderBy(f => f)
-                .ToList();
+            UpdateProfileDetailVisibility();
+        }
 
-            foreach (var font in allFonts)
+        private void UpdateProfileDetailVisibility()
+        {
+            if (ViewModel.Profile != null)
             {
-                InstalledFonts.Add(font);
+                ProfileDetailOverlay.Visibility = Visibility.Visible;
+                ListViewProfiles.Margin = new Thickness(0, 0, 0, 330);
+            }
+            else
+            {
+                ProfileDetailOverlay.Visibility = Visibility.Collapsed;
+                ListViewProfiles.Margin = new Thickness(0);
             }
         }
 
-        private void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
+        private async void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
         {
+            if (InstalledFonts.Count == 0)
+            {
+                var fonts = await FontCache.GetFontsAsync();
+                foreach (var font in fonts)
+                {
+                    InstalledFonts.Add(font);
+                }
+            }
         }
 
         private void ProfilesPage_Unloaded(object sender, RoutedEventArgs e)
@@ -133,6 +150,7 @@ namespace InfoPanel.Views.Pages
         private void ButtonClose_Click(object sender, RoutedEventArgs e)
         {
             ViewModel.Profile = null;
+            UpdateProfileDetailVisibility();
         }
     }
 }

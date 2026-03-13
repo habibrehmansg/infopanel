@@ -45,7 +45,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Width" />
                 </StackPanel>
 
@@ -60,7 +60,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Height" />
                 </StackPanel>
 
@@ -173,8 +173,14 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                        Text="Sensor" />
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{StaticResource SensorSourceConverter}">
+                                <Binding Path="SensorType" />
+                                <Binding Path="HwInfoRemoteIndex" FallbackValue="-1" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
@@ -182,7 +188,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Type" />
                 </StackPanel>
             </Grid>
@@ -204,7 +210,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Step" />
                 </StackPanel>
 
@@ -219,7 +225,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Thickness" />
                 </StackPanel>
 
@@ -243,7 +249,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Min" />
                 </StackPanel>
 
@@ -259,7 +265,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Max" />
                     <ToggleButton
                         Grid.Column="2"

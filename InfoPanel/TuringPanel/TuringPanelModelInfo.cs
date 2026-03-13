@@ -19,6 +19,8 @@ namespace InfoPanel.TuringPanel
 
         public bool HasPerDeviceTargetFps { get; init; } = false;
 
+        public bool HasStorageManagement { get; init; } = false;
+
         public override string ToString() => $"{Name} ({Width}x{Height}) - VID: {VendorId:X4}, PID: {ProductId:X4}";
 
     }
