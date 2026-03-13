@@ -55,6 +55,12 @@ namespace InfoPanel.Views.Windows
                 _ => ApplicationTheme.Light
             };
             ApplicationThemeManager.Apply(savedTheme, WindowBackdropType.Mica, true);
+            App.SyncMahAppsTheme(savedTheme);
+
+            ApplicationThemeManager.Changed += (theme, _) =>
+            {
+                App.SyncMahAppsTheme(theme);
+            };
 
             // We define a page provider for navigation
             SetPageService(pageProvider);

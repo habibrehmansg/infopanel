@@ -37,6 +37,51 @@ namespace InfoPanel
     public partial class App : System.Windows.Application
     {
         private static readonly ILogger Logger = Log.ForContext<App>();
+
+        /// <summary>
+        /// Switches the MahApps.Metro theme resource dictionary and brush overrides
+        /// to match the current WPF-UI application theme.
+        /// </summary>
+        public static void SyncMahAppsTheme(ApplicationTheme theme)
+        {
+            var app = Application.Current;
+            var mahAppsThemeName = theme == ApplicationTheme.Light ? "Light.Blue" : "Dark.Blue";
+
+            var oldDict = app.Resources.MergedDictionaries
+                .FirstOrDefault(d => d.Source?.OriginalString.Contains("/Styles/Themes/") == true);
+
+            if (oldDict != null)
+            {
+                var newDict = new ResourceDictionary
+                {
+                    Source = new Uri($"pack://application:,,,/MahApps.Metro;component/Styles/Themes/{mahAppsThemeName}.xaml")
+                };
+
+                var index = app.Resources.MergedDictionaries.IndexOf(oldDict);
+                app.Resources.MergedDictionaries.RemoveAt(index);
+                app.Resources.MergedDictionaries.Insert(index, newDict);
+            }
+
+            UpdateMahAppsBrushOverrides(theme);
+        }
+
+        private static void UpdateMahAppsBrushOverrides(ApplicationTheme theme)
+        {
+            var resources = Application.Current.Resources;
+
+            if (theme == ApplicationTheme.Light)
+            {
+                resources["MahApps.Brushes.Text"] = new SolidColorBrush(Colors.Black);
+                resources["MahApps.Brushes.Selected.Foreground"] = new SolidColorBrush(Colors.Black);
+                resources["MahApps.Brushes.TextBox.Border"] = new SolidColorBrush(Colors.Gray);
+            }
+            else
+            {
+                resources["MahApps.Brushes.Text"] = new SolidColorBrush(Colors.LightGray);
+                resources["MahApps.Brushes.Selected.Foreground"] = new SolidColorBrush(Colors.LightGray);
+                resources["MahApps.Brushes.TextBox.Border"] = new SolidColorBrush(Colors.DarkGray);
+            }
+        }
         private static readonly IHost _host = Host
        .CreateDefaultBuilder()
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
