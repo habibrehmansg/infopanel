@@ -10,15 +10,19 @@ namespace InfoPanel.Models
 {
     internal class SensorReader
     {
-        public static SensorReading? ReadHwInfoSensor(UInt32 id, UInt32 instance, UInt32 entryId)
+        public static SensorReading? ReadHwInfoSensor(int remoteIndex, UInt32 id, UInt32 instance, UInt32 entryId)
         {
-            if (HWHash.SENSORHASH.TryGetValue((id, instance, entryId), out HWHash.HWINFO_HASH hash))
+            if (HWHash.SENSORHASH.TryGetValue((remoteIndex, id, instance, entryId), out HWHash.HWINFO_HASH hash))
             {
                 return new SensorReading(hash.ValueMin, hash.ValueMax, hash.ValueAvg, hash.ValueNow, hash.Unit);
             }
 
             return null;
         }
+
+        // Backward compat — defaults to local
+        public static SensorReading? ReadHwInfoSensor(UInt32 id, UInt32 instance, UInt32 entryId)
+            => ReadHwInfoSensor(-1, id, instance, entryId);
 
         public static SensorReading? ReadLibreSensor(string sensorId)
         {

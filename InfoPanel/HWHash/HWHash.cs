@@ -1,4 +1,4 @@
-﻿using InfoPanel;
+using InfoPanel;
 using Serilog;
 using System;
 using System.Collections.Concurrent;
@@ -23,11 +23,9 @@ using System.Timers;
 
 
         const string SHARED_MEM_PATH = "Global\\HWiNFO_SENS_SM2";
+        const string REMOTE_SHARED_MEM_PREFIX = "Global\\HWiNFO_SENS_SM2_REMOTE_";
         const int SENSOR_STRING_LEN = 128;
         const int READING_STRING_LEN = 16;
-        private static MemoryMappedFile? MEM_MAP;
-        private static MemoryMappedViewAccessor? MEM_ACC;
-        private static HWINFO_MEM HWINFO_MEMREGION;
 
         private static readonly Stopwatch SW = Stopwatch.StartNew();
 
@@ -37,9 +35,12 @@ using System.Timers;
 
         private static System.Timers.Timer aTimer = new(1000);
 
-        private static Dictionary<uint, HWHASH_HEADER> HEADER_DICT = new Dictionary<uint, HWHASH_HEADER>();
-        public static ConcurrentDictionary<(UInt32, UInt32, UInt32), HWINFO_HASH> SENSORHASH = new ConcurrentDictionary<(UInt32, UInt32, UInt32), HWINFO_HASH>();
-        public static ConcurrentDictionary<(UInt32, UInt32, UInt32), HWINFO_HASH_MINI> SENSORHASH_MINI = new ConcurrentDictionary<(UInt32, UInt32, UInt32), HWINFO_HASH_MINI>();
+        private static readonly List<ShmConnection> _connections = new();
+        private static volatile int _reprobeCounter = 0;
+        private const int REPROBE_INTERVAL = 5; // re-probe every 5 poll cycles
+
+        public static ConcurrentDictionary<(int, UInt32, UInt32, UInt32), HWINFO_HASH> SENSORHASH = new ConcurrentDictionary<(int, UInt32, UInt32, UInt32), HWINFO_HASH>();
+        public static ConcurrentDictionary<(int, UInt32, UInt32, UInt32), HWINFO_HASH_MINI> SENSORHASH_MINI = new ConcurrentDictionary<(int, UInt32, UInt32, UInt32), HWINFO_HASH_MINI>();
         private static Thread? CoreThread;
 
         /// <summary>
@@ -50,10 +51,6 @@ using System.Timers;
         /// If [true], it will enable 1ms resolution, much better for newer systems, beware that it is a WIN32API call and all process are affected.
         /// </summary>
         public static bool HighPrecision = false;
-        /// <summary>
-        /// If [true] the measurements will be taken at precise intervals (every 1000ms) for instance.
-        /// </summary>
-        private static bool RoundMS = false; //edit: Not needed now [?]
         /// <summary>
         /// Delay in milliseconds (ms) between each update. Default is 1000 [ms], minimum is 100 [ms], maximum is 60000 [ms]. Make sure you configure HWInfo interval too so it will pull at the same rate.
         /// </summary>
@@ -93,15 +90,43 @@ using System.Timers;
             return true;
         }
 
-        private static bool HWINFO_RUNNING = false;
+        private static volatile bool HWINFO_RUNNING = false;
         private static void Prepare()
         {
-            HWINFO_RUNNING = ReadMem();
-
-            if (HWINFO_RUNNING)
+            // Try to open local SHM
+            var localConn = new ShmConnection
             {
+                RemoteIndex = -1,
+                ShmPath = SHARED_MEM_PATH
+            };
+
+            if (ReadMem(localConn))
+            {
+                bool added = false;
+                lock (_connections)
+                {
+                    if (!_connections.Exists(c => c.RemoteIndex == -1))
+                    {
+                        _connections.Add(localConn);
+                        added = true;
+                    }
+                }
+
+                if (!added)
+                {
+                    // A local connection already exists; dispose the duplicate
+                    localConn.MemAcc?.Dispose();
+                    localConn.MemMap?.Dispose();
+                    return;
+                }
+
+                BuildHeaders(localConn);
+                IndexOrder = 0;
+                HWINFO_RUNNING = true;
                 SharedModel.Instance.HwInfoAvailable = true;
-                BuildHeaders();
+
+                // Probe for remote connections
+                ProbeRemoteConnections();
             }
             else
             {
@@ -109,6 +134,41 @@ using System.Timers;
                 aTimer.Stop();
                 Thread.Sleep(1000);
                 aTimer.Start();
+            }
+        }
+
+        private static void ProbeRemoteConnections()
+        {
+            for (int i = 1; ; i++)
+            {
+                bool alreadyExists;
+                lock (_connections)
+                {
+                    alreadyExists = _connections.Exists(c => c.RemoteIndex == i);
+                }
+
+                if (alreadyExists)
+                    continue;
+
+                var remoteConn = new ShmConnection
+                {
+                    RemoteIndex = i,
+                    ShmPath = REMOTE_SHARED_MEM_PREFIX + i
+                };
+
+                if (ReadMem(remoteConn))
+                {
+                    BuildHeaders(remoteConn);
+                    lock (_connections)
+                    {
+                        _connections.Add(remoteConn);
+                    }
+                    Logger.Information("Discovered remote HWiNFO connection {Index}: {Path}", i, remoteConn.ShmPath);
+                }
+                else
+                {
+                    break; // Stop probing when we hit the first missing remote
+                }
             }
         }
 
@@ -122,21 +182,66 @@ using System.Timers;
         {
             if (HWINFO_RUNNING)
             {
-                if (CheckMem())
+                // Re-probe for new remote connections periodically
+                _reprobeCounter++;
+                if (_reprobeCounter >= REPROBE_INTERVAL)
                 {
-                    ReadSensors();
+                    _reprobeCounter = 0;
+                    ProbeRemoteConnections();
                 }
-                else
+
+                List<ShmConnection> snapshot;
+                lock (_connections)
                 {
-                    Logger.Warning("HWiNFO shared memory is dead");
-                    HWINFO_RUNNING = false;
-                    MEM_ACC?.Dispose();
-                    MEM_ACC = null;
-                    MEM_MAP?.Dispose();
-                    MEM_MAP = null;
-                    HEADER_DICT.Clear();
-                    SENSORHASH.Clear();
-                    SENSORHASH_MINI.Clear();
+                    snapshot = new List<ShmConnection>(_connections);
+                }
+
+                foreach (var conn in snapshot)
+                {
+                    if (CheckMem(conn))
+                    {
+                        ReadSensors(conn);
+                    }
+                    else
+                    {
+                        Logger.Warning("HWiNFO shared memory is dead for {Connection}", conn.RemoteIndex == -1 ? "Local" : $"Remote {conn.RemoteIndex}");
+
+                        // Remove keys for this connection
+                        var keysToRemove = SENSORHASH.Keys.Where(k => k.Item1 == conn.RemoteIndex).ToList();
+                        foreach (var key in keysToRemove)
+                        {
+                            SENSORHASH.TryRemove(key, out _);
+                            SENSORHASH_MINI.TryRemove(key, out _);
+                        }
+
+                        conn.MemAcc?.Dispose();
+                        conn.MemAcc = null;
+                        conn.MemMap?.Dispose();
+                        conn.MemMap = null;
+                        conn.HeaderDict.Clear();
+                        conn.IsAlive = false;
+
+                        lock (_connections)
+                        {
+                            _connections.Remove(conn);
+
+                            // If local connection died, mark as not running
+                            if (conn.RemoteIndex == -1)
+                            {
+                                HWINFO_RUNNING = false;
+                                SENSORHASH.Clear();
+                                SENSORHASH_MINI.Clear();
+                                // Clean up all remaining connections too
+                                foreach (var c in _connections)
+                                {
+                                    c.MemAcc?.Dispose();
+                                    c.MemMap?.Dispose();
+                                    c.HeaderDict.Clear();
+                                }
+                                _connections.Clear();
+                            }
+                        }
+                    }
                 }
             }
             else
@@ -145,32 +250,39 @@ using System.Timers;
             }
         }
 
-        private static bool ReadMem()
+        private static bool ReadMem(ShmConnection conn)
         {
-            Logger.Debug("Reading HWiNFO shared memory");
-            HWINFO_MEMREGION = new HWINFO_MEM();
+            Logger.Debug("Reading HWiNFO shared memory: {Path}", conn.ShmPath);
+            conn.MemRegion = new HWINFO_MEM();
             try
             {
-                MEM_MAP = MemoryMappedFile.OpenExisting(SHARED_MEM_PATH, MemoryMappedFileRights.Read);
-                MEM_ACC = MEM_MAP.CreateViewAccessor(0L, Marshal.SizeOf(typeof(HWINFO_MEM)), MemoryMappedFileAccess.Read);
-                MEM_ACC.Read(0L, out HWINFO_MEMREGION);
+                conn.MemMap = MemoryMappedFile.OpenExisting(conn.ShmPath, MemoryMappedFileRights.Read);
+                conn.MemAcc = conn.MemMap.CreateViewAccessor(0L, Marshal.SizeOf(typeof(HWINFO_MEM)), MemoryMappedFileAccess.Read);
+                conn.MemAcc.Read(0L, out HWINFO_MEM region);
+                conn.MemRegion = region;
+                conn.IsAlive = true;
                 return true;
             }
             catch (Exception)
             {
+                conn.MemAcc?.Dispose();
+                conn.MemAcc = null;
+                conn.MemMap?.Dispose();
+                conn.MemMap = null;
                 return false;
             }
         }
 
-        private static bool CheckMem()
+        private static bool CheckMem(ShmConnection conn)
         {
             bool result = false;
             try
             {
-                if (MEM_ACC != null)
+                if (conn.MemAcc != null)
                 {
-                    MEM_ACC.Read(0L, out HWINFO_MEMREGION);
-                    byte[] bytes = BitConverter.GetBytes(HWINFO_MEMREGION.Sig);
+                    conn.MemAcc.Read(0L, out HWINFO_MEM region);
+                    conn.MemRegion = region;
+                    byte[] bytes = BitConverter.GetBytes(conn.MemRegion.Sig);
                     if (BitConverter.IsLittleEndian)
                     {
                         Array.Reverse(bytes);
@@ -185,51 +297,76 @@ using System.Timers;
             return result;
         }
 
-        private static void BuildHeaders()
+        private static void BuildHeaders(ShmConnection conn)
         {
-            Logger.Debug("Building HWiNFO sensor headers");
-            if (MEM_MAP != null)
+            Logger.Debug("Building HWiNFO sensor headers for {Connection}", conn.RemoteIndex == -1 ? "Local" : $"Remote {conn.RemoteIndex}");
+            if (conn.MemMap != null)
             {
-                for (uint index = 0; index < HWINFO_MEMREGION.SS_SensorElements; ++index)
+                for (uint index = 0; index < conn.MemRegion.SS_SensorElements; ++index)
                 {
-                    using (MemoryMappedViewStream viewStream = MEM_MAP.CreateViewStream(HWINFO_MEMREGION.SS_OFFSET + index * HWINFO_MEMREGION.SS_SIZE, HWINFO_MEMREGION.SS_SIZE, MemoryMappedFileAccess.Read))
+                    using (MemoryMappedViewStream viewStream = conn.MemMap.CreateViewStream(conn.MemRegion.SS_OFFSET + index * conn.MemRegion.SS_SIZE, conn.MemRegion.SS_SIZE, MemoryMappedFileAccess.Read))
                     {
-                        byte[] buffer = new byte[(int)HWINFO_MEMREGION.SS_SIZE];
-                        viewStream.Read(buffer, 0, (int)HWINFO_MEMREGION.SS_SIZE);
+                        byte[] buffer = new byte[(int)conn.MemRegion.SS_SIZE];
+                        viewStream.Read(buffer, 0, (int)conn.MemRegion.SS_SIZE);
                         GCHandle gcHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-                        HWHASH_HEADER structure = (HWHASH_HEADER)Marshal.PtrToStructure(gcHandle.AddrOfPinnedObject(), typeof(HWHASH_HEADER));
-                        if (!HEADER_DICT.ContainsKey(index))
+                        try
                         {
-                            HEADER_DICT.Add(index, structure);
+                            HWHASH_HEADER structure = (HWHASH_HEADER)Marshal.PtrToStructure(gcHandle.AddrOfPinnedObject(), typeof(HWHASH_HEADER));
+                            if (!conn.HeaderDict.ContainsKey(index))
+                            {
+                                conn.HeaderDict.Add(index, structure);
+                            }
+                        }
+                        finally
+                        {
+                            gcHandle.Free();
                         }
                     }
                 }
-                SelfData.TotalCategories = HWINFO_MEMREGION.SS_SensorElements;
-            }
-        }
 
-        private static void ReadSensors()
-        {
-            MiniBenchmark(0);
-            SelfData.TotalEntries = HWINFO_MEMREGION.TOTAL_ReadingElements;
-            for (uint index = 0; index < HWINFO_MEMREGION.TOTAL_ReadingElements; ++index)
-            {
-                using (MemoryMappedViewStream viewStream = MEM_MAP.CreateViewStream(HWINFO_MEMREGION.OFFSET_Reading + index * HWINFO_MEMREGION.SIZE_Reading, HWINFO_MEMREGION.SIZE_Reading, MemoryMappedFileAccess.Read))
+                if (conn.RemoteIndex == -1)
                 {
-                    byte[] buffer = new byte[(int)HWINFO_MEMREGION.SIZE_Reading];
-                    viewStream.Read(buffer, 0, (int)HWINFO_MEMREGION.SIZE_Reading);
-                    GCHandle gcHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-                    HWHASH_ELEMENT structure = (HWHASH_ELEMENT)Marshal.PtrToStructure(gcHandle.AddrOfPinnedObject(), typeof(HWHASH_ELEMENT));
-                    FormatSensor(structure);
-                    gcHandle.Free();
+                    SelfData.TotalCategories = conn.MemRegion.SS_SensorElements;
                 }
             }
-            MiniBenchmark(1);
         }
 
-        private static void FormatSensor(HWHASH_ELEMENT READING)
+        private static void ReadSensors(ShmConnection conn)
         {
-            var KEY = (HEADER_DICT[READING.Index].ID, HEADER_DICT[READING.Index].Instance, READING.ID);
+            if (conn.RemoteIndex == -1)
+            {
+                MiniBenchmark(0);
+                SelfData.TotalEntries = conn.MemRegion.TOTAL_ReadingElements;
+            }
+
+            for (uint index = 0; index < conn.MemRegion.TOTAL_ReadingElements; ++index)
+            {
+                using (MemoryMappedViewStream viewStream = conn.MemMap.CreateViewStream(conn.MemRegion.OFFSET_Reading + index * conn.MemRegion.SIZE_Reading, conn.MemRegion.SIZE_Reading, MemoryMappedFileAccess.Read))
+                {
+                    byte[] buffer = new byte[(int)conn.MemRegion.SIZE_Reading];
+                    viewStream.Read(buffer, 0, (int)conn.MemRegion.SIZE_Reading);
+                    GCHandle gcHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                    try
+                    {
+                        HWHASH_ELEMENT structure = (HWHASH_ELEMENT)Marshal.PtrToStructure(gcHandle.AddrOfPinnedObject(), typeof(HWHASH_ELEMENT));
+                        FormatSensor(conn, structure);
+                    }
+                    finally
+                    {
+                        gcHandle.Free();
+                    }
+                }
+            }
+
+            if (conn.RemoteIndex == -1)
+            {
+                MiniBenchmark(1);
+            }
+        }
+
+        private static void FormatSensor(ShmConnection conn, HWHASH_ELEMENT READING)
+        {
+            var KEY = (conn.RemoteIndex, conn.HeaderDict[READING.Index].ID, conn.HeaderDict[READING.Index].Instance, READING.ID);
             ulong UNIQUE_ID = FastConcat(READING.ID, READING.Index);
             bool FirstTest = SENSORHASH.ContainsKey(KEY);
             if (FirstTest == false)
@@ -259,12 +396,13 @@ using System.Timers;
                     ValueMin = READING.ValueMin,
                     ValueMax = READING.ValueMax,
                     ValueAvg = READING.ValueAvg,
-                    ParentNameDefault = HEADER_DICT[READING.Index].NameDefault,
-                    ParentNameCustom = HEADER_DICT[READING.Index].NameCustom,
-                    ParentID = HEADER_DICT[READING.Index].ID,
-                    ParentInstance = HEADER_DICT[READING.Index].Instance,
-                    ParentUniqueID = FastConcat(HEADER_DICT[READING.Index].ID, HEADER_DICT[READING.Index].Instance),
-                    IndexOrder = IndexOrder++
+                    ParentNameDefault = conn.HeaderDict[READING.Index].NameDefault,
+                    ParentNameCustom = conn.HeaderDict[READING.Index].NameCustom,
+                    ParentID = conn.HeaderDict[READING.Index].ID,
+                    ParentInstance = conn.HeaderDict[READING.Index].Instance,
+                    ParentUniqueID = FastConcat(conn.HeaderDict[READING.Index].ID, conn.HeaderDict[READING.Index].Instance),
+                    IndexOrder = IndexOrder++,
+                    RemoteIndex = conn.RemoteIndex
 
                 };
                 SENSORHASH.TryAdd(KEY, LastReading);
@@ -358,6 +496,18 @@ using System.Timers;
         }
 
         /// <summary>
+        /// Returns a list filtered by remote index, respecting the same order as HWInfo original user interface.
+        /// </summary>
+        public static List<HWINFO_HASH> GetOrderedList(int remoteIndex)
+        {
+            List<HWINFO_HASH> OrderedList = SENSORHASH.Values
+                .Where(x => x.RemoteIndex == remoteIndex)
+                .OrderBy(x => x.IndexOrder)
+                .ToList();
+            return OrderedList;
+        }
+
+        /// <summary>
         /// Returns a list respecting the same order as HWInfo original user interface, in a minified version.
         /// </summary>
         public static List<HWINFO_HASH_MINI> GetOrderedListMini()
@@ -365,6 +515,49 @@ using System.Timers;
             List<HWINFO_HASH_MINI> OrderedList = SENSORHASH_MINI.Values.OrderBy(x => x.IndexOrder).ToList();
             return OrderedList;
         }
+
+        /// <summary>
+        /// Returns a list of available connections (local + remotes) with display names.
+        /// </summary>
+        public static List<(int remoteIndex, string name)> GetAvailableConnections()
+        {
+            var result = new List<(int, string)>();
+            List<ShmConnection> snapshot;
+            lock (_connections)
+            {
+                snapshot = new List<ShmConnection>(_connections);
+            }
+
+            foreach (var conn in snapshot.OrderBy(c => c.RemoteIndex))
+            {
+                if (conn.RemoteIndex == -1)
+                {
+                    result.Add((-1, "Local"));
+                }
+                else
+                {
+                    string name = $"Remote {conn.RemoteIndex}";
+                    if (conn.HeaderDict.Count > 0 && conn.HeaderDict.TryGetValue(0, out var header))
+                    {
+                        var displayName = header.NameDefault;
+                        // Extract [Desktop-ID] portion if present (format: "[Desktop-ID] System: ...")
+                        if (displayName.StartsWith('['))
+                        {
+                            var endBracket = displayName.IndexOf(']');
+                            if (endBracket > 1)
+                            {
+                                displayName = displayName.Substring(1, endBracket - 1);
+                            }
+                        }
+                        name = $"Remote {conn.RemoteIndex}: {displayName}";
+                    }
+                    result.Add((conn.RemoteIndex, name));
+                }
+            }
+
+            return result;
+        }
+
         /// <summary>
         /// Converts the Dictionary to a JSON string
         /// </summary>
@@ -425,6 +618,7 @@ using System.Timers;
             public uint ParentInstance { get; set; }
             public ulong ParentUniqueID { get; set; }
             public int IndexOrder { get; set; }
+            public int RemoteIndex { get; set; }
         }
 
         public record struct HWINFO_HASH_MINI
@@ -440,6 +634,16 @@ using System.Timers;
             public string ReadingType { get; set; }
         }
 
+        private class ShmConnection
+        {
+            public int RemoteIndex;     // -1 = local, 0+ = remote
+            public string ShmPath = string.Empty;
+            public MemoryMappedFile? MemMap;
+            public MemoryMappedViewAccessor? MemAcc;
+            public HWINFO_MEM MemRegion;
+            public Dictionary<uint, HWHASH_HEADER> HeaderDict = new();
+            public bool IsAlive;
+        }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         private struct HWHASH_ELEMENT
@@ -485,18 +689,6 @@ using System.Timers;
             public uint SIZE_Reading;
             public uint TOTAL_ReadingElements;
         }
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        private struct HWHASH_Sensor
-        {
-            public uint ID;
-            public uint Instance;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = SENSOR_STRING_LEN)]
-            public string NameDefault;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = SENSOR_STRING_LEN)]
-            public string NameCustom;
-        }
-
 
         private enum SENSOR_READING_TYPE
         {
