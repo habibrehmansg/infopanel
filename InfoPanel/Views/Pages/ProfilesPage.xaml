@@ -86,7 +86,7 @@
             Grid.Row="1"
             MaxWidth="1000"
             Margin="0,20,0,0"
-            Background="#601A1a1a"
+            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
             IsExpanded="True">
 
             <Expander.Header>
@@ -189,7 +189,7 @@
                                         <TextBlock
                                             Margin="5,0,0,0"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Text="Name" />
                                     </StackPanel>
 
@@ -214,7 +214,7 @@
                                                 <TextBlock
                                                     Margin="5,0,0,0"
                                                     FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                     Text="{Binding TargetWindow.Name, Mode=OneWay}" />
                                             </StackPanel>
 
@@ -277,7 +277,7 @@
                                             <TextBlock
                                                 Margin="5,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="Width" />
                                         </StackPanel>
 
@@ -293,7 +293,7 @@
                                             <TextBlock
                                                 Margin="5,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="Height" />
                                         </StackPanel>
 
@@ -326,7 +326,7 @@
                                             <TextBlock
                                                 Margin="5,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="X" />
                                         </StackPanel>
 
@@ -340,7 +340,7 @@
                                             <TextBlock
                                                 Margin="5,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="Y" />
                                         </StackPanel>
 
@@ -371,7 +371,7 @@
                                         <TextBlock
                                             Margin="5,0,0,0"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Text="Background Color" />
                                     </StackPanel>
 
@@ -386,7 +386,7 @@
                                         <TextBlock
                                             Margin="5,0,0,0"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Text="Default Text Color" />
                                     </StackPanel>
 
@@ -405,7 +405,7 @@
                                         <TextBlock
                                             Margin="5,0,0,0"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Text="Default Font Family" />
                                     </StackPanel>
 
@@ -425,7 +425,7 @@
                                             <TextBlock
                                                 Margin="5,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="Default Font Size" />
                                         </StackPanel>
                                     </Grid>
@@ -459,7 +459,7 @@
 
                                 <Border
                                     Margin="0,10,0,0"
-                                    BorderBrush="DarkGray"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                                     BorderThickness="1"
                                     CornerRadius="5">
                                     <StackPanel Margin="5,5,5,5">
@@ -503,7 +503,7 @@
                                                 <TextBlock
                                                     Margin="5,0,0,0"
                                                     FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                     Text="Global Font Scale" />
                                             </StackPanel>
                                         </Grid>

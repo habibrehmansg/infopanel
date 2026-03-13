@@ -37,10 +37,11 @@
                     <TextBlock
                         FontSize="28"
                         FontWeight="Bold"
+                        Foreground="#FFFFFF"
                         Text="Welcome to InfoPanel." />
                     <TextBlock
                         FontSize="18"
-                        Opacity=".8"
+                        Foreground="#B7FFFFFF"
                         Text="Level up your desktop." />
                 </StackPanel>
             </Border>
@@ -66,7 +67,7 @@
                             Text="Profiles" />
                         <TextBlock
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Create and manage your profiles." />
                     </StackPanel>
                 </ui:CardAction>
@@ -83,7 +84,7 @@
                             Text="Design" />
                         <TextBlock
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Customisation and design." />
                     </StackPanel>
                 </ui:CardAction>
@@ -100,7 +101,7 @@
                             Text="Updates" />
                         <TextBlock
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Check for updates and view version history." />
                     </StackPanel>
                 </ui:CardAction>
@@ -117,7 +118,7 @@
                             Text="Plugins" />
                         <TextBlock
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="View activated plugins." />
                     </StackPanel>
                 </ui:CardAction>
@@ -134,7 +135,7 @@
                             Text="Settings" />
                         <TextBlock
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Manage settings." />
                     </StackPanel>
                 </ui:CardAction>
@@ -151,7 +152,7 @@
                             Text="About" />
                         <TextBlock
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Resource links, donations and acknowledgments." />
                     </StackPanel>
                 </ui:CardAction>
@@ -180,7 +181,7 @@
                                 <TextBlock
                                     Margin="0,5,0,0"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="Leave a review for others to see and help InfoPanel grow." />
                             </StackPanel>
                             <ui:Anchor
@@ -211,7 +212,7 @@
                                 <TextBlock
                                     Margin="0,5,0,0"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="Show your appreciation and buy me a coffee." />
                             </StackPanel>
                             <ui:Anchor
@@ -243,7 +244,7 @@
                                 <TextBlock
                                     Margin="0,5,0,0"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="Join in conversations with others regarding InfoPanel." />
                             </StackPanel>
                             <ui:Anchor
@@ -275,7 +276,7 @@
                                 <TextBlock
                                     Margin="0,5,0,0"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="Help grow the /r/InfoPanel community." />
                             </StackPanel>
                             <ui:Anchor

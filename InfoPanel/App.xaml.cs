@@ -27,6 +27,7 @@ using System.Windows.Threading;
 using Wpf.Ui;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
+using Wpf.Ui.DependencyInjection;
 
 namespace InfoPanel
 {
@@ -76,11 +77,8 @@ namespace InfoPanel
            // Dialog service
            services.AddSingleton<IContentDialogService, ContentDialogService>();
 
-           //// Page resolver service
-           services.AddSingleton<IPageService, PageService>();
-
-           //// Page resolver service
-           //services.AddSingleton<ITestWindowService, TestWindowService>();
+           // Page resolver service (WPF-UI 4.x DI integration)
+           services.AddNavigationViewPageProvider();
 
            // Service containing navigation, same as INavigationWindow... but without window
            services.AddSingleton<INavigationService, NavigationService>();
@@ -127,10 +125,6 @@ namespace InfoPanel
 
         public App()
         {
-            // IMPORTANT: Set Dark theme before any UI resources are loaded
-            // This prevents the ThemesDictionary constructor from defaulting to Light theme
-            ApplicationThemeManager.Apply(ApplicationTheme.Dark, WindowBackdropType.Mica, false);
-
             DispatcherUnhandledException += App_DispatcherUnhandledException;
 
             // 1. Handle exceptions from background threads and Task.Run
@@ -498,7 +492,7 @@ namespace InfoPanel
             }
             return ids;
         }
-
+    
         public static async Task CleanShutDown()
         {
             DisplayWindowManager.Instance.CloseAll();

@@ -30,7 +30,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Sensor" />
                     <StackPanel
                         Margin="0,-5,0,0"
@@ -67,7 +67,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Reading" />
                 </StackPanel>
             </Grid>
@@ -121,13 +121,13 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Multiplier (toggle for divisor)"
                         Visibility="{Binding DivisionToggle, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Divisor (toggle for multiplier)"
                         Visibility="{Binding DivisionToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
@@ -146,7 +146,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Modifier" />
                     </StackPanel>
                 </StackPanel>
@@ -190,7 +190,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Override Precision" />
                     </StackPanel>
 
@@ -218,7 +218,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Override Unit" />
                     </StackPanel>
 
@@ -254,7 +254,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="≥ Threshold #1" />
                     </StackPanel>
 
@@ -294,7 +294,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="≥ Threshold #2" />
                     </StackPanel>
 

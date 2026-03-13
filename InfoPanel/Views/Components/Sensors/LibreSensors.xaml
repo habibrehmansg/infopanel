@@ -54,7 +54,7 @@
                                     Visibility="{Binding Icon, Converter={StaticResource NullToVisibilityConverter}}" />
                                 <TextBlock
                                     Margin="0,0,0,0"
-                                    Foreground="LightGray"
+                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                     Text="{Binding Name}" />
                             </StackPanel>
                         </HierarchicalDataTemplate>
@@ -104,7 +104,7 @@
                             <TextBlock
                                 Margin="5,0,0,0"
                                 FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="Sensor Id" />
                         </StackPanel>
 

@@ -47,7 +47,7 @@
                                     Margin="0,5,0,0"
                                     VerticalAlignment="Center"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="If you would like to develop a plugin, visit our Github and reference Infopanel.Extras project for guidelines." />
                             </StackPanel>
                             <ui:Anchor

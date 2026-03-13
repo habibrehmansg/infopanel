@@ -36,7 +36,7 @@
                         <TextBlock
                             Margin="0,5,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Configure and run multiple BeadaPanel devices simultaneously." />
                     </StackPanel>
 
@@ -101,7 +101,7 @@
                                             <TextBlock
                                                 Margin="0,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                                                 <TextBlock.Text>
                                                     <MultiBinding StringFormat="{}{0} - {1}">
                                                         <Binding Path="DeviceId" />
@@ -112,7 +112,7 @@
                                             <TextBlock
                                                 Margin="0,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                                                 <TextBlock.Text>
                                                     <MultiBinding StringFormat="{}Dimensions: {0}×{1} | Firmware: v{2}">
                                                         <Binding Path="RuntimeProperties.PanelInfo.ModelInfo.Width" />
@@ -200,13 +200,13 @@
                                                     <TextBlock
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                         Text="Brightness" />
                                                     <TextBlock
                                                         Grid.Column="1"
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                         Text="{Binding Brightness}" />
                                                 </Grid>
                                             </StackPanel>
@@ -267,7 +267,7 @@
                         <TextBlock
                             Margin="0,5,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Configure and run multiple Turzx devices simultaneously." />
                     </StackPanel>
 
@@ -323,7 +323,7 @@
                                             <TextBlock
                                                 Margin="0,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                                                 <TextBlock.Text>
                                                     <MultiBinding StringFormat="{}{0} - {1}">
                                                         <Binding Path="DeviceId" />
@@ -335,7 +335,7 @@
                                             <TextBlock
                                                 Margin="0,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                                                 <TextBlock.Text>
                                                     <MultiBinding StringFormat="{}Dimensions: {0}×{1}">
                                                         <Binding Path="ModelInfo.Width" />
@@ -434,13 +434,13 @@
                                                     <TextBlock
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                         Text="Brightness" />
                                                     <TextBlock
                                                         Grid.Column="1"
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                         Text="{Binding Brightness}" />
                                                 </Grid>
                                             </StackPanel>

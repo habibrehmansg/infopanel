@@ -393,6 +393,7 @@ namespace InfoPanel
                             Settings.UiWidth = settings.UiWidth;
                             Settings.UiHeight = settings.UiHeight;
                             Settings.UiScale = settings.UiScale;
+                            Settings.AppTheme = settings.AppTheme;
                             Settings.IsPaneOpen = settings.IsPaneOpen;
                             Settings.AutoStart = settings.AutoStart;
                             Settings.AutoStartDelay = settings.AutoStartDelay;

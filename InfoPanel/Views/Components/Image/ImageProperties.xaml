@@ -59,7 +59,7 @@
                                             <TextBlock
                                                 Margin="5,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="Path" />
                                         </StackPanel>
                                         <ui:Button
@@ -93,7 +93,7 @@
                                                     <TextBlock
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                         Text="RTSP Stream URL (tab to apply)" />
                                                 </StackPanel>
                                             </Grid>
@@ -116,7 +116,7 @@
                                                     <TextBlock
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                         Text="HTTP/HTTPS URL (tab to apply)" />
                                                 </StackPanel>
                                             </Grid>
@@ -150,7 +150,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Width" />
                 </StackPanel>
 
@@ -166,7 +166,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Height" />
                 </StackPanel>
             </Grid>
@@ -196,13 +196,13 @@
                             Grid.Column="0"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Resize scale" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding Scale, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
@@ -223,13 +223,13 @@
                             Grid.Column="0"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Rotation" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding Rotation, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
@@ -252,13 +252,13 @@
                             Grid.Column="0"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Volume" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding Value, ElementName=VolumeSlider, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
@@ -309,7 +309,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Name" />
                     </StackPanel>
                     <StackPanel
@@ -323,7 +323,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Type" />
                     </StackPanel>
                 </Grid>
@@ -378,7 +378,7 @@
                                         <TextBlock
                                             Margin="5,0,0,0"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Text="Sensor" />
                                     </StackPanel>
                                 </Grid>
@@ -400,7 +400,7 @@
                                         <TextBlock
                                             Margin="5,0,0,0"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Text="Sensor" />
                                     </StackPanel>
 
@@ -412,7 +412,7 @@
                                         <TextBlock
                                             Margin="5,0,0,0"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Text="Reading" />
                                     </StackPanel>
                                 </Grid>
@@ -449,13 +449,13 @@
                                                 <TextBlock
                                                     Margin="5,0,0,0"
                                                     FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                     Text="Show when ≥ Threshold #1" />
                                                 <TextBlock
                                                     Grid.Column="1"
                                                     Margin="5,0,0,0"
                                                     FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                     Text="AND" />
                                             </Grid>
 
@@ -482,7 +482,7 @@
                                             <TextBlock
                                                 Margin="5,0,0,0"
                                                 FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="Hide when &gt; Threshold #2" />
                                         </StackPanel>
 
