@@ -38,8 +38,34 @@ namespace InfoPanel.Models
 
         private readonly TypedMemoryCache<SKImageFrameSlot[]> SKGLImageMemoryCache = new();
 
-        public int Width { get; private set; } = 0;
-        public int Height { get; private set; } = 0;
+        private int _width;
+        private int _height;
+
+        public int Width
+        {
+            get
+            {
+                if (_width == 0 && _backgroundVideoPlayer != null)
+                {
+                    _width = _backgroundVideoPlayer.Video.Width;
+                }
+                return _width;
+            }
+            private set => _width = value;
+        }
+
+        public int Height
+        {
+            get
+            {
+                if (_height == 0 && _backgroundVideoPlayer != null)
+                {
+                    _height = _backgroundVideoPlayer.Video.Height;
+                }
+                return _height;
+            }
+            private set => _height = value;
+        }
 
         public readonly ImageType Type;
 
