@@ -103,11 +103,18 @@ namespace InfoPanel.Extras
             _uptimeSecondsSensor.Value = $"{uptime.Seconds:D2}";
         }
 
-       
+
         PerformanceCounter? utility;
         PerformanceCounter? usage;
+        PerformanceCounterCategory? _processCategory;
 
         Dictionary<string, double> firstUsageSample = [];
+        private readonly Dictionary<string, double> _secondUsageSample = [];
+        private readonly Dictionary<string, long> _memorySample = [];
+        private readonly Dictionary<string, Instance> _instances = [];
+        private readonly DataTable _reusableCpuUsageTable = new();
+        private readonly DataTable _reusableCpuUtilityTable = new();
+        private readonly DataTable _reusableMemoryTable = new();
 
         private void GetProcessInfo()
         {
@@ -132,12 +139,14 @@ namespace InfoPanel.Extras
                     // Handle any exceptions that might occur (e.g., access denied)
                     Console.WriteLine($"Could not access process {process.ProcessName}: {ex.Message}");
                 }
+                finally
+                {
+                    process.Dispose();
+                }
             }
 
             _threadCountSensor.Value = totalThreadCount;
             _handleCountSensor.Value = totalHandleCount;
-
-            var processGroups = processes.GroupBy(p => p.ProcessName);
 
             utility ??= new PerformanceCounter("Processor Information", "% Processor Utility", "_Total");
             usage ??= new PerformanceCounter("Processor Information", "% Processor Time", "_Total");
@@ -148,35 +157,35 @@ namespace InfoPanel.Extras
             var usageDelta = usage.NextValue();
             _cpuUsage.Value = usageDelta;
 
-            var category = new PerformanceCounterCategory("Process V2");
-            var categoryData = category.ReadCategory();
+            _processCategory ??= new PerformanceCounterCategory("Process V2");
+            var categoryData = _processCategory.ReadCategory();
             var usageData = categoryData["% Processor Time"];
             var memoryData = categoryData["Working Set - Private"];
 
-            // Second sample
-            var secondUsageSample = new Dictionary<string, double>();
+            // Second sample — reuse dictionaries
+            _secondUsageSample.Clear();
             foreach (InstanceData data in usageData.Values)
             {
-                secondUsageSample[data.InstanceName] = data.RawValue;
+                _secondUsageSample[data.InstanceName] = data.RawValue;
             }
 
-            var memorySample = new Dictionary<string, long>();
+            _memorySample.Clear();
             foreach (InstanceData data in memoryData.Values)
             {
-                memorySample[data.InstanceName] = data.RawValue;
+                _memorySample[data.InstanceName] = data.RawValue;
             }
 
-            Dictionary<string, Instance> instances = [];
+            _instances.Clear();
 
-            if (firstUsageSample.TryGetValue("_Total", out var firstTotalValue) && secondUsageSample.TryGetValue("_Total", out var secondTotalValue))
+            if (firstUsageSample.TryGetValue("_Total", out var firstTotalValue) && _secondUsageSample.TryGetValue("_Total", out var secondTotalValue))
             {
                 var totalDelta = secondTotalValue - firstTotalValue;
 
-                foreach (var kvp in secondUsageSample)
+                foreach (var kvp in _secondUsageSample)
                 {
                     var proceessName = kvp.Key.Split(':', 2)[0];
 
-                    if (firstUsageSample.TryGetValue(kvp.Key, out var firstValue) && memorySample.TryGetValue(kvp.Key, out var memoryValue))
+                    if (firstUsageSample.TryGetValue(kvp.Key, out var firstValue) && _memorySample.TryGetValue(kvp.Key, out var memoryValue))
                     {
                         double secondValue = kvp.Value;
                         double delta = secondValue - firstValue;
@@ -188,7 +197,7 @@ namespace InfoPanel.Extras
                             cpuUtility = cpuUsage / usageDelta * utilityDelta;
                         }
 
-                        if (instances.TryGetValue(proceessName, out var instance))
+                        if (_instances.TryGetValue(proceessName, out var instance))
                         {
                             instance.Usage += cpuUsage;
                             instance.Utility += cpuUtility;
@@ -196,49 +205,55 @@ namespace InfoPanel.Extras
                         }
                         else
                         {
-                            instances.TryAdd(proceessName, new Instance { Name = proceessName, Usage = cpuUsage, Utility = cpuUtility, PrivateMemory = memoryValue });
+                            _instances.TryAdd(proceessName, new Instance { Name = proceessName, Usage = cpuUsage, Utility = cpuUtility, PrivateMemory = memoryValue });
                         }
                     }
                 }
             }
 
-            if(instances.TryGetValue("_Total", out var totalInstance))
+            if(_instances.TryGetValue("_Total", out var totalInstance))
             {
                 _memoryUsage.Value = (float) totalInstance.PrivateMemory / 1024 / 1024;
             }
 
-            if (instances.TryGetValue("Memory Compression", out var memoryCompression))
+            if (_instances.TryGetValue("Memory Compression", out var memoryCompression))
             {
                 _memoryCompression.Value = (float) memoryCompression.PrivateMemory / 1024 / 1024;
             }
 
 
-            var result = instances.Values.ToList();
+            var result = _instances.Values.ToList();
 
             //cpu usage
             result.Sort((a, b) => b.Usage.CompareTo(a.Usage));
-            _topCpuUsage.Value = BuildDataTable(result, blacklist);
+            FillDataTable(_reusableCpuUsageTable, result, blacklist);
+            _topCpuUsage.Value = _reusableCpuUsageTable;
 
             //cpu utility
             result.Sort((a, b) => b.Utility.CompareTo(a.Utility));
-            _topCpuUtility.Value = BuildDataTable(result, blacklist);
+            FillDataTable(_reusableCpuUtilityTable, result, blacklist);
+            _topCpuUtility.Value = _reusableCpuUtilityTable;
 
             //memory
             result.Sort((a, b) => b.PrivateMemory.CompareTo(a.PrivateMemory));
-            _topMemoryUsage.Value = BuildDataTable(result, blacklist);
+            FillDataTable(_reusableMemoryTable, result, blacklist);
+            _topMemoryUsage.Value = _reusableMemoryTable;
 
-            //set default
-            firstUsageSample = secondUsageSample;
+            //set default — swap reference instead of copying
+            firstUsageSample = new Dictionary<string, double>(_secondUsageSample);
         }
 
-        private static DataTable BuildDataTable(List<Instance> instances, string[] blacklist)
+        private static void FillDataTable(DataTable dataTable, List<Instance> instances, string[] blacklist)
         {
-            var dataTable = new DataTable();
+            dataTable.Rows.Clear();
 
-            dataTable.Columns.Add("Process Name", typeof(PluginText));
-            dataTable.Columns.Add("Usage", typeof(PluginSensor));
-            dataTable.Columns.Add("Utility", typeof(PluginSensor));
-            dataTable.Columns.Add("Memory", typeof(PluginSensor));
+            if (dataTable.Columns.Count == 0)
+            {
+                dataTable.Columns.Add("Process Name", typeof(PluginText));
+                dataTable.Columns.Add("Usage", typeof(PluginSensor));
+                dataTable.Columns.Add("Utility", typeof(PluginSensor));
+                dataTable.Columns.Add("Memory", typeof(PluginSensor));
+            }
 
             foreach(var instance in instances)
             {
@@ -254,8 +269,6 @@ namespace InfoPanel.Extras
                 row[3] = new PluginSensor("Memory", (float) (instance.PrivateMemory) / 1024 / 1024, " MB");
                 dataTable.Rows.Add(row);
             }
-
-            return dataTable;
         }
 
         class Instance
