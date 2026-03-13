@@ -339,12 +339,18 @@ using System.Timers;
                 SelfData.TotalEntries = conn.MemRegion.TOTAL_ReadingElements;
             }
 
-            for (uint index = 0; index < conn.MemRegion.TOTAL_ReadingElements; ++index)
+            var elementCount = conn.MemRegion.TOTAL_ReadingElements;
+            var elementSize = (int)conn.MemRegion.SIZE_Reading;
+            var totalSize = elementCount * conn.MemRegion.SIZE_Reading;
+
+            using (MemoryMappedViewStream viewStream = conn.MemMap.CreateViewStream(
+                conn.MemRegion.OFFSET_Reading, totalSize, MemoryMappedFileAccess.Read))
             {
-                using (MemoryMappedViewStream viewStream = conn.MemMap.CreateViewStream(conn.MemRegion.OFFSET_Reading + index * conn.MemRegion.SIZE_Reading, conn.MemRegion.SIZE_Reading, MemoryMappedFileAccess.Read))
+                byte[] buffer = new byte[elementSize];
+
+                for (uint index = 0; index < elementCount; ++index)
                 {
-                    byte[] buffer = new byte[(int)conn.MemRegion.SIZE_Reading];
-                    viewStream.Read(buffer, 0, (int)conn.MemRegion.SIZE_Reading);
+                    viewStream.Read(buffer, 0, elementSize);
                     GCHandle gcHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
                     try
                     {
