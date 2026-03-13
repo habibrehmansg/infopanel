@@ -57,6 +57,7 @@
             <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter" />
             <local:FontFamilyConverter x:Key="FontFamilyConverter" />
             <local:EnumEqualsConverter x:Key="EnumEqualsConverter" />
+            <local:SensorSourceConverter x:Key="SensorSourceConverter" />
 
             <converters:LockSymbolConverter x:Key="LockSymbolConverter" />
             <converters:LockColorConverter x:Key="LockColorConverter" />

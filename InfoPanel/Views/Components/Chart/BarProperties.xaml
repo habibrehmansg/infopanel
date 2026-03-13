@@ -199,8 +199,14 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Sensor" />
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{StaticResource SensorSourceConverter}">
+                                <Binding Path="SensorType" />
+                                <Binding Path="HwInfoRemoteIndex" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
                 </StackPanel>
             </Grid>
 
