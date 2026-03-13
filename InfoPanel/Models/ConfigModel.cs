@@ -186,7 +186,7 @@ namespace InfoPanel
 
         private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(Settings.AutoStart))
+            if (e.PropertyName == nameof(Settings.AutoStart) || e.PropertyName == nameof(Settings.AutoStartDelay))
             {
                 ValidateStartup();
             }
