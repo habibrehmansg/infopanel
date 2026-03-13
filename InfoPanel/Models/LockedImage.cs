@@ -87,19 +87,19 @@ namespace InfoPanel.Models
         {
             get
             {
-                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Audio != null)
                 {
-                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Player.VolumeMax;
+                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Audio.VolumeMax;
                 }
                 return 0f;
             }
             set
             {
-                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Audio != null)
                 {
                     // Clamp value between 0 and 1
                     value = Math.Clamp(value, 0f, 1f);
-                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Player.VolumeMax);
+                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Audio.VolumeMax);
                 }
             }
         }
@@ -163,6 +163,7 @@ namespace InfoPanel.Models
 
                         // Inform the lib to refresh stats
                         _config.Player.Stats = true;
+                        _config.Player.UICurTime = UIRefreshType.PerFrame; // Refresh CurTime on every frame for progress bar
 
                         _backgroundVideoPlayer = new(_config)
                         {
@@ -623,7 +624,7 @@ namespace InfoPanel.Models
                 {
                     if (_backgroundVideoPlayer != null)
                     {
-                        using var bitmap = _backgroundVideoPlayer.renderer.GetBitmap(targetWidth, targetHeight);
+                        using var bitmap = _backgroundVideoPlayer.Renderer.TakeSnapshot((uint)targetWidth, (uint)targetHeight);
                         if (bitmap != null)
                         {
                             using var image = ConvertToSKImage(bitmap);
