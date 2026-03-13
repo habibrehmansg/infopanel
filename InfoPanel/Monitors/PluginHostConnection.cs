@@ -344,9 +344,12 @@ namespace InfoPanel.Monitors
                             text.Value = update.TextValue;
                             break;
                         case "table" when entry is ProxyPluginTable table && update.TableValue != null:
-                            var oldTable = table.Value;
-                            table.Value = RebuildDataTable(update.TableValue);
-                            oldTable?.Dispose();
+                            if (!TryUpdateTableInPlace(table.Value, update.TableValue))
+                            {
+                                var oldTable = table.Value;
+                                table.Value = RebuildDataTable(update.TableValue);
+                                oldTable?.Dispose();
+                            }
                             break;
                     }
                 }
@@ -403,6 +406,47 @@ namespace InfoPanel.Monitors
                 table.Value = RebuildDataTable(dto.TableValue);
             }
             return table;
+        }
+
+        private static bool TryUpdateTableInPlace(DataTable existing, TableValueDto tableDto)
+        {
+            if (existing == null
+                || existing.Columns.Count != tableDto.Columns.Count
+                || existing.Rows.Count != tableDto.Rows.Count)
+            {
+                return false;
+            }
+
+            for (int r = 0; r < tableDto.Rows.Count; r++)
+            {
+                var rowCells = tableDto.Rows[r];
+                var row = existing.Rows[r];
+
+                for (int c = 0; c < rowCells.Count && c < existing.Columns.Count; c++)
+                {
+                    var cell = rowCells[c];
+                    var current = row[c];
+
+                    if (cell.Type == "sensor" && cell.SensorValue != null && current is ProxyPluginSensor sensor)
+                    {
+                        sensor.Value = cell.SensorValue.Value;
+                        sensor.ValueMin = cell.SensorValue.ValueMin;
+                        sensor.ValueMax = cell.SensorValue.ValueMax;
+                        sensor.ValueAvg = cell.SensorValue.ValueAvg;
+                    }
+                    else if (cell.Type == "text" && current is ProxyPluginText text)
+                    {
+                        text.Value = cell.TextValue ?? "";
+                    }
+                    else
+                    {
+                        // Type mismatch — fall back to full rebuild
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         private static DataTable RebuildDataTable(TableValueDto tableDto)
