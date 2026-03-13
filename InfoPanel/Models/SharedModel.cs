@@ -1288,9 +1288,9 @@ namespace InfoPanel
                         {
                             if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
                             {
-                                if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
+                                if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.HwInfoRemoteIndex, sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
                                 {
-                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(sensorDisplayItem.SensorName));
+                                    var hash = HWHash.GetOrderedList(sensorDisplayItem.HwInfoRemoteIndex).Find(hash => hash.NameDefault.Equals(sensorDisplayItem.SensorName));
                                     if (hash.NameDefault != null)
                                     {
                                         sensorDisplayItem.Id = hash.ParentID;
@@ -1302,9 +1302,9 @@ namespace InfoPanel
                             }
                             else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
                             {
-                                if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
+                                if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.HwInfoRemoteIndex, chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
                                 {
-                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(chartDisplayItem.SensorName));
+                                    var hash = HWHash.GetOrderedList(chartDisplayItem.HwInfoRemoteIndex).Find(hash => hash.NameDefault.Equals(chartDisplayItem.SensorName));
                                     if (hash.NameDefault != null)
                                     {
                                         chartDisplayItem.Id = hash.ParentID;
@@ -1316,9 +1316,9 @@ namespace InfoPanel
                             }
                             else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
                             {
-                                if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
+                                if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.HwInfoRemoteIndex, gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
                                 {
-                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(gaugeDisplayItem.SensorName));
+                                    var hash = HWHash.GetOrderedList(gaugeDisplayItem.HwInfoRemoteIndex).Find(hash => hash.NameDefault.Equals(gaugeDisplayItem.SensorName));
                                     if (hash.NameDefault != null)
                                     {
                                         gaugeDisplayItem.Id = hash.ParentID;

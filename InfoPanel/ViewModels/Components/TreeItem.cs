@@ -95,8 +95,9 @@ namespace InfoPanel.ViewModels.Components
         public abstract void Update();
     }
 
-    public partial class HwInfoSensorItem(object id, string name, UInt32 parentId, UInt32 parentInstance, UInt32 sensorId) : SensorTreeItem(id, name)
+    public partial class HwInfoSensorItem(object id, string name, int remoteIndex, UInt32 parentId, UInt32 parentInstance, UInt32 sensorId) : SensorTreeItem(id, name)
     {
+        public int RemoteIndex { get; set; } = remoteIndex;
         public UInt32 ParentId { get; set; } = parentId;
         public UInt32 ParentInstance { get; set; } = parentInstance;
         public UInt32 SensorId { get; set; } = sensorId;
@@ -104,7 +105,7 @@ namespace InfoPanel.ViewModels.Components
         public override void Update()
         {
             // Update sensor value
-            var sensorReading = SensorReader.ReadHwInfoSensor(ParentId, ParentInstance, SensorId);
+            var sensorReading = SensorReader.ReadHwInfoSensor(RemoteIndex, ParentId, ParentInstance, SensorId);
             if(sensorReading.HasValue)
             {
                 Value = sensorReading.Value.ValueNow.ToFormattedString();

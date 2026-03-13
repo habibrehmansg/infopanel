@@ -48,6 +48,7 @@ namespace InfoPanel.Views.Components
                     {
                         item = new SensorDisplayItem(hwInfoItem.Name, selectedProfile, hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId)
                         {
+                            HwInfoRemoteIndex = hwInfoItem.RemoteIndex,
                             Font = selectedProfile.Font,
                             FontSize = selectedProfile.FontSize,
                             Color = selectedProfile.Color,
@@ -130,6 +131,7 @@ namespace InfoPanel.Views.Components
                 sensorDisplayItem.Name = sensorItem.Name;
                 sensorDisplayItem.SensorName = sensorItem.Name;
                 sensorDisplayItem.SensorType = SensorType.HwInfo;
+                sensorDisplayItem.HwInfoRemoteIndex = sensorItem.RemoteIndex;
                 sensorDisplayItem.Id = sensorItem.ParentId;
                 sensorDisplayItem.Instance = sensorItem.ParentInstance;
                 sensorDisplayItem.EntryId = sensorItem.SensorId;
@@ -140,6 +142,7 @@ namespace InfoPanel.Views.Components
                 chartDisplayItem.Name = sensorItem.Name;
                 chartDisplayItem.SensorName = sensorItem.Name;
                 chartDisplayItem.SensorType = SensorType.HwInfo;
+                chartDisplayItem.HwInfoRemoteIndex = sensorItem.RemoteIndex;
                 chartDisplayItem.Id = sensorItem.ParentId;
                 chartDisplayItem.Instance = sensorItem.ParentInstance;
                 chartDisplayItem.EntryId = sensorItem.SensorId;
@@ -149,6 +152,7 @@ namespace InfoPanel.Views.Components
                 gaugeDisplayItem.Name = sensorItem.Name;
                 gaugeDisplayItem.SensorName = sensorItem.Name;
                 gaugeDisplayItem.SensorType = SensorType.HwInfo;
+                gaugeDisplayItem.HwInfoRemoteIndex = sensorItem.RemoteIndex;
                 gaugeDisplayItem.Id = sensorItem.ParentId;
                 gaugeDisplayItem.Instance = sensorItem.ParentInstance;
                 gaugeDisplayItem.EntryId = sensorItem.SensorId;
@@ -158,6 +162,7 @@ namespace InfoPanel.Views.Components
                 sensorImageDisplayItem.Name = sensorItem.Name;
                 sensorImageDisplayItem.SensorName = sensorItem.Name;
                 sensorImageDisplayItem.SensorType = SensorType.HwInfo;
+                sensorImageDisplayItem.HwInfoRemoteIndex = sensorItem.RemoteIndex;
                 sensorImageDisplayItem.Id = sensorItem.ParentId;
                 sensorImageDisplayItem.Instance = sensorItem.ParentInstance;
                 sensorImageDisplayItem.EntryId = sensorItem.SensorId;
@@ -260,8 +265,11 @@ namespace InfoPanel.Views.Components
                 case SensorType.HwInfo:
                     if (SelectedSensorItem is HwInfoSensorItem hwInfoItem)
                     {
-                        item = new GraphDisplayItem(hwInfoItem.Name, selectedProfile, GraphDisplayItem.GraphType.LINE, 
-                            hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId);
+                        item = new GraphDisplayItem(hwInfoItem.Name, selectedProfile, GraphDisplayItem.GraphType.LINE,
+                            hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId)
+                        {
+                            HwInfoRemoteIndex = hwInfoItem.RemoteIndex
+                        };
                         SharedModel.Instance.AddDisplayItem(item);
                     }
                     break;
@@ -300,7 +308,10 @@ namespace InfoPanel.Views.Components
                 case SensorType.HwInfo:
                     if (SelectedSensorItem is HwInfoSensorItem hwInfoItem)
                     {
-                        item = new BarDisplayItem(hwInfoItem.Name, selectedProfile, hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId);
+                        item = new BarDisplayItem(hwInfoItem.Name, selectedProfile, hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId)
+                        {
+                            HwInfoRemoteIndex = hwInfoItem.RemoteIndex
+                        };
                         SharedModel.Instance.AddDisplayItem(item);
                     }
                     break;
@@ -339,7 +350,10 @@ namespace InfoPanel.Views.Components
                 case SensorType.HwInfo:
                     if (SelectedSensorItem is HwInfoSensorItem hwInfoItem)
                     {
-                        item = new DonutDisplayItem(hwInfoItem.Name, selectedProfile, hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId);
+                        item = new DonutDisplayItem(hwInfoItem.Name, selectedProfile, hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId)
+                        {
+                            HwInfoRemoteIndex = hwInfoItem.RemoteIndex
+                        };
                         SharedModel.Instance.AddDisplayItem(item);
                     }
                     break;
@@ -378,7 +392,10 @@ namespace InfoPanel.Views.Components
                 case SensorType.HwInfo:
                     if (SelectedSensorItem is HwInfoSensorItem hwInfoItem)
                     {
-                        item = new GaugeDisplayItem(hwInfoItem.Name, selectedProfile, hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId);
+                        item = new GaugeDisplayItem(hwInfoItem.Name, selectedProfile, hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId)
+                        {
+                            HwInfoRemoteIndex = hwInfoItem.RemoteIndex
+                        };
                         SharedModel.Instance.AddDisplayItem(item);
                     }
                     break;
@@ -419,6 +436,7 @@ namespace InfoPanel.Views.Components
                     {
                         item = new SensorImageDisplayItem(hwInfoItem.Name, selectedProfile, hwInfoItem.ParentId, hwInfoItem.ParentInstance, hwInfoItem.SensorId)
                         {
+                            HwInfoRemoteIndex = hwInfoItem.RemoteIndex,
                             Width = 100,
                             Height = 100,
                         };

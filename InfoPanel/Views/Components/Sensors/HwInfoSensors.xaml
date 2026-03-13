@@ -30,6 +30,13 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="auto" />
             </Grid.ColumnDefinitions>
+            <ComboBox
+                Grid.Column="0"
+                Margin="10,10,10,0"
+                DisplayMemberPath="DisplayName"
+                ItemsSource="{Binding Connections}"
+                SelectedItem="{Binding SelectedConnection}"
+                SelectionChanged="ConnectionComboBox_SelectionChanged" />
         </Grid>
 
         <ScrollViewer
