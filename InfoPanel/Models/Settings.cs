@@ -88,6 +88,12 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _autosaveIntervalSeconds = 60;
 
+        [ObservableProperty]
+        private int _autosaveSlotCount = 3;
+
+        [ObservableProperty]
+        private int _autosaveSlotIntervalMinutes = 5;
+
         public Settings()
         {
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;

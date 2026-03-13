@@ -46,6 +46,18 @@ namespace InfoPanel
         private const int SaveDebounceDelayMs = 500;
 
         private DispatcherTimer? _autosaveTimer;
+        private int _autosaveCurrentSlotIndex;
+        private DateTime _autosaveLastSlotRotationTime = DateTime.UtcNow;
+
+        private static string GetAutosaveBasePath()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "autosave");
+        }
+
+        private string GetCurrentAutosaveSlotPath()
+        {
+            return Path.Combine(GetAutosaveBasePath(), "slot_" + _autosaveCurrentSlotIndex);
+        }
 
         private ConfigModel()
         {
@@ -77,6 +89,8 @@ namespace InfoPanel
         public void Initialize()
         {
             LoadProfiles();
+            if (Settings.AutosaveEnabled)
+                StartAutosaveTimer();
         }
 
         public void AccessSettings(Action<Settings> action)
@@ -223,7 +237,8 @@ namespace InfoPanel
                     await WebServerTask.Instance.StopAsync();
                 }
             }
-            else if (e.PropertyName == nameof(Settings.AutosaveEnabled) || e.PropertyName == nameof(Settings.AutosaveIntervalSeconds))
+            else if (e.PropertyName == nameof(Settings.AutosaveEnabled) || e.PropertyName == nameof(Settings.AutosaveIntervalSeconds)
+                || e.PropertyName == nameof(Settings.AutosaveSlotCount) || e.PropertyName == nameof(Settings.AutosaveSlotIntervalMinutes))
             {
                 RestartAutosaveTimer();
             }
@@ -415,6 +430,8 @@ namespace InfoPanel
                             Settings.Version = settings.Version;
                             Settings.AutosaveEnabled = settings.AutosaveEnabled;
                             Settings.AutosaveIntervalSeconds = settings.AutosaveIntervalSeconds;
+                            Settings.AutosaveSlotCount = Math.Clamp(settings.AutosaveSlotCount, 2, 5);
+                            Settings.AutosaveSlotIntervalMinutes = Math.Clamp(settings.AutosaveSlotIntervalMinutes, 1, 60);
 
                             // Load BeadaPanel multi-device settings
                             Settings.BeadaPanelMultiDeviceMode = settings.BeadaPanelMultiDeviceMode;
@@ -488,6 +505,107 @@ namespace InfoPanel
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Saves the current selected profile to the current autosave slot (backup only; does not overwrite main save).
+        /// </summary>
+        public void SaveAutosaveBackup()
+        {
+            if (!Settings.AutosaveEnabled || !SharedModel.Instance.IsDirty || SharedModel.Instance.SelectedProfile is not Profile profile)
+                return;
+
+            var slotCount = Math.Max(2, Math.Min(5, Settings.AutosaveSlotCount));
+            var intervalMinutes = Math.Max(1, Math.Min(60, Settings.AutosaveSlotIntervalMinutes));
+            if ((DateTime.UtcNow - _autosaveLastSlotRotationTime).TotalMinutes >= intervalMinutes)
+            {
+                _autosaveCurrentSlotIndex = (_autosaveCurrentSlotIndex + 1) % slotCount;
+                _autosaveLastSlotRotationTime = DateTime.UtcNow;
+            }
+
+            var slotPath = GetCurrentAutosaveSlotPath();
+            try
+            {
+                if (!Directory.Exists(slotPath))
+                    Directory.CreateDirectory(slotPath);
+
+                var profileFile = Path.Combine(slotPath, "profile.xml");
+                var profiles = new List<Profile> { profile };
+                var xs = new XmlSerializer(typeof(List<Profile>));
+                var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
+                using (var wr = XmlWriter.Create(profileFile, settings))
+                    xs.Serialize(wr, profiles);
+
+                SharedModel.Instance.SaveDisplayItems(profile, slotPath);
+
+                File.WriteAllText(Path.Combine(slotPath, "timestamp.txt"), DateTime.UtcNow.ToString("O"));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Autosave backup failed for slot {SlotPath}", slotPath);
+            }
+        }
+
+        /// <summary>
+        /// Returns available autosave slots with path and timestamp for the restore UI. Most recent first.
+        /// </summary>
+        public IReadOnlyList<(int SlotIndex, string Path, DateTime? Timestamp)> GetAutosaveSlots()
+        {
+            var basePath = GetAutosaveBasePath();
+            if (!Directory.Exists(basePath)) return [];
+            var slotCount = Math.Max(2, Math.Min(5, Settings.AutosaveSlotCount));
+            var list = new List<(int SlotIndex, string Path, DateTime? Timestamp)>();
+            for (int i = 0; i < slotCount; i++)
+            {
+                var slotPath = Path.Combine(basePath, "slot_" + i);
+                var profileFile = Path.Combine(slotPath, "profile.xml");
+                if (!File.Exists(profileFile)) continue;
+                DateTime? ts = null;
+                var tsFile = Path.Combine(slotPath, "timestamp.txt");
+                if (File.Exists(tsFile))
+                {
+                    try { ts = DateTime.Parse(File.ReadAllText(tsFile).Trim()); } catch { }
+                }
+                if (ts == null)
+                {
+                    try { ts = File.GetLastWriteTimeUtc(profileFile); } catch { }
+                }
+                list.Add((SlotIndex: i, Path: slotPath, Timestamp: ts));
+            }
+            return list.OrderByDescending(x => x.Timestamp ?? DateTime.MinValue).ToList();
+        }
+
+        /// <summary>
+        /// Restores the selected profile from the given autosave slot. Replaces display items and optionally profile metadata. Marks dirty.
+        /// </summary>
+        public void RestoreProfileFromAutosaveSlot(int slotIndex)
+        {
+            if (SharedModel.Instance.SelectedProfile is not Profile selectedProfile) return;
+            var slotPath = Path.Combine(GetAutosaveBasePath(), "slot_" + slotIndex);
+            var profileFile = Path.Combine(slotPath, "profile.xml");
+            if (!File.Exists(profileFile)) return;
+            try
+            {
+                List<Profile>? profiles;
+                var xs = new XmlSerializer(typeof(List<Profile>));
+                using (var rd = XmlReader.Create(profileFile))
+                    profiles = xs.Deserialize(rd) as List<Profile>;
+                if (profiles == null || profiles.Count == 0) return;
+                var loadedProfile = profiles[0];
+                if (loadedProfile.Guid != selectedProfile.Guid) return;
+
+                var displayItems = SharedModel.LoadDisplayItemsFromFile(selectedProfile, slotPath);
+                if (displayItems.Count > 0)
+                {
+                    var config = new AutoMapper.MapperConfiguration(cfg => cfg.CreateMap<Profile, Profile>());
+                    config.CreateMapper().Map(loadedProfile, selectedProfile);
+                    SharedModel.Instance.ReplaceDisplayItemsFromBackup(selectedProfile, displayItems);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Restore from autosave slot {SlotIndex} failed", slotIndex);
+            }
         }
 
         public void SaveProfiles()
@@ -672,12 +790,11 @@ namespace InfoPanel
             {
                 Interval = TimeSpan.FromSeconds(Math.Max(1, Settings.AutosaveIntervalSeconds))
             };
-            _autosaveTimer.Tick += async (s, e) =>
+            _autosaveTimer.Tick += (s, e) =>
             {
                 if (Settings.AutosaveEnabled && SharedModel.Instance.IsDirty)
                 {
-                    ConfigModel.Instance.SaveProfiles();
-                    SharedModel.Instance.SaveDisplayItems();
+                    SaveAutosaveBackup();
                     SharedModel.Instance.ClearDirty();
                 }
             };

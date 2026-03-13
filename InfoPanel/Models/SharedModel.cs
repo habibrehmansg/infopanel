@@ -340,6 +340,36 @@ namespace InfoPanel
             }
         }
 
+        /// <summary>
+        /// Replaces the profile's display items with the given list (e.g. from autosave restore). Clears undo history for this profile and marks dirty.
+        /// Must be called on UI thread.
+        /// </summary>
+        public void ReplaceDisplayItemsFromBackup(Profile profile, List<DisplayItem> displayItems)
+        {
+            if (profile == null) return;
+            UndoManager.Instance.ClearHistory(profile);
+            _lastStateSnapshotPerProfile.TryRemove(profile.Guid, out _);
+            AccessDisplayItems(profile, collection =>
+            {
+                foreach (var item in collection)
+                    UnsubscribeDisplayItemForUndo(item);
+                collection.Clear();
+                foreach (var item in displayItems)
+                {
+                    collection.Add(item);
+                    SubscribeDisplayItemForUndo(item, profile);
+                }
+            });
+            var xml = UndoManager.SerializeDisplayItemsForProfile(displayItems);
+            if (!string.IsNullOrEmpty(xml))
+                _lastStateSnapshotPerProfile[profile.Guid] = xml;
+            MarkDirty();
+            OnPropertyChanged(nameof(DisplayItems));
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+            CommandManager.InvalidateRequerySuggested();
+        }
+
         /// <summary>Flatten in same order as SelectedItems (group + its DisplayItems, one level per group).</summary>
         private static List<DisplayItem> FlattenForSelection(IEnumerable<DisplayItem> items)
         {
@@ -678,6 +708,16 @@ namespace InfoPanel
         private static void SaveDisplayItems(Profile profile, ICollection<DisplayItem> displayItems)
         {
             var profileFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
+            SaveDisplayItems(profile, displayItems, profileFolder);
+        }
+
+        /// <summary>
+        /// Writes display items to a profile XML file under the given base folder (e.g. autosave slot path).
+        /// Path used is baseFolder/profiles/{Guid}.xml.
+        /// </summary>
+        internal static void SaveDisplayItems(Profile profile, ICollection<DisplayItem> displayItems, string baseFolder)
+        {
+            var profileFolder = Path.Combine(baseFolder, "profiles");
             if (!Directory.Exists(profileFolder))
                 Directory.CreateDirectory(profileFolder);
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
@@ -706,6 +746,17 @@ namespace InfoPanel
             }
         }
 
+        /// <summary>
+        /// Saves the given profile's display items to the specified base folder (e.g. autosave slot path).
+        /// Does not clear dirty flag; used for backup only.
+        /// </summary>
+        public void SaveDisplayItems(Profile profile, string baseFolder)
+        {
+            if (profile == null || string.IsNullOrEmpty(baseFolder)) return;
+            var displayItems = GetProfileDisplayItemsCopy(profile);
+            SaveDisplayItems(profile, displayItems, baseFolder);
+        }
+
         public static async Task<List<DisplayItem>> LoadDisplayItemsAsync(Profile profile)
         {
             return await Task.Run(() => LoadDisplayItemsFromFile(profile));
@@ -713,22 +764,34 @@ namespace InfoPanel
 
         private static List<DisplayItem> LoadDisplayItemsFromFile(Profile profile)
         {
-            var fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
-            if (File.Exists(fileName))
+            var baseFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
+            return LoadDisplayItemsFromFilePath(profile, Path.Combine(baseFolder, profile.Guid + ".xml"));
+        }
+
+        /// <summary>
+        /// Loads display items from an autosave slot base folder (e.g. autosave/slot_0). Path: baseFolder/profiles/{Guid}.xml.
+        /// </summary>
+        public static List<DisplayItem> LoadDisplayItemsFromFile(Profile profile, string baseFolder)
+        {
+            var fileName = Path.Combine(baseFolder, "profiles", profile.Guid + ".xml");
+            return LoadDisplayItemsFromFilePath(profile, fileName);
+        }
+
+        private static List<DisplayItem> LoadDisplayItemsFromFilePath(Profile profile, string fullPathToXml)
+        {
+            if (!File.Exists(fullPathToXml)) return [];
+            var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
+            using var rd = XmlReader.Create(fullPathToXml);
+            try
             {
-                var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
-                using var rd = XmlReader.Create(fileName);
-                try
+                if (xs.Deserialize(rd) is List<DisplayItem> displayItems)
                 {
-                    if (xs.Deserialize(rd) is List<DisplayItem> displayItems)
-                    {
-                        foreach (var displayItem in displayItems)
-                            displayItem.SetProfile(profile);
-                        return displayItems;
-                    }
+                    foreach (var displayItem in displayItems)
+                        displayItem.SetProfile(profile);
+                    return displayItems;
                 }
-                catch { }
             }
+            catch { }
             return [];
         }
 

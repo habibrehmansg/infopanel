@@ -393,6 +393,12 @@
                     Click="ButtonReload_Click"
                     Content="Reload from disk"
                     ToolTip="Discard all changes and reload from disk" />
+                <ui:Button
+                    x:Name="ButtonRestoreBackup"
+                    Margin="5,0,0,0"
+                    Click="ButtonRestoreBackup_Click"
+                    Content="Restore from backup"
+                    ToolTip="Restore this profile from an autosave backup" />
             </StackPanel>
         </Grid>
     </Grid>
