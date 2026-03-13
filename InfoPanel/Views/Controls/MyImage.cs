@@ -1,4 +1,4 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using SkiaSharp;
 using SkiaSharp.Views.WPF;
 using System;
@@ -27,6 +27,7 @@ namespace InfoPanel.Views.Controls
         }
 
         private readonly Timer Timer = new(TimeSpan.FromMilliseconds(41));
+        private volatile bool _isProcessing;
 
         public MyImage()
         {
@@ -64,72 +65,86 @@ namespace InfoPanel.Views.Controls
 
         private void Timer_Tick(object? sender, EventArgs? e)
         {
-            (ImageDisplayItem imageDisplayItem, int width, int height, ImageSource source) = Dispatcher.Invoke(() =>
+            if (_isProcessing) return;
+            _isProcessing = true;
+
+            Dispatcher.InvokeAsync(() =>
             {
-                return (ImageDisplayItem, (int)Width, (int)Height, Source);
-            });
+                var imageDisplayItem = ImageDisplayItem;
+                var width = (int)Width;
+                var height = (int)Height;
 
-            if(imageDisplayItem == null)
-            {
-                return;
-            }
-
-            var image = Cache.GetLocalImage(imageDisplayItem);
-
-            WriteableBitmap? writeableBitmap = null;
-
-            if (image != null)
-            {
-                if (image.Type == LockedImage.ImageType.SVG)
+                if (imageDisplayItem == null)
                 {
-                    image.AccessSVG(picture =>
-                    {
-                        var bounds = picture.CullRect;
-                        writeableBitmap = picture.ToWriteableBitmap(new SKSizeI((int)bounds.Width, (int)bounds.Height));
-                        writeableBitmap.Freeze();
-                    });
+                    _isProcessing = false;
+                    return;
                 }
-                else
+
+                // Process on background thread to avoid blocking UI
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
                 {
-                    double imageAspectRatio = (double)image.Width / image.Height;
-                    double containerAspectRatio = (double)width / height;
-
-                    int targetWidth, targetHeight;
-
-                    if (imageAspectRatio > containerAspectRatio)
+                    try
                     {
-                        // Image is wider relative to its height than the container
-                        // Fit to width, adjust height
-                        targetWidth = width;
-                        targetHeight = (int)Math.Ceiling(width / imageAspectRatio);
-                    }
-                    else
-                    {
-                        // Image is taller relative to its width than the container
-                        // Fit to height, adjust width
-                        targetWidth = (int)Math.Ceiling(height * imageAspectRatio);
-                        targetHeight = height;
-                    }
+                        var image = Cache.GetLocalImage(imageDisplayItem);
 
-                    image.AccessSK(targetWidth, targetHeight, bitmap =>
-                    {
-                        if (bitmap != null)
+                        WriteableBitmap? writeableBitmap = null;
+
+                        if (image != null)
                         {
-                            writeableBitmap = bitmap.ToWriteableBitmap();
-                            writeableBitmap.Freeze();
+                            if (image.Type == LockedImage.ImageType.SVG)
+                            {
+                                image.AccessSVG(picture =>
+                                {
+                                    var bounds = picture.CullRect;
+                                    writeableBitmap = picture.ToWriteableBitmap(new SKSizeI((int)bounds.Width, (int)bounds.Height));
+                                    writeableBitmap.Freeze();
+                                });
+                            }
+                            else
+                            {
+                                double imageAspectRatio = (double)image.Width / image.Height;
+                                double containerAspectRatio = (double)width / height;
+
+                                int targetWidth, targetHeight;
+
+                                if (imageAspectRatio > containerAspectRatio)
+                                {
+                                    targetWidth = width;
+                                    targetHeight = (int)Math.Ceiling(width / imageAspectRatio);
+                                }
+                                else
+                                {
+                                    targetWidth = (int)Math.Ceiling(height * imageAspectRatio);
+                                    targetHeight = height;
+                                }
+
+                                image.AccessSK(targetWidth, targetHeight, bitmap =>
+                                {
+                                    if (bitmap != null)
+                                    {
+                                        writeableBitmap = bitmap.ToWriteableBitmap();
+                                        writeableBitmap.Freeze();
+                                    }
+                                }, true, "MyImage");
+                            }
+
+                            if (image.Frames <= 1 && sender is Timer timer)
+                            {
+                                timer.Stop();
+                            }
                         }
-                    }, true, "MyImage");
-                }
 
-                if(image.Frames <= 1 && sender is Timer timer)
-                {
-                    timer.Stop();
-                }
-            }
-
-            this.Dispatcher.Invoke(() =>
-            {
-                this.Source = writeableBitmap;
+                        Dispatcher.InvokeAsync(() =>
+                        {
+                            Source = writeableBitmap;
+                            _isProcessing = false;
+                        });
+                    }
+                    catch
+                    {
+                        _isProcessing = false;
+                    }
+                });
             });
         }
 

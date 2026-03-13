@@ -261,12 +261,6 @@ namespace InfoPanel
             }
         }
 
-        public void SaveSettings()
-        {
-            // Synchronous wrapper for backward compatibility
-            Task.Run(async () => await SaveSettingsAsync(batch: false)).Wait();
-        }
-
         public async Task SaveSettingsAsync(bool batch = true)
         {
             if (!batch)

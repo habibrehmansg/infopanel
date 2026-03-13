@@ -18,6 +18,7 @@ namespace InfoPanel.Views.Components
         private LibreSensorsVM ViewModel { get; set; }
 
         private readonly DispatcherTimer UpdateTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+        private int _lastSensorCount = -1;
 
         public LibreSensors()
         {
@@ -88,8 +89,11 @@ namespace InfoPanel.Views.Components
             //    }
             //}
 
+            var orderedList = LibreMonitor.GetOrderedList();
+            if (orderedList.Count == _lastSensorCount && _lastSensorCount > 0) return;
+            _lastSensorCount = orderedList.Count;
 
-            foreach (ISensor hash in LibreMonitor.GetOrderedList())
+            foreach (ISensor hash in orderedList)
             {
                 var parentIdentifier = hash.Hardware.Parent?.Identifier ?? hash.Hardware.Identifier;
                 var parentName = hash.Hardware.Parent?.Name ?? hash.Hardware.Name;
