@@ -49,7 +49,7 @@ namespace InfoPanel.Views.Pages
             if (ViewModel.Profile != null)
             {
                 ProfileDetailOverlay.Visibility = Visibility.Visible;
-                ListViewProfiles.Margin = new Thickness(0, 0, 0, 470);
+                ListViewProfiles.Margin = new Thickness(0, 0, 0, 330);
             }
             else
             {

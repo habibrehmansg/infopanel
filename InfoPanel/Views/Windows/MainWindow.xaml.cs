@@ -79,15 +79,6 @@ namespace InfoPanel.Views.Windows
 
             Loaded += MainWindow_Loaded;
             StateChanged += MainWindow_StateChanged;
-
-            var screenHeight = SystemParameters.PrimaryScreenHeight;
-            var desiredHeight = screenHeight * 0.80;
-
-            if (desiredHeight > MinHeight)
-            {
-                Height = desiredHeight;
-            }
-
         }
 
         private void MainWindow_StateChanged(object? sender, EventArgs e)
