@@ -402,7 +402,7 @@
                                                         <Bold>Additional Notes:</Bold>
                                                         <LineBreak /><LineBreak />
                                                         <Bold>1.</Bold>
-                                                        This software is provided on a best effort basis. Expect bugs and/or crashes. You are encouraged to save often. You can manually backup your profiles at<Bold FontWeight="SemiBold" Foreground="LightGray">'%localappdata%\infopanel'</Bold>
+                                                        This software is provided on a best effort basis. Expect bugs and/or crashes. You are encouraged to save often. You can manually backup your profiles at<Bold FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorSecondaryBrush}">'%localappdata%\infopanel'</Bold>
                                                         <LineBreak /><LineBreak />
                                                         <Bold>2.</Bold>
                                                         Performance and memory usage is largely determined by the number of profiles and<Bold Foreground="Orange">size of your images</Bold>

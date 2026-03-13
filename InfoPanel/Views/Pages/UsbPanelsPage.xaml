@@ -132,17 +132,17 @@
                                                     <TextBlock
                                                         Margin="0,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="LawnGreen"
+                                                        Foreground="SeaGreen"
                                                         Text="Panel is running:" />
                                                     <TextBlock
                                                         Margin="10,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="LawnGreen"
+                                                        Foreground="SeaGreen"
                                                         Text="{Binding RuntimeProperties.FrameRate, StringFormat='{}{0} FPS'}" />
                                                     <TextBlock
                                                         Margin="0,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="LawnGreen"
+                                                        Foreground="SeaGreen"
                                                         Text="{Binding RuntimeProperties.FrameTime, StringFormat=' @ {0}ms'}" />
                                                 </StackPanel>
 
@@ -354,17 +354,17 @@
                                                     <TextBlock
                                                         Margin="0,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="LawnGreen"
+                                                        Foreground="SeaGreen"
                                                         Text="Panel is running:" />
                                                     <TextBlock
                                                         Margin="10,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="LawnGreen"
+                                                        Foreground="SeaGreen"
                                                         Text="{Binding RuntimeProperties.FrameRate, StringFormat='{}{0} FPS'}" />
                                                     <TextBlock
                                                         Margin="0,0,0,0"
                                                         FontSize="12"
-                                                        Foreground="LawnGreen"
+                                                        Foreground="SeaGreen"
                                                         Text="{Binding RuntimeProperties.FrameTime, StringFormat=' @ {0}ms'}" />
                                                 </StackPanel>
 
