@@ -198,6 +198,32 @@
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.StartMinimized}" />
             </ui:CardControl>
+            <ui:CardControl Margin="0,10,0,0">
+                <ui:CardControl.Icon>
+                    <ui:SymbolIcon Symbol="Dismiss20" />
+                </ui:CardControl.Icon>
+                <ui:CardControl.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Text="Close to minimize" />
+                            <TextBlock
+                                Margin="0,5,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="Minimize InfoPanel instead of closing when the window close button is clicked."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.CloseToMinimize}" />
+            </ui:CardControl>
         </StackPanel>
 
         <!--  Begin General Panel Settings  -->

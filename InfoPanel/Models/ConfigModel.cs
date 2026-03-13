@@ -393,6 +393,7 @@ namespace InfoPanel
                             Settings.AutoStartDelay = settings.AutoStartDelay;
                             Settings.StartMinimized = settings.StartMinimized;
                             Settings.MinimizeToTray = settings.MinimizeToTray;
+                            Settings.CloseToMinimize = settings.CloseToMinimize;
 
                             Settings.SelectedItemColor = settings.SelectedItemColor;
                             Settings.ShowGridLines = settings.ShowGridLines;

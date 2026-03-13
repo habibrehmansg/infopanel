@@ -34,6 +34,7 @@ namespace InfoPanel.Views.Windows
         private readonly ITaskBarService _taskBarService;
         private uint _taskbarCreatedMessageId;
         private HwndSource? _hwndSource;
+        private bool _isExiting;
 
         public MainWindow(INavigationService navigationService, INavigationViewPageProvider pageProvider, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
@@ -194,6 +195,7 @@ namespace InfoPanel.Views.Windows
                         Navigate(typeof(Pages.AboutPage));
                         break;
                     case "close":
+                        _isExiting = true;
                         Close();
                         break;
                     default:
@@ -243,6 +245,13 @@ namespace InfoPanel.Views.Windows
 
         private async void MainWindow_Closing(object sender, CancelEventArgs e)
         {
+            if (!_isExiting && ConfigModel.Instance.Settings.CloseToMinimize)
+            {
+                e.Cancel = true;
+                WindowState = WindowState.Minimized;
+                return;
+            }
+
             _hwndSource?.RemoveHook(WndProc);
 
             e.Cancel = true;

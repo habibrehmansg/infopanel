@@ -36,6 +36,9 @@ namespace InfoPanel.Models
         private bool _minimizeToTray = true;
 
         [ObservableProperty]
+        private bool _closeToMinimize = false;
+
+        [ObservableProperty]
         private string _selectedItemColor = "#FF00FF00";
 
         [ObservableProperty]
