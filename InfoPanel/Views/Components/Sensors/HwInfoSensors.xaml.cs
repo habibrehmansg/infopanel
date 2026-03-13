@@ -114,7 +114,19 @@ namespace InfoPanel.Views.Components
                 var parent = ViewModel.FindParentSensorItem(hash.ParentUniqueID);
                 if(parent == null)
                 {
-                    parent = new TreeItem(hash.ParentUniqueID, hash.ParentNameDefault);
+                    var parentName = hash.ParentNameDefault;
+
+                    // Strip "[Desktop-xxx] " prefix for display — already shown in the connection combobox
+                    if (remoteIndex >= 0 && parentName.StartsWith('['))
+                    {
+                        var endBracket = parentName.IndexOf("] ");
+                        if (endBracket > 0)
+                        {
+                            parentName = parentName[(endBracket + 2)..];
+                        }
+                    }
+
+                    parent = new TreeItem(hash.ParentUniqueID, parentName);
                     ViewModel.Sensors.Add(parent);
                 }
 

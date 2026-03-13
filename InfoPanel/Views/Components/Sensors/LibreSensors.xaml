@@ -40,6 +40,7 @@
                 <TreeView
                     x:Name="TreeViewInfo"
                     Margin="0,0,0,0"
+                    Padding="0,0,0,20"
                     Focusable="False"
                     ItemsSource="{Binding Sensors}"
                     SelectedItemChanged="TreeViewInfo_SelectedItemChanged">
