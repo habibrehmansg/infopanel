@@ -36,7 +36,7 @@ using System.Timers;
         private static System.Timers.Timer aTimer = new(1000);
 
         private static readonly List<ShmConnection> _connections = new();
-        private static int _reprobeCounter = 0;
+        private static volatile int _reprobeCounter = 0;
         private const int REPROBE_INTERVAL = 5; // re-probe every 5 poll cycles
 
         public static ConcurrentDictionary<(int, UInt32, UInt32, UInt32), HWINFO_HASH> SENSORHASH = new ConcurrentDictionary<(int, UInt32, UInt32, UInt32), HWINFO_HASH>();
@@ -51,10 +51,6 @@ using System.Timers;
         /// If [true], it will enable 1ms resolution, much better for newer systems, beware that it is a WIN32API call and all process are affected.
         /// </summary>
         public static bool HighPrecision = false;
-        /// <summary>
-        /// If [true] the measurements will be taken at precise intervals (every 1000ms) for instance.
-        /// </summary>
-        private static bool RoundMS = false; //edit: Not needed now [?]
         /// <summary>
         /// Delay in milliseconds (ms) between each update. Default is 1000 [ms], minimum is 100 [ms], maximum is 60000 [ms]. Make sure you configure HWInfo interval too so it will pull at the same rate.
         /// </summary>
@@ -94,7 +90,7 @@ using System.Timers;
             return true;
         }
 
-        private static bool HWINFO_RUNNING = false;
+        private static volatile bool HWINFO_RUNNING = false;
         private static void Prepare()
         {
             // Try to open local SHM
@@ -106,15 +102,26 @@ using System.Timers;
 
             if (ReadMem(localConn))
             {
+                bool added = false;
                 lock (_connections)
                 {
                     if (!_connections.Exists(c => c.RemoteIndex == -1))
                     {
                         _connections.Add(localConn);
+                        added = true;
                     }
                 }
 
+                if (!added)
+                {
+                    // A local connection already exists; dispose the duplicate
+                    localConn.MemAcc?.Dispose();
+                    localConn.MemMap?.Dispose();
+                    return;
+                }
+
                 BuildHeaders(localConn);
+                IndexOrder = 0;
                 HWINFO_RUNNING = true;
                 SharedModel.Instance.HwInfoAvailable = true;
 
@@ -217,16 +224,13 @@ using System.Timers;
                         lock (_connections)
                         {
                             _connections.Remove(conn);
-                        }
 
-                        // If local connection died, mark as not running
-                        if (conn.RemoteIndex == -1)
-                        {
-                            HWINFO_RUNNING = false;
-                            SENSORHASH.Clear();
-                            SENSORHASH_MINI.Clear();
-                            lock (_connections)
+                            // If local connection died, mark as not running
+                            if (conn.RemoteIndex == -1)
                             {
+                                HWINFO_RUNNING = false;
+                                SENSORHASH.Clear();
+                                SENSORHASH_MINI.Clear();
                                 // Clean up all remaining connections too
                                 foreach (var c in _connections)
                                 {
@@ -261,6 +265,10 @@ using System.Timers;
             }
             catch (Exception)
             {
+                conn.MemAcc?.Dispose();
+                conn.MemAcc = null;
+                conn.MemMap?.Dispose();
+                conn.MemMap = null;
                 return false;
             }
         }
@@ -301,10 +309,17 @@ using System.Timers;
                         byte[] buffer = new byte[(int)conn.MemRegion.SS_SIZE];
                         viewStream.Read(buffer, 0, (int)conn.MemRegion.SS_SIZE);
                         GCHandle gcHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-                        HWHASH_HEADER structure = (HWHASH_HEADER)Marshal.PtrToStructure(gcHandle.AddrOfPinnedObject(), typeof(HWHASH_HEADER));
-                        if (!conn.HeaderDict.ContainsKey(index))
+                        try
                         {
-                            conn.HeaderDict.Add(index, structure);
+                            HWHASH_HEADER structure = (HWHASH_HEADER)Marshal.PtrToStructure(gcHandle.AddrOfPinnedObject(), typeof(HWHASH_HEADER));
+                            if (!conn.HeaderDict.ContainsKey(index))
+                            {
+                                conn.HeaderDict.Add(index, structure);
+                            }
+                        }
+                        finally
+                        {
+                            gcHandle.Free();
                         }
                     }
                 }
@@ -331,9 +346,15 @@ using System.Timers;
                     byte[] buffer = new byte[(int)conn.MemRegion.SIZE_Reading];
                     viewStream.Read(buffer, 0, (int)conn.MemRegion.SIZE_Reading);
                     GCHandle gcHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-                    HWHASH_ELEMENT structure = (HWHASH_ELEMENT)Marshal.PtrToStructure(gcHandle.AddrOfPinnedObject(), typeof(HWHASH_ELEMENT));
-                    FormatSensor(conn, structure);
-                    gcHandle.Free();
+                    try
+                    {
+                        HWHASH_ELEMENT structure = (HWHASH_ELEMENT)Marshal.PtrToStructure(gcHandle.AddrOfPinnedObject(), typeof(HWHASH_ELEMENT));
+                        FormatSensor(conn, structure);
+                    }
+                    finally
+                    {
+                        gcHandle.Free();
+                    }
                 }
             }
 
@@ -668,18 +689,6 @@ using System.Timers;
             public uint SIZE_Reading;
             public uint TOTAL_ReadingElements;
         }
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        private struct HWHASH_Sensor
-        {
-            public uint ID;
-            public uint Instance;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = SENSOR_STRING_LEN)]
-            public string NameDefault;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = SENSOR_STRING_LEN)]
-            public string NameCustom;
-        }
-
 
         private enum SENSOR_READING_TYPE
         {
