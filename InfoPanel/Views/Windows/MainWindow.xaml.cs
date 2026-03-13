@@ -50,7 +50,6 @@ namespace InfoPanel.Views.Windows
             // ThemesDictionary default from App.xaml.
             var savedTheme = ConfigModel.Instance.Settings.AppTheme switch
             {
-                2 => ApplicationTheme.HighContrast,
                 1 => ApplicationTheme.Dark,
                 _ => ApplicationTheme.Light
             };

@@ -14,7 +14,6 @@ namespace InfoPanel.Views.Converters
                 return theme switch
                 {
                     ApplicationTheme.Dark => 1,
-                    ApplicationTheme.HighContrast => 2,
                     _ => 0
                 };
             }
@@ -29,7 +28,6 @@ namespace InfoPanel.Views.Converters
                 return index switch
                 {
                     1 => ApplicationTheme.Dark,
-                    2 => ApplicationTheme.HighContrast,
                     _ => ApplicationTheme.Light
                 };
             }

@@ -43,11 +43,14 @@ namespace InfoPanel.ViewModels
 
         partial void OnCurrentApplicationThemeChanged(ApplicationTheme oldValue, ApplicationTheme newValue)
         {
-            ApplicationThemeManager.Apply(newValue);
+            if (ApplicationThemeManager.GetAppTheme() != newValue)
+            {
+                ApplicationThemeManager.Apply(newValue);
+            }
+
             ConfigModel.Instance.Settings.AppTheme = newValue switch
             {
                 ApplicationTheme.Dark => 1,
-                ApplicationTheme.HighContrast => 2,
                 _ => 0
             };
         }
@@ -74,7 +77,8 @@ namespace InfoPanel.ViewModels
 
         public Task OnNavigatedToAsync()
         {
-            CurrentApplicationTheme = ApplicationThemeManager.GetAppTheme();
+            _currentApplicationTheme = ApplicationThemeManager.GetAppTheme();
+            OnPropertyChanged(nameof(CurrentApplicationTheme));
             ApplicationThemeManager.Changed += OnThemeChanged;
             return Task.CompletedTask;
         }

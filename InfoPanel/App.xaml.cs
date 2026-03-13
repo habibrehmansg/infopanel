@@ -82,6 +82,7 @@ namespace InfoPanel
                 resources["MahApps.Brushes.TextBox.Border"] = new SolidColorBrush(Colors.DarkGray);
             }
         }
+
         private static readonly IHost _host = Host
        .CreateDefaultBuilder()
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
@@ -537,7 +538,7 @@ namespace InfoPanel
             }
             return ids;
         }
-    
+
         public static async Task CleanShutDown()
         {
             DisplayWindowManager.Instance.CloseAll();

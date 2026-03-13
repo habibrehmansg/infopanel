@@ -18,7 +18,7 @@ namespace InfoPanel.Models
         private float _uiScale = 1.0f;
 
         [ObservableProperty]
-        private int _appTheme = 1; // 0=Light, 1=Dark, 2=HighContrast
+        private int _appTheme = 1; // 0=Light, 1=Dark
 
         [ObservableProperty]
         private bool _isPaneOpen = true;
