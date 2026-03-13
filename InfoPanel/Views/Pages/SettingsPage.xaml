@@ -43,7 +43,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Select which app theme to display" />
+                                Text="Select which app theme to display"
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -74,7 +75,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Change InfoPanel UI scale to fit or zoom accordingly." />
+                                Text="Change InfoPanel UI scale to fit or zoom accordingly."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -110,7 +112,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Launch InfoPanel automatically on windows sign in." />
+                                Text="Launch InfoPanel automatically on windows sign in."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -162,7 +165,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Minimize InfoPanel to the system tray instead." />
+                                Text="Minimize InfoPanel to the system tray instead."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -187,7 +191,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Runs InfoPanel minimized on startup." />
+                                Text="Runs InfoPanel minimized on startup."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -222,7 +227,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Select an item via the Design Page or middle click on the panel itself when Design Page is active." />
+                                Text="Select an item via the Design Page or middle click on the panel itself when Design Page is active."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -254,7 +260,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Display grid lines when an item is selected." />
+                                Text="Display grid lines when an item is selected."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -280,7 +287,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Customise the grid lines to your preferences." />
+                                Text="Customise the grid lines to your preferences."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -344,7 +352,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Enables polling LibreHardwareMonitor sensor data." />
+                                Text="Enables polling LibreHardwareMonitor sensor data."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -370,7 +379,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Required for low-level hardware access (CPU temps, voltages, etc.). Click Check Status to verify installation." />
+                                Text="Required for low-level hardware access (CPU temps, voltages, etc.). Click Check Status to verify installation."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -406,7 +416,8 @@
                                 <TextBlock FontSize="13" FontWeight="Medium" Text="Storage Monitoring" />
                                 <TextBlock Margin="0,5,0,0" FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Enable storage/disk monitoring. Disable if not needed." />
+                                    Text="Enable storage/disk monitoring. Disable if not needed."
+                                    TextWrapping="Wrap" />
                             </StackPanel>
                         </Grid>
                     </ui:CardControl.Header>
@@ -427,7 +438,8 @@
                                 <TextBlock FontSize="13" FontWeight="Medium" Text="Storage Polling Interval" />
                                 <TextBlock Margin="0,5,0,0" FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="How often to poll storage devices (seconds). Higher values reduce HDD activity." />
+                                    Text="How often to poll storage devices (seconds). Higher values reduce HDD activity."
+                                    TextWrapping="Wrap" />
                             </StackPanel>
                         </Grid>
                     </ui:CardControl.Header>
@@ -471,7 +483,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="The rate at which panels (including LCD) are rendered (excluding Direct2D acceleration)." />
+                                Text="The rate at which panels (including LCD) are rendered (excluding Direct2D acceleration)."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardExpander.Header>
@@ -581,7 +594,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Act as a webserver to display panels remotely via HTTP." />
+                                Text="Act as a webserver to display panels remotely via HTTP."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -606,7 +620,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="IP to run the webserver on." />
+                                Text="IP to run the webserver on."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -634,7 +649,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Port to run the webserver on." />
+                                Text="Port to run the webserver on."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -662,7 +678,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="The target rate at which remote sensor updates in milliseconds." />
+                                Text="The target rate at which remote sensor updates in milliseconds."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -699,7 +716,8 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Go to where all your data is stored. Backing up often is always a good thing." />
+                                Text="Go to where all your data is stored. Backing up often is always a good thing."
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
