@@ -17,7 +17,6 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </Page.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Margin="20,20,20,20">
                 <ui:CardControl>
                     <ui:CardControl.Icon>
@@ -119,5 +118,4 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>
-    </ScrollViewer>
 </Page>
