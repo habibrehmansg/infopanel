@@ -80,6 +80,7 @@ namespace InfoPanel.Views.Windows
 
             Loaded += MainWindow_Loaded;
             StateChanged += MainWindow_StateChanged;
+            SizeChanged += MainWindow_SizeChanged;
         }
 
         private void MainWindow_StateChanged(object? sender, EventArgs e)
@@ -95,6 +96,18 @@ namespace InfoPanel.Views.Windows
 
                 // Trim working set — releases physical pages the OS can reclaim
                 SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1));
+            }
+        }
+
+        private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (WindowState != WindowState.Normal)
+                return;
+
+            if (e.NewSize.Width >= MinWidth && e.NewSize.Height >= MinHeight)
+            {
+                ConfigModel.Instance.Settings.UiWidth = (float)e.NewSize.Width;
+                ConfigModel.Instance.Settings.UiHeight = (float)e.NewSize.Height;
             }
         }
 
