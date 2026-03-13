@@ -382,7 +382,7 @@
                                             <TextBlock.Text>
                                                 <MultiBinding Converter="{StaticResource SensorSourceConverter}">
                                                     <Binding Path="SensorType" />
-                                                    <Binding Path="HwInfoRemoteIndex" />
+                                                    <Binding Path="HwInfoRemoteIndex" FallbackValue="-1" />
                                                 </MultiBinding>
                                             </TextBlock.Text>
                                         </TextBlock>
@@ -410,7 +410,7 @@
                                             <TextBlock.Text>
                                                 <MultiBinding Converter="{StaticResource SensorSourceConverter}">
                                                     <Binding Path="SensorType" />
-                                                    <Binding Path="HwInfoRemoteIndex" />
+                                                    <Binding Path="HwInfoRemoteIndex" FallbackValue="-1" />
                                                 </MultiBinding>
                                             </TextBlock.Text>
                                         </TextBlock>

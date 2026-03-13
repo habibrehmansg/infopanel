@@ -1328,6 +1328,34 @@ namespace InfoPanel
                                     }
                                 }
                             }
+                            else if (displayItem is SensorImageDisplayItem sensorImageDisplayItem && sensorImageDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                            {
+                                if (!HWHash.SENSORHASH.TryGetValue((sensorImageDisplayItem.HwInfoRemoteIndex, sensorImageDisplayItem.Id, sensorImageDisplayItem.Instance, sensorImageDisplayItem.EntryId), out _))
+                                {
+                                    var hash = HWHash.GetOrderedList(sensorImageDisplayItem.HwInfoRemoteIndex).Find(hash => hash.NameDefault.Equals(sensorImageDisplayItem.SensorName));
+                                    if (hash.NameDefault != null)
+                                    {
+                                        sensorImageDisplayItem.Id = hash.ParentID;
+                                        sensorImageDisplayItem.Instance = hash.ParentInstance;
+                                        sensorImageDisplayItem.EntryId = hash.SensorID;
+                                        Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                                    }
+                                }
+                            }
+                            else if (displayItem is HttpImageDisplayItem httpImageDisplayItem && httpImageDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                            {
+                                if (!HWHash.SENSORHASH.TryGetValue((httpImageDisplayItem.HwInfoRemoteIndex, httpImageDisplayItem.Id, httpImageDisplayItem.Instance, httpImageDisplayItem.EntryId), out _))
+                                {
+                                    var hash = HWHash.GetOrderedList(httpImageDisplayItem.HwInfoRemoteIndex).Find(hash => hash.NameDefault.Equals(httpImageDisplayItem.SensorName));
+                                    if (hash.NameDefault != null)
+                                    {
+                                        httpImageDisplayItem.Id = hash.ParentID;
+                                        httpImageDisplayItem.Instance = hash.ParentInstance;
+                                        httpImageDisplayItem.EntryId = hash.SensorID;
+                                        Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                                    }
+                                }
+                            }
                         }
                         //save it back
                         SaveDisplayItems(profile, displayItems);

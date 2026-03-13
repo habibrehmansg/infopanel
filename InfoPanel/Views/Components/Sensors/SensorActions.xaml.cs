@@ -167,6 +167,16 @@ namespace InfoPanel.Views.Components
                 sensorImageDisplayItem.Instance = sensorItem.ParentInstance;
                 sensorImageDisplayItem.EntryId = sensorItem.SensorId;
             }
+            else if (displayItem is HttpImageDisplayItem httpImageDisplayItem)
+            {
+                httpImageDisplayItem.Name = sensorItem.Name;
+                httpImageDisplayItem.SensorName = sensorItem.Name;
+                httpImageDisplayItem.SensorType = SensorType.HwInfo;
+                httpImageDisplayItem.HwInfoRemoteIndex = sensorItem.RemoteIndex;
+                httpImageDisplayItem.Id = sensorItem.ParentId;
+                httpImageDisplayItem.Instance = sensorItem.ParentInstance;
+                httpImageDisplayItem.EntryId = sensorItem.SensorId;
+            }
         }
 
         private void ReplaceLibreSensor(LibreSensorItem sensorItem, DisplayItem displayItem)
@@ -199,6 +209,13 @@ namespace InfoPanel.Views.Components
                 sensorImageDisplayItem.SensorName = sensorItem.Name;
                 sensorImageDisplayItem.SensorType = SensorType.Libre;
                 sensorImageDisplayItem.LibreSensorId = sensorItem.SensorId;
+            }
+            else if (displayItem is HttpImageDisplayItem httpImageDisplayItem)
+            {
+                httpImageDisplayItem.Name = sensorItem.Name;
+                httpImageDisplayItem.SensorName = sensorItem.Name;
+                httpImageDisplayItem.SensorType = SensorType.Libre;
+                httpImageDisplayItem.LibreSensorId = sensorItem.SensorId;
             }
         }
 
