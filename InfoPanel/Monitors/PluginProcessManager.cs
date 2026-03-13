@@ -128,7 +128,7 @@ namespace InfoPanel.Monitors
                     Logger.Debug(ex, "Failed to refresh metrics counters");
                 }
 
-                await Task.Delay(100, token);
+                await Task.Delay(2000, token);
             }
         }
 
@@ -138,7 +138,7 @@ namespace InfoPanel.Monitors
             var needsInit = new List<(int Pid, string ProcessName, PluginHostConnection Connection)>();
             foreach (var conn in _connections.Values)
             {
-                if (conn.ProcessMetrics == null)
+                if (!conn.HasMetricsCounter)
                 {
                     var pid = conn.GetProcessId();
                     var name = conn.GetProcessName();

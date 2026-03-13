@@ -222,6 +222,8 @@ namespace InfoPanel.Monitors
             return [];
         }
 
+        public bool HasMetricsCounter => _privateWorkingSetCounter != null;
+
         public ProcessMetrics? ProcessMetrics
         {
             get
