@@ -57,9 +57,11 @@
             <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter" />
             <local:FontFamilyConverter x:Key="FontFamilyConverter" />
             <local:EnumEqualsConverter x:Key="EnumEqualsConverter" />
+            <local:SensorSourceConverter x:Key="SensorSourceConverter" />
 
             <converters:LockSymbolConverter x:Key="LockSymbolConverter" />
             <converters:LockColorConverter x:Key="LockColorConverter" />
+            <converters:ThemeToIndexConverter x:Key="ThemeToIndexConverter" />
 
             <BitmapImage x:Key="HwinfoIcon" UriSource="Resources/Images/hwinfo_icon.ico" />
             <BitmapImage x:Key="LibreIcon" UriSource="Resources/Images/libre_icon.ico" />

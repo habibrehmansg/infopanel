@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using Wpf.Ui.Controls;
+using Wpf.Ui.Abstractions.Controls;
 using Wpf.Ui;
 
 namespace InfoPanel.ViewModels
@@ -23,12 +23,14 @@ namespace InfoPanel.ViewModels
             _navigationService = navigationService;
         }
 
-        public void OnNavigatedFrom()
+        public Task OnNavigatedFromAsync()
         {
+            return Task.CompletedTask;
         }
 
-        public void OnNavigatedTo()
+        public Task OnNavigatedToAsync()
         {
+            return Task.CompletedTask;
         }
 
         private void OnNavigate(string? parameter)

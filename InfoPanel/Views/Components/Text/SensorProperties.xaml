@@ -30,10 +30,16 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                        Text="Sensor" />
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{StaticResource SensorSourceConverter}">
+                                <Binding Path="SensorType" />
+                                <Binding Path="HwInfoRemoteIndex" FallbackValue="-1" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
                     <StackPanel
-                        Margin="0,-5,0,0"
+                        Margin="0,0,0,0"
                         HorizontalAlignment="Right"
                         Orientation="Horizontal">
                         <ToggleButton
@@ -67,7 +73,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Reading" />
                 </StackPanel>
             </Grid>
@@ -121,13 +127,13 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Multiplier (toggle for divisor)"
                         Visibility="{Binding DivisionToggle, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Divisor (toggle for multiplier)"
                         Visibility="{Binding DivisionToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
@@ -146,7 +152,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Modifier" />
                     </StackPanel>
                 </StackPanel>
@@ -190,7 +196,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Override Precision" />
                     </StackPanel>
 
@@ -218,7 +224,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Override Unit" />
                     </StackPanel>
 
@@ -254,7 +260,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="≥ Threshold #1" />
                     </StackPanel>
 
@@ -294,7 +300,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="≥ Threshold #2" />
                     </StackPanel>
 

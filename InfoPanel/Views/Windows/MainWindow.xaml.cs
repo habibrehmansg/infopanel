@@ -3,11 +3,12 @@ using System.ComponentModel;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Interop;
 using InfoPanel.Utils;
 using Serilog;
 using Wpf.Ui;
+using Wpf.Ui.Abstractions;
+using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Windows
@@ -25,13 +26,16 @@ namespace InfoPanel.Views.Windows
         [DllImport("user32.dll")]
         private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr changeFilterStruct);
 
+        [DllImport("kernel32.dll")]
+        private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
+
         private const uint MSGFLT_ALLOW = 1;
 
         private readonly ITaskBarService _taskBarService;
         private uint _taskbarCreatedMessageId;
         private HwndSource? _hwndSource;
 
-        public MainWindow(INavigationService navigationService, IPageService pageService, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
+        public MainWindow(INavigationService navigationService, INavigationViewPageProvider pageProvider, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
             // Assign the view model
             //ViewModel = viewModel;
@@ -42,8 +46,23 @@ namespace InfoPanel.Views.Windows
 
             InitializeComponent();
 
+            // Apply saved theme after InitializeComponent so it overrides the
+            // ThemesDictionary default from App.xaml.
+            var savedTheme = ConfigModel.Instance.Settings.AppTheme switch
+            {
+                1 => ApplicationTheme.Dark,
+                _ => ApplicationTheme.Light
+            };
+            ApplicationThemeManager.Apply(savedTheme, WindowBackdropType.Mica, true);
+            App.SyncMahAppsTheme(savedTheme);
+
+            ApplicationThemeManager.Changed += (theme, _) =>
+            {
+                App.SyncMahAppsTheme(theme);
+            };
+
             // We define a page provider for navigation
-            SetPageService(pageService);
+            SetPageService(pageProvider);
 
             // If you want to use INavigationService instead of INavigationWindow you can define its navigation here.
             navigationService.SetNavigationControl(RootNavigation);
@@ -60,15 +79,6 @@ namespace InfoPanel.Views.Windows
 
             Loaded += MainWindow_Loaded;
             StateChanged += MainWindow_StateChanged;
-
-            var screenHeight = SystemParameters.PrimaryScreenHeight;
-            var desiredHeight = screenHeight * 0.80;
-
-            if (desiredHeight > MinHeight)
-            {
-                Height = desiredHeight;
-            }
-
         }
 
         private void MainWindow_StateChanged(object? sender, EventArgs e)
@@ -76,11 +86,14 @@ namespace InfoPanel.Views.Windows
             if (WindowState == WindowState.Minimized)
             {
                 SharedModel.Instance.SelectedItem = null;
-                
+
                 if (ConfigModel.Instance.Settings.MinimizeToTray)
                 {
                     Hide();
                 }
+
+                // Trim working set — releases physical pages the OS can reclaim
+                SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1));
             }
         }
 
@@ -96,6 +109,8 @@ namespace InfoPanel.Views.Windows
             {
                 ChangeWindowMessageFilterEx(hwnd, _taskbarCreatedMessageId, MSGFLT_ALLOW, IntPtr.Zero);
             }
+
+            SystemThemeWatcher.Watch(this);
 
             if (ConfigModel.Instance.Settings.StartMinimized)
             {
@@ -126,8 +141,8 @@ namespace InfoPanel.Views.Windows
 
         private void Window_ContentRendered(object sender, EventArgs e)
         {
-            MinWidth = 1300;
-            MinHeight = 900;
+            MinWidth = 900;
+            MinHeight = 600;
 
             Navigate(typeof(Pages.HomePage));
 
@@ -209,27 +224,14 @@ namespace InfoPanel.Views.Windows
 
         #region INavigationWindow methods
 
-        public Frame GetFrame()
-        {
-            // In WPF-UI v3, NavigationView manages its own internal frame
-            // We need to return a Frame for compatibility, so we'll create one if needed
-            if (_navigationFrame == null)
-            {
-                _navigationFrame = new Frame();
-            }
-            return _navigationFrame;
-        }
-        
-        private Frame? _navigationFrame;
-
         public INavigationView GetNavigation()
             => RootNavigation;
 
         public bool Navigate(Type pageType)
-            => RootNavigation.Navigate(pageType) != null;
+            => RootNavigation.Navigate(pageType);
 
-        public void SetPageService(IPageService pageService)
-            => RootNavigation.SetPageService(pageService);
+        public void SetPageService(INavigationViewPageProvider pageProvider)
+            => RootNavigation.SetPageProviderService(pageProvider);
 
         public void ShowWindow()
             => Show();
@@ -239,8 +241,6 @@ namespace InfoPanel.Views.Windows
 
         public void SetServiceProvider(IServiceProvider serviceProvider)
         {
-            // This is used to provide services to the navigation window
-            // Implementation depends on your specific needs
         }
 
         #endregion INavigationWindow methods

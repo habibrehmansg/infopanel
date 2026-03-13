@@ -174,8 +174,12 @@ namespace InfoPanel.Models
 
                     try
                     {
-                        var data = client.GetByteArrayAsync(ImagePath).GetAwaiter().GetResult();
-                        _stream = new MemoryStream(data);
+                        using var request = new HttpRequestMessage(HttpMethod.Get, ImagePath);
+                        using var response = client.Send(request);
+                        response.EnsureSuccessStatusCode();
+                        _stream = new MemoryStream();
+                        response.Content.ReadAsStream().CopyTo(_stream);
+                        _stream.Position = 0;
                     }
                     catch (Exception e)
                     {

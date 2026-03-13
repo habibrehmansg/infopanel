@@ -31,7 +31,7 @@
                 <TextBlock
                     Margin="5,0,0,0"
                     FontSize="12"
-                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                     Text="Min value (sensor lower bound)" />
             </StackPanel>
 
@@ -45,7 +45,7 @@
                 <TextBlock
                     Margin="5,0,0,0"
                     FontSize="12"
-                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                     Text="Max value (sensor upper bound)" />
             </StackPanel>
 
@@ -60,7 +60,7 @@
                 <TextBlock
                     Margin="5,0,0,0"
                     FontSize="12"
-                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                     Text="Width" />
             </StackPanel>
 
@@ -75,7 +75,7 @@
                 <TextBlock
                     Margin="5,0,0,0"
                     FontSize="12"
-                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                     Text="Height" />
             </StackPanel>
 
@@ -97,13 +97,13 @@
                         Grid.Column="0"
                         Margin="0,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Resize scale" />
                     <TextBlock
                         Grid.Column="1"
                         Margin="0,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="{Binding Scale, Mode=OneWay}" />
                 </Grid>
             </StackPanel>

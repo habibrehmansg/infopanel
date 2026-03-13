@@ -1,14 +1,17 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using AsyncKeyedLock;
+using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
+using InfoPanel.Services;
+using InfoPanel.TuringPanel;
 using Microsoft.Win32;
 using Microsoft.Win32.TaskScheduler;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using Serilog;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -19,8 +22,6 @@ using System.Xml;
 using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
 using Timer = System.Threading.Timer;
-using InfoPanel.Services;
-using InfoPanel.TuringPanel;
 using InfoPanel.ThermalrightPanel;
 using HidSharp;
 
@@ -43,7 +44,7 @@ namespace InfoPanel
 
         // Debouncing and async save fields
         private Timer? _saveDebounceTimer;
-        private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
+        private readonly AsyncNonKeyedLocker _saveLock = new(1);
         private const int SaveDebounceDelayMs = 500;
 
         private ConfigModel()
@@ -187,7 +188,7 @@ namespace InfoPanel
 
         private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(Settings.AutoStart))
+            if (e.PropertyName == nameof(Settings.AutoStart) || e.PropertyName == nameof(Settings.AutoStartDelay))
             {
                 ValidateStartup();
             }
@@ -273,12 +274,6 @@ namespace InfoPanel
             }
         }
 
-        public void SaveSettings()
-        {
-            // Synchronous wrapper for backward compatibility
-            Task.Run(async () => await SaveSettingsAsync(batch: false)).Wait();
-        }
-
         public async Task SaveSettingsAsync(bool batch = true)
         {
             if (!batch)
@@ -298,7 +293,7 @@ namespace InfoPanel
 
         private async Task SaveSettingsInternalAsync()
         {
-            await _saveSemaphore.WaitAsync();
+            using var _ = await _saveLock.LockAsync();
             try
             {
                 Logger.Debug("Saving settings...");
@@ -358,10 +353,6 @@ namespace InfoPanel
                 }
                 throw;
             }
-            finally
-            {
-                _saveSemaphore.Release();
-            }
         }
 
         public void LoadSettings()
@@ -409,6 +400,7 @@ namespace InfoPanel
                             Settings.UiWidth = settings.UiWidth;
                             Settings.UiHeight = settings.UiHeight;
                             Settings.UiScale = settings.UiScale;
+                            Settings.AppTheme = settings.AppTheme;
                             Settings.IsPaneOpen = settings.IsPaneOpen;
                             Settings.AutoStart = settings.AutoStart;
                             Settings.AutoStartDelay = settings.AutoStartDelay;
@@ -716,7 +708,7 @@ namespace InfoPanel
             }
 
             // Dispose the semaphore
-            _saveSemaphore?.Dispose();
+            _saveLock?.Dispose();
         }
     }
 }

@@ -33,31 +33,25 @@
             </Grid.ColumnDefinitions>
         </Grid>
 
-        <ScrollViewer
-            Name="MyScrollViewer"
+        <TreeView
+            x:Name="TreeViewInfo"
             Grid.Row="1"
             Margin="0,10,0,0"
-            PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
-            <StackPanel Focusable="False">
-                <TreeView
-                    x:Name="TreeViewInfo"
-                    Margin="0,0,0,0"
-                    Focusable="False"
-                    ItemsSource="{Binding Sensors}"
-                    SelectedItemChanged="TreeViewInfo_SelectedItemChanged">
-                    <TreeView.ItemTemplate>
-                        <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock
-                                    Margin="0,0,0,0"
-                                    Foreground="LightGray"
-                                    Text="{Binding Name}" />
-                            </StackPanel>
-                        </HierarchicalDataTemplate>
-                    </TreeView.ItemTemplate>
-                </TreeView>
-            </StackPanel>
-        </ScrollViewer>
+            Padding="0,0,0,20"
+            Focusable="False"
+            ItemsSource="{Binding Sensors}"
+            SelectedItemChanged="TreeViewInfo_SelectedItemChanged">
+            <TreeView.ItemTemplate>
+                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock
+                            Margin="0,0,0,0"
+                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                            Text="{Binding Name}" />
+                    </StackPanel>
+                </HierarchicalDataTemplate>
+            </TreeView.ItemTemplate>
+        </TreeView>
         <StackPanel Grid.Row="2" Margin="10,0,10,0">
             <Separator Grid.Row="2" Margin="0,5,0,5" />
 
@@ -103,7 +97,7 @@
                             <TextBlock
                                 Margin="5,0,0,0"
                                 FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="Sensor Id" />
                         </StackPanel>
 
@@ -123,20 +117,13 @@
                 Margin="0,10,0,0"
                 IsEnabled="{Binding Path=SelectedItem, Converter={StaticResource NullToBooleanConverter}}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-
                 <ui:Button
                     x:Name="ButtonAddHttpImage"
-                    Grid.Column="1"
+                    Grid.Column="0"
                     Margin="10,0,0,0"
                     Appearance="Success"
                     Click="ButtonAddHttpImage_Click"
@@ -146,7 +133,7 @@
 
                 <ui:Button
                     x:Name="ButtonAddTableSensor"
-                    Grid.Column="2"
+                    Grid.Column="1"
                     Margin="10,0,0,0"
                     Appearance="Success"
                     Click="ButtonAddTableSensor_Click"

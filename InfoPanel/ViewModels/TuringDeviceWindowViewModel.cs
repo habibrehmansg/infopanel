@@ -142,7 +142,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     {
         try
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 IsLoading = true;
                 LoadingText = "Connecting to device...";
@@ -162,23 +162,23 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
             try
             {
                 _turingDevice.Initialize(usbRegistry);
-                Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Connected");
+                await Application.Current.Dispatcher.InvokeAsync(() => DeviceStatus = "Connected");
                 await RefreshStorage();
             }
             catch (TuringDeviceException ex)
             {
-                Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Failed to connect");
+                await Application.Current.Dispatcher.InvokeAsync(() => DeviceStatus = "Failed to connect");
                 ShowStatus("Connection Failed", $"Could not connect to the Turing device: {ex.Message}", InfoBarSeverity.Error);
             }
         }
         catch (Exception ex)
         {
-            Application.Current.Dispatcher.Invoke(() => DeviceStatus = "Error");
+            await Application.Current.Dispatcher.InvokeAsync(() => DeviceStatus = "Error");
             ShowStatus("Error", $"Failed to initialize device: {ex.Message}", InfoBarSeverity.Error);
         }
         finally
         {
-            Application.Current.Dispatcher.Invoke(() => IsLoading = false);
+            await Application.Current.Dispatcher.InvokeAsync(() => IsLoading = false);
         }
     }
 
@@ -194,7 +194,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
 
         try
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 IsLoading = true;
                 LoadingText = "Refreshing storage information...";
@@ -204,13 +204,13 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
             try
             {
                 var storageInfo = _turingDevice.GetStorageInfo();
-                Application.Current.Dispatcher.Invoke(() =>
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     TotalStorageDisplay = FormatBytes(storageInfo.TotalBytes);
                     UsedStorageDisplay = FormatBytes(storageInfo.UsedBytes);
                     FreeStorageDisplay = FormatBytes(storageInfo.TotalBytes - storageInfo.UsedBytes);
-                    StorageUsagePercentage = storageInfo.TotalBytes > 0 
-                        ? (double)storageInfo.UsedBytes / storageInfo.TotalBytes * 100 
+                    StorageUsagePercentage = storageInfo.TotalBytes > 0
+                        ? (double)storageInfo.UsedBytes / storageInfo.TotalBytes * 100
                         : 0;
                 });
             }
@@ -220,14 +220,14 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
             }
 
             // Get video file list
-            Application.Current.Dispatcher.Invoke(() => LoadingText = "Loading video files...");
+            await Application.Current.Dispatcher.InvokeAsync(() => LoadingText = "Loading video files...");
             
             try
             {
                 var files = _turingDevice.ListFiles("/tmp/sdcard/mmcblk0p1/video/");
                 
                 // Update collection on UI thread
-                Application.Current.Dispatcher.Invoke(() =>
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     DeviceFiles.Clear();
                     foreach (var fileName in files)
@@ -255,7 +255,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         }
         finally
         {
-            Application.Current.Dispatcher.Invoke(() => IsLoading = false);
+            await Application.Current.Dispatcher.InvokeAsync(() => IsLoading = false);
         }
     }
 
@@ -474,7 +474,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
                     
                     // Close window after restart
                     await Task.Delay(2000);
-                    Application.Current.Dispatcher.Invoke(() =>
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
                         var window = Application.Current.Windows.OfType<TuringDeviceWindow>().FirstOrDefault();
                         window?.Close();
@@ -499,7 +499,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
 
     private void ShowStatus(string title, string message, InfoBarSeverity severity)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        _ = Application.Current.Dispatcher.InvokeAsync(() =>
         {
             StatusTitle = title;
             StatusMessage = message;
@@ -508,9 +508,9 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         });
 
         // Auto-hide after 5 seconds
-        Task.Delay(5000).ContinueWith(_ => 
+        Task.Delay(5000).ContinueWith(__ =>
         {
-            Application.Current.Dispatcher.Invoke(() => IsStatusVisible = false);
+            Application.Current.Dispatcher.InvokeAsync(new Action(() => IsStatusVisible = false));
         }, TaskScheduler.Default);
     }
 
