@@ -18,6 +18,7 @@ namespace InfoPanel.Views.Components
         private HwInfoSensorsVM ViewModel { get; set; }
 
         private readonly DispatcherTimer UpdateTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+        private int _lastSensorCount = -1;
 
         public HwInfoSensors()
         {
@@ -108,7 +109,11 @@ namespace InfoPanel.Views.Components
 
             int remoteIndex = ViewModel.SelectedConnection.RemoteIndex;
 
-            foreach (HWHash.HWINFO_HASH hash in HWHash.GetOrderedList(remoteIndex))
+            var orderedList = HWHash.GetOrderedList(remoteIndex);
+            if (orderedList.Count == _lastSensorCount && _lastSensorCount > 0) return;
+            _lastSensorCount = orderedList.Count;
+
+            foreach (HWHash.HWINFO_HASH hash in orderedList)
             {
                 //construct parent
                 var parent = ViewModel.FindParentSensorItem(hash.ParentUniqueID);
@@ -159,6 +164,7 @@ namespace InfoPanel.Views.Components
         private void ConnectionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             // Clear and rebuild tree when connection changes
+            _lastSensorCount = -1;
             ViewModel.Sensors.Clear();
             ViewModel.SelectedItem = null;
             LoadSensorTree();

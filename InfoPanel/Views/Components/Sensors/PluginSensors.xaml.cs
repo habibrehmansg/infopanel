@@ -17,6 +17,7 @@ namespace InfoPanel.Views.Components
         private PluginSensorsVM ViewModel { get; set; }
 
         private readonly DispatcherTimer UpdateTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+        private int _lastSensorCount = -1;
 
         public PluginSensors()
         {
@@ -87,7 +88,11 @@ namespace InfoPanel.Views.Components
             //    }
             //}
 
-            foreach (PluginMonitor.PluginReading reading in PluginMonitor.GetOrderedList())
+            var orderedList = PluginMonitor.GetOrderedList();
+            if (orderedList.Count == _lastSensorCount && _lastSensorCount > 0) return;
+            _lastSensorCount = orderedList.Count;
+
+            foreach (PluginMonitor.PluginReading reading in orderedList)
             {
                 //construct plugin
                 var parent = ViewModel.FindParentSensorItem(reading.PluginId);

@@ -389,11 +389,11 @@ namespace InfoPanel
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)
         {
-            Task.Run(async () =>
+            _ = Task.Run(async () =>
             {
                 await BeadaPanelTask.Instance.StopAsync(true);
                 await TuringPanelTask.Instance.StopAsync(true);
-            }).ConfigureAwait(false).GetAwaiter().GetResult();
+            });
         }
 
         private void OnPowerChange(object sender, PowerModeChangedEventArgs e)
@@ -401,18 +401,18 @@ namespace InfoPanel
             switch (e.Mode)
             {
                 case PowerModes.Resume:
-                    Task.Run(async () =>
+                    _ = Task.Run(async () =>
                     {
                         await Task.Delay(1000);
                         await StartPanels();
-                    }).ConfigureAwait(false).GetAwaiter().GetResult();
+                    });
                     break;
                 case PowerModes.Suspend:
-                    Task.Run(async () =>
+                    _ = Task.Run(async () =>
                     {
                         await BeadaPanelTask.Instance.StopAsync(true);
                         await TuringPanelTask.Instance.StopAsync(true);
-                    }).ConfigureAwait(false).GetAwaiter().GetResult();
+                    });
                     break;
             }
         }
