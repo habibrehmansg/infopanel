@@ -85,14 +85,9 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _autosaveEnabled = false;
 
+        /// <summary>Seconds of no changes before autosave runs. User still saves manually for the main save.</summary>
         [ObservableProperty]
-        private int _autosaveIntervalSeconds = 60;
-
-        [ObservableProperty]
-        private int _autosaveSlotCount = 3;
-
-        [ObservableProperty]
-        private int _autosaveSlotIntervalMinutes = 5;
+        private int _autosaveIdleSeconds = 3;
 
         public Settings()
         {

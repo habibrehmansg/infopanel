@@ -44,7 +44,9 @@ namespace InfoPanel
         private readonly ConcurrentDictionary<Guid, string> _lastStateSnapshotPerProfile = [];
 
         public bool IsDirty => _isDirty;
-        public void MarkDirty() { _isDirty = true; OnPropertyChanged(nameof(IsDirty)); }
+        /// <summary>Raised when MarkDirty() is called so autosave can reset its idle timer.</summary>
+        public event Action? DirtyChanged;
+        public void MarkDirty() { _isDirty = true; OnPropertyChanged(nameof(IsDirty)); DirtyChanged?.Invoke(); }
         public void ClearDirty() { _isDirty = false; OnPropertyChanged(nameof(IsDirty)); }
 
         public bool HwInfoAvailable
@@ -300,6 +302,7 @@ namespace InfoPanel
             finally
             {
                 _isUndoRedoInProgress = false;
+                MarkDirty();
             }
         }
 
@@ -337,6 +340,7 @@ namespace InfoPanel
             finally
             {
                 _isUndoRedoInProgress = false;
+                MarkDirty();
             }
         }
 

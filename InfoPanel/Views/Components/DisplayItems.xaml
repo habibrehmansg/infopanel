@@ -351,20 +351,54 @@
         <Separator Grid.Row="2" Margin="0,5,0,0" />
 
         <Grid Grid.Row="4" Margin="0,8,0,8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="auto" />
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <components:CommonActions Grid.Column="0" HorizontalAlignment="Left" />
+            <components:CommonActions Grid.Row="0" HorizontalAlignment="Left" />
 
             <StackPanel
-                Grid.Column="1"
+                Grid.Row="1"
+                Margin="0,6,0,0"
                 HorizontalAlignment="Right"
                 Orientation="Horizontal">
+                <StackPanel
+                    MinWidth="28"
+                    Margin="0,0,10,0"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.AutosaveEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ui:SymbolIcon
+                        x:Name="AutosavePendingIcon"
+                        Width="20"
+                        Height="20"
+                        VerticalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                        Symbol="Circle20"
+                        ToolTip="Autosave pending"
+                        Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Pending}" />
+                    <ui:SymbolIcon
+                        x:Name="AutosaveDoneIcon"
+                        Width="20"
+                        Height="20"
+                        Margin="-20,0,0,0"
+                        VerticalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Symbol="Checkmark20"
+                        ToolTip="Auto-saved"
+                        Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=AutoSaved}" />
+                    <TextBlock
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding Source={x:Static app:ConfigModel.Instance}, Path=LastSaveText}"
+                        Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=LastSaveAt, Converter={StaticResource NullToVisibilityConverter}}" />
+                </StackPanel>
                 <ui:Button
                     x:Name="ButtonSave"
-                    Width="140"
+                    Width="105"
                     Margin="0,0,0,0"
                     Appearance="Primary"
                     Click="ButtonSave_Click"
@@ -388,17 +422,12 @@
                     ToolTip="Redo" />
                 <ui:Button
                     x:Name="ButtonReload"
+                    Width="105"
                     Margin="5,0,0,0"
                     Appearance="Danger"
                     Click="ButtonReload_Click"
-                    Content="Reload from disk"
+                    Content="Reload"
                     ToolTip="Discard all changes and reload from disk" />
-                <ui:Button
-                    x:Name="ButtonRestoreBackup"
-                    Margin="5,0,0,0"
-                    Click="ButtonRestoreBackup_Click"
-                    Content="Restore from backup"
-                    ToolTip="Restore this profile from an autosave backup" />
             </StackPanel>
         </Grid>
     </Grid>

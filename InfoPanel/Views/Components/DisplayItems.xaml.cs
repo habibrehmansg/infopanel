@@ -316,54 +316,11 @@ namespace InfoPanel.Views.Components
             _displayItemsViewSource?.View?.Refresh();
         }
 
-        private async void ButtonRestoreBackup_Click(object sender, RoutedEventArgs e)
-        {
-            if (SharedModel.Instance.SelectedProfile == null) return;
-            var dialogService = App.GetService<IContentDialogService>();
-            if (dialogService == null) return;
-            var slots = ConfigModel.Instance.GetAutosaveSlots();
-            var choices = slots.Select(s => new SlotChoice(s.SlotIndex, s.Timestamp.HasValue ? "Backup from " + s.Timestamp.Value.ToLocalTime().ToString("g", CultureInfo.CurrentUICulture) : "Backup (slot " + s.SlotIndex + ")")).ToList();
-            var listBox = new ListBox
-            {
-                MinHeight = 120,
-                MaxHeight = 200,
-                DisplayMemberPath = "Label",
-                ItemsSource = choices,
-                SelectedIndex = choices.Count > 0 ? 0 : -1
-            };
-            var stack = new StackPanel();
-            if (SharedModel.Instance.IsDirty)
-                stack.Children.Add(new System.Windows.Controls.TextBlock { Text = "Current unsaved changes will be replaced.", Margin = new Thickness(0, 0, 0, 8), Foreground = new SolidColorBrush(Colors.OrangeRed) });
-            if (choices.Count == 0)
-            {
-                stack.Children.Add(new System.Windows.Controls.TextBlock { Text = "No backups available. Enable autosave in Settings to create backups." });
-            }
-            else
-            {
-                stack.Children.Add(new System.Windows.Controls.TextBlock { Text = "Select a backup to restore:", Margin = new Thickness(0, 0, 0, 4) });
-                stack.Children.Add(listBox);
-            }
-            var dialog = new ContentDialog
-            {
-                Title = "Restore from backup",
-                Content = stack,
-                PrimaryButtonText = choices.Count > 0 ? "Restore" : null,
-                CloseButtonText = "Cancel"
-            };
-            var result = await dialogService.ShowAsync(dialog, CancellationToken.None);
-            if (result == ContentDialogResult.Primary && choices.Count > 0 && listBox.SelectedItem is SlotChoice choice)
-            {
-                ConfigModel.Instance.RestoreProfileFromAutosaveSlot(choice.SlotIndex);
-                _displayItemsViewSource?.View?.Refresh();
-            }
-        }
-
-        private sealed record SlotChoice(int SlotIndex, string Label);
-
         private void ButtonSave_Click(object sender, RoutedEventArgs e)
         {
             ConfigModel.Instance.SaveProfiles();
             SharedModel.Instance.SaveDisplayItems();
+            ConfigModel.Instance.NotifyUserSaved();
         }
 
         private void ButtonNewText_Click(object sender, RoutedEventArgs e)

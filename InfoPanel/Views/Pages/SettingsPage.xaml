@@ -131,7 +131,7 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                Text="Save backup copies of your profile at regular intervals (does not overwrite your saved profile). Off by default; turn on if you want automatic backups." />
+                                Text="Internal backup after you stop making changes. Does not overwrite your saved profile; use Save for that. Off by default." />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
@@ -147,49 +147,17 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                            Text="Interval (secs):" />
+                            Text="Autosave after (secs):" />
                         <ui:NumberBox
                             Width="100"
-                            Margin="0,0,10,0"
-                            FontSize="14"
-                            LargeChange="30"
-                            MaxDecimalPlaces="0"
-                            Minimum="1"
-                            SmallChange="5"
-                            Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveIntervalSeconds}"
-                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveIntervalSeconds}" />
-                        <TextBlock
-                            Margin="0,0,5,0"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                            Text="Backup slots:" />
-                        <ui:NumberBox
-                            Width="60"
-                            Margin="0,0,10,0"
-                            FontSize="14"
-                            MaxDecimalPlaces="0"
-                            Minimum="2"
-                            Maximum="5"
-                            SmallChange="1"
-                            Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveSlotCount}"
-                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveSlotCount}" />
-                        <TextBlock
-                            Margin="0,0,5,0"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                            Text="New slot every (min):" />
-                        <ui:NumberBox
-                            Width="60"
                             Margin="0,0,0,0"
                             FontSize="14"
                             MaxDecimalPlaces="0"
                             Minimum="1"
                             Maximum="60"
                             SmallChange="1"
-                            Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveSlotIntervalMinutes}"
-                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveSlotIntervalMinutes}" />
+                            Text="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveIdleSeconds}"
+                            Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveIdleSeconds}" />
                     </StackPanel>
                     <ui:ToggleSwitch HorizontalAlignment="Right" IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.AutosaveEnabled}" />
                 </StackPanel>

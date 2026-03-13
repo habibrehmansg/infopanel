@@ -25,6 +25,13 @@ using HidSharp;
 
 namespace InfoPanel
 {
+    public enum AutosaveIndicatorState
+    {
+        None,
+        Pending,
+        AutoSaved
+    }
+
     public sealed class ConfigModel : ObservableObject
     {
         private static readonly ILogger Logger = Log.ForContext<ConfigModel>();
@@ -45,18 +52,59 @@ namespace InfoPanel
         private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
         private const int SaveDebounceDelayMs = 500;
 
-        private DispatcherTimer? _autosaveTimer;
-        private int _autosaveCurrentSlotIndex;
-        private DateTime _autosaveLastSlotRotationTime = DateTime.UtcNow;
+        private DispatcherTimer? _autosaveIdleTimer;
+        private System.Action? _autosaveDirtyChangedHandler;
+        private DispatcherTimer? _autosaveIndicatorClearTimer;
 
-        private static string GetAutosaveBasePath()
+        private AutosaveIndicatorState _autosaveIndicator = AutosaveIndicatorState.None;
+        /// <summary>For toolbar UI: None (hide), Pending (circle), AutoSaved (checkmark).</summary>
+        public AutosaveIndicatorState AutosaveIndicator
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "autosave");
+            get => _autosaveIndicator;
+            private set => SetProperty(ref _autosaveIndicator, value);
         }
 
-        private string GetCurrentAutosaveSlotPath()
+        private DateTime? _lastSaveAt;
+        /// <summary>Time of last save (autosave or user save). Used for "Last save" label.</summary>
+        public DateTime? LastSaveAt
         {
-            return Path.Combine(GetAutosaveBasePath(), "slot_" + _autosaveCurrentSlotIndex);
+            get => _lastSaveAt;
+            private set
+            {
+                if (SetProperty(ref _lastSaveAt, value))
+                    OnPropertyChanged(nameof(LastSaveText));
+            }
+        }
+        /// <summary>Formatted "Last save: ..." for toolbar display.</summary>
+        public string LastSaveText => _lastSaveAt.HasValue ? "Last save: " + _lastSaveAt.Value.ToLocalTime().ToString("g") : "";
+
+        /// <summary>Call when the user has performed a main save (clears the autosave indicator).</summary>
+        public void NotifyUserSaved()
+        {
+            _autosaveIndicatorClearTimer?.Stop();
+            _autosaveIndicatorClearTimer = null;
+            AutosaveIndicator = AutosaveIndicatorState.None;
+            LastSaveAt = DateTime.UtcNow;
+        }
+
+        private void SetAutosaveIndicatorToNoneAfterDelay()
+        {
+            _autosaveIndicatorClearTimer?.Stop();
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null) return;
+            _autosaveIndicatorClearTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromSeconds(2.5) };
+            _autosaveIndicatorClearTimer.Tick += (s, e) =>
+            {
+                _autosaveIndicatorClearTimer?.Stop();
+                _autosaveIndicatorClearTimer = null;
+                AutosaveIndicator = AutosaveIndicatorState.None;
+            };
+            _autosaveIndicatorClearTimer.Start();
+        }
+
+        private static string GetAutosavePath()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "autosave");
         }
 
         private ConfigModel()
@@ -237,8 +285,7 @@ namespace InfoPanel
                     await WebServerTask.Instance.StopAsync();
                 }
             }
-            else if (e.PropertyName == nameof(Settings.AutosaveEnabled) || e.PropertyName == nameof(Settings.AutosaveIntervalSeconds)
-                || e.PropertyName == nameof(Settings.AutosaveSlotCount) || e.PropertyName == nameof(Settings.AutosaveSlotIntervalMinutes))
+            else if (e.PropertyName == nameof(Settings.AutosaveEnabled) || e.PropertyName == nameof(Settings.AutosaveIdleSeconds))
             {
                 RestartAutosaveTimer();
             }
@@ -429,9 +476,7 @@ namespace InfoPanel
                             Settings.TargetGraphUpdateRate = settings.TargetGraphUpdateRate;
                             Settings.Version = settings.Version;
                             Settings.AutosaveEnabled = settings.AutosaveEnabled;
-                            Settings.AutosaveIntervalSeconds = settings.AutosaveIntervalSeconds;
-                            Settings.AutosaveSlotCount = Math.Clamp(settings.AutosaveSlotCount, 2, 5);
-                            Settings.AutosaveSlotIntervalMinutes = Math.Clamp(settings.AutosaveSlotIntervalMinutes, 1, 60);
+                            Settings.AutosaveIdleSeconds = Math.Clamp(settings.AutosaveIdleSeconds, 1, 60);
 
                             // Load BeadaPanel multi-device settings
                             Settings.BeadaPanelMultiDeviceMode = settings.BeadaPanelMultiDeviceMode;
@@ -508,103 +553,32 @@ namespace InfoPanel
         }
 
         /// <summary>
-        /// Saves the current selected profile to the current autosave slot (backup only; does not overwrite main save).
+        /// Saves the current selected profile to the internal autosave location (overwrites). Does not overwrite the user's main save.
         /// </summary>
         public void SaveAutosaveBackup()
         {
             if (!Settings.AutosaveEnabled || !SharedModel.Instance.IsDirty || SharedModel.Instance.SelectedProfile is not Profile profile)
                 return;
 
-            var slotCount = Math.Max(2, Math.Min(5, Settings.AutosaveSlotCount));
-            var intervalMinutes = Math.Max(1, Math.Min(60, Settings.AutosaveSlotIntervalMinutes));
-            if ((DateTime.UtcNow - _autosaveLastSlotRotationTime).TotalMinutes >= intervalMinutes)
-            {
-                _autosaveCurrentSlotIndex = (_autosaveCurrentSlotIndex + 1) % slotCount;
-                _autosaveLastSlotRotationTime = DateTime.UtcNow;
-            }
-
-            var slotPath = GetCurrentAutosaveSlotPath();
+            var path = GetAutosavePath();
             try
             {
-                if (!Directory.Exists(slotPath))
-                    Directory.CreateDirectory(slotPath);
+                if (!Directory.Exists(path))
+                    Directory.CreateDirectory(path);
 
-                var profileFile = Path.Combine(slotPath, "profile.xml");
+                var profileFile = Path.Combine(path, "profile.xml");
                 var profiles = new List<Profile> { profile };
                 var xs = new XmlSerializer(typeof(List<Profile>));
                 var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
                 using (var wr = XmlWriter.Create(profileFile, settings))
                     xs.Serialize(wr, profiles);
 
-                SharedModel.Instance.SaveDisplayItems(profile, slotPath);
-
-                File.WriteAllText(Path.Combine(slotPath, "timestamp.txt"), DateTime.UtcNow.ToString("O"));
+                SharedModel.Instance.SaveDisplayItems(profile, path);
+                LastSaveAt = DateTime.UtcNow;
             }
             catch (Exception ex)
             {
-                Logger.Warning(ex, "Autosave backup failed for slot {SlotPath}", slotPath);
-            }
-        }
-
-        /// <summary>
-        /// Returns available autosave slots with path and timestamp for the restore UI. Most recent first.
-        /// </summary>
-        public IReadOnlyList<(int SlotIndex, string Path, DateTime? Timestamp)> GetAutosaveSlots()
-        {
-            var basePath = GetAutosaveBasePath();
-            if (!Directory.Exists(basePath)) return [];
-            var slotCount = Math.Max(2, Math.Min(5, Settings.AutosaveSlotCount));
-            var list = new List<(int SlotIndex, string Path, DateTime? Timestamp)>();
-            for (int i = 0; i < slotCount; i++)
-            {
-                var slotPath = Path.Combine(basePath, "slot_" + i);
-                var profileFile = Path.Combine(slotPath, "profile.xml");
-                if (!File.Exists(profileFile)) continue;
-                DateTime? ts = null;
-                var tsFile = Path.Combine(slotPath, "timestamp.txt");
-                if (File.Exists(tsFile))
-                {
-                    try { ts = DateTime.Parse(File.ReadAllText(tsFile).Trim()); } catch { }
-                }
-                if (ts == null)
-                {
-                    try { ts = File.GetLastWriteTimeUtc(profileFile); } catch { }
-                }
-                list.Add((SlotIndex: i, Path: slotPath, Timestamp: ts));
-            }
-            return list.OrderByDescending(x => x.Timestamp ?? DateTime.MinValue).ToList();
-        }
-
-        /// <summary>
-        /// Restores the selected profile from the given autosave slot. Replaces display items and optionally profile metadata. Marks dirty.
-        /// </summary>
-        public void RestoreProfileFromAutosaveSlot(int slotIndex)
-        {
-            if (SharedModel.Instance.SelectedProfile is not Profile selectedProfile) return;
-            var slotPath = Path.Combine(GetAutosaveBasePath(), "slot_" + slotIndex);
-            var profileFile = Path.Combine(slotPath, "profile.xml");
-            if (!File.Exists(profileFile)) return;
-            try
-            {
-                List<Profile>? profiles;
-                var xs = new XmlSerializer(typeof(List<Profile>));
-                using (var rd = XmlReader.Create(profileFile))
-                    profiles = xs.Deserialize(rd) as List<Profile>;
-                if (profiles == null || profiles.Count == 0) return;
-                var loadedProfile = profiles[0];
-                if (loadedProfile.Guid != selectedProfile.Guid) return;
-
-                var displayItems = SharedModel.LoadDisplayItemsFromFile(selectedProfile, slotPath);
-                if (displayItems.Count > 0)
-                {
-                    var config = new AutoMapper.MapperConfiguration(cfg => cfg.CreateMap<Profile, Profile>());
-                    config.CreateMapper().Map(loadedProfile, selectedProfile);
-                    SharedModel.Instance.ReplaceDisplayItemsFromBackup(selectedProfile, displayItems);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning(ex, "Restore from autosave slot {SlotIndex} failed", slotIndex);
+                Logger.Warning(ex, "Autosave failed for {Path}", path);
             }
         }
 
@@ -785,20 +759,54 @@ namespace InfoPanel
 
         private void StartAutosaveTimer()
         {
-            _autosaveTimer?.Stop();
-            _autosaveTimer = new DispatcherTimer
+            _autosaveIdleTimer?.Stop();
+            if (_autosaveDirtyChangedHandler != null)
             {
-                Interval = TimeSpan.FromSeconds(Math.Max(1, Settings.AutosaveIntervalSeconds))
+                SharedModel.Instance.DirtyChanged -= _autosaveDirtyChangedHandler;
+                _autosaveDirtyChangedHandler = null;
+            }
+
+            if (!Settings.AutosaveEnabled)
+            {
+                AutosaveIndicator = AutosaveIndicatorState.None;
+                return;
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null)
+                return;
+
+            var idleSeconds = Math.Clamp(Settings.AutosaveIdleSeconds, 1, 60);
+            _autosaveIdleTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+            {
+                Interval = TimeSpan.FromSeconds(idleSeconds)
             };
-            _autosaveTimer.Tick += (s, e) =>
+            _autosaveIdleTimer.Tick += (s, e) =>
             {
+                _autosaveIdleTimer?.Stop();
                 if (Settings.AutosaveEnabled && SharedModel.Instance.IsDirty)
                 {
                     SaveAutosaveBackup();
                     SharedModel.Instance.ClearDirty();
+                    AutosaveIndicator = AutosaveIndicatorState.AutoSaved;
+                    SetAutosaveIndicatorToNoneAfterDelay();
                 }
             };
-            _autosaveTimer.Start();
+
+            _autosaveDirtyChangedHandler = () =>
+            {
+                if (!Settings.AutosaveEnabled) return;
+                AutosaveIndicator = AutosaveIndicatorState.Pending;
+                _autosaveIdleTimer?.Stop();
+                _autosaveIdleTimer?.Start();
+            };
+            SharedModel.Instance.DirtyChanged += _autosaveDirtyChangedHandler;
+
+            if (SharedModel.Instance.IsDirty)
+            {
+                AutosaveIndicator = AutosaveIndicatorState.Pending;
+                _autosaveIdleTimer.Start();
+            }
         }
 
         private void RestartAutosaveTimer()
@@ -811,8 +819,15 @@ namespace InfoPanel
         /// </summary>
         public void Cleanup()
         {
-            _autosaveTimer?.Stop();
-            _autosaveTimer = null;
+            _autosaveIdleTimer?.Stop();
+            _autosaveIdleTimer = null;
+            _autosaveIndicatorClearTimer?.Stop();
+            _autosaveIndicatorClearTimer = null;
+            if (_autosaveDirtyChangedHandler != null)
+            {
+                SharedModel.Instance.DirtyChanged -= _autosaveDirtyChangedHandler;
+                _autosaveDirtyChangedHandler = null;
+            }
 
             // Dispose the debounce timer
             _saveDebounceTimer?.Dispose();
