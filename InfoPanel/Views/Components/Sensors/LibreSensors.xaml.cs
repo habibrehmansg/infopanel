@@ -5,7 +5,7 @@ using LibreHardwareMonitor.Hardware;
 using System;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
+
 using System.Windows.Threading;
 
 namespace InfoPanel.Views.Components
@@ -133,13 +133,6 @@ namespace InfoPanel.Views.Components
             {
                 ViewModel.SelectedItem = null;
             }
-        }
-
-        private void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-        {
-            var scrollViewer = (ScrollViewer)sender;
-            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - e.Delta);
-            e.Handled = true;
         }
 
         private void UpdateSensorDetails()
