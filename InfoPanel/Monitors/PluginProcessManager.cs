@@ -122,6 +122,11 @@ namespace InfoPanel.Monitors
                 try
                 {
                     InitializeMetricsCounters();
+
+                    foreach (var conn in _connections.Values)
+                    {
+                        conn.UpdateCachedMetrics();
+                    }
                 }
                 catch (Exception ex)
                 {

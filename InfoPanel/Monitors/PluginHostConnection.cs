@@ -42,6 +42,7 @@ namespace InfoPanel.Monitors
         private readonly ConcurrentDictionary<string, Dictionary<string, IPluginData>> _proxyEntries = new();
         private readonly ConcurrentDictionary<string, long> _performanceData = new();
         private volatile PerformanceCounter? _privateWorkingSetCounter;
+        private volatile ProcessMetrics? _cachedMetrics;
         private double _pushedCpuPercent;
 
         private readonly TaskCompletionSource _pluginsLoadedTcs = new();
@@ -224,23 +225,30 @@ namespace InfoPanel.Monitors
 
         public bool HasMetricsCounter => _privateWorkingSetCounter != null;
 
-        public ProcessMetrics? ProcessMetrics
-        {
-            get
-            {
-                var counter = _privateWorkingSetCounter;
-                if (counter == null) return null;
+        public ProcessMetrics? ProcessMetrics => _cachedMetrics;
 
-                try
-                {
-                    return new ProcessMetrics(_pushedCpuPercent, counter.RawValue);
-                }
-                catch
-                {
-                    _privateWorkingSetCounter = null;
-                    counter.Dispose();
-                    return null;
-                }
+        /// <summary>
+        /// Reads the performance counter and caches the result.
+        /// Called periodically from the metrics background loop.
+        /// </summary>
+        internal void UpdateCachedMetrics()
+        {
+            var counter = _privateWorkingSetCounter;
+            if (counter == null)
+            {
+                _cachedMetrics = null;
+                return;
+            }
+
+            try
+            {
+                _cachedMetrics = new ProcessMetrics(_pushedCpuPercent, counter.RawValue);
+            }
+            catch
+            {
+                _privateWorkingSetCounter = null;
+                _cachedMetrics = null;
+                counter.Dispose();
             }
         }
 
