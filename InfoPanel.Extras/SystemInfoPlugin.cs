@@ -73,6 +73,13 @@ namespace InfoPanel.Extras
 
         public override void Close()
         {
+            utility?.Dispose();
+            utility = null;
+
+            usage?.Dispose();
+            usage = null;
+
+            _processCategory = null;
         }
 
         public override void Update()
@@ -109,7 +116,7 @@ namespace InfoPanel.Extras
         PerformanceCounterCategory? _processCategory;
 
         Dictionary<string, double> firstUsageSample = [];
-        private readonly Dictionary<string, double> _secondUsageSample = [];
+        private Dictionary<string, double> _secondUsageSample = [];
         private readonly Dictionary<string, long> _memorySample = [];
         private readonly Dictionary<string, Instance> _instances = [];
         private readonly DataTable _reusableCpuUsageTable = new();
@@ -239,8 +246,8 @@ namespace InfoPanel.Extras
             FillDataTable(_reusableMemoryTable, result, blacklist);
             _topMemoryUsage.Value = _reusableMemoryTable;
 
-            //set default — swap reference instead of copying
-            firstUsageSample = new Dictionary<string, double>(_secondUsageSample);
+            //set default — swap references instead of allocating
+            (firstUsageSample, _secondUsageSample) = (_secondUsageSample, firstUsageSample);
         }
 
         private static void FillDataTable(DataTable dataTable, List<Instance> instances, string[] blacklist)
