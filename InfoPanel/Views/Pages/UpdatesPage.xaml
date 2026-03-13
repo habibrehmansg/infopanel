@@ -14,7 +14,8 @@
     d:DesignWidth="800"
     mc:Ignorable="d">
 
-    <StackPanel MaxWidth="1360" Margin="20,20,20,20">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="20,20,20,20">
                 <StackPanel Grid.Row="0" Margin="0,0,0,0">
                     <ui:CardControl>
                         <ui:CardControl.Icon>
@@ -148,4 +149,5 @@
                     </ItemsControl>
                 </StackPanel>
             </StackPanel>
+    </ScrollViewer>
 </Page>

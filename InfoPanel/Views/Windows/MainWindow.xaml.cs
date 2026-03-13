@@ -150,8 +150,8 @@ namespace InfoPanel.Views.Windows
 
         private void Window_ContentRendered(object sender, EventArgs e)
         {
-            MinWidth = 1300;
-            MinHeight = 900;
+            MinWidth = 900;
+            MinHeight = 600;
 
             Navigate(typeof(Pages.HomePage));
 

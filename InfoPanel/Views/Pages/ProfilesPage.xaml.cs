@@ -35,6 +35,27 @@ namespace InfoPanel.Views.Pages
 
             Loaded += ProfilesPage_Loaded;
             Unloaded += ProfilesPage_Unloaded;
+
+            ListViewProfiles.SelectionChanged += ListViewProfiles_SelectionChanged;
+        }
+
+        private void ListViewProfiles_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            UpdateProfileDetailVisibility();
+        }
+
+        private void UpdateProfileDetailVisibility()
+        {
+            if (ViewModel.Profile != null)
+            {
+                ProfileDetailOverlay.Visibility = Visibility.Visible;
+                ListViewProfiles.Margin = new Thickness(0, 0, 0, 470);
+            }
+            else
+            {
+                ProfileDetailOverlay.Visibility = Visibility.Collapsed;
+                ListViewProfiles.Margin = new Thickness(0);
+            }
         }
 
         private async void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
@@ -129,6 +150,7 @@ namespace InfoPanel.Views.Pages
         private void ButtonClose_Click(object sender, RoutedEventArgs e)
         {
             ViewModel.Profile = null;
+            UpdateProfileDetailVisibility();
         }
     }
 }
