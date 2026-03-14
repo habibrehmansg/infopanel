@@ -54,7 +54,6 @@
             <local:SelectedItemTextConverter x:Key="SelectedItemTextConverter" />
             <local:IntStringValueConverter x:Key="IntStringValueConverter" />
             <local:IntDoubleValueConverter x:Key="IntDoubleValueConverter" />
-            <local:ClampingIntStringConverter x:Key="ClampingIntStringConverter" />
             <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter" />
             <local:FontFamilyConverter x:Key="FontFamilyConverter" />
             <local:EnumEqualsConverter x:Key="EnumEqualsConverter" />

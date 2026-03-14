@@ -165,7 +165,7 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Internal backup after you stop making changes. Does not overwrite your saved profile; use Save for that. Off by default."
+                                Text="Periodically backs up unsaved changes and offers to restore them on next launch."
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
