@@ -302,7 +302,7 @@ public partial class UsbPanelsPage : Page
         };
 
         ConfigModel.Instance.Settings.HotkeyBindings.Add(binding);
-        ConfigModel.Instance.SaveSettings();
+        _ = ConfigModel.Instance.SaveSettingsAsync();
 
         // Reset capture
         _capturedModifiers = ModifierKeys.None;
@@ -340,7 +340,7 @@ public partial class UsbPanelsPage : Page
 
             // Remove the old binding so the user can re-add with changes
             ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
-            ConfigModel.Instance.SaveSettings();
+            _ = ConfigModel.Instance.SaveSettingsAsync();
         }
     }
 
@@ -349,7 +349,7 @@ public partial class UsbPanelsPage : Page
         if (sender is Button button && button.Tag is HotkeyBinding binding)
         {
             ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
-            ConfigModel.Instance.SaveSettings();
+            _ = ConfigModel.Instance.SaveSettingsAsync();
         }
     }
 }
