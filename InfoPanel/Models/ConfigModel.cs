@@ -8,6 +8,7 @@ using Microsoft.Win32;
 using Microsoft.Win32.TaskScheduler;
 using Serilog;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -54,7 +55,6 @@ namespace InfoPanel
 
         private DispatcherTimer? _autosaveIdleTimer;
         private System.Action? _autosaveDirtyChangedHandler;
-        private DispatcherTimer? _autosaveIndicatorClearTimer;
 
         private AutosaveIndicatorState _autosaveIndicator = AutosaveIndicatorState.None;
         /// <summary>For toolbar UI: None (hide), Pending (circle), AutoSaved (checkmark).</summary>
@@ -65,7 +65,7 @@ namespace InfoPanel
         }
 
         private DateTime? _lastSaveAt;
-        /// <summary>Time of last save (autosave or user save). Used for "Last save" label.</summary>
+        /// <summary>Time of last save (autosave or user save). Used for status label.</summary>
         public DateTime? LastSaveAt
         {
             get => _lastSaveAt;
@@ -75,31 +75,86 @@ namespace InfoPanel
                     OnPropertyChanged(nameof(LastSaveText));
             }
         }
-        /// <summary>Formatted "Last save: ..." for toolbar display.</summary>
-        public string LastSaveText => _lastSaveAt.HasValue ? "Last save: " + _lastSaveAt.Value.ToLocalTime().ToString("g") : "";
+        /// <summary>Formatted status text for toolbar display.</summary>
+        public string LastSaveText
+        {
+            get
+            {
+                if (!_lastSaveAt.HasValue) return "";
+                var time = _lastSaveAt.Value.ToLocalTime().ToString("d MMM h:mm:ss tt");
+                return _lastSaveWasAuto ? $"Auto-saved {time}" : $"Saved {time}";
+            }
+        }
+
+        // Per-profile save state
+        private readonly ConcurrentDictionary<Guid, bool> _lastSaveWasAutoPerProfile = [];
+        private readonly ConcurrentDictionary<Guid, DateTime?> _lastSaveAtPerProfile = [];
+        private readonly ConcurrentDictionary<Guid, AutosaveIndicatorState> _autosaveIndicatorPerProfile = [];
+
+        private bool _lastSaveWasAuto;
+
+        private Guid? _currentSaveStateProfileGuid;
+
+        /// <summary>Saves the current autosave UI state for the active profile, then loads the new profile's state.</summary>
+        private void SwitchSaveStateToProfile(Guid newGuid)
+        {
+            // Save current profile's state
+            if (_currentSaveStateProfileGuid is Guid oldGuid)
+            {
+                _lastSaveWasAutoPerProfile[oldGuid] = _lastSaveWasAuto;
+                _lastSaveAtPerProfile[oldGuid] = _lastSaveAt;
+                _autosaveIndicatorPerProfile[oldGuid] = _autosaveIndicator;
+            }
+
+            // Load new profile's state
+            _lastSaveWasAuto = _lastSaveWasAutoPerProfile.GetValueOrDefault(newGuid, false);
+            LastSaveAt = _lastSaveAtPerProfile.GetValueOrDefault(newGuid);
+            AutosaveIndicator = _autosaveIndicatorPerProfile.GetValueOrDefault(newGuid, AutosaveIndicatorState.None);
+            _currentSaveStateProfileGuid = newGuid;
+        }
+
+        /// <summary>Records the file timestamp as the profile's "Saved" time. Called when display items are loaded from disk.</summary>
+        public void SetProfileLoadedTimestamp(Guid profileGuid, DateTime utcTime)
+        {
+            _lastSaveAtPerProfile[profileGuid] = utcTime;
+            _lastSaveWasAutoPerProfile[profileGuid] = false;
+            _autosaveIndicatorPerProfile[profileGuid] = AutosaveIndicatorState.None;
+            // Update global fields if this is the active profile
+            if (_currentSaveStateProfileGuid == profileGuid)
+            {
+                _lastSaveWasAuto = false;
+                LastSaveAt = utcTime;
+                AutosaveIndicator = AutosaveIndicatorState.None;
+            }
+        }
 
         /// <summary>Call when the user has performed a main save (clears the autosave indicator).</summary>
         public void NotifyUserSaved()
         {
-            _autosaveIndicatorClearTimer?.Stop();
-            _autosaveIndicatorClearTimer = null;
+            _autosaveIdleTimer?.Stop();
             AutosaveIndicator = AutosaveIndicatorState.None;
+            _lastSaveWasAuto = false;
             LastSaveAt = DateTime.UtcNow;
+            if (SharedModel.Instance.SelectedProfile is Profile profile)
+                DiscardAutosaveBackup(profile);
         }
 
-        private void SetAutosaveIndicatorToNoneAfterDelay()
+        /// <summary>Loads the autosave UI state for the current profile. Call when switching profiles.</summary>
+        public void ResetAutosaveState()
         {
-            _autosaveIndicatorClearTimer?.Stop();
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher == null) return;
-            _autosaveIndicatorClearTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromSeconds(2.5) };
-            _autosaveIndicatorClearTimer.Tick += (s, e) =>
+            _autosaveIdleTimer?.Stop();
+            if (SharedModel.Instance.SelectedProfile is Profile profile)
             {
-                _autosaveIndicatorClearTimer?.Stop();
-                _autosaveIndicatorClearTimer = null;
-                AutosaveIndicator = AutosaveIndicatorState.None;
-            };
-            _autosaveIndicatorClearTimer.Start();
+                SwitchSaveStateToProfile(profile.Guid);
+                // If the loaded state was Pending, re-evaluate: restart timer if dirty, clear if clean
+                if (AutosaveIndicator == AutosaveIndicatorState.Pending && Settings.AutosaveEnabled)
+                {
+                    if (SharedModel.Instance.IsDirty)
+                        _autosaveIdleTimer?.Start();
+                    else
+                        AutosaveIndicator = AutosaveIndicatorState.None;
+                }
+            }
         }
 
         private static string GetAutosavePath()
@@ -112,24 +167,18 @@ namespace InfoPanel
         /// </summary>
         public List<Profile> GetProfilesWithAutosaveBackup()
         {
-            var path = GetAutosavePath();
-            if (!Directory.Exists(path))
+            var profilesPath = Path.Combine(GetAutosavePath(), "profiles");
+            if (!Directory.Exists(profilesPath))
                 return [];
 
             var result = new List<Profile>();
-            var profileFiles = Directory.GetFiles(path, "profile_*.xml");
+            var files = Directory.GetFiles(profilesPath, "*.xml");
             lock (_profilesLock)
             {
-                foreach (var file in profileFiles)
+                foreach (var file in files)
                 {
                     var name = Path.GetFileNameWithoutExtension(file);
-                    if (name.Length <= 8 || !name.StartsWith("profile_", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    var guidStr = name.Substring(8);
-                    if (!Guid.TryParseExact(guidStr, "N", out var guid))
-                        continue;
-                    var displayItemsPath = Path.Combine(path, "profiles", guid + ".xml");
-                    if (!File.Exists(displayItemsPath))
+                    if (!Guid.TryParse(name, out var guid))
                         continue;
                     var profile = Profiles.FirstOrDefault(p => p.Guid == guid);
                     if (profile != null)
@@ -150,6 +199,11 @@ namespace InfoPanel
             if (items.Count == 0)
                 return false;
             SharedModel.Instance.ReplaceDisplayItemsFromBackup(profile, items);
+            // Restore sets correct UI state: the backup is current, don't re-autosave
+            _autosaveIdleTimer?.Stop();
+            _lastSaveWasAuto = true;
+            AutosaveIndicator = AutosaveIndicatorState.AutoSaved;
+            LastSaveAt = DateTime.UtcNow;
             return true;
         }
 
@@ -164,13 +218,18 @@ namespace InfoPanel
             if (!Directory.Exists(path)) return;
             try
             {
-                var profileFile = Path.Combine(path, $"profile_{profile.Guid:N}.xml");
                 var displayItemsFile = Path.Combine(path, "profiles", profile.Guid + ".xml");
-                foreach (var f in new[] { profileFile, profileFile + ".tmp", profileFile + ".bak", displayItemsFile })
+                if (File.Exists(displayItemsFile))
+                {
+                    try { File.Delete(displayItemsFile); } catch (Exception ex) { Logger.Warning(ex, "Could not delete autosave file {File}", displayItemsFile); }
+                }
+                // Clean up legacy profile_*.xml files from older versions
+                var legacyFile = Path.Combine(path, $"profile_{profile.Guid:N}.xml");
+                foreach (var f in new[] { legacyFile, legacyFile + ".tmp", legacyFile + ".bak" })
                 {
                     if (File.Exists(f))
                     {
-                        try { File.Delete(f); } catch (Exception ex) { Logger.Warning(ex, "Could not delete autosave file {File}", f); }
+                        try { File.Delete(f); } catch { }
                     }
                 }
             }
@@ -210,6 +269,8 @@ namespace InfoPanel
         public void Initialize()
         {
             LoadProfiles();
+            if (SharedModel.Instance.SelectedProfile is Profile p)
+                _currentSaveStateProfileGuid = p.Guid;
             if (Settings.AutosaveEnabled)
                 StartAutosaveTimer();
         }
@@ -453,6 +514,7 @@ namespace InfoPanel
                 if (File.Exists(fileName))
                 {
                     File.Replace(tempFileName, fileName, backupFileName, ignoreMetadataErrors: true);
+                    try { File.Delete(backupFileName); } catch { }
                 }
                 else
                 {
@@ -642,21 +704,8 @@ namespace InfoPanel
                 if (!Directory.Exists(path))
                     Directory.CreateDirectory(path);
 
-                var profileFileName = $"profile_{profile.Guid:N}.xml";
-                var profileFile = Path.Combine(path, profileFileName);
-                var tempProfileFile = profileFile + ".tmp";
-                var backupProfileFile = profileFile + ".bak";
-                var profiles = new List<Profile> { profile };
-                var xs = new XmlSerializer(typeof(List<Profile>));
-                var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-                using (var wr = XmlWriter.Create(tempProfileFile, settings))
-                    xs.Serialize(wr, profiles);
-                if (File.Exists(profileFile))
-                    File.Replace(tempProfileFile, profileFile, backupProfileFile, ignoreMetadataErrors: true);
-                else
-                    File.Move(tempProfileFile, profileFile, overwrite: true);
-
                 SharedModel.Instance.SaveDisplayItems(profile, path);
+                _lastSaveWasAuto = true;
                 LastSaveAt = DateTime.UtcNow;
             }
             catch (Exception ex)
@@ -871,13 +920,13 @@ namespace InfoPanel
                 {
                     SaveAutosaveBackup();
                     AutosaveIndicator = AutosaveIndicatorState.AutoSaved;
-                    SetAutosaveIndicatorToNoneAfterDelay();
                 }
             };
 
             _autosaveDirtyChangedHandler = () =>
             {
                 if (!Settings.AutosaveEnabled) return;
+                LastSaveAt = null;
                 AutosaveIndicator = AutosaveIndicatorState.Pending;
                 _autosaveIdleTimer?.Stop();
                 _autosaveIdleTimer?.Start();
@@ -903,8 +952,6 @@ namespace InfoPanel
         {
             _autosaveIdleTimer?.Stop();
             _autosaveIdleTimer = null;
-            _autosaveIndicatorClearTimer?.Stop();
-            _autosaveIndicatorClearTimer = null;
             if (_autosaveDirtyChangedHandler != null)
             {
                 SharedModel.Instance.DirtyChanged -= _autosaveDirtyChangedHandler;

@@ -203,11 +203,13 @@ namespace InfoPanel
                     var currentXml = UndoManager.SerializeDisplayItemsForProfile(copy.ToList());
                     if (!string.IsNullOrEmpty(currentXml))
                     {
-                        if (_lastStateSnapshotPerProfile.TryGetValue(profile.Guid, out var prevXml) && !string.IsNullOrEmpty(prevXml))
+                        if (_lastStateSnapshotPerProfile.TryGetValue(profile.Guid, out var prevXml) && !string.IsNullOrEmpty(prevXml) && prevXml != currentXml)
+                        {
                             UndoManager.Instance.PushUndoSnapshot(profile, prevXml);
+                            MarkDirty();
+                        }
                         _lastStateSnapshotPerProfile[profile.Guid] = currentXml;
                     }
-                    MarkDirty();
                     void NotifyUndoRedo()
                     {
                         OnPropertyChanged(nameof(CanUndo));
@@ -291,6 +293,14 @@ namespace InfoPanel
             var initialXml = UndoManager.SerializeDisplayItemsForProfile(displayItems);
             if (!string.IsNullOrEmpty(initialXml))
                 _lastStateSnapshotPerProfile[profile.Guid] = initialXml;
+            ClearDirty();
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+
+            // Read file timestamp as the profile's "Saved" time
+            var filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
+            if (File.Exists(filePath))
+                ConfigModel.Instance.SetProfileLoadedTimestamp(profile.Guid, File.GetLastWriteTimeUtc(filePath));
         }
 
         public void Undo()
@@ -767,7 +777,10 @@ namespace InfoPanel
             using (var wr = XmlWriter.Create(tempFileName, settings))
                 xs.Serialize(wr, displayItems.ToList());
             if (File.Exists(fileName))
+            {
                 File.Replace(tempFileName, fileName, backupFileName, ignoreMetadataErrors: true);
+                try { File.Delete(backupFileName); } catch { }
+            }
             else
                 File.Move(tempFileName, fileName, overwrite: true);
         }
@@ -778,6 +791,7 @@ namespace InfoPanel
             {
                 var displayItems = GetProfileDisplayItemsCopy(profile);
                 SaveDisplayItems(profile, displayItems);
+                UpdateLastStateSnapshot();
                 ClearDirty();
             }
         }
@@ -893,7 +907,7 @@ namespace InfoPanel
                     {
                         if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.HwInfoRemoteIndex, sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
                         {
-                            var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == sensorDisplayItem.SensorName);
+                            var hash = HWHash.GetOrderedList(sensorDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == sensorDisplayItem.SensorName);
                             if (hash != null && hash.NameDefault != null)
                             {
                                 sensorDisplayItem.Id = hash.ParentID;
@@ -907,7 +921,7 @@ namespace InfoPanel
                     {
                         if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.HwInfoRemoteIndex, chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
                         {
-                            var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == chartDisplayItem.SensorName);
+                            var hash = HWHash.GetOrderedList(chartDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == chartDisplayItem.SensorName);
                             if (hash != null && hash.NameDefault != null)
                             {
                                 chartDisplayItem.Id = hash.ParentID;
@@ -921,12 +935,40 @@ namespace InfoPanel
                     {
                         if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.HwInfoRemoteIndex, gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
                         {
-                            var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == gaugeDisplayItem.SensorName);
+                            var hash = HWHash.GetOrderedList(gaugeDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == gaugeDisplayItem.SensorName);
                             if (hash != null && hash.NameDefault != null)
                             {
                                 gaugeDisplayItem.Id = hash.ParentID;
                                 gaugeDisplayItem.Instance = hash.ParentInstance;
                                 gaugeDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
+                        }
+                    }
+                    else if (displayItem is SensorImageDisplayItem sensorImageDisplayItem && sensorImageDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                    {
+                        if (!HWHash.SENSORHASH.TryGetValue((sensorImageDisplayItem.HwInfoRemoteIndex, sensorImageDisplayItem.Id, sensorImageDisplayItem.Instance, sensorImageDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList(sensorImageDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == sensorImageDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                sensorImageDisplayItem.Id = hash.ParentID;
+                                sensorImageDisplayItem.Instance = hash.ParentInstance;
+                                sensorImageDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
+                        }
+                    }
+                    else if (displayItem is HttpImageDisplayItem httpImageDisplayItem && httpImageDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                    {
+                        if (!HWHash.SENSORHASH.TryGetValue((httpImageDisplayItem.HwInfoRemoteIndex, httpImageDisplayItem.Id, httpImageDisplayItem.Instance, httpImageDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList(httpImageDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == httpImageDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                httpImageDisplayItem.Id = hash.ParentID;
+                                httpImageDisplayItem.Instance = hash.ParentInstance;
+                                httpImageDisplayItem.EntryId = hash.SensorID;
                                 Logger.Information("Smart imported {SensorName}", hash.NameDefault);
                             }
                         }

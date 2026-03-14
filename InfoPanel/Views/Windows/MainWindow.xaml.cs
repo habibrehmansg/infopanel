@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
@@ -119,14 +118,21 @@ namespace InfoPanel.Views.Windows
             if (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
                 if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
-                    SharedModel.Instance.Redo();
+                {
+                    if (SharedModel.Instance.CanRedo)
+                        SharedModel.Instance.Redo();
+                }
                 else
-                    SharedModel.Instance.Undo();
+                {
+                    if (SharedModel.Instance.CanUndo)
+                        SharedModel.Instance.Undo();
+                }
                 e.Handled = true;
             }
             else if (e.Key == Key.Y && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                SharedModel.Instance.Redo();
+                if (SharedModel.Instance.CanRedo)
+                    SharedModel.Instance.Redo();
                 e.Handled = true;
             }
         }
@@ -185,7 +191,7 @@ namespace InfoPanel.Views.Windows
             return IntPtr.Zero;
         }
 
-        private async void Window_ContentRendered(object sender, EventArgs e)
+        private void Window_ContentRendered(object sender, EventArgs e)
         {
             MinWidth = 900;
             MinHeight = 600;
@@ -195,85 +201,6 @@ namespace InfoPanel.Views.Windows
             if (ConfigModel.Instance.Settings.StartMinimized && ConfigModel.Instance.Settings.MinimizeToTray)
             {
                 Hide();
-            }
-
-            // Offer to restore from autosave if a backup exists
-            var profilesWithBackup = InfoPanel.ConfigModel.Instance.GetProfilesWithAutosaveBackup();
-            if (profilesWithBackup.Count == 0)
-                return;
-
-            // Bring main window to foreground so the restore dialog is visible when app started minimized to tray
-            RestoreWindow();
-            Activate();
-
-            if (profilesWithBackup.Count == 1)
-            {
-                var profileToRestore = profilesWithBackup[0];
-                var result = System.Windows.MessageBox.Show(
-                    $"An autosave backup was found for \"{profileToRestore.Name}\". Restore from autosave?",
-                    "Restore autosave",
-                    System.Windows.MessageBoxButton.YesNo,
-                    System.Windows.MessageBoxImage.Question,
-                    System.Windows.MessageBoxResult.Yes);
-                if (result == System.Windows.MessageBoxResult.Yes)
-                {
-                    if (InfoPanel.ConfigModel.Instance.RestoreProfileFromAutosave(profileToRestore))
-                    {
-                        InfoPanel.SharedModel.Instance.SelectedProfile = profileToRestore;
-                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profileToRestore);
-                    }
-                }
-                else
-                {
-                    InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profileToRestore);
-                }
-                return;
-            }
-
-            // Multiple profiles with backups: single dialog with multi-select
-            var selection = new List<(Profile Profile, CheckBox CheckBox)>();
-            var stack = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
-            foreach (var profile in profilesWithBackup)
-            {
-                var cb = new CheckBox
-                {
-                    Content = profile.Name,
-                    IsChecked = true,
-                    Tag = profile,
-                    Margin = new Thickness(0, 4, 0, 0)
-                };
-                selection.Add((profile, cb));
-                stack.Children.Add(cb);
-            }
-            var dialog = new ContentDialog
-            {
-                Title = "Restore from autosave",
-                Content = stack,
-                PrimaryButtonText = "Restore selected",
-                SecondaryButtonText = "Don't restore",
-                CloseButtonText = "Cancel"
-            };
-            var dialogResult = await _contentDialogService.ShowAsync(dialog, CancellationToken.None);
-            if (dialogResult == ContentDialogResult.Primary)
-            {
-                Profile? firstRestored = null;
-                foreach (var (profile, checkBox) in selection)
-                {
-                    if (checkBox.IsChecked == true && InfoPanel.ConfigModel.Instance.RestoreProfileFromAutosave(profile))
-                    {
-                        firstRestored ??= profile;
-                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profile);
-                    }
-                    else
-                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profile);
-                }
-                if (firstRestored != null)
-                    InfoPanel.SharedModel.Instance.SelectedProfile = firstRestored;
-            }
-            else
-            {
-                foreach (var p in profilesWithBackup)
-                    InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(p);
             }
         }
 

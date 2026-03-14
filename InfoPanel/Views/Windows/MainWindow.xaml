@@ -27,11 +27,6 @@
     WindowCornerPreference="Round"
     WindowStartupLocation="CenterScreen"
     mc:Ignorable="d">
-    <ui:FluentWindow.InputBindings>
-        <KeyBinding Key="Z" Modifiers="Ctrl" Command="{Binding Source={x:Static app:SharedModel.Instance}, Path=UndoCommand}" />
-        <KeyBinding Key="Y" Modifiers="Ctrl" Command="{Binding Source={x:Static app:SharedModel.Instance}, Path=RedoCommand}" />
-        <KeyBinding Key="Z" Modifiers="Ctrl+Shift" Command="{Binding Source={x:Static app:SharedModel.Instance}, Path=RedoCommand}" />
-    </ui:FluentWindow.InputBindings>
     <Grid>
         <Grid.LayoutTransform>
             <ScaleTransform x:Name="MainScaleTransform" ScaleX="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.UiScale}" ScaleY="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.UiScale}" />

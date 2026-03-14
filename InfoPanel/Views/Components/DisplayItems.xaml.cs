@@ -28,6 +28,7 @@ namespace InfoPanel.Views.Components
 
         private CollectionViewSource? _displayItemsViewSource;
         private string _searchText = string.Empty;
+        private static readonly HashSet<Guid> _autosavePromptedProfiles = [];
 
         public DisplayItems()
         {
@@ -40,7 +41,9 @@ namespace InfoPanel.Views.Components
         private void DisplayItems_Loaded(object sender, RoutedEventArgs e)
         {
             SharedModel.Instance.PropertyChanged += Instance_PropertyChanged;
-            
+            UpdateSaveButtonState();
+            CheckAutosaveBackup();
+
             // Get the CollectionViewSource from resources
             _displayItemsViewSource = FindResource("DisplayItemsViewSource") as CollectionViewSource;
             if (_displayItemsViewSource != null)
@@ -83,7 +86,68 @@ namespace InfoPanel.Views.Components
             {
                 // Refresh the view when profile changes
                 _displayItemsViewSource?.View?.Refresh();
+                ConfigModel.Instance.ResetAutosaveState();
+                UpdateSaveButtonState();
+                CheckAutosaveBackup();
             }
+            else if (e.PropertyName == nameof(SharedModel.Instance.IsDirty))
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        private void UpdateSaveButtonState()
+        {
+            if (SharedModel.Instance.IsDirty)
+            {
+                ButtonSave.Appearance = ControlAppearance.Caution;
+                ButtonSave.Content = "Save*";
+            }
+            else
+            {
+                ButtonSave.Appearance = ControlAppearance.Primary;
+                ButtonSave.Content = "Save";
+            }
+        }
+
+        private void CheckAutosaveBackup()
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+            {
+                if (SharedModel.Instance.SelectedProfile is not Profile profile)
+                    return;
+                if (_autosavePromptedProfiles.Contains(profile.Guid))
+                    return;
+                // If the profile already has unsaved edits in memory, those are the
+                // autosaved content — no need to prompt, the data is already live.
+                if (SharedModel.Instance.IsDirty)
+                {
+                    _autosavePromptedProfiles.Add(profile.Guid);
+                    return;
+                }
+
+                var backups = ConfigModel.Instance.GetProfilesWithAutosaveBackup();
+                if (!backups.Any(p => p.Guid == profile.Guid))
+                    return;
+
+                _autosavePromptedProfiles.Add(profile.Guid);
+
+                var result = System.Windows.MessageBox.Show(
+                    $"An autosave backup was found for \"{profile.Name}\". Restore unsaved changes?",
+                    "Restore autosave",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Question,
+                    System.Windows.MessageBoxResult.Yes);
+
+                if (result == System.Windows.MessageBoxResult.Yes)
+                {
+                    ConfigModel.Instance.RestoreProfileFromAutosave(profile);
+                }
+                else
+                {
+                    ConfigModel.Instance.DiscardAutosaveBackup(profile);
+                }
+            });
         }
 
         private void DisplayItemsViewSource_Filter(object sender, FilterEventArgs e)
@@ -313,6 +377,9 @@ namespace InfoPanel.Views.Components
         private async void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
             await SharedModel.Instance.ReloadDisplayItems();
+            ConfigModel.Instance.ResetAutosaveState();
+            if (SharedModel.Instance.SelectedProfile is Profile profile)
+                ConfigModel.Instance.DiscardAutosaveBackup(profile);
             _displayItemsViewSource?.View?.Refresh();
         }
 
@@ -320,6 +387,7 @@ namespace InfoPanel.Views.Components
         {
             ConfigModel.Instance.SaveProfiles();
             SharedModel.Instance.SaveDisplayItems();
+            SharedModel.Instance.ClearDirty();
             ConfigModel.Instance.NotifyUserSaved();
         }
 

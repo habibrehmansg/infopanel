@@ -374,10 +374,37 @@
                         Width="20"
                         Height="20"
                         VerticalAlignment="Center"
+                        RenderTransformOrigin="0.5,0.5"
                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                        Symbol="Circle20"
+                        Symbol="ArrowSync20"
                         ToolTip="Autosave pending"
-                        Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Pending}" />
+                        Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Pending}">
+                        <ui:SymbolIcon.RenderTransform>
+                            <RotateTransform Angle="0" />
+                        </ui:SymbolIcon.RenderTransform>
+                        <ui:SymbolIcon.Style>
+                            <Style TargetType="ui:SymbolIcon">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator}" Value="Pending">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard x:Name="SpinStoryboard">
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation
+                                                        Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                        From="0"
+                                                        To="360"
+                                                        Duration="0:0:1" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <StopStoryboard BeginStoryboardName="SpinStoryboard" />
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ui:SymbolIcon.Style>
+                    </ui:SymbolIcon>
                     <ui:SymbolIcon
                         x:Name="AutosaveDoneIcon"
                         Width="20"
@@ -387,7 +414,27 @@
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                         Symbol="Checkmark20"
                         ToolTip="Auto-saved"
-                        Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=AutoSaved}" />
+                        Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=AutoSaved}">
+                        <ui:SymbolIcon.Style>
+                            <Style TargetType="ui:SymbolIcon">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator}" Value="AutoSaved">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation
+                                                        Storyboard.TargetProperty="Opacity"
+                                                        From="0.0"
+                                                        To="1.0"
+                                                        Duration="0:0:0.3" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ui:SymbolIcon.Style>
+                    </ui:SymbolIcon>
                     <TextBlock
                         Margin="8,0,0,0"
                         VerticalAlignment="Center"
