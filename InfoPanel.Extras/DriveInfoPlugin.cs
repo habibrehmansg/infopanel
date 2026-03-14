@@ -17,7 +17,8 @@ namespace InfoPanel.Extras
 
         public override void Close()
         {
-            throw new NotImplementedException();
+            _containers.Clear();
+            _driveCache.Clear();
         }
 
         public override void Initialize()

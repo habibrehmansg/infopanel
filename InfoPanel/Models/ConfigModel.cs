@@ -250,7 +250,7 @@ namespace InfoPanel
 
         private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(Settings.AutoStart))
+            if (e.PropertyName == nameof(Settings.AutoStart) || e.PropertyName == nameof(Settings.AutoStartDelay))
             {
                 ValidateStartup();
             }
@@ -327,12 +327,6 @@ namespace InfoPanel
             {
                 return Profiles.FirstOrDefault(p => p.Guid == guid);
             }
-        }
-
-        public void SaveSettings()
-        {
-            // Synchronous wrapper for backward compatibility
-            Task.Run(async () => await SaveSettingsAsync(batch: false)).Wait();
         }
 
         public async Task SaveSettingsAsync(bool batch = true)
@@ -461,11 +455,13 @@ namespace InfoPanel
                             Settings.UiWidth = settings.UiWidth;
                             Settings.UiHeight = settings.UiHeight;
                             Settings.UiScale = settings.UiScale;
+                            Settings.AppTheme = settings.AppTheme;
                             Settings.IsPaneOpen = settings.IsPaneOpen;
                             Settings.AutoStart = settings.AutoStart;
                             Settings.AutoStartDelay = settings.AutoStartDelay;
                             Settings.StartMinimized = settings.StartMinimized;
                             Settings.MinimizeToTray = settings.MinimizeToTray;
+                            Settings.CloseToMinimize = settings.CloseToMinimize;
 
                             Settings.SelectedItemColor = settings.SelectedItemColor;
                             Settings.ShowGridLines = settings.ShowGridLines;

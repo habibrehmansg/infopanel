@@ -56,6 +56,8 @@ namespace InfoPanel.Extras
 
         public override void Close()
         {
+            _current?.Dispose();
+            _current = null;
         }
 
         public override void Load(List<IPluginContainer> containers)

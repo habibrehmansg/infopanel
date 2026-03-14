@@ -14,6 +14,13 @@ namespace InfoPanel.Extras
 
         private readonly List<PluginContainer> _containers = [];
 
+        private int _ipFetchCounter;
+        private const int IpFetchInterval = 12; // fetch public IP every 12 ticks (60s at 5s interval)
+
+        private Dictionary<string, NetworkInterface>? _nicCache;
+        private int _nicCacheCounter;
+        private const int NicCacheInterval = 6; // re-enumerate NICs every 6 ticks (30s at 5s interval)
+
         public override string? ConfigFilePath => null;
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(5);
 
@@ -80,7 +87,13 @@ namespace InfoPanel.Extras
 
         public override async Task UpdateAsync(CancellationToken cancellationToken)
         {
-            await GetIp(cancellationToken);
+            if (_ipFetchCounter <= 0)
+            {
+                await GetIp(cancellationToken);
+                _ipFetchCounter = IpFetchInterval;
+            }
+            _ipFetchCounter--;
+
             GetLocalIp();
         }
 
@@ -109,7 +122,14 @@ namespace InfoPanel.Extras
 
         private void GetLocalIp()
         {
-            var networkInterfaces = NetworkInterface.GetAllNetworkInterfaces().ToDictionary(ni => ni.Id, ni => ni);
+            if (_nicCache == null || _nicCacheCounter <= 0)
+            {
+                _nicCache = NetworkInterface.GetAllNetworkInterfaces().ToDictionary(ni => ni.Id, ni => ni);
+                _nicCacheCounter = NicCacheInterval;
+            }
+            _nicCacheCounter--;
+
+            var networkInterfaces = _nicCache;
 
             foreach (var container in _containers)
             {

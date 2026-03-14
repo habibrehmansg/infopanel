@@ -26,7 +26,7 @@
                 <TextBlock
                     Margin="5,0,0,0"
                     FontSize="12"
-                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                     Text="Name" />
             </StackPanel>
 
@@ -49,7 +49,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Width" />
                 </StackPanel>
 
@@ -65,7 +65,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Height" />
                 </StackPanel>
 
@@ -91,7 +91,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Radius" />
                 </StackPanel>
             </Grid>
@@ -130,7 +130,7 @@
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Frame thickness" />
                     </StackPanel>
 
@@ -175,7 +175,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Type" />
                 </StackPanel>
 
@@ -195,13 +195,13 @@
                             Grid.Column="0"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Rotation" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding Rotation, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
@@ -222,7 +222,7 @@
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
-                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Gradient type" />
                 </StackPanel>
             </Grid>
@@ -249,13 +249,13 @@
                             Grid.Column="0"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Gradient angle" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding GradientAngle, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
@@ -277,13 +277,13 @@
                                 Grid.Column="0"
                                 Margin="0,0,0,0"
                                 FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="Animation speed" />
                             <TextBlock
                                 Grid.Column="1"
                                 Margin="0,0,0,0"
                                 FontSize="12"
-                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="{Binding GradientAnimationSpeed, Mode=OneWay}" />
                         </Grid>
                     </StackPanel>

@@ -1,7 +1,8 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using InfoPanel.ViewModels.Components;
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,6 +18,7 @@ namespace InfoPanel.Views.Components
         private HwInfoSensorsVM ViewModel { get; set; }
 
         private readonly DispatcherTimer UpdateTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+        private int _lastSensorCount = -1;
 
         public HwInfoSensors()
         {
@@ -51,19 +53,85 @@ namespace InfoPanel.Views.Components
 
         private void Timer_Tick(object? sender, EventArgs e)
         {
+            UpdateConnectionList();
             LoadSensorTree();
             UpdateSensorDetails();
         }
 
+        private void UpdateConnectionList()
+        {
+            var available = HWHash.GetAvailableConnections();
+
+            // Check if the list changed
+            bool changed = available.Count != ViewModel.Connections.Count;
+            if (!changed)
+            {
+                for (int i = 0; i < available.Count; i++)
+                {
+                    if (ViewModel.Connections[i].RemoteIndex != available[i].remoteIndex)
+                    {
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                var previousSelection = ViewModel.SelectedConnection?.RemoteIndex;
+                ViewModel.Connections.Clear();
+                foreach (var (remoteIndex, name) in available)
+                {
+                    ViewModel.Connections.Add(new HwInfoConnectionItem(remoteIndex, name));
+                }
+
+                // Restore previous selection or default to local
+                if (previousSelection.HasValue)
+                {
+                    ViewModel.SelectedConnection = ViewModel.Connections.FirstOrDefault(c => c.RemoteIndex == previousSelection.Value);
+                }
+                ViewModel.SelectedConnection ??= ViewModel.Connections.FirstOrDefault(c => c.RemoteIndex == -1)
+                    ?? ViewModel.Connections.FirstOrDefault();
+            }
+
+            // Auto-select if nothing selected
+            if (ViewModel.SelectedConnection == null && ViewModel.Connections.Count > 0)
+            {
+                ViewModel.SelectedConnection = ViewModel.Connections.FirstOrDefault(c => c.RemoteIndex == -1)
+                    ?? ViewModel.Connections.FirstOrDefault();
+            }
+        }
+
         private void LoadSensorTree()
         {
-            foreach (HWHash.HWINFO_HASH hash in HWHash.GetOrderedList())
+            if (ViewModel.SelectedConnection == null)
+                return;
+
+            int remoteIndex = ViewModel.SelectedConnection.RemoteIndex;
+
+            var orderedList = HWHash.GetOrderedList(remoteIndex);
+            if (orderedList.Count == _lastSensorCount && _lastSensorCount > 0) return;
+            _lastSensorCount = orderedList.Count;
+
+            foreach (HWHash.HWINFO_HASH hash in orderedList)
             {
                 //construct parent
                 var parent = ViewModel.FindParentSensorItem(hash.ParentUniqueID);
                 if(parent == null)
                 {
-                    parent = new TreeItem(hash.ParentUniqueID, hash.ParentNameDefault);
+                    var parentName = hash.ParentNameDefault;
+
+                    // Strip "[Desktop-xxx] " prefix for display — already shown in the connection combobox
+                    if (remoteIndex >= 0 && parentName.StartsWith('['))
+                    {
+                        var endBracket = parentName.IndexOf("] ");
+                        if (endBracket > 0)
+                        {
+                            parentName = parentName[(endBracket + 2)..];
+                        }
+                    }
+
+                    parent = new HwInfoHardwareTreeItem(hash.ParentUniqueID, parentName);
                     ViewModel.Sensors.Add(parent);
                 }
 
@@ -75,7 +143,7 @@ namespace InfoPanel.Views.Components
 
                     if (group == null)
                     {
-                        group = new TreeItem(hash.ReadingType, hash.ReadingType);
+                        group = new HwInfoGroupTreeItem(hash.ReadingType, hash.ReadingType, hash.ReadingType);
                         parent.Children.Add(group);
                     }
                 } else
@@ -87,10 +155,19 @@ namespace InfoPanel.Views.Components
                 var child = group.FindChild(hash.UniqueID);
                 if (child == null)
                 {
-                    child = new HwInfoSensorItem(hash.UniqueID, hash.NameDefault, hash.ParentID, hash.ParentInstance, hash.SensorID);
+                    child = new HwInfoSensorItem(hash.UniqueID, hash.NameDefault, remoteIndex, hash.ParentID, hash.ParentInstance, hash.SensorID);
                     group.Children.Add(child);
                 }
             }
+        }
+
+        private void ConnectionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Clear and rebuild tree when connection changes
+            _lastSensorCount = -1;
+            ViewModel.Sensors.Clear();
+            ViewModel.SelectedItem = null;
+            LoadSensorTree();
         }
 
         private void TreeViewInfo_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -104,13 +181,6 @@ namespace InfoPanel.Views.Components
             {
                 ViewModel.SelectedItem = null;
             }
-        }
-
-        private void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-        {
-            var scrollViewer = (ScrollViewer)sender;
-            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - e.Delta);
-            e.Handled = true;
         }
 
         private void UpdateSensorDetails()

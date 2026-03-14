@@ -14,7 +14,7 @@
         <Border
             Width="260"
             Margin="0,0,0,0"
-            Background="#601A1a1a"
+            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
             CornerRadius="8,8,8,8">
             <Grid>
                 <Border
@@ -29,7 +29,7 @@
                         Margin="20,20,20,20"
                         PaintSurface="skElement_PaintSurface" />
 
-                    <Border Background="#FF1A1a1a" CornerRadius="0,0,8,8">
+                    <Border Background="{DynamicResource SubtleFillColorTertiaryBrush}" CornerRadius="0,0,8,8">
                         <Grid Margin="10,0,10,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />

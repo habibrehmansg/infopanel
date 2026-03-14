@@ -11,7 +11,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="clr-namespace:InfoPanel.Models"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -31,7 +31,7 @@
                 Margin="0,0,0,0"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
-                Background="#601A1a1a"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 IsExpanded="{Binding IsExpanded}">
 
                 <Expander.Header>
@@ -71,7 +71,7 @@
                                     Margin="5,2,0,5"
                                     VerticalAlignment="Center"
                                     FontSize="12"
-                                    Foreground="Gray"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="{Binding DisplayItemsCount, StringFormat={} {0} Items}" />
                             </Grid>
                         </Border>

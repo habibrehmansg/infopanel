@@ -896,7 +896,7 @@ namespace InfoPanel
                     ZipFile.CreateFromDirectory(exportPath, outFile);
                     return outFile;
                 }
-                finally
+                                finally
                 {
                     if (Directory.Exists(exportPath))
                         Directory.Delete(exportPath, true);
