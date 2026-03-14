@@ -1,14 +1,20 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using InfoPanel.Models;
 using InfoPanel.Utils;
 using Serilog;
 using Wpf.Ui;
+using Wpf.Ui.Abstractions;
+using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Windows
@@ -34,20 +40,38 @@ namespace InfoPanel.Views.Windows
         private readonly ITaskBarService _taskBarService;
         private uint _taskbarCreatedMessageId;
         private HwndSource? _hwndSource;
+        private bool _isExiting;
+        private readonly IContentDialogService _contentDialogService;
 
-        public MainWindow(INavigationService navigationService, IPageService pageService, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
+        public MainWindow(INavigationService navigationService, INavigationViewPageProvider pageProvider, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
             // Assign the view model
             //ViewModel = viewModel;
             DataContext = this;
 
+            _contentDialogService = contentDialogService;
             // Attach the taskbar service
             _taskBarService = taskBarService;
 
             InitializeComponent();
 
+            // Apply saved theme after InitializeComponent so it overrides the
+            // ThemesDictionary default from App.xaml.
+            var savedTheme = ConfigModel.Instance.Settings.AppTheme switch
+            {
+                1 => ApplicationTheme.Dark,
+                _ => ApplicationTheme.Light
+            };
+            ApplicationThemeManager.Apply(savedTheme, WindowBackdropType.Mica, true);
+            App.SyncMahAppsTheme(savedTheme);
+
+            ApplicationThemeManager.Changed += (theme, _) =>
+            {
+                App.SyncMahAppsTheme(theme);
+            };
+
             // We define a page provider for navigation
-            SetPageService(pageService);
+            SetPageService(pageProvider);
 
             // If you want to use INavigationService instead of INavigationWindow you can define its navigation here.
             navigationService.SetNavigationControl(RootNavigation);
@@ -65,15 +89,13 @@ namespace InfoPanel.Views.Windows
             Loaded += MainWindow_Loaded;
             StateChanged += MainWindow_StateChanged;
             PreviewKeyDown += MainWindow_PreviewKeyDown;
-
+            SizeChanged += MainWindow_SizeChanged;
             var screenHeight = SystemParameters.PrimaryScreenHeight;
             var desiredHeight = screenHeight * 0.80;
-
             if (desiredHeight > MinHeight)
             {
                 Height = desiredHeight;
             }
-
         }
 
         private void MainWindow_StateChanged(object? sender, EventArgs e)
@@ -92,6 +114,35 @@ namespace InfoPanel.Views.Windows
             }
         }
 
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                    SharedModel.Instance.Redo();
+                else
+                    SharedModel.Instance.Undo();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Y && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                SharedModel.Instance.Redo();
+                e.Handled = true;
+            }
+        }
+
+        private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (WindowState != WindowState.Normal)
+                return;
+
+            if (e.NewSize.Width >= MinWidth && e.NewSize.Height >= MinHeight)
+            {
+                ConfigModel.Instance.Settings.UiWidth = (float)e.NewSize.Width;
+                ConfigModel.Instance.Settings.UiHeight = (float)e.NewSize.Height;
+            }
+        }
+
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             _taskbarCreatedMessageId = RegisterWindowMessage("TaskbarCreated");
@@ -105,27 +156,11 @@ namespace InfoPanel.Views.Windows
                 ChangeWindowMessageFilterEx(hwnd, _taskbarCreatedMessageId, MSGFLT_ALLOW, IntPtr.Zero);
             }
 
+            SystemThemeWatcher.Watch(this);
+
             if (ConfigModel.Instance.Settings.StartMinimized)
             {
                 this.WindowState = WindowState.Minimized;
-            }
-        }
-
-        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            if ((Keyboard.Modifiers & ModifierKeys.Control) == 0 || e.Handled) return;
-            if (e.Key == Key.Z)
-            {
-                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-                    SharedModel.Instance.Redo();
-                else
-                    SharedModel.Instance.Undo();
-                e.Handled = true;
-            }
-            else if (e.Key == Key.Y)
-            {
-                SharedModel.Instance.Redo();
-                e.Handled = true;
             }
         }
 
@@ -150,16 +185,95 @@ namespace InfoPanel.Views.Windows
             return IntPtr.Zero;
         }
 
-        private void Window_ContentRendered(object sender, EventArgs e)
+        private async void Window_ContentRendered(object sender, EventArgs e)
         {
-            MinWidth = 1300;
-            MinHeight = 900;
+            MinWidth = 900;
+            MinHeight = 600;
 
             Navigate(typeof(Pages.HomePage));
 
             if (ConfigModel.Instance.Settings.StartMinimized && ConfigModel.Instance.Settings.MinimizeToTray)
             {
                 Hide();
+            }
+
+            // Offer to restore from autosave if a backup exists
+            var profilesWithBackup = InfoPanel.ConfigModel.Instance.GetProfilesWithAutosaveBackup();
+            if (profilesWithBackup.Count == 0)
+                return;
+
+            // Bring main window to foreground so the restore dialog is visible when app started minimized to tray
+            RestoreWindow();
+            Activate();
+
+            if (profilesWithBackup.Count == 1)
+            {
+                var profileToRestore = profilesWithBackup[0];
+                var result = System.Windows.MessageBox.Show(
+                    $"An autosave backup was found for \"{profileToRestore.Name}\". Restore from autosave?",
+                    "Restore autosave",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Question,
+                    System.Windows.MessageBoxResult.Yes);
+                if (result == System.Windows.MessageBoxResult.Yes)
+                {
+                    if (InfoPanel.ConfigModel.Instance.RestoreProfileFromAutosave(profileToRestore))
+                    {
+                        InfoPanel.SharedModel.Instance.SelectedProfile = profileToRestore;
+                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profileToRestore);
+                    }
+                }
+                else
+                {
+                    InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profileToRestore);
+                }
+                return;
+            }
+
+            // Multiple profiles with backups: single dialog with multi-select
+            var selection = new List<(Profile Profile, CheckBox CheckBox)>();
+            var stack = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            foreach (var profile in profilesWithBackup)
+            {
+                var cb = new CheckBox
+                {
+                    Content = profile.Name,
+                    IsChecked = true,
+                    Tag = profile,
+                    Margin = new Thickness(0, 4, 0, 0)
+                };
+                selection.Add((profile, cb));
+                stack.Children.Add(cb);
+            }
+            var dialog = new ContentDialog
+            {
+                Title = "Restore from autosave",
+                Content = stack,
+                PrimaryButtonText = "Restore selected",
+                SecondaryButtonText = "Don't restore",
+                CloseButtonText = "Cancel"
+            };
+            var dialogResult = await _contentDialogService.ShowAsync(dialog, CancellationToken.None);
+            if (dialogResult == ContentDialogResult.Primary)
+            {
+                Profile? firstRestored = null;
+                foreach (var (profile, checkBox) in selection)
+                {
+                    if (checkBox.IsChecked == true && InfoPanel.ConfigModel.Instance.RestoreProfileFromAutosave(profile))
+                    {
+                        firstRestored ??= profile;
+                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profile);
+                    }
+                    else
+                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profile);
+                }
+                if (firstRestored != null)
+                    InfoPanel.SharedModel.Instance.SelectedProfile = firstRestored;
+            }
+            else
+            {
+                foreach (var p in profilesWithBackup)
+                    InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(p);
             }
         }
 
@@ -205,6 +319,7 @@ namespace InfoPanel.Views.Windows
                         Navigate(typeof(Pages.AboutPage));
                         break;
                     case "close":
+                        _isExiting = true;
                         Close();
                         break;
                     default:
@@ -231,27 +346,14 @@ namespace InfoPanel.Views.Windows
 
         #region INavigationWindow methods
 
-        public Frame GetFrame()
-        {
-            // In WPF-UI v3, NavigationView manages its own internal frame
-            // We need to return a Frame for compatibility, so we'll create one if needed
-            if (_navigationFrame == null)
-            {
-                _navigationFrame = new Frame();
-            }
-            return _navigationFrame;
-        }
-        
-        private Frame? _navigationFrame;
-
         public INavigationView GetNavigation()
             => RootNavigation;
 
         public bool Navigate(Type pageType)
-            => RootNavigation.Navigate(pageType) != null;
+            => RootNavigation.Navigate(pageType);
 
-        public void SetPageService(IPageService pageService)
-            => RootNavigation.SetPageService(pageService);
+        public void SetPageService(INavigationViewPageProvider pageProvider)
+            => RootNavigation.SetPageProviderService(pageProvider);
 
         public void ShowWindow()
             => Show();
@@ -261,18 +363,44 @@ namespace InfoPanel.Views.Windows
 
         public void SetServiceProvider(IServiceProvider serviceProvider)
         {
-            // This is used to provide services to the navigation window
-            // Implementation depends on your specific needs
         }
 
         #endregion INavigationWindow methods
 
         private async void MainWindow_Closing(object sender, CancelEventArgs e)
         {
+            if (!_isExiting && ConfigModel.Instance.Settings.CloseToMinimize)
+            {
+                e.Cancel = true;
+                WindowState = WindowState.Minimized;
+                return;
+            }
+
             _hwndSource?.RemoveHook(WndProc);
 
+            var isDirty = InfoPanel.SharedModel.Instance.IsDirty;
+            if (isDirty)
+            {
+                var result = System.Windows.MessageBox.Show(
+                    "You have unsaved changes. Do you want to save before closing?",
+                    "Unsaved changes",
+                    System.Windows.MessageBoxButton.YesNoCancel,
+                    System.Windows.MessageBoxImage.Question,
+                    System.Windows.MessageBoxResult.Yes);
+
+                if (result == System.Windows.MessageBoxResult.Cancel)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+                if (result == System.Windows.MessageBoxResult.Yes)
+                {
+                    InfoPanel.ConfigModel.Instance.SaveProfiles();
+                    InfoPanel.SharedModel.Instance.SaveDisplayItems();
+                }
+            }
+
             e.Cancel = true;
-            //perform shutdown operations here
 
             if (WindowState != WindowState.Minimized)
             {

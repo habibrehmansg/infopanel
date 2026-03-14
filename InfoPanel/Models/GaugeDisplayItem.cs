@@ -31,6 +31,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private int _hwInfoRemoteIndex = -1;
+        public int HwInfoRemoteIndex
+        {
+            get { return _hwInfoRemoteIndex; }
+            set
+            {
+                SetProperty(ref _hwInfoRemoteIndex, value);
+            }
+        }
+
         private UInt32 _id;
         public UInt32 Id
         {
@@ -227,7 +237,7 @@ namespace InfoPanel.Models
         {
             return SensorType switch
             {
-                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(Id, Instance, EntryId),
+                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(HwInfoRemoteIndex, Id, Instance, EntryId),
                 SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
                 SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
                 _ => null,

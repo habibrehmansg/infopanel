@@ -107,6 +107,79 @@ namespace InfoPanel
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "autosave");
         }
 
+        /// <summary>
+        /// Returns profiles that have an autosave backup (profile_{guid}.xml and profiles/{guid}.xml exist in autosave folder).
+        /// </summary>
+        public List<Profile> GetProfilesWithAutosaveBackup()
+        {
+            var path = GetAutosavePath();
+            if (!Directory.Exists(path))
+                return [];
+
+            var result = new List<Profile>();
+            var profileFiles = Directory.GetFiles(path, "profile_*.xml");
+            lock (_profilesLock)
+            {
+                foreach (var file in profileFiles)
+                {
+                    var name = Path.GetFileNameWithoutExtension(file);
+                    if (name.Length <= 8 || !name.StartsWith("profile_", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var guidStr = name.Substring(8);
+                    if (!Guid.TryParseExact(guidStr, "N", out var guid))
+                        continue;
+                    var displayItemsPath = Path.Combine(path, "profiles", guid + ".xml");
+                    if (!File.Exists(displayItemsPath))
+                        continue;
+                    var profile = Profiles.FirstOrDefault(p => p.Guid == guid);
+                    if (profile != null)
+                        result.Add(profile);
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Restores the given profile's display items from the autosave backup. Returns true if backup existed and was restored.
+        /// </summary>
+        public bool RestoreProfileFromAutosave(Profile profile)
+        {
+            if (profile == null) return false;
+            var path = GetAutosavePath();
+            var items = SharedModel.LoadDisplayItemsFromFile(profile, path);
+            if (items.Count == 0)
+                return false;
+            SharedModel.Instance.ReplaceDisplayItemsFromBackup(profile, items);
+            return true;
+        }
+
+        /// <summary>
+        /// Removes the autosave backup for the given profile so the restore prompt is not shown again until a new autosave exists.
+        /// Call this when the user declines "Restore from autosave?".
+        /// </summary>
+        public void DiscardAutosaveBackup(Profile profile)
+        {
+            if (profile == null) return;
+            var path = GetAutosavePath();
+            if (!Directory.Exists(path)) return;
+            try
+            {
+                var profileFile = Path.Combine(path, $"profile_{profile.Guid:N}.xml");
+                var displayItemsFile = Path.Combine(path, "profiles", profile.Guid + ".xml");
+                foreach (var f in new[] { profileFile, profileFile + ".tmp", profileFile + ".bak", displayItemsFile })
+                {
+                    if (File.Exists(f))
+                    {
+                        try { File.Delete(f); } catch (Exception ex) { Logger.Warning(ex, "Could not delete autosave file {File}", f); }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "DiscardAutosaveBackup failed for profile {Guid}", profile.Guid);
+            }
+        }
+
         private ConfigModel()
         {
             Settings = new Settings();
@@ -250,7 +323,7 @@ namespace InfoPanel
 
         private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(Settings.AutoStart))
+            if (e.PropertyName == nameof(Settings.AutoStart) || e.PropertyName == nameof(Settings.AutoStartDelay))
             {
                 ValidateStartup();
             }
@@ -327,12 +400,6 @@ namespace InfoPanel
             {
                 return Profiles.FirstOrDefault(p => p.Guid == guid);
             }
-        }
-
-        public void SaveSettings()
-        {
-            // Synchronous wrapper for backward compatibility
-            Task.Run(async () => await SaveSettingsAsync(batch: false)).Wait();
         }
 
         public async Task SaveSettingsAsync(bool batch = true)
@@ -461,11 +528,13 @@ namespace InfoPanel
                             Settings.UiWidth = settings.UiWidth;
                             Settings.UiHeight = settings.UiHeight;
                             Settings.UiScale = settings.UiScale;
+                            Settings.AppTheme = settings.AppTheme;
                             Settings.IsPaneOpen = settings.IsPaneOpen;
                             Settings.AutoStart = settings.AutoStart;
                             Settings.AutoStartDelay = settings.AutoStartDelay;
                             Settings.StartMinimized = settings.StartMinimized;
                             Settings.MinimizeToTray = settings.MinimizeToTray;
+                            Settings.CloseToMinimize = settings.CloseToMinimize;
 
                             Settings.SelectedItemColor = settings.SelectedItemColor;
                             Settings.ShowGridLines = settings.ShowGridLines;
@@ -573,12 +642,19 @@ namespace InfoPanel
                 if (!Directory.Exists(path))
                     Directory.CreateDirectory(path);
 
-                var profileFile = Path.Combine(path, "profile.xml");
+                var profileFileName = $"profile_{profile.Guid:N}.xml";
+                var profileFile = Path.Combine(path, profileFileName);
+                var tempProfileFile = profileFile + ".tmp";
+                var backupProfileFile = profileFile + ".bak";
                 var profiles = new List<Profile> { profile };
                 var xs = new XmlSerializer(typeof(List<Profile>));
                 var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-                using (var wr = XmlWriter.Create(profileFile, settings))
+                using (var wr = XmlWriter.Create(tempProfileFile, settings))
                     xs.Serialize(wr, profiles);
+                if (File.Exists(profileFile))
+                    File.Replace(tempProfileFile, profileFile, backupProfileFile, ignoreMetadataErrors: true);
+                else
+                    File.Move(tempProfileFile, profileFile, overwrite: true);
 
                 SharedModel.Instance.SaveDisplayItems(profile, path);
                 LastSaveAt = DateTime.UtcNow;
@@ -794,7 +870,6 @@ namespace InfoPanel
                 if (Settings.AutosaveEnabled && SharedModel.Instance.IsDirty)
                 {
                     SaveAutosaveBackup();
-                    SharedModel.Instance.ClearDirty();
                     AutosaveIndicator = AutosaveIndicatorState.AutoSaved;
                     SetAutosaveIndicatorToNoneAfterDelay();
                 }

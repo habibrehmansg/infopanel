@@ -18,6 +18,9 @@ namespace InfoPanel.Models
         private float _uiScale = 1.0f;
 
         [ObservableProperty]
+        private int _appTheme = 1; // 0=Light, 1=Dark
+
+        [ObservableProperty]
         private bool _isPaneOpen = true;
 
         [ObservableProperty]
@@ -31,6 +34,9 @@ namespace InfoPanel.Models
 
         [ObservableProperty]
         private bool _minimizeToTray = true;
+
+        [ObservableProperty]
+        private bool _closeToMinimize = false;
 
         [ObservableProperty]
         private string _selectedItemColor = "#FF00FF00";

@@ -17,7 +17,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </Page.Resources>
 
-    <StackPanel MaxWidth="1360" Margin="20,20,20,20">
+    <StackPanel Margin="20,20,20,20">
                 <ui:CardControl>
                     <ui:CardControl.Icon>
                         <ui:SymbolIcon Symbol="PlugConnected20" />
@@ -47,7 +47,7 @@
                                     Margin="0,5,0,0"
                                     VerticalAlignment="Center"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="If you would like to develop a plugin, visit our Github and reference Infopanel.Extras project for guidelines." />
                             </StackPanel>
                             <ui:Anchor

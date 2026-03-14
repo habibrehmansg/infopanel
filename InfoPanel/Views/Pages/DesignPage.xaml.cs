@@ -37,5 +37,19 @@ namespace InfoPanel.Views.Pages
                 selectedItem.Selected = false;
             }
         }
+
+        private void ShowItemsPanel_Click(object sender, RoutedEventArgs e)
+        {
+            ItemsPanelOverlay.Visibility = Visibility.Visible;
+            ShowItemsPanelButton.Visibility = Visibility.Collapsed;
+            SensorAreaBorder.Margin = new Thickness(0, 60, 580, 0);
+        }
+
+        private void HideItemsPanel_Click(object sender, RoutedEventArgs e)
+        {
+            ItemsPanelOverlay.Visibility = Visibility.Collapsed;
+            ShowItemsPanelButton.Visibility = Visibility.Visible;
+            SensorAreaBorder.Margin = new Thickness(0, 60, 0, 0);
+        }
     }
 }

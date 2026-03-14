@@ -438,18 +438,18 @@ namespace InfoPanel.Views.Common
             }
             else if (e.PropertyName == nameof(Profile.Width) || e.PropertyName == nameof(Profile.Height))
             {
-                _isProgrammaticSizeChange = true;
-                try
+                _ = _dispatcher.InvokeAsync(() =>
                 {
-                    _dispatcher.Invoke(() =>
+                    _isProgrammaticSizeChange = true;
+                    try
                     {
                         MaintainPixelSize();
-                    });
-                }
-                finally
-                {
-                    _isProgrammaticSizeChange = false;
-                }
+                    }
+                    finally
+                    {
+                        _isProgrammaticSizeChange = false;
+                    }
+                });
             }
         }
 
@@ -540,7 +540,7 @@ namespace InfoPanel.Views.Common
                     {
                         foreach (var selectedItem in SharedModel.Instance.SelectedVisibleItems)
                         {
-                            App.Current.Dispatcher.Invoke(() =>
+                            _ = App.Current.Dispatcher.InvokeAsync(() =>
                             {
                                 selectedItem.Selected = false;
                             });

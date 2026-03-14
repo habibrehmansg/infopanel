@@ -727,15 +727,7 @@ namespace InfoPanel.Views.Components
                     return;
                 }
 
-                // Push undo snapshot before any drop mutation
-                if (SharedModel.Instance.SelectedProfile is Profile profile)
-                {
-                    var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile);
-                    if (copy.Count > 0)
-                        InfoPanel.Services.UndoManager.Instance.PushUndo(profile, copy.ToList());
-                }
-
-                // Get parent groups
+                // Get parent groups and validate before pushing undo
                 var sourceParent = SharedModel.Instance.GetParent(sourceItem);
                 var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
 
@@ -745,6 +737,12 @@ namespace InfoPanel.Views.Components
                     // Allow reordering within the same locked group
                     if (targetParentGroup == sourceGroup)
                     {
+                        if (SharedModel.Instance.SelectedProfile is Profile p)
+                        {
+                            var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(p);
+                            if (copy.Count > 0)
+                                InfoPanel.Services.UndoManager.Instance.PushUndo(p, copy.ToList());
+                        }
                         dropHandler.Drop(dropInfo);
                         SharedModel.Instance.UpdateLastStateSnapshot();
                         SharedModel.Instance.MarkDirty();
@@ -784,17 +782,19 @@ namespace InfoPanel.Views.Components
                 else
                 {
                     // We're dragging a regular item (not a group)
-                    // Special handling for dropping into empty groups
+                    // Special handling for dropping into groups: move directly to avoid duplicate undo from RemoveDisplayItem
                     if (targetItem is GroupDisplayItem groupItem)
                     {
-                        // Check if the group is locked
                         if (groupItem.IsLocked)
-                        {
                             return;
-                        }
 
-                        // Move the item into the group
-                        SharedModel.Instance.RemoveDisplayItem(sourceItem);
+                        if (SharedModel.Instance.SelectedProfile is Profile profile)
+                        {
+                            var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile);
+                            if (copy.Count > 0)
+                                InfoPanel.Services.UndoManager.Instance.PushUndo(profile, copy.ToList());
+                        }
+                        SharedModel.Instance.GetParentCollection(sourceItem)?.Remove(sourceItem);
                         groupItem.DisplayItems.Add(sourceItem);
                         SharedModel.Instance.UpdateLastStateSnapshot();
                         SharedModel.Instance.MarkDirty();
@@ -802,7 +802,13 @@ namespace InfoPanel.Views.Components
                     }
                 }
 
-                // Use the default drop handler for all other cases
+                // Push undo after validation, then perform drop
+                if (SharedModel.Instance.SelectedProfile is Profile profile2)
+                {
+                    var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile2);
+                    if (copy.Count > 0)
+                        InfoPanel.Services.UndoManager.Instance.PushUndo(profile2, copy.ToList());
+                }
                 dropHandler.Drop(dropInfo);
                 SharedModel.Instance.UpdateLastStateSnapshot();
                 SharedModel.Instance.MarkDirty();

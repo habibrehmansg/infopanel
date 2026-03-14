@@ -149,7 +149,7 @@
                                     Grid.Column="2"
                                     VerticalAlignment="Center"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="{Binding Author, StringFormat=' by {0}'}"
                                     Visibility="{Binding Author, Converter={StaticResource NullToVisibilityConverter}}" />
 
@@ -157,7 +157,7 @@
                                     Grid.Column="1"
                                     VerticalAlignment="Center"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="{Binding Version, StringFormat=' v{0}'}"
                                     Visibility="{Binding Version, Converter={StaticResource NullToVisibilityConverter}}" />
 
@@ -169,7 +169,7 @@
                                 Margin="0,5,0,0"
                                 VerticalAlignment="Center"
                                 FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="{Binding Description}"
                                 TextWrapping="Wrap" />
 
@@ -283,7 +283,7 @@
                                             Margin="0,5,0,0"
                                             VerticalAlignment="Center"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Text="{Binding Description}" />
 
                                         <ItemsControl

@@ -77,6 +77,71 @@ namespace InfoPanel.ViewModels.Components
         }
     }
 
+    public partial class HwInfoHardwareTreeItem : TreeItem
+    {
+        private static readonly string IconBase = "pack://application:,,,/Resources/Images/Libre/";
+
+        public HwInfoHardwareTreeItem(object id, string name) : base(id, name)
+        {
+            Icon = IconBase + GetImage(name);
+        }
+
+        private static string GetImage(string name)
+        {
+            var upper = name.ToUpperInvariant();
+
+            if (upper.Contains("CPU"))
+                return "cpu.png";
+            if (upper.Contains("NVIDIA") || upper.Contains("GEFORCE"))
+                return "nvidia.png";
+            if (upper.Contains("RADEON") || (upper.Contains("AMD") && upper.Contains("GPU")))
+                return "amd.png";
+            if (upper.Contains("INTEL") && (upper.Contains("ARC") || upper.Contains("GPU")))
+                return "intel.png";
+            if (upper.Contains("DRIVE") || upper.Contains("SSD") || upper.Contains("NVME") || upper.Contains("HDD"))
+                return "hdd.png";
+            if (upper.Contains("MOTHERBOARD") || upper.Contains("MAINBOARD"))
+                return "mainboard.png";
+            if (upper.Contains("MEMORY") || upper.Contains("RAM"))
+                return "ram.png";
+            if (upper.Contains("NETWORK") || upper.Contains("NIC") || upper.Contains("ETHERNET") || upper.Contains("WI-FI"))
+                return "nic.png";
+            if (upper.Contains("FAN") || upper.Contains("COOLER") || upper.Contains("AIO"))
+                return "fan.png";
+            if (upper.Contains("BATTERY"))
+                return "battery.png";
+            if (upper.Contains("PSU") || upper.Contains("POWER SUPPLY"))
+                return "power-supply.png";
+
+            return "chip.png";
+        }
+    }
+
+    public partial class HwInfoGroupTreeItem : TreeItem
+    {
+        private static readonly string IconBase = "pack://application:,,,/Resources/Images/Libre/";
+
+        public HwInfoGroupTreeItem(object id, string name, string readingType) : base(id, name)
+        {
+            Icon = IconBase + GetImage(readingType);
+        }
+
+        private static string GetImage(string readingType)
+        {
+            return readingType switch
+            {
+                "Temperature" => "temperature.png",
+                "Voltage" => "voltage.png",
+                "Fan" => "fan.png",
+                "Current" => "current.png",
+                "Power" => "power.png",
+                "Frequency" => "clock.png",
+                "Usage" => "load.png",
+                _ => "empty.png",
+            };
+        }
+    }
+
     public abstract class SensorTreeItem(object id, string name) : TreeItem(id, name) {
         private string _value = string.Empty;
         public string Value
@@ -95,8 +160,9 @@ namespace InfoPanel.ViewModels.Components
         public abstract void Update();
     }
 
-    public partial class HwInfoSensorItem(object id, string name, UInt32 parentId, UInt32 parentInstance, UInt32 sensorId) : SensorTreeItem(id, name)
+    public partial class HwInfoSensorItem(object id, string name, int remoteIndex, UInt32 parentId, UInt32 parentInstance, UInt32 sensorId) : SensorTreeItem(id, name)
     {
+        public int RemoteIndex { get; set; } = remoteIndex;
         public UInt32 ParentId { get; set; } = parentId;
         public UInt32 ParentInstance { get; set; } = parentInstance;
         public UInt32 SensorId { get; set; } = sensorId;
@@ -104,7 +170,7 @@ namespace InfoPanel.ViewModels.Components
         public override void Update()
         {
             // Update sensor value
-            var sensorReading = SensorReader.ReadHwInfoSensor(ParentId, ParentInstance, SensorId);
+            var sensorReading = SensorReader.ReadHwInfoSensor(RemoteIndex, ParentId, ParentInstance, SensorId);
             if(sensorReading.HasValue)
             {
                 Value = sensorReading.Value.ValueNow.ToFormattedString();

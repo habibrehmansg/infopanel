@@ -20,7 +20,7 @@
 
         
 
-        <Rectangle Grid.Row="3" HorizontalAlignment="Stretch" Height="1" Margin="0,20,0,10" Stroke="DarkGray" />
+        <Rectangle Grid.Row="3" HorizontalAlignment="Stretch" Height="1" Margin="0,20,0,10" Stroke="{DynamicResource ControlStrokeColorDefaultBrush}" />
 
         <Expander Grid.Row="4" Header="Extras" IsExpanded="False">
            

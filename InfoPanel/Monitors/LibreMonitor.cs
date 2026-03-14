@@ -95,7 +95,7 @@ namespace InfoPanel.Monitors
                             }
                         }
 
-                        await Task.Delay(1000, token);
+                        await Task.Delay(2000, token);
 
                     }
                 }
