@@ -1,11 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using InfoPanel.Models;
 using InfoPanel.Utils;
 using Serilog;
 using Wpf.Ui;
@@ -37,6 +41,7 @@ namespace InfoPanel.Views.Windows
         private uint _taskbarCreatedMessageId;
         private HwndSource? _hwndSource;
         private bool _isExiting;
+        private readonly IContentDialogService _contentDialogService;
 
         public MainWindow(INavigationService navigationService, INavigationViewPageProvider pageProvider, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
@@ -44,6 +49,7 @@ namespace InfoPanel.Views.Windows
             //ViewModel = viewModel;
             DataContext = this;
 
+            _contentDialogService = contentDialogService;
             // Attach the taskbar service
             _taskBarService = taskBarService;
 
@@ -141,24 +147,6 @@ namespace InfoPanel.Views.Windows
             }
         }
 
-        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            if ((Keyboard.Modifiers & ModifierKeys.Control) == 0 || e.Handled) return;
-            if (e.Key == Key.Z)
-            {
-                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-                    SharedModel.Instance.Redo();
-                else
-                    SharedModel.Instance.Undo();
-                e.Handled = true;
-            }
-            else if (e.Key == Key.Y)
-            {
-                SharedModel.Instance.Redo();
-                e.Handled = true;
-            }
-        }
-
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             if (_taskbarCreatedMessageId != 0 && msg == (int)_taskbarCreatedMessageId)
@@ -180,7 +168,7 @@ namespace InfoPanel.Views.Windows
             return IntPtr.Zero;
         }
 
-        private void Window_ContentRendered(object sender, EventArgs e)
+        private async void Window_ContentRendered(object sender, EventArgs e)
         {
             MinWidth = 900;
             MinHeight = 600;
@@ -190,6 +178,85 @@ namespace InfoPanel.Views.Windows
             if (ConfigModel.Instance.Settings.StartMinimized && ConfigModel.Instance.Settings.MinimizeToTray)
             {
                 Hide();
+            }
+
+            // Offer to restore from autosave if a backup exists
+            var profilesWithBackup = InfoPanel.ConfigModel.Instance.GetProfilesWithAutosaveBackup();
+            if (profilesWithBackup.Count == 0)
+                return;
+
+            // Bring main window to foreground so the restore dialog is visible when app started minimized to tray
+            RestoreWindow();
+            Activate();
+
+            if (profilesWithBackup.Count == 1)
+            {
+                var profileToRestore = profilesWithBackup[0];
+                var result = System.Windows.MessageBox.Show(
+                    $"An autosave backup was found for \"{profileToRestore.Name}\". Restore from autosave?",
+                    "Restore autosave",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Question,
+                    System.Windows.MessageBoxResult.Yes);
+                if (result == System.Windows.MessageBoxResult.Yes)
+                {
+                    if (InfoPanel.ConfigModel.Instance.RestoreProfileFromAutosave(profileToRestore))
+                    {
+                        InfoPanel.SharedModel.Instance.SelectedProfile = profileToRestore;
+                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profileToRestore);
+                    }
+                }
+                else
+                {
+                    InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profileToRestore);
+                }
+                return;
+            }
+
+            // Multiple profiles with backups: single dialog with multi-select
+            var selection = new List<(Profile Profile, CheckBox CheckBox)>();
+            var stack = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            foreach (var profile in profilesWithBackup)
+            {
+                var cb = new CheckBox
+                {
+                    Content = profile.Name,
+                    IsChecked = true,
+                    Tag = profile,
+                    Margin = new Thickness(0, 4, 0, 0)
+                };
+                selection.Add((profile, cb));
+                stack.Children.Add(cb);
+            }
+            var dialog = new ContentDialog
+            {
+                Title = "Restore from autosave",
+                Content = stack,
+                PrimaryButtonText = "Restore selected",
+                SecondaryButtonText = "Don't restore",
+                CloseButtonText = "Cancel"
+            };
+            var dialogResult = await _contentDialogService.ShowAsync(dialog, CancellationToken.None);
+            if (dialogResult == ContentDialogResult.Primary)
+            {
+                Profile? firstRestored = null;
+                foreach (var (profile, checkBox) in selection)
+                {
+                    if (checkBox.IsChecked == true && InfoPanel.ConfigModel.Instance.RestoreProfileFromAutosave(profile))
+                    {
+                        firstRestored ??= profile;
+                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profile);
+                    }
+                    else
+                        InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(profile);
+                }
+                if (firstRestored != null)
+                    InfoPanel.SharedModel.Instance.SelectedProfile = firstRestored;
+            }
+            else
+            {
+                foreach (var p in profilesWithBackup)
+                    InfoPanel.ConfigModel.Instance.DiscardAutosaveBackup(p);
             }
         }
 
@@ -294,8 +361,29 @@ namespace InfoPanel.Views.Windows
 
             _hwndSource?.RemoveHook(WndProc);
 
+            var isDirty = InfoPanel.SharedModel.Instance.IsDirty;
+            if (isDirty)
+            {
+                var result = System.Windows.MessageBox.Show(
+                    "You have unsaved changes. Do you want to save before closing?",
+                    "Unsaved changes",
+                    System.Windows.MessageBoxButton.YesNoCancel,
+                    System.Windows.MessageBoxImage.Question,
+                    System.Windows.MessageBoxResult.Yes);
+
+                if (result == System.Windows.MessageBoxResult.Cancel)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+                if (result == System.Windows.MessageBoxResult.Yes)
+                {
+                    InfoPanel.ConfigModel.Instance.SaveProfiles();
+                    InfoPanel.SharedModel.Instance.SaveDisplayItems();
+                }
+            }
+
             e.Cancel = true;
-            //perform shutdown operations here
 
             if (WindowState != WindowState.Minimized)
             {

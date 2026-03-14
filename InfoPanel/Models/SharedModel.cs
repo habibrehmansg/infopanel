@@ -12,6 +12,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -38,16 +39,32 @@ namespace InfoPanel
 
         private bool _hwInfoAvailable = false;
         private bool _isUndoRedoInProgress;
-        private bool _isDirty;
+        private readonly ConcurrentDictionary<Guid, bool> _dirtyPerProfile = [];
         private readonly ConcurrentDictionary<Guid, Debouncer> _propertyChangeDebouncers = [];
         /// <summary>Last serialized state per profile. When debouncer fires, we push this (state before edit) then update to current.</summary>
         private readonly ConcurrentDictionary<Guid, string> _lastStateSnapshotPerProfile = [];
+        private readonly ConcurrentDictionary<ObservableCollection<DisplayItem>, NotifyCollectionChangedEventHandler> _groupCollectionChangedHandlers = [];
 
-        public bool IsDirty => _isDirty;
+        public bool IsDirty => SelectedProfile is Profile p && _dirtyPerProfile.TryGetValue(p.Guid, out var d) && d;
         /// <summary>Raised when MarkDirty() is called so autosave can reset its idle timer.</summary>
         public event Action? DirtyChanged;
-        public void MarkDirty() { _isDirty = true; OnPropertyChanged(nameof(IsDirty)); DirtyChanged?.Invoke(); }
-        public void ClearDirty() { _isDirty = false; OnPropertyChanged(nameof(IsDirty)); }
+        public void MarkDirty()
+        {
+            if (SelectedProfile is Profile p)
+            {
+                _dirtyPerProfile[p.Guid] = true;
+                OnPropertyChanged(nameof(IsDirty));
+                DirtyChanged?.Invoke();
+            }
+        }
+        public void ClearDirty()
+        {
+            if (SelectedProfile is Profile p)
+            {
+                _dirtyPerProfile[p.Guid] = false;
+                OnPropertyChanged(nameof(IsDirty));
+            }
+        }
 
         public bool HwInfoAvailable
         {
@@ -138,7 +155,8 @@ namespace InfoPanel
             item.PropertyChanged += DisplayItem_PropertyChanged;
             if (item is GroupDisplayItem group && group.DisplayItems != null)
             {
-                group.DisplayItems.CollectionChanged += (_, ce) =>
+                var coll = group.DisplayItems;
+                NotifyCollectionChangedEventHandler handler = (_, ce) =>
                 {
                     if (ce.NewItems != null)
                     {
@@ -151,7 +169,9 @@ namespace InfoPanel
                             UnsubscribeDisplayItemForUndo(child as DisplayItem);
                     }
                 };
-                foreach (var child in group.DisplayItems)
+                coll.CollectionChanged += handler;
+                _groupCollectionChangedHandlers[coll] = handler;
+                foreach (var child in coll)
                     SubscribeDisplayItemForUndo(child, profile);
             }
         }
@@ -162,7 +182,10 @@ namespace InfoPanel
             item.PropertyChanged -= DisplayItem_PropertyChanged;
             if (item is GroupDisplayItem group && group.DisplayItems != null)
             {
-                foreach (var child in group.DisplayItems)
+                var coll = group.DisplayItems;
+                if (_groupCollectionChangedHandlers.TryRemove(coll, out var handler))
+                    coll.CollectionChanged -= handler;
+                foreach (var child in coll.ToList())
                     UnsubscribeDisplayItemForUndo(child);
             }
         }
@@ -502,6 +525,7 @@ namespace InfoPanel
                 if (!addedInGroup)
                     displayItems.Add(newDisplayItem);
                 SelectedItem = newDisplayItem;
+                UpdateLastStateSnapshot();
             });
         }
 
@@ -534,6 +558,7 @@ namespace InfoPanel
                             displayItems[Math.Clamp(index, 0, displayItems.Count - 1)].Selected = true;
                     }
                 }
+                UpdateLastStateSnapshot();
             });
         }
 
@@ -541,6 +566,12 @@ namespace InfoPanel
         {
             FindParentCollection(displayItem, out var result);
             return result;
+        }
+
+        /// <summary>Returns the collection containing the item (root or a group's DisplayItems).</summary>
+        public ObservableCollection<DisplayItem>? GetParentCollection(DisplayItem item)
+        {
+            return FindParentCollection(item, out _);
         }
 
         private ObservableCollection<DisplayItem>? FindParentCollection(DisplayItem item, out GroupDisplayItem? parentGroup)
@@ -613,6 +644,7 @@ namespace InfoPanel
                     if (parentGroup is GroupDisplayItem g)
                         g.IsExpanded = true;
                 }
+                UpdateLastStateSnapshot();
             });
         }
 
@@ -630,6 +662,7 @@ namespace InfoPanel
                 int targetIndex = targetCollection.IndexOf(target);
                 if (sourceCollection == targetCollection)
                     sourceCollection.Move(sourceIndex, targetIndex + 1);
+                UpdateLastStateSnapshot();
             });
         }
 
@@ -658,6 +691,7 @@ namespace InfoPanel
                         sourceCollection.Move(currentIndex, 0);
                     }
                 }
+                UpdateLastStateSnapshot();
             });
         }
 
@@ -686,6 +720,7 @@ namespace InfoPanel
                         sourceCollection.Move(currentIndex, sourceCollection.Count - 1);
                     }
                 }
+                UpdateLastStateSnapshot();
             });
         }
 
@@ -711,13 +746,13 @@ namespace InfoPanel
 
         private static void SaveDisplayItems(Profile profile, ICollection<DisplayItem> displayItems)
         {
-            var profileFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
-            SaveDisplayItems(profile, displayItems, profileFolder);
+            var baseFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
+            SaveDisplayItems(profile, displayItems, baseFolder);
         }
 
         /// <summary>
         /// Writes display items to a profile XML file under the given base folder (e.g. autosave slot path).
-        /// Path used is baseFolder/profiles/{Guid}.xml.
+        /// Path used is baseFolder/profiles/{Guid}.xml. Uses atomic write (temp + Replace) to avoid corruption on crash.
         /// </summary>
         internal static void SaveDisplayItems(Profile profile, ICollection<DisplayItem> displayItems, string baseFolder)
         {
@@ -725,10 +760,16 @@ namespace InfoPanel
             if (!Directory.Exists(profileFolder))
                 Directory.CreateDirectory(profileFolder);
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
+            var tempFileName = fileName + ".tmp";
+            var backupFileName = fileName + ".bak";
             var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-            using var wr = XmlWriter.Create(fileName, settings);
-            xs.Serialize(wr, displayItems.ToList());
+            using (var wr = XmlWriter.Create(tempFileName, settings))
+                xs.Serialize(wr, displayItems.ToList());
+            if (File.Exists(fileName))
+                File.Replace(tempFileName, fileName, backupFileName, ignoreMetadataErrors: true);
+            else
+                File.Move(tempFileName, fileName, overwrite: true);
         }
 
         public void SaveDisplayItems(Profile profile)
@@ -744,10 +785,7 @@ namespace InfoPanel
         public void SaveDisplayItems()
         {
             if (SelectedProfile != null)
-            {
                 SaveDisplayItems(SelectedProfile);
-                ClearDirty();
-            }
         }
 
         /// <summary>
@@ -801,6 +839,7 @@ namespace InfoPanel
 
         /// <summary>
         /// Import a profile from an .infopanel file (zip archive).
+        /// Expects Profile.xml + DisplayItems.xml + assets\* (1.4.x format).
         /// </summary>
         public void ImportProfile(string fileName)
         {
@@ -808,48 +847,106 @@ namespace InfoPanel
             try
             {
                 using var archive = ZipFile.OpenRead(fileName);
-                var extractPath = Path.Combine(Path.GetTempPath(), "InfoPanelImport", Guid.NewGuid().ToString());
-                Directory.CreateDirectory(extractPath);
-                try
+                ZipArchiveEntry? profileEntry = null;
+                ZipArchiveEntry? displayItemsEntry = null;
+                var assets = new List<ZipArchiveEntry>();
+
+                foreach (var entry in archive.Entries)
                 {
-                    archive.ExtractToDirectory(extractPath);
-                    var profilesFile = Path.Combine(extractPath, "profiles.xml");
-                    if (File.Exists(profilesFile))
+                    if (entry.FullName.Equals("Profile.xml", StringComparison.OrdinalIgnoreCase))
+                        profileEntry = entry;
+                    else if (entry.FullName.Equals("DisplayItems.xml", StringComparison.OrdinalIgnoreCase))
+                        displayItemsEntry = entry;
+                    else if (entry.FullName.StartsWith("assets/", StringComparison.OrdinalIgnoreCase) || entry.FullName.StartsWith("assets\\", StringComparison.OrdinalIgnoreCase))
+                        assets.Add(entry);
+                }
+
+                if (profileEntry == null || displayItemsEntry == null)
+                {
+                    Logger.Warning("Import file {FileName} does not contain Profile.xml and DisplayItems.xml (1.4.x format required)", fileName);
+                    return;
+                }
+
+                Profile? profile;
+                using (var stream = profileEntry.Open())
+                {
+                    var xs = new XmlSerializer(typeof(Profile));
+                    using var rd = XmlReader.Create(stream);
+                    profile = xs.Deserialize(rd) as Profile;
+                }
+
+                if (profile == null) return;
+
+                profile.Guid = Guid.NewGuid();
+                profile.Name = "[Import] " + profile.Name;
+
+                var profileFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
+                if (!Directory.Exists(profileFolder))
+                    Directory.CreateDirectory(profileFolder);
+                var profilePath = Path.Combine(profileFolder, profile.Guid + ".xml");
+                displayItemsEntry.ExtractToFile(profilePath, overwrite: true);
+
+                var displayItems = LoadDisplayItemsFromFile(profile);
+                foreach (var displayItem in displayItems)
+                {
+                    if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
                     {
-                        var xs = new XmlSerializer(typeof(List<Profile>));
-                        using var rd = XmlReader.Create(profilesFile);
-                        if (xs.Deserialize(rd) is List<Profile> importedProfiles)
+                        if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
                         {
-                            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
-                            var profilesFolder = Path.Combine(folder, "profiles");
-                            var assetsFolder = Path.Combine(folder, "assets");
-                            Directory.CreateDirectory(profilesFolder);
-                            Directory.CreateDirectory(assetsFolder);
-                            foreach (var profile in importedProfiles)
+                            var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == sensorDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
                             {
-                                ConfigModel.Instance.AddProfile(profile);
-                                var srcProfileXml = Path.Combine(extractPath, "profiles", profile.Guid + ".xml");
-                                if (File.Exists(srcProfileXml))
-                                    File.Copy(srcProfileXml, Path.Combine(profilesFolder, profile.Guid + ".xml"), true);
-                                var srcAssets = Path.Combine(extractPath, "assets", profile.Guid.ToString());
-                                if (Directory.Exists(srcAssets))
-                                {
-                                    var dstAssets = Path.Combine(assetsFolder, profile.Guid.ToString());
-                                    if (!Directory.Exists(dstAssets)) Directory.CreateDirectory(dstAssets);
-                                    foreach (var file in Directory.GetFiles(srcAssets))
-                                        File.Copy(file, Path.Combine(dstAssets, Path.GetFileName(file)), true);
-                                }
+                                sensorDisplayItem.Id = hash.ParentID;
+                                sensorDisplayItem.Instance = hash.ParentInstance;
+                                sensorDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
                             }
-                            ConfigModel.Instance.SaveProfiles();
-                            SharedModel.Instance.SelectedProfile = importedProfiles.FirstOrDefault();
+                        }
+                    }
+                    else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                    {
+                        if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == chartDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                chartDisplayItem.Id = hash.ParentID;
+                                chartDisplayItem.Instance = hash.ParentInstance;
+                                chartDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
+                        }
+                    }
+                    else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                    {
+                        if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == gaugeDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                gaugeDisplayItem.Id = hash.ParentID;
+                                gaugeDisplayItem.Instance = hash.ParentInstance;
+                                gaugeDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
                         }
                     }
                 }
-                finally
+
+                SaveDisplayItems(profile, displayItems);
+
+                var assetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
+                if (!Directory.Exists(assetFolder))
+                    Directory.CreateDirectory(assetFolder);
+                foreach (var asset in assets)
                 {
-                    if (Directory.Exists(extractPath))
-                        Directory.Delete(extractPath, true);
+                    var assetPath = Path.Combine(assetFolder, asset.Name);
+                    asset.ExtractToFile(assetPath, overwrite: true);
                 }
+
+                ConfigModel.Instance.AddProfile(profile);
+                ConfigModel.Instance.SaveProfiles();
+                SelectedProfile = profile;
             }
             catch (Exception ex)
             {
@@ -859,7 +956,7 @@ namespace InfoPanel
         }
 
         /// <summary>
-        /// Export a profile to an .infopanel file in the specified folder.
+        /// Export a profile to an .infopanel file (1.4.x format: Profile.xml + DisplayItems.xml + assets).
         /// Returns the path to the exported file, or null on failure.
         /// </summary>
         public string? ExportProfile(Profile profile, string folderPath)
@@ -867,40 +964,48 @@ namespace InfoPanel
             if (profile == null || !Directory.Exists(folderPath)) return null;
             try
             {
-                var exportPath = Path.Combine(Path.GetTempPath(), "InfoPanelExport", Guid.NewGuid().ToString());
-                Directory.CreateDirectory(exportPath);
-                try
+                var exportFilePath = Path.Combine(folderPath, profile.Name.SanitizeFileName().Replace(" ", "_") + "-" + DateTimeOffset.Now.ToUnixTimeSeconds() + ".infopanel");
+                if (File.Exists(exportFilePath))
+                    File.Delete(exportFilePath);
+
+                using (var archive = ZipFile.Open(exportFilePath, ZipArchiveMode.Create))
                 {
-                    var profiles = new List<Profile> { profile };
-                    var profilesFile = Path.Combine(exportPath, "profiles.xml");
-                    var xs = new XmlSerializer(typeof(List<Profile>));
-                    var settings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true };
-                    using (var wr = XmlWriter.Create(profilesFile, settings))
-                        xs.Serialize(wr, profiles);
-                    var profilesSubdir = Path.Combine(exportPath, "profiles");
-                    Directory.CreateDirectory(profilesSubdir);
-                    var displayItems = GetProfileDisplayItemsCopy(profile);
-                    var diSerializer = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
-                    using (var wr = XmlWriter.Create(Path.Combine(profilesSubdir, profile.Guid + ".xml"), settings))
-                        diSerializer.Serialize(wr, displayItems.ToList());
-                    var appAssets = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
-                    if (Directory.Exists(appAssets))
+                    var exportProfile = new Profile(profile.Name, profile.Width, profile.Height)
                     {
-                        var exportAssets = Path.Combine(exportPath, "assets", profile.Guid.ToString());
-                        Directory.CreateDirectory(exportAssets);
-                        foreach (var file in Directory.GetFiles(appAssets))
-                            File.Copy(file, Path.Combine(exportAssets, Path.GetFileName(file)), true);
+                        ShowFps = profile.ShowFps,
+                        BackgroundColor = profile.BackgroundColor,
+                        Font = profile.Font,
+                        FontSize = profile.FontSize,
+                        Color = profile.Color,
+                        OpenGL = profile.OpenGL,
+                        FontScale = profile.FontScale,
+                    };
+
+                    var entry = archive.CreateEntry("Profile.xml");
+                    using (var stream = entry.Open())
+                    {
+                        var xs = new XmlSerializer(typeof(Profile));
+                        var settings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true };
+                        using var wr = XmlWriter.Create(stream, settings);
+                        xs.Serialize(wr, exportProfile);
                     }
-                    var outFile = Path.Combine(folderPath, $"{profile.Name}.infopanel".Replace(" ", "_"));
-                    if (File.Exists(outFile)) File.Delete(outFile);
-                    ZipFile.CreateFromDirectory(exportPath, outFile);
-                    return outFile;
+
+                    var profilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
+                    if (File.Exists(profilePath))
+                        archive.CreateEntryFromFile(profilePath, "DisplayItems.xml");
+
+                    var assetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
+                    if (Directory.Exists(assetFolder))
+                    {
+                        foreach (var file in Directory.GetFiles(assetFolder))
+                        {
+                            var entryName = Path.GetFileName(file);
+                            archive.CreateEntryFromFile(file, Path.Combine("assets", entryName));
+                        }
+                    }
                 }
-                                finally
-                {
-                    if (Directory.Exists(exportPath))
-                        Directory.Delete(exportPath, true);
-                }
+
+                return exportFilePath;
             }
             catch (Exception ex)
             {
@@ -909,16 +1014,5 @@ namespace InfoPanel
             }
         }
 
-        /// <summary>
-        /// Import from Aida64 SensorPanel or RemoteSensor LCD format.
-        /// </summary>
-        public static async Task ImportSensorPanel(string fileName)
-        {
-            await Task.Run(() =>
-            {
-                // TODO: Implement SensorPanel/RSLCD import - format parsing required
-                Logger.Warning("ImportSensorPanel not yet implemented for {FileName}", fileName);
-            });
-        }
     }
 }
