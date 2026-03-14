@@ -115,6 +115,10 @@ namespace InfoPanel.Views.Windows
 
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (e.OriginalSource is System.Windows.Controls.TextBox or
+                System.Windows.Controls.Primitives.TextBoxBase)
+                return;
+
             if (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
                 if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
@@ -304,28 +308,6 @@ namespace InfoPanel.Views.Windows
             }
 
             _hwndSource?.RemoveHook(WndProc);
-
-            var isDirty = InfoPanel.SharedModel.Instance.IsDirty;
-            if (isDirty)
-            {
-                var result = System.Windows.MessageBox.Show(
-                    "You have unsaved changes. Do you want to save before closing?",
-                    "Unsaved changes",
-                    System.Windows.MessageBoxButton.YesNoCancel,
-                    System.Windows.MessageBoxImage.Question,
-                    System.Windows.MessageBoxResult.Yes);
-
-                if (result == System.Windows.MessageBoxResult.Cancel)
-                {
-                    e.Cancel = true;
-                    return;
-                }
-                if (result == System.Windows.MessageBoxResult.Yes)
-                {
-                    InfoPanel.ConfigModel.Instance.SaveProfiles();
-                    InfoPanel.SharedModel.Instance.SaveDisplayItems();
-                }
-            }
 
             e.Cancel = true;
 

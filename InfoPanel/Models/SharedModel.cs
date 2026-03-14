@@ -847,7 +847,10 @@ namespace InfoPanel
                     return displayItems;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to load display items from {Path}", fullPathToXml);
+            }
             return [];
         }
 
