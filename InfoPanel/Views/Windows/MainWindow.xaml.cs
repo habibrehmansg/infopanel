@@ -114,6 +114,23 @@ namespace InfoPanel.Views.Windows
             }
         }
 
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                    SharedModel.Instance.Redo();
+                else
+                    SharedModel.Instance.Undo();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Y && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                SharedModel.Instance.Redo();
+                e.Handled = true;
+            }
+        }
+
         private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             if (WindowState != WindowState.Normal)

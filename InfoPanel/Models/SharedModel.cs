@@ -891,7 +891,7 @@ namespace InfoPanel
                 {
                     if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
                     {
-                        if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
+                        if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.HwInfoRemoteIndex, sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
                         {
                             var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == sensorDisplayItem.SensorName);
                             if (hash != null && hash.NameDefault != null)
@@ -905,7 +905,7 @@ namespace InfoPanel
                     }
                     else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
                     {
-                        if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
+                        if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.HwInfoRemoteIndex, chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
                         {
                             var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == chartDisplayItem.SensorName);
                             if (hash != null && hash.NameDefault != null)
@@ -919,7 +919,7 @@ namespace InfoPanel
                     }
                     else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
                     {
-                        if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
+                        if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.HwInfoRemoteIndex, gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
                         {
                             var hash = HWHash.GetOrderedList().Find(h => h.NameDefault == gaugeDisplayItem.SensorName);
                             if (hash != null && hash.NameDefault != null)
