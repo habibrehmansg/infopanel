@@ -47,6 +47,12 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _libreHardwareMonitor = true;
 
+        [ObservableProperty]
+        private bool _libreHardwareMonitorStorage = true;
+
+        [ObservableProperty]
+        private int _libreHardwareMonitorStorageInterval = 30;
+
         private readonly ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = [];
 
         public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices => _beadaPanelDevices;

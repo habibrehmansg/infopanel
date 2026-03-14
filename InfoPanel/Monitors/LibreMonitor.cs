@@ -1,4 +1,5 @@
 ﻿using LibreHardwareMonitor.Hardware;
+using LibreHardwareMonitor.Hardware.Storage;
 using Serilog;
 using System;
 using System.Collections.Concurrent;
@@ -44,6 +45,9 @@ namespace InfoPanel.Monitors
                 var stopwatch = new Stopwatch();
                 stopwatch.Start();
 
+                StorageDevice.ThrottleInterval = TimeSpan.FromSeconds(
+                    ConfigModel.Instance.Settings.LibreHardwareMonitorStorageInterval);
+
                 Computer computer = new()
                 {
                     IsCpuEnabled = true,
@@ -52,7 +56,7 @@ namespace InfoPanel.Monitors
                     IsMotherboardEnabled = true,
                     IsControllerEnabled = true,
                     IsNetworkEnabled = true,
-                    IsStorageEnabled = true,
+                    IsStorageEnabled = ConfigModel.Instance.Settings.LibreHardwareMonitorStorage,
                 };
 
                 computer.Open();

@@ -1,14 +1,17 @@
+using AsyncKeyedLock;
 using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
+using InfoPanel.Services;
+using InfoPanel.TuringPanel;
 using Microsoft.Win32;
 using Microsoft.Win32.TaskScheduler;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using Serilog;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -19,9 +22,6 @@ using System.Xml;
 using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
 using Timer = System.Threading.Timer;
-using InfoPanel.Services;
-using InfoPanel.TuringPanel;
-using HidSharp;
 
 namespace InfoPanel
 {
@@ -49,7 +49,7 @@ namespace InfoPanel
 
         // Debouncing and async save fields
         private Timer? _saveDebounceTimer;
-        private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
+        private readonly AsyncNonKeyedLocker _saveLock = new(1);
         private const int SaveDebounceDelayMs = 500;
 
         private DispatcherTimer? _autosaveIdleTimer;
@@ -263,6 +263,15 @@ namespace InfoPanel
                     await LibreMonitor.Instance.StartAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.LibreHardwareMonitorStorage)
+                  || e.PropertyName == nameof(Settings.LibreHardwareMonitorStorageInterval))
+            {
+                if (Settings.LibreHardwareMonitor)
+                {
+                    await LibreMonitor.Instance.StopAsync();
+                    await LibreMonitor.Instance.StartAsync();
+                }
+            }
             else if (e.PropertyName == nameof(Settings.TuringPanelMultiDeviceMode))
             {
                 if (Settings.TuringPanelMultiDeviceMode)
@@ -345,7 +354,7 @@ namespace InfoPanel
 
         private async Task SaveSettingsInternalAsync()
         {
-            await _saveSemaphore.WaitAsync();
+            using var _ = await _saveLock.LockAsync();
             try
             {
                 Logger.Debug("Saving settings...");
@@ -404,10 +413,6 @@ namespace InfoPanel
                     }
                 }
                 throw;
-            }
-            finally
-            {
-                _saveSemaphore.Release();
             }
         }
 
@@ -468,6 +473,8 @@ namespace InfoPanel
                             Settings.GridLinesSpacing = settings.GridLinesSpacing;
 
                             Settings.LibreHardwareMonitor = settings.LibreHardwareMonitor;
+                            Settings.LibreHardwareMonitorStorage = settings.LibreHardwareMonitorStorage;
+                            Settings.LibreHardwareMonitorStorageInterval = settings.LibreHardwareMonitorStorageInterval;
                             Settings.WebServer = settings.WebServer;
                             Settings.WebServerListenIp = settings.WebServerListenIp;
                             Settings.WebServerListenPort = settings.WebServerListenPort;
@@ -844,7 +851,7 @@ namespace InfoPanel
             }
 
             // Dispose the semaphore
-            _saveSemaphore?.Dispose();
+            _saveLock?.Dispose();
         }
     }
 }
