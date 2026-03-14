@@ -26,12 +26,15 @@ namespace InfoPanel.Views.Components
         private static readonly ILogger Logger = Log.ForContext<DisplayItems>();
         private static DisplayItem? SelectedItem { get { return SharedModel.Instance.SelectedItem; } }
 
+        private readonly IContentDialogService _contentDialogService;
         private CollectionViewSource? _displayItemsViewSource;
         private string _searchText = string.Empty;
         private static readonly HashSet<Guid> _autosavePromptedProfiles = [];
 
         public DisplayItems()
         {
+            _contentDialogService = App.GetService<IContentDialogService>()
+                ?? throw new InvalidOperationException("ContentDialogService is not registered.");
             DataContext = this;
             InitializeComponent();
             Loaded += DisplayItems_Loaded;
@@ -112,7 +115,7 @@ namespace InfoPanel.Views.Components
 
         private void CheckAutosaveBackup()
         {
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, async () =>
             {
                 if (SharedModel.Instance.SelectedProfile is not Profile profile)
                     return;
@@ -132,14 +135,22 @@ namespace InfoPanel.Views.Components
 
                 _autosavePromptedProfiles.Add(profile.Guid);
 
-                var result = System.Windows.MessageBox.Show(
-                    $"An autosave backup was found for \"{profile.Name}\". Restore unsaved changes?",
-                    "Restore autosave",
-                    System.Windows.MessageBoxButton.YesNo,
-                    System.Windows.MessageBoxImage.Question,
-                    System.Windows.MessageBoxResult.Yes);
+                var dialog = new ContentDialog
+                {
+                    Title = "Restore Unsaved Changes",
+                    Content = new System.Windows.Controls.TextBlock
+                    {
+                        Text = $"A backup of unsaved changes was found for \"{profile.Name}\". Would you like to restore them?",
+                        TextWrapping = TextWrapping.Wrap,
+                        MaxWidth = 300
+                    },
+                    PrimaryButtonText = "Restore",
+                    CloseButtonText = "Discard"
+                };
 
-                if (result == System.Windows.MessageBoxResult.Yes)
+                var result = await _contentDialogService.ShowAsync(dialog, CancellationToken.None);
+
+                if (result == ContentDialogResult.Primary)
                 {
                     ConfigModel.Instance.RestoreProfileFromAutosave(profile);
                 }
