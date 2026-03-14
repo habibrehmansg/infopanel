@@ -17,6 +17,7 @@ namespace InfoPanel.Plugins.Host
         private readonly SensorSnapshotManager _snapshotManager = new();
         private CancellationTokenSource? _updateCts;
         private Task? _updateTask;
+        private Task? _perfUpdateTask;
 
         // CPU metrics
         private Process? _currentProcess;
@@ -128,6 +129,7 @@ namespace InfoPanel.Plugins.Host
             // Start update loops
             _updateCts = new CancellationTokenSource();
             _updateTask = Task.Run(() => UpdateLoopAsync(_updateCts.Token));
+            _perfUpdateTask = Task.Run(() => PerformanceLoopAsync(_updateCts.Token));
 
             return metadataList;
         }
@@ -285,6 +287,10 @@ namespace InfoPanel.Plugins.Host
                 {
                     try { await _updateTask; } catch (OperationCanceledException) { }
                 }
+                if (_perfUpdateTask != null)
+                {
+                    try { await _perfUpdateTask; } catch (OperationCanceledException) { }
+                }
                 _updateCts.Dispose();
             }
 
@@ -309,6 +315,8 @@ namespace InfoPanel.Plugins.Host
         {
             await Task.Delay(300, token);
 
+            var batches = new List<SensorUpdateBatchDto>();
+
             while (!token.IsCancellationRequested)
             {
                 try
@@ -330,10 +338,7 @@ namespace InfoPanel.Plugins.Host
                     }
 
                     // Snapshot and push changed values
-                    var batches = new List<SensorUpdateBatchDto>();
-                    var performances = new List<PluginPerformanceDto>();
-
-                    var cpuPercent = GetCpuPercent();
+                    batches.Clear();
 
                     foreach (var wrapper in _wrappers)
                     {
@@ -348,6 +353,38 @@ namespace InfoPanel.Plugins.Host
                                 Updates = updates
                             });
                         }
+                    }
+
+                    if (batches.Count > 0)
+                    {
+                        NotifySensorUpdate(batches);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Logger.Error(ex, "Error in update loop");
+                }
+
+                await Task.Delay(100, token);
+            }
+        }
+
+        private async Task PerformanceLoopAsync(CancellationToken token)
+        {
+            await Task.Delay(2000, token);
+
+            var performances = new List<PluginPerformanceDto>();
+
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    var cpuPercent = GetCpuPercent();
+                    performances.Clear();
+
+                    foreach (var wrapper in _wrappers)
+                    {
+                        if (!wrapper.IsLoaded) continue;
 
                         performances.Add(new PluginPerformanceDto
                         {
@@ -357,11 +394,6 @@ namespace InfoPanel.Plugins.Host
                         });
                     }
 
-                    if (batches.Count > 0)
-                    {
-                        NotifySensorUpdate(batches);
-                    }
-
                     if (performances.Count > 0)
                     {
                         NotifyPerformanceUpdate(performances);
@@ -369,10 +401,10 @@ namespace InfoPanel.Plugins.Host
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    Logger.Error(ex, "Error in update loop");
+                    Logger.Error(ex, "Error in performance loop");
                 }
 
-                await Task.Delay(100, token);
+                await Task.Delay(2000, token);
             }
         }
 

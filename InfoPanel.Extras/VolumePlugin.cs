@@ -16,7 +16,7 @@ namespace InfoPanel.Extras
         {
         }
         public override string? ConfigFilePath => null;
-        public override TimeSpan UpdateInterval => TimeSpan.FromMilliseconds(50);
+        public override TimeSpan UpdateInterval => TimeSpan.FromMilliseconds(250);
 
         public override void Initialize()
         {

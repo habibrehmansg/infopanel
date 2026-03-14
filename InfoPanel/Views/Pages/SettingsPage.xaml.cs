@@ -1,4 +1,4 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
 using InfoPanel.Utils;

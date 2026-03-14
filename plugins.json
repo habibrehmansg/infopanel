@@ -1,0 +1,88 @@
+{
+  "plugins": [
+    {
+      "repo": "F3NN3X/InfoPanel.Media",
+      "name": "Media",
+      "description": "Universal media tracking — displays real-time playback data from Spotify, browsers, VLC, Windows Media Player, and more",
+      "category": "media"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.Spotify",
+      "name": "Spotify",
+      "description": "Display your currently playing Spotify track",
+      "category": "media"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.AudioMeter",
+      "name": "Audio Meter",
+      "description": "Real-time audio level metering and visualization",
+      "category": "media"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.FPS",
+      "name": "FPS",
+      "description": "FPS monitoring using PresentmonFPS",
+      "category": "monitoring"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.IPFPS",
+      "name": "IPFPS",
+      "description": "Intel Presentmon FPS monitoring",
+      "category": "monitoring"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.Presentmon",
+      "name": "Presentmon",
+      "description": "Performance monitoring using the Intel Presentmon API",
+      "category": "monitoring"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.RTSS",
+      "name": "RTSS",
+      "description": "FPS metrics via RivaTuner Statistics Server",
+      "category": "monitoring"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.SteamAPI",
+      "name": "Steam",
+      "description": "Monitor real-time gaming activity, session stats, friends, and library data from Steam",
+      "category": "monitoring"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.MetYr",
+      "name": "Met.no Weather",
+      "description": "Weather data from Norwegian Met/YR — no API key or signup required",
+      "category": "utilities"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.VBZ",
+      "name": "VBZ",
+      "description": "Real-time Swiss public transport departures and arrivals",
+      "category": "utilities"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.BTData",
+      "name": "Bluetooth Data",
+      "description": "Read and display data from Bluetooth devices",
+      "category": "utilities"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.StreamDeck",
+      "name": "Stream Deck",
+      "description": "Integration with Elgato Stream Deck",
+      "category": "utilities"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.PluginUpdateNotifier",
+      "name": "Plugin Update Notifier",
+      "description": "Get notified when installed plugins have updates available",
+      "category": "utilities"
+    },
+    {
+      "repo": "F3NN3X/InfoPanel.TextFile",
+      "name": "Text File",
+      "description": "Display content from text files as a data source",
+      "category": "utilities"
+    }
+  ]
+}

@@ -23,8 +23,13 @@
     </Page.Resources>
 
     <Grid Margin="20,20,20,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
         <StackPanel
+            Grid.Row="0"
             Margin="0,-60,20,0"
             HorizontalAlignment="Right"
             Panel.ZIndex="5"
@@ -52,6 +57,7 @@
 
         <ListView
             x:Name="ListViewProfiles"
+            Grid.Row="0"
             Margin="0,0,0,0"
             HorizontalAlignment="Center"
             Background="Transparent"
@@ -59,6 +65,7 @@
             ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
             SelectedItem="{Binding ViewModel.Profile}"
+            SelectionChanged="ListViewProfiles_SelectionChanged"
             SelectionMode="Single"
             VirtualizingPanel.ScrollUnit="Pixel">
             <ListView.ItemsPanel>
@@ -76,19 +83,22 @@
             </ListView.ItemContainerStyle>
         </ListView>
 
-        <!--  Bottom flyout overlay for profile detail  -->
+        <!--  Bottom flyout for profile detail  -->
         <Border
             x:Name="ProfileDetailOverlay"
+            Grid.Row="1"
             Height="320"
             HorizontalAlignment="Stretch"
-            VerticalAlignment="Bottom"
-            Panel.ZIndex="10"
             Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
             BorderThickness="0,1,0,0"
             CornerRadius="8,8,0,0"
-            TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-            Visibility="Collapsed">
+            TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible" />
+                </Style>
+            </Border.Style>
             <Border.Effect>
                 <DropShadowEffect
                     BlurRadius="20"

@@ -1,16 +1,20 @@
-﻿using GongSolutions.Wpf.DragDrop;
+using GongSolutions.Wpf.DragDrop;
 using InfoPanel.Models;
 using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Data;
 using Wpf.Ui.Controls;
+using Wpf.Ui;
 
 namespace InfoPanel.Views.Components
 {
@@ -22,11 +26,15 @@ namespace InfoPanel.Views.Components
         private static readonly ILogger Logger = Log.ForContext<DisplayItems>();
         private static DisplayItem? SelectedItem { get { return SharedModel.Instance.SelectedItem; } }
 
+        private readonly IContentDialogService _contentDialogService;
         private CollectionViewSource? _displayItemsViewSource;
         private string _searchText = string.Empty;
+        private static readonly HashSet<Guid> _autosavePromptedProfiles = [];
 
         public DisplayItems()
         {
+            _contentDialogService = App.GetService<IContentDialogService>()
+                ?? throw new InvalidOperationException("ContentDialogService is not registered.");
             DataContext = this;
             InitializeComponent();
             Loaded += DisplayItems_Loaded;
@@ -36,7 +44,9 @@ namespace InfoPanel.Views.Components
         private void DisplayItems_Loaded(object sender, RoutedEventArgs e)
         {
             SharedModel.Instance.PropertyChanged += Instance_PropertyChanged;
-            
+            UpdateSaveButtonState();
+            CheckAutosaveBackup();
+
             // Get the CollectionViewSource from resources
             _displayItemsViewSource = FindResource("DisplayItemsViewSource") as CollectionViewSource;
             if (_displayItemsViewSource != null)
@@ -79,7 +89,76 @@ namespace InfoPanel.Views.Components
             {
                 // Refresh the view when profile changes
                 _displayItemsViewSource?.View?.Refresh();
+                ConfigModel.Instance.ResetAutosaveState();
+                UpdateSaveButtonState();
+                CheckAutosaveBackup();
             }
+            else if (e.PropertyName == nameof(SharedModel.Instance.IsDirty))
+            {
+                UpdateSaveButtonState();
+            }
+        }
+
+        private void UpdateSaveButtonState()
+        {
+            if (SharedModel.Instance.IsDirty)
+            {
+                ButtonSave.Appearance = ControlAppearance.Caution;
+                ButtonSave.Content = "Save*";
+            }
+            else
+            {
+                ButtonSave.Appearance = ControlAppearance.Primary;
+                ButtonSave.Content = "Save";
+            }
+        }
+
+        private void CheckAutosaveBackup()
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, async () =>
+            {
+                if (SharedModel.Instance.SelectedProfile is not Profile profile)
+                    return;
+                if (_autosavePromptedProfiles.Contains(profile.Guid))
+                    return;
+                // If the profile already has unsaved edits in memory, those are the
+                // autosaved content — no need to prompt, the data is already live.
+                if (SharedModel.Instance.IsDirty)
+                {
+                    _autosavePromptedProfiles.Add(profile.Guid);
+                    return;
+                }
+
+                var backups = ConfigModel.Instance.GetProfilesWithAutosaveBackup();
+                if (!backups.Any(p => p.Guid == profile.Guid))
+                    return;
+
+                _autosavePromptedProfiles.Add(profile.Guid);
+
+                var dialog = new ContentDialog
+                {
+                    Title = "Restore Unsaved Changes",
+                    Content = new System.Windows.Controls.TextBlock
+                    {
+                        Text = $"A backup of unsaved changes was found for \"{profile.Name}\". Would you like to restore them?",
+                        TextWrapping = TextWrapping.Wrap,
+                        MaxWidth = 300
+                    },
+                    PrimaryButtonText = "Restore",
+                    CloseButtonText = "Discard"
+                };
+
+                var result = await _contentDialogService.ShowAsync(dialog, CancellationToken.None);
+
+                if (result == ContentDialogResult.Primary)
+                {
+                    ConfigModel.Instance.RestoreProfileFromAutosave(profile);
+                }
+                else
+                {
+                    ConfigModel.Instance.DiscardAutosaveBackup(profile);
+                }
+            });
         }
 
         private void DisplayItemsViewSource_Filter(object sender, FilterEventArgs e)
@@ -294,9 +373,24 @@ namespace InfoPanel.Views.Components
             }
         }
 
+        private void ButtonUndo_Click(object sender, RoutedEventArgs e)
+        {
+            SharedModel.Instance.Undo();
+            _displayItemsViewSource?.View?.Refresh();
+        }
+
+        private void ButtonRedo_Click(object sender, RoutedEventArgs e)
+        {
+            SharedModel.Instance.Redo();
+            _displayItemsViewSource?.View?.Refresh();
+        }
+
         private async void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
             await SharedModel.Instance.ReloadDisplayItems();
+            ConfigModel.Instance.ResetAutosaveState();
+            if (SharedModel.Instance.SelectedProfile is Profile profile)
+                ConfigModel.Instance.DiscardAutosaveBackup(profile);
             _displayItemsViewSource?.View?.Refresh();
         }
 
@@ -304,6 +398,8 @@ namespace InfoPanel.Views.Components
         {
             ConfigModel.Instance.SaveProfiles();
             SharedModel.Instance.SaveDisplayItems();
+            SharedModel.Instance.ClearDirty();
+            ConfigModel.Instance.NotifyUserSaved();
         }
 
         private void ButtonNewText_Click(object sender, RoutedEventArgs e)
@@ -710,7 +806,7 @@ namespace InfoPanel.Views.Components
                     return;
                 }
 
-                // Get parent groups
+                // Get parent groups and validate before pushing undo
                 var sourceParent = SharedModel.Instance.GetParent(sourceItem);
                 var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
 
@@ -720,7 +816,15 @@ namespace InfoPanel.Views.Components
                     // Allow reordering within the same locked group
                     if (targetParentGroup == sourceGroup)
                     {
+                        if (SharedModel.Instance.SelectedProfile is Profile p)
+                        {
+                            var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(p);
+                            if (copy.Count > 0)
+                                InfoPanel.Services.UndoManager.Instance.PushUndo(p, copy.ToList());
+                        }
                         dropHandler.Drop(dropInfo);
+                        SharedModel.Instance.UpdateLastStateSnapshot();
+                        SharedModel.Instance.MarkDirty();
                         return;
                     }
 
@@ -757,24 +861,36 @@ namespace InfoPanel.Views.Components
                 else
                 {
                     // We're dragging a regular item (not a group)
-                    // Special handling for dropping into empty groups
+                    // Special handling for dropping into groups: move directly to avoid duplicate undo from RemoveDisplayItem
                     if (targetItem is GroupDisplayItem groupItem)
                     {
-                        // Check if the group is locked
                         if (groupItem.IsLocked)
-                        {
                             return;
-                        }
 
-                        // Move the item into the group
-                        SharedModel.Instance.RemoveDisplayItem(sourceItem);
+                        if (SharedModel.Instance.SelectedProfile is Profile profile)
+                        {
+                            var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile);
+                            if (copy.Count > 0)
+                                InfoPanel.Services.UndoManager.Instance.PushUndo(profile, copy.ToList());
+                        }
+                        SharedModel.Instance.GetParentCollection(sourceItem)?.Remove(sourceItem);
                         groupItem.DisplayItems.Add(sourceItem);
+                        SharedModel.Instance.UpdateLastStateSnapshot();
+                        SharedModel.Instance.MarkDirty();
                         return;
                     }
                 }
 
-                // Use the default drop handler for all other cases
+                // Push undo after validation, then perform drop
+                if (SharedModel.Instance.SelectedProfile is Profile profile2)
+                {
+                    var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile2);
+                    if (copy.Count > 0)
+                        InfoPanel.Services.UndoManager.Instance.PushUndo(profile2, copy.ToList());
+                }
                 dropHandler.Drop(dropInfo);
+                SharedModel.Instance.UpdateLastStateSnapshot();
+                SharedModel.Instance.MarkDirty();
             }
         }
     }
