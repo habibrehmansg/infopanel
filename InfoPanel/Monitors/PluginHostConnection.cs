@@ -42,6 +42,7 @@ namespace InfoPanel.Monitors
         private readonly ConcurrentDictionary<string, Dictionary<string, IPluginData>> _proxyEntries = new();
         private readonly ConcurrentDictionary<string, long> _performanceData = new();
         private volatile PerformanceCounter? _privateWorkingSetCounter;
+        private volatile ProcessMetrics? _cachedMetrics;
         private double _pushedCpuPercent;
 
         private readonly TaskCompletionSource _pluginsLoadedTcs = new();
@@ -222,23 +223,32 @@ namespace InfoPanel.Monitors
             return [];
         }
 
-        public ProcessMetrics? ProcessMetrics
-        {
-            get
-            {
-                var counter = _privateWorkingSetCounter;
-                if (counter == null) return null;
+        public bool HasMetricsCounter => _privateWorkingSetCounter != null;
 
-                try
-                {
-                    return new ProcessMetrics(_pushedCpuPercent, counter.RawValue);
-                }
-                catch
-                {
-                    _privateWorkingSetCounter = null;
-                    counter.Dispose();
-                    return null;
-                }
+        public ProcessMetrics? ProcessMetrics => _cachedMetrics;
+
+        /// <summary>
+        /// Reads the performance counter and caches the result.
+        /// Called periodically from the metrics background loop.
+        /// </summary>
+        internal void UpdateCachedMetrics()
+        {
+            var counter = _privateWorkingSetCounter;
+            if (counter == null)
+            {
+                _cachedMetrics = null;
+                return;
+            }
+
+            try
+            {
+                _cachedMetrics = new ProcessMetrics(_pushedCpuPercent, counter.RawValue);
+            }
+            catch
+            {
+                _privateWorkingSetCounter = null;
+                _cachedMetrics = null;
+                counter.Dispose();
             }
         }
 
@@ -334,9 +344,12 @@ namespace InfoPanel.Monitors
                             text.Value = update.TextValue;
                             break;
                         case "table" when entry is ProxyPluginTable table && update.TableValue != null:
-                            var oldTable = table.Value;
-                            table.Value = RebuildDataTable(update.TableValue);
-                            oldTable?.Dispose();
+                            if (!TryUpdateTableInPlace(table.Value, update.TableValue))
+                            {
+                                var oldTable = table.Value;
+                                table.Value = RebuildDataTable(update.TableValue);
+                                oldTable?.Dispose();
+                            }
                             break;
                     }
                 }
@@ -393,6 +406,47 @@ namespace InfoPanel.Monitors
                 table.Value = RebuildDataTable(dto.TableValue);
             }
             return table;
+        }
+
+        private static bool TryUpdateTableInPlace(DataTable existing, TableValueDto tableDto)
+        {
+            if (existing == null
+                || existing.Columns.Count != tableDto.Columns.Count
+                || existing.Rows.Count != tableDto.Rows.Count)
+            {
+                return false;
+            }
+
+            for (int r = 0; r < tableDto.Rows.Count; r++)
+            {
+                var rowCells = tableDto.Rows[r];
+                var row = existing.Rows[r];
+
+                for (int c = 0; c < rowCells.Count && c < existing.Columns.Count; c++)
+                {
+                    var cell = rowCells[c];
+                    var current = row[c];
+
+                    if (cell.Type == "sensor" && cell.SensorValue != null && current is ProxyPluginSensor sensor)
+                    {
+                        sensor.Value = cell.SensorValue.Value;
+                        sensor.ValueMin = cell.SensorValue.ValueMin;
+                        sensor.ValueMax = cell.SensorValue.ValueMax;
+                        sensor.ValueAvg = cell.SensorValue.ValueAvg;
+                    }
+                    else if (cell.Type == "text" && current is ProxyPluginText text)
+                    {
+                        text.Value = cell.TextValue ?? "";
+                    }
+                    else
+                    {
+                        // Type mismatch — fall back to full rebuild
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         private static DataTable RebuildDataTable(TableValueDto tableDto)

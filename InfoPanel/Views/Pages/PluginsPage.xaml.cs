@@ -19,6 +19,9 @@ namespace InfoPanel.Views.Pages
             DataContext = viewModel;
 
             InitializeComponent();
+
+            Loaded += (_, _) => ViewModel.Start();
+            Unloaded += (_, _) => ViewModel.Stop();
         }
     }
 }

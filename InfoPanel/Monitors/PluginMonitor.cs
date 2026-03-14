@@ -127,9 +127,8 @@ namespace InfoPanel.Monitors
                 stopwatch.Stop();
                 Logger.Information("Plugins loaded in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
 
-                ProcessManager.StartMetricsLoop();
-
                 // No polling loop needed - host processes handle their own update scheduling
+                // Metrics loop is started on-demand when the plugins page is visible.
                 // Just keep alive until cancellation
                 while (!token.IsCancellationRequested)
                 {

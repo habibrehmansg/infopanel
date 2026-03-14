@@ -38,8 +38,34 @@ namespace InfoPanel.Models
 
         private readonly TypedMemoryCache<SKImageFrameSlot[]> SKGLImageMemoryCache = new();
 
-        public int Width { get; private set; } = 0;
-        public int Height { get; private set; } = 0;
+        private int _width;
+        private int _height;
+
+        public int Width
+        {
+            get
+            {
+                if (_width == 0 && _backgroundVideoPlayer != null)
+                {
+                    _width = _backgroundVideoPlayer.Video.Width;
+                }
+                return _width;
+            }
+            private set => _width = value;
+        }
+
+        public int Height
+        {
+            get
+            {
+                if (_height == 0 && _backgroundVideoPlayer != null)
+                {
+                    _height = _backgroundVideoPlayer.Video.Height;
+                }
+                return _height;
+            }
+            private set => _height = value;
+        }
 
         public readonly ImageType Type;
 
@@ -61,19 +87,19 @@ namespace InfoPanel.Models
         {
             get
             {
-                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Audio != null)
                 {
-                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Player.VolumeMax;
+                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Audio.VolumeMax;
                 }
                 return 0f;
             }
             set
             {
-                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Audio != null)
                 {
                     // Clamp value between 0 and 1
                     value = Math.Clamp(value, 0f, 1f);
-                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Player.VolumeMax);
+                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Audio.VolumeMax);
                 }
             }
         }
@@ -137,6 +163,7 @@ namespace InfoPanel.Models
 
                         // Inform the lib to refresh stats
                         _config.Player.Stats = true;
+                        _config.Player.UICurTime = UIRefreshType.PerFrame; // Refresh CurTime on every frame for progress bar
 
                         _backgroundVideoPlayer = new(_config)
                         {
@@ -597,7 +624,7 @@ namespace InfoPanel.Models
                 {
                     if (_backgroundVideoPlayer != null)
                     {
-                        using var bitmap = _backgroundVideoPlayer.renderer.GetBitmap(targetWidth, targetHeight);
+                        using var bitmap = _backgroundVideoPlayer.Renderer.TakeSnapshot((uint)targetWidth, (uint)targetHeight);
                         if (bitmap != null)
                         {
                             using var image = ConvertToSKImage(bitmap);

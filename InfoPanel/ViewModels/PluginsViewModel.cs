@@ -42,9 +42,21 @@ namespace InfoPanel.ViewModels
                 Interval = TimeSpan.FromSeconds(1)
             };
             _timer.Tick += OnTimerTick;
-            _timer.Start();
 
             BuildPluginModels();
+        }
+
+        public void Start()
+        {
+            PluginMonitor.Instance.ProcessManager.StartMetricsLoop();
+            BuildPluginModels();
+            _timer.Start();
+        }
+
+        public void Stop()
+        {
+            _timer.Stop();
+            _ = PluginMonitor.Instance.ProcessManager.StopMetricsLoopAsync();
         }
 
         private void OnTimerTick(object? sender, EventArgs e)

@@ -248,6 +248,7 @@ namespace InfoPanel
         protected override void OnExit(ExitEventArgs e)
         {
             Logger.Information("Application exiting");
+            ConfigModel.Instance.Cleanup();
             Log.CloseAndFlush();
             base.OnExit(e);
         }
@@ -371,7 +372,7 @@ namespace InfoPanel
                 SharedModel.Instance.SaveDisplayItems();
             }
 
-            HWHash.SetDelay(300);
+            HWHash.SetDelay(500);
             HWHash.Launch();
 
             // Check PawniO status before starting LibreHardwareMonitor
