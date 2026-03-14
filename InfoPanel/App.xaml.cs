@@ -1,4 +1,4 @@
-﻿using FlyleafLib;
+using FlyleafLib;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;

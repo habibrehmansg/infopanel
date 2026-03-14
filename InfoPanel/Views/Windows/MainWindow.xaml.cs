@@ -1,9 +1,14 @@
-﻿using System;
+using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
+using InfoPanel.Models;
 using InfoPanel.Utils;
 using Serilog;
 using Wpf.Ui;
@@ -35,6 +40,7 @@ namespace InfoPanel.Views.Windows
         private uint _taskbarCreatedMessageId;
         private HwndSource? _hwndSource;
         private bool _isExiting;
+        private readonly IContentDialogService _contentDialogService;
 
         public MainWindow(INavigationService navigationService, INavigationViewPageProvider pageProvider, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
@@ -42,6 +48,7 @@ namespace InfoPanel.Views.Windows
             //ViewModel = viewModel;
             DataContext = this;
 
+            _contentDialogService = contentDialogService;
             // Attach the taskbar service
             _taskBarService = taskBarService;
 
@@ -80,7 +87,14 @@ namespace InfoPanel.Views.Windows
 
             Loaded += MainWindow_Loaded;
             StateChanged += MainWindow_StateChanged;
+            PreviewKeyDown += MainWindow_PreviewKeyDown;
             SizeChanged += MainWindow_SizeChanged;
+            var screenHeight = SystemParameters.PrimaryScreenHeight;
+            var desiredHeight = screenHeight * 0.80;
+            if (desiredHeight > MinHeight)
+            {
+                Height = desiredHeight;
+            }
         }
 
         private void MainWindow_StateChanged(object? sender, EventArgs e)
@@ -96,6 +110,34 @@ namespace InfoPanel.Views.Windows
 
                 // Trim working set — releases physical pages the OS can reclaim
                 SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1));
+            }
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.OriginalSource is System.Windows.Controls.TextBox or
+                System.Windows.Controls.Primitives.TextBoxBase)
+                return;
+
+            if (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    if (SharedModel.Instance.CanRedo)
+                        SharedModel.Instance.Redo();
+                }
+                else
+                {
+                    if (SharedModel.Instance.CanUndo)
+                        SharedModel.Instance.Undo();
+                }
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Y && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if (SharedModel.Instance.CanRedo)
+                    SharedModel.Instance.Redo();
+                e.Handled = true;
             }
         }
 
@@ -268,7 +310,6 @@ namespace InfoPanel.Views.Windows
             _hwndSource?.RemoveHook(WndProc);
 
             e.Cancel = true;
-            //perform shutdown operations here
 
             if (WindowState != WindowState.Minimized)
             {

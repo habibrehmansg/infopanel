@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.ViewModels;
 using System;
 using System.Collections.ObjectModel;
@@ -61,20 +61,14 @@ namespace InfoPanel.Models
 
         private readonly ObservableCollection<BeadaPanelDevice> _beadaPanelDevices = [];
 
-        public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices
-        {
-            get { return _beadaPanelDevices; }
-        }
+        public ObservableCollection<BeadaPanelDevice> BeadaPanelDevices => _beadaPanelDevices;
 
         [ObservableProperty]
         private bool _beadaPanelMultiDeviceMode = false;
 
         private readonly ObservableCollection<TuringPanelDevice> _turingPanelDevices = [];
 
-        public ObservableCollection<TuringPanelDevice> TuringPanelDevices
-        {
-            get { return _turingPanelDevices; }
-        }
+        public ObservableCollection<TuringPanelDevice> TuringPanelDevices => _turingPanelDevices;
 
         [ObservableProperty]
         private bool _turingPanelMultiDeviceMode = false;
@@ -100,6 +94,13 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _version = 114;
 
+        [ObservableProperty]
+        private bool _autosaveEnabled = false;
+
+        /// <summary>Seconds of no changes before autosave runs. User still saves manually for the main save.</summary>
+        [ObservableProperty]
+        private int _autosaveIdleSeconds = 3;
+
         public Settings()
         {
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
@@ -108,61 +109,44 @@ namespace InfoPanel.Models
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            if(e.OldItems != null)
+            if (e.OldItems != null)
             {
-                foreach(BeadaPanelDevice device in e.OldItems)
-                {
+                foreach (BeadaPanelDevice device in e.OldItems)
                     device.PropertyChanged -= Device_PropertyChanged;
-                }
             }
-
-            if(e.NewItems != null)
+            if (e.NewItems != null)
             {
-                foreach(BeadaPanelDevice device in e.NewItems)
-                {
-                    device.PropertyChanged += Device_PropertyChanged; ;
-                }
+                foreach (BeadaPanelDevice device in e.NewItems)
+                    device.PropertyChanged += Device_PropertyChanged;
             }
-
             OnPropertyChanged(nameof(BeadaPanelDevices));
         }
 
         private void TuringPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            if(e.OldItems != null)
+            if (e.OldItems != null)
             {
-                foreach(TuringPanelDevice device in e.OldItems)
-                {
+                foreach (TuringPanelDevice device in e.OldItems)
                     device.PropertyChanged -= TuringDevice_PropertyChanged;
-                }
             }
-
-            if(e.NewItems != null)
+            if (e.NewItems != null)
             {
-                foreach(TuringPanelDevice device in e.NewItems)
-                {
+                foreach (TuringPanelDevice device in e.NewItems)
                     device.PropertyChanged += TuringDevice_PropertyChanged;
-                }
             }
-
             OnPropertyChanged(nameof(TuringPanelDevices));
         }
 
         private void Device_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(BeadaPanelDevice.RuntimeProperties))
-            {
                 OnPropertyChanged(nameof(BeadaPanelDevices));
-            }
         }
 
         private void TuringDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(TuringPanelDevice.RuntimeProperties))
-            {
                 OnPropertyChanged(nameof(TuringPanelDevices));
-            }
         }
     }
-    
 }

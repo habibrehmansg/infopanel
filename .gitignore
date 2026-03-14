@@ -197,3 +197,6 @@ InnoSetup/Output/
 .vs
 /.claude
 /.serena
+
+# VS Code workspace files (personal)
+*.code-workspace
