@@ -87,19 +87,19 @@ namespace InfoPanel.Models
         {
             get
             {
-                if (_backgroundVideoPlayer?.Audio != null && _config?.Audio != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
                 {
-                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Audio.VolumeMax;
+                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Player.VolumeMax;
                 }
                 return 0f;
             }
             set
             {
-                if (_backgroundVideoPlayer?.Audio != null && _config?.Audio != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
                 {
                     // Clamp value between 0 and 1
                     value = Math.Clamp(value, 0f, 1f);
-                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Audio.VolumeMax);
+                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Player.VolumeMax);
                 }
             }
         }
@@ -156,14 +156,26 @@ namespace InfoPanel.Models
                         _config = new Config();
                         _config.Player.AutoPlay = true;
 
-                        if(ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
+                        bool isLocalStream = ImagePath.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase)
+                            || ImagePath.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase);
+                        bool isRtsp = ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
+                            || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase);
+
+                        if (isRtsp || isLocalStream)
                         {
-                            _config.Player.MaxLatency = TimeSpan.FromMilliseconds(100).Ticks; //100ms latency
+                            _config.Player.MaxLatency = 0;
+                            _config.Player.MinBufferDuration = 0;
+                        }
+
+                        if (isLocalStream)
+                        {
+                            _config.Demuxer.FormatOpt["fflags"] = "nobuffer";
+                            _config.Demuxer.FormatOpt["analyzeduration"] = "0";
+                            _config.Demuxer.FormatOpt["probesize"] = "32";
                         }
 
                         // Inform the lib to refresh stats
                         _config.Player.Stats = true;
-                        _config.Player.UICurTime = UIRefreshType.PerFrame; // Refresh CurTime on every frame for progress bar
 
                         _backgroundVideoPlayer = new(_config)
                         {
@@ -624,7 +636,7 @@ namespace InfoPanel.Models
                 {
                     if (_backgroundVideoPlayer != null)
                     {
-                        using var bitmap = _backgroundVideoPlayer.Renderer.TakeSnapshot((uint)targetWidth, (uint)targetHeight);
+                        using var bitmap = _backgroundVideoPlayer.renderer.GetBitmap(targetWidth, targetHeight);
                         if (bitmap != null)
                         {
                             using var image = ConvertToSKImage(bitmap);
