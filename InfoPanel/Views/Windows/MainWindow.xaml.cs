@@ -245,6 +245,10 @@ namespace InfoPanel.Views.Windows
                         RestoreWindow();
                         Navigate(typeof(Pages.UpdatesPage));
                         break;
+                    case "logs":
+                        RestoreWindow();
+                        Navigate(typeof(Pages.LogsPage));
+                        break;
                     case "about":
                         RestoreWindow();
                         Navigate(typeof(Pages.AboutPage));
