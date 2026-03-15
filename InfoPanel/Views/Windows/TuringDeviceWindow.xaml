@@ -24,8 +24,8 @@
             ShowMaximize="False" />
 
         <TabControl Grid.Row="1" Margin="10">
-            <!--  Video Management Tab  -->
-            <TabItem Header="Video Management">
+            <!--  Media Management Tab  -->
+            <TabItem Header="Media Management">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -107,8 +107,8 @@
                         <ui:Button
                             Margin="0,0,10,0"
                             Command="{Binding UploadVideoCommand}"
-                            Content="Upload Video"
-                            Icon="{ui:SymbolIcon VideoClip24}" />
+                            Content="Upload Media"
+                            Icon="{ui:SymbolIcon ArrowUpload24}" />
                         <TextBlock
                             Margin="10,0,0,0"
                             VerticalAlignment="Center"
@@ -129,7 +129,7 @@
                                 Margin="0,0,0,10"
                                 FontSize="14"
                                 FontWeight="Bold"
-                                Text="Video Files" />
+                                Text="Media Files" />
 
                             <DataGrid
                                 Grid.Row="1"
@@ -251,6 +251,29 @@
                                         FontStyle="Italic"
                                         Text="Note: When 'Video' is selected as startup mode, the currently playing video will be set as the auto-play video."
                                         TextWrapping="Wrap" />
+                                </StackPanel>
+                            </ui:Card>
+
+                            <!--  Storage  -->
+                            <ui:Card Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock
+                                        Margin="0,0,0,10"
+                                        FontSize="16"
+                                        FontWeight="Bold"
+                                        Text="Storage" />
+
+                                    <TextBlock
+                                        Margin="0,0,0,10"
+                                        FontSize="12"
+                                        TextWrapping="Wrap"
+                                        Text="Recalculate storage information by querying the device. Use this if storage data appears stale or incorrect." />
+
+                                    <ui:Button
+                                        Margin="0,0,0,0"
+                                        Command="{Binding RecalculateStorageCommand}"
+                                        Content="Recalculate Storage"
+                                        Icon="{ui:SymbolIcon DatabaseSearch20}" />
                                 </StackPanel>
                             </ui:Card>
 

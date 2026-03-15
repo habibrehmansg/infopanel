@@ -13,6 +13,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using Wpf.Ui;
 
 namespace InfoPanel.Views.Pages;
 
@@ -22,14 +23,16 @@ namespace InfoPanel.Views.Pages;
 public partial class UsbPanelsPage : Page
 {
     private static readonly ILogger Logger = Log.ForContext<UsbPanelsPage>();
+    private readonly ISnackbarService _snackbarService;
     public UsbPanelsViewModel ViewModel { get; }
 
     private static bool deviceInserted = false;
     private static bool deviceRemoved = false;
 
-    public UsbPanelsPage(UsbPanelsViewModel viewModel)
+    public UsbPanelsPage(UsbPanelsViewModel viewModel, ISnackbarService snackbarService)
     {
         ViewModel = viewModel;
+        _snackbarService = snackbarService;
         DataContext = this;
         InitializeComponent();
     }
@@ -144,7 +147,8 @@ public partial class UsbPanelsPage : Page
 
         await Task.WhenAll(serialDeviceTask, usbDeviceTask);
 
-        List<TuringPanelDevice> discoveredDevices = [.. usbDeviceTask.Result, .. serialDeviceTask.Result];
+        var serialResult = serialDeviceTask.Result;
+        List<TuringPanelDevice> discoveredDevices = [.. usbDeviceTask.Result, .. serialResult.Devices];
 
         foreach (var discoveredDevice in discoveredDevices)
         {
@@ -165,6 +169,17 @@ public partial class UsbPanelsPage : Page
                     Logger.Information("TuringPanel Discovery: Device with DeviceId '{DeviceId}' already exists", discoveredDevice.DeviceId);
                 }
             });
+        }
+
+        // Show snackbar warning for devices with wrong USB driver
+        foreach (var warning in serialResult.DriverWarnings)
+        {
+            _snackbarService.Show(
+                "Wrong USB Driver",
+                warning,
+                Wpf.Ui.Controls.ControlAppearance.Caution,
+                null,
+                TimeSpan.FromSeconds(10));
         }
     }
 
