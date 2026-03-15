@@ -64,7 +64,7 @@ namespace InfoPanel.Extras
         {
             if (_city != null)
             {
-                var container = new PluginContainer(_city.CityName);
+                var container = new PluginContainer(_city.Value.CityName);
                 container.Entries.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);
                 container.Entries.AddRange([_temp, _maxTemp, _minTemp, _pressure, _seaLevel, _groundLevel, _feelsLike, _humidity, _windSpeed, _windDeg, _windGust, _clouds, _rain, _snow]);
                 containers.Add(container);
@@ -108,13 +108,13 @@ namespace InfoPanel.Extras
 
             try
             {
-                var result = await _current.GetReadingsAsync(_city);
+                var result = await _current.GetReadingsAsync(_city.Value);
 
                 if (result != null)
                 {
                     _name.Value = result.CityName;
 
-                    if (result.Weather is { Count: > 0 })
+                    if (result.Weather is { Length: > 0 })
                     {
                         _weather.Value = result.Weather[0].Main;
                         _weatherDesc.Value = result.Weather[0].Description;
