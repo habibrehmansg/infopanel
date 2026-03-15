@@ -267,8 +267,17 @@ namespace InfoPanel.Models
                     targetIndex = Math.Clamp(targetIndex, 0, Images.Count - 1);
 
                     var now = DateTime.UtcNow;
-                    var deltaSeconds = _lastGaugeUpdate == DateTime.MinValue ? 0 : (now - _lastGaugeUpdate).TotalSeconds;
-                    _lastGaugeUpdate = now;
+                    double deltaSeconds;
+                    if (_lastGaugeUpdate == DateTime.MinValue)
+                    {
+                        deltaSeconds = _animationSpeed > 0 ? 1.0 / 60.0 : 0;
+                        _lastGaugeUpdate = now;
+                    }
+                    else
+                    {
+                        deltaSeconds = (now - _lastGaugeUpdate).TotalSeconds;
+                        _lastGaugeUpdate = now;
+                    }
 
                     if (_animationSpeed > 0 && deltaSeconds > 0)
                     {
@@ -334,8 +343,18 @@ namespace InfoPanel.Models
             targetIndex = Math.Clamp(targetIndex, 0, Images.Count - 1);
 
             var now = DateTime.UtcNow;
-            var deltaSeconds = _lastGaugeUpdate == DateTime.MinValue ? 0 : (now - _lastGaugeUpdate).TotalSeconds;
-            _lastGaugeUpdate = now;
+            // First evaluation: use a nominal delta (1/60s) so smoothing runs instead of snapping (log evidence: deltaSeconds=0 on first frame caused usedSmoothing=false).
+            double deltaSeconds;
+            if (_lastGaugeUpdate == DateTime.MinValue)
+            {
+                deltaSeconds = _animationSpeed > 0 ? 1.0 / 60.0 : 0;
+                _lastGaugeUpdate = now;
+            }
+            else
+            {
+                deltaSeconds = (now - _lastGaugeUpdate).TotalSeconds;
+                _lastGaugeUpdate = now;
+            }
 
             if (_animationSpeed > 0 && deltaSeconds > 0)
             {
