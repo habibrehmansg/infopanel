@@ -118,6 +118,11 @@ namespace InfoPanel.Models
 
         private readonly Stopwatch Stopwatch = new();
 
+        // Localhost HTTP image refresh
+        private Timer? _localhostRefreshTimer;
+        private readonly object _localhostLock = new();
+        private SKBitmap? _localhostBitmap;
+
         public bool Loaded { get; private set; } = false;
 
         public LockedImage(string imagePath, ImageDisplayItem? sourceImageDisplayItem)
@@ -308,6 +313,35 @@ namespace InfoPanel.Models
             }
         }
 
+        public void StartLocalhostRefresh(string url)
+        {
+            _localhostRefreshTimer = new Timer(_ =>
+            {
+                try
+                {
+                    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+                    using var response = client.Send(new HttpRequestMessage(HttpMethod.Get, url));
+                    if (response.IsSuccessStatusCode)
+                    {
+                        using var ms = new MemoryStream();
+                        response.Content.ReadAsStream().CopyTo(ms);
+                        ms.Position = 0;
+                        var newBitmap = SKBitmap.Decode(ms);
+                        if (newBitmap != null)
+                        {
+                            lock (_localhostLock)
+                            {
+                                var old = _localhostBitmap;
+                                _localhostBitmap = newBitmap;
+                                old?.Dispose();
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }, null, 0, 100);
+        }
+
         public void AddImageDisplayItem(ImageDisplayItem item)
         {
             if (imageDisplayItems.TryAdd(item.Guid, item))
@@ -384,6 +418,20 @@ namespace InfoPanel.Models
 
         private SKBitmap? GetSKBitmapFromSK(int frame)
         {
+            // Localhost refresh: return a copy of the latest decoded bitmap
+            if (_localhostBitmap != null)
+            {
+                lock (_localhostLock)
+                {
+                    if (_localhostBitmap != null)
+                    {
+                        Width = _localhostBitmap.Width;
+                        Height = _localhostBitmap.Height;
+                        return _localhostBitmap.Copy();
+                    }
+                }
+            }
+
             if (_stream != null && _codec != null)
             {
                 var info = _codec.Info;
@@ -653,6 +701,12 @@ namespace InfoPanel.Models
 
                 var shouldDispose = false;
 
+                // Localhost streams refresh constantly, always re-decode
+                if (_localhostBitmap != null)
+                {
+                    bitmapFrame.Invalidate();
+                }
+
                 if (bitmapFrame.Image == null)
                 {
                     using var bitmap = GetSKBitmapFromSK(frame);
@@ -739,6 +793,9 @@ namespace InfoPanel.Models
 
                     _backgroundVideoPlayer?.Stop();
                     _backgroundVideoPlayer?.Dispose();
+
+                    _localhostRefreshTimer?.Dispose();
+                    lock (_localhostLock) { _localhostBitmap?.Dispose(); _localhostBitmap = null; }
 
                     _codec?.Dispose();
                     _stream?.Dispose();

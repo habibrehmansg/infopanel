@@ -138,9 +138,21 @@ namespace InfoPanel
                 cacheOptions.SlidingExpiration = TimeSpan.FromSeconds(10);
             }
 
+            // Localhost HTTP images (e.g. plugin streams): start a background refresh timer
+            if (IsLocalhostUrl(path))
+            {
+                cachedImage.StartLocalhostRefresh(path);
+            }
+
             ImageCache.Set(path, cachedImage, cacheOptions);
 
             Logger.Debug("Image '{Path}' loaded successfully (Persistent: {Persistent})", path, imageDisplayItem?.PersistentCache ?? false);
+        }
+
+        private static bool IsLocalhostUrl(string path)
+        {
+            return path.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase);
         }
 
         public static void TouchImage(ImageDisplayItem imageDisplayItem)
