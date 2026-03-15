@@ -18,7 +18,7 @@ namespace InfoPanel.Plugins.Host
         private readonly List<PluginWrapper> _wrappers = [];
         private readonly SensorSnapshotManager _snapshotManager = new();
         private readonly List<PluginImageWriter> _imageWriters = [];
-    private readonly Dictionary<PluginImageWriter, (string PluginId, string ImageId)> _writerMappings = [];
+        private readonly Dictionary<PluginImageWriter, (string PluginId, string ImageId)> _writerMappings = [];
         private CancellationTokenSource? _updateCts;
         private Task? _updateTask;
         private Task? _perfUpdateTask;

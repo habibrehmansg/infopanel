@@ -33,6 +33,7 @@ namespace InfoPanel.Plugins.Graphics
         private int _writeIndex;
         private int _version;
         private readonly string _mmfBaseName;
+        private readonly object _sync = new();
 
         private const int HeaderSize = 16;
 
@@ -71,17 +72,20 @@ namespace InfoPanel.Plugins.Graphics
 
         public void Invalidate()
         {
-            unsafe
+            lock (_sync)
             {
-                // Atomically swap active index to the buffer we just wrote
-                Interlocked.Exchange(ref *(int*)_basePtr, _writeIndex);
-            }
+                unsafe
+                {
+                    // Atomically swap active index to the buffer we just wrote
+                    Interlocked.Exchange(ref *(int*)_basePtr, _writeIndex);
+                }
 
-            // Switch to the other buffer for the next frame
-            _writeIndex = 1 - _writeIndex;
-            var old = Bitmap;
-            Bitmap = CreateBitmapForBuffer(_writeIndex);
-            old?.Dispose();
+                // Switch to the other buffer for the next frame
+                _writeIndex = 1 - _writeIndex;
+                var old = Bitmap;
+                Bitmap = CreateBitmapForBuffer(_writeIndex);
+                old?.Dispose();
+            }
         }
 
         public void Resize(int newWidth, int newHeight)
@@ -90,41 +94,44 @@ namespace InfoPanel.Plugins.Graphics
             if (newWidth <= 0 || newHeight <= 0)
                 throw new ArgumentException("Width and height must be positive.");
 
-            // Dispose old resources
-            Bitmap?.Dispose();
-            unsafe
+            lock (_sync)
             {
-                if (_basePtr != null)
-                    _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                // Dispose old resources
+                Bitmap?.Dispose();
+                unsafe
+                {
+                    if (_basePtr != null)
+                        _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                }
+                _accessor.Dispose();
+                _mmf.Dispose();
+
+                // Create new MMF with versioned name
+                _version++;
+                MmfName = $"{_mmfBaseName}.v{_version}";
+                Width = newWidth;
+                Height = newHeight;
+                _pixelBufferSize = newWidth * newHeight * 4;
+                _writeIndex = 1;
+
+                var mmfSize = ComputeMmfSize(newWidth, newHeight);
+                _mmf = MemoryMappedFile.CreateOrOpen(MmfName, mmfSize);
+                _accessor = _mmf.CreateViewAccessor(0, mmfSize);
+
+                unsafe
+                {
+                    byte* ptr = null;
+                    _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+                    _basePtr = ptr;
+
+                    *(int*)(_basePtr + 0) = 0;
+                    *(int*)(_basePtr + 4) = newWidth;
+                    *(int*)(_basePtr + 8) = newHeight;
+                    *(int*)(_basePtr + 12) = 0;
+                }
+
+                Bitmap = CreateBitmapForBuffer(_writeIndex);
             }
-            _accessor.Dispose();
-            _mmf.Dispose();
-
-            // Create new MMF with versioned name
-            _version++;
-            MmfName = $"{_mmfBaseName}.v{_version}";
-            Width = newWidth;
-            Height = newHeight;
-            _pixelBufferSize = newWidth * newHeight * 4;
-            _writeIndex = 1;
-
-            var mmfSize = ComputeMmfSize(newWidth, newHeight);
-            _mmf = MemoryMappedFile.CreateOrOpen(MmfName, mmfSize);
-            _accessor = _mmf.CreateViewAccessor(0, mmfSize);
-
-            unsafe
-            {
-                byte* ptr = null;
-                _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
-                _basePtr = ptr;
-
-                *(int*)(_basePtr + 0) = 0;
-                *(int*)(_basePtr + 4) = newWidth;
-                *(int*)(_basePtr + 8) = newHeight;
-                *(int*)(_basePtr + 12) = 0;
-            }
-
-            Bitmap = CreateBitmapForBuffer(_writeIndex);
 
             Resized?.Invoke(this);
         }
@@ -145,16 +152,19 @@ namespace InfoPanel.Plugins.Graphics
 
         public void Dispose()
         {
-            Bitmap?.Dispose();
-            unsafe
+            lock (_sync)
             {
-                if (_basePtr != null)
+                Bitmap?.Dispose();
+                unsafe
                 {
-                    _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                    if (_basePtr != null)
+                    {
+                        _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                    }
                 }
+                _accessor.Dispose();
+                _mmf.Dispose();
             }
-            _accessor.Dispose();
-            _mmf.Dispose();
             GC.SuppressFinalize(this);
         }
 
