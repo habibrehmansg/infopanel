@@ -247,72 +247,9 @@ namespace InfoPanel.Models
         private double currentImageIndex = 0;
         private DateTime _lastGaugeUpdate = DateTime.MinValue;
 
-        public ImageDisplayItem? EvaluateImage()
-        {
-            ImageDisplayItem? result = null;
-            if (_images.Count == 1)
-            {
-                result = Images[0];
-            }
-
-            if (_images.Count > 1)
-            {
-                var sensorReading = GetValue();
-                if (sensorReading.HasValue)
-                {
-                    var step = 100.0 / (_images.Count - 1);
-                    var value = sensorReading.Value.ValueNow;
-                    value = ((value - _minValue) / (_maxValue - _minValue)) * 100;
-                    var targetIndex = (int)(value / step);
-                    targetIndex = Math.Clamp(targetIndex, 0, Images.Count - 1);
-
-                    var now = DateTime.UtcNow;
-                    double deltaSeconds;
-                    if (_lastGaugeUpdate == DateTime.MinValue)
-                    {
-                        deltaSeconds = _animationSpeed > 0 ? 1.0 / 60.0 : 0;
-                        _lastGaugeUpdate = now;
-                    }
-                    else
-                    {
-                        deltaSeconds = (now - _lastGaugeUpdate).TotalSeconds;
-                        _lastGaugeUpdate = now;
-                    }
-
-                    if (_animationSpeed > 0 && deltaSeconds > 0)
-                    {
-                        var maxStep = _animationSpeed * deltaSeconds;
-                        var diff = targetIndex - currentImageIndex;
-                        if (Math.Abs(diff) <= maxStep)
-                            currentImageIndex = targetIndex;
-                        else
-                            currentImageIndex += Math.Sign(diff) * maxStep;
-                        currentImageIndex = Math.Clamp(currentImageIndex, 0, Images.Count - 1);
-                    }
-                    else
-                    {
-                        currentImageIndex = targetIndex;
-                    }
-
-                    result = Images[(int)Math.Round(currentImageIndex)];
-                }
-                else
-                {
-                    result = Images[0];
-                }
-            }
-
-            if (result != null)
-            {
-                result.Scale = _scale;
-            }
-
-            return result;
-        }
-
         /// <summary>
         /// Returns frame A (floor), optional frame B (ceil), and blend factor for crossfade.
-        /// Call EvaluateImage() first or use this directly—it updates currentImageIndex internally via the same logic.
+        /// Updates currentImageIndex internally with smoothing logic.
         /// </summary>
         public void EvaluateImageFrame(out ImageDisplayItem? imageA, out ImageDisplayItem? imageB, out float blend)
         {
@@ -339,7 +276,7 @@ namespace InfoPanel.Models
             var step = 100.0 / (_images.Count - 1);
             var value = sensorReading.Value.ValueNow;
             value = ((value - _minValue) / (_maxValue - _minValue)) * 100;
-            var targetIndex = (int)(value / step);
+            var targetIndex = (int)Math.Round(value / step);
             targetIndex = Math.Clamp(targetIndex, 0, Images.Count - 1);
 
             var now = DateTime.UtcNow;
@@ -456,6 +393,8 @@ namespace InfoPanel.Models
         {
             var clone = (GaugeDisplayItem)MemberwiseClone();
             clone.Guid = Guid.NewGuid();
+            clone.currentImageIndex = 0;
+            clone._lastGaugeUpdate = DateTime.MinValue;
 
             clone.Images = new ObservableCollection<ImageDisplayItem>();
 
