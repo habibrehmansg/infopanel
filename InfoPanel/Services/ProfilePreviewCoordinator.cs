@@ -129,11 +129,9 @@ namespace InfoPanel.Services
                     Cache.TouchImage(imageDisplayItem);
                     break;
                 case GaugeDisplayItem gaugeDisplayItem:
-                    var img = gaugeDisplayItem.EvaluateImage();
-                    if (img != null)
-                    {
-                        Cache.TouchImage(img);
-                    }
+                    gaugeDisplayItem.EvaluateImageFrame(out var gaugeImgA, out var gaugeImgB, out _);
+                    if (gaugeImgA != null) Cache.TouchImage(gaugeImgA);
+                    if (gaugeImgB != null) Cache.TouchImage(gaugeImgB);
                     break;
             }
         }

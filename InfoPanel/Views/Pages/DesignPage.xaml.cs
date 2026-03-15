@@ -1,4 +1,3 @@
-﻿
 using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Models;
 using InfoPanel.ViewModels;
