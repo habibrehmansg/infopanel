@@ -235,6 +235,15 @@ namespace InfoPanel
                 return cachedImage;
             }
 
+            using var semLock = _locks.LockOrNull(cacheKey, 0);
+            if (semLock == null) return null; // Another thread is initializing
+
+            // Double-check after lock
+            if (ImageCache.TryGetValue(cacheKey, out cachedImage))
+            {
+                return cachedImage;
+            }
+
             var proxy = PluginMonitor.Instance.GetImageProxy(pluginId, imageId);
             if (proxy == null) return null;
 
@@ -271,7 +280,10 @@ namespace InfoPanel
             foreach (var imageId in imageIds)
             {
                 var cacheKey = $"plugin-image://{pluginId}/{imageId}";
-                ImageCache.Remove(cacheKey);
+                using (_locks.Lock(cacheKey))
+                {
+                    ImageCache.Remove(cacheKey);
+                }
                 Logger.Debug("Invalidated plugin image cache: {CacheKey}", cacheKey);
             }
         }

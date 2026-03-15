@@ -65,7 +65,9 @@ namespace InfoPanel.Plugins.Graphics
 
             // Switch to the other buffer for the next frame
             _writeIndex = 1 - _writeIndex;
+            var old = Bitmap;
             Bitmap = CreateBitmapForBuffer(_writeIndex);
+            old?.Dispose();
         }
 
         private SKBitmap CreateBitmapForBuffer(int bufferIndex)
@@ -84,6 +86,7 @@ namespace InfoPanel.Plugins.Graphics
 
         public void Dispose()
         {
+            Bitmap?.Dispose();
             unsafe
             {
                 if (_basePtr != null)

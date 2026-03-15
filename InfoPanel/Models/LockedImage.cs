@@ -650,13 +650,16 @@ namespace InfoPanel.Models
                 {
                     if (_pluginImage != null)
                     {
-                        using var bitmap = _pluginImage.GetCurrentFrame();
-                        if (bitmap != null)
+                        using var snapshot = _pluginImage.GetCurrentFrame();
+                        if (snapshot != null)
                         {
-                            using var resized = bitmap.Resize(new SKImageInfo(targetWidth, targetHeight), new SKSamplingOptions(SKCubicResampler.Mitchell));
-                            if (resized != null)
+                            var resizeInfo = new SKImageInfo(targetWidth, targetHeight);
+                            using var surface = SKSurface.Create(resizeInfo);
+                            if (surface != null)
                             {
-                                using var image = SKImage.FromBitmap(resized);
+                                surface.Canvas.DrawImage(snapshot, new SKRect(0, 0, targetWidth, targetHeight),
+                                    new SKSamplingOptions(SKCubicResampler.Mitchell));
+                                using var image = surface.Snapshot();
                                 access(image);
                             }
                         }

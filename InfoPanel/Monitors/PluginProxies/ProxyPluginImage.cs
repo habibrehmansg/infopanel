@@ -61,11 +61,10 @@ namespace InfoPanel.Monitors.PluginProxies
         }
 
         /// <summary>
-        /// Wraps the active buffer from shared memory as an SKBitmap (zero-copy).
-        /// The returned bitmap is only valid until the next Invalidate() call from the plugin.
-        /// Caller should use it immediately and NOT cache the reference.
+        /// Copies the active buffer from shared memory into a self-contained SKImage.
+        /// The returned image is safe to use and dispose independently of buffer swaps.
         /// </summary>
-        public SKBitmap? GetCurrentFrame()
+        public SKImage? GetCurrentFrame()
         {
             unsafe
             {
@@ -78,9 +77,7 @@ namespace InfoPanel.Monitors.PluginProxies
 
                 var offset = HeaderSize + (activeIndex * _pixelBufferSize);
                 var info = new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul);
-                var bitmap = new SKBitmap();
-                bitmap.InstallPixels(info, (IntPtr)(_basePtr + offset), info.RowBytes);
-                return bitmap;
+                return SKImage.FromPixelCopy(info, (IntPtr)(_basePtr + offset), info.RowBytes);
             }
         }
 

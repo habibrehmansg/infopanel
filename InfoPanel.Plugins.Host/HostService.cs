@@ -144,7 +144,7 @@ namespace InfoPanel.Plugins.Host
                     {
                         var imagesContainer = new ContainerDto
                         {
-                            Id = "images",
+                            Id = $"__images_{wrapper.Id}",
                             Name = "Images",
                             IsEphemeralPath = false,
                             Entries = metadata.ImageDescriptors.Select(img => new EntryDto
