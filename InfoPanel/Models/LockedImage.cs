@@ -1,6 +1,7 @@
 ﻿using FlyleafLib;
 using FlyleafLib.MediaPlayer;
 using InfoPanel.Extensions;
+using InfoPanel.Monitors.PluginProxies;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using SkiaSharp;
@@ -25,7 +26,7 @@ namespace InfoPanel.Models
         
         public enum ImageType
         {
-            SK, SVG, FFMPEG
+            SK, SVG, FFMPEG, PLUGIN
         }
 
         public readonly string ImagePath;
@@ -113,12 +114,28 @@ namespace InfoPanel.Models
         private readonly long[]? _cumulativeFrameTimes;
         private int _lastRenderedFrame = -1;
 
+        private readonly ProxyPluginImage? _pluginImage;
+
         private readonly object Lock = new();
         private bool IsDisposed = false;
 
         private readonly Stopwatch Stopwatch = new();
 
         public bool Loaded { get; private set; } = false;
+
+        /// <summary>
+        /// Creates a LockedImage backed by a plugin image proxy (shared memory).
+        /// </summary>
+        internal LockedImage(string imagePath, ProxyPluginImage pluginImage)
+        {
+            ImagePath = imagePath;
+            _pluginImage = pluginImage;
+            Type = ImageType.PLUGIN;
+            Width = pluginImage.Width;
+            Height = pluginImage.Height;
+            Frames = 1;
+            Loaded = true;
+        }
 
         public LockedImage(string imagePath, ImageDisplayItem? sourceImageDisplayItem)
         {
@@ -629,6 +646,28 @@ namespace InfoPanel.Models
 
             lock (Lock)
             {
+                if (Type == ImageType.PLUGIN)
+                {
+                    if (_pluginImage != null)
+                    {
+                        using var snapshot = _pluginImage.GetCurrentFrame();
+                        if (snapshot != null)
+                        {
+                            var resizeInfo = new SKImageInfo(targetWidth, targetHeight);
+                            using var surface = SKSurface.Create(resizeInfo);
+                            if (surface != null)
+                            {
+                                surface.Canvas.DrawImage(snapshot, new SKRect(0, 0, targetWidth, targetHeight),
+                                    new SKSamplingOptions(SKCubicResampler.Mitchell));
+                                using var image = surface.Snapshot();
+                                access(image);
+                            }
+                        }
+                    }
+
+                    return;
+                }
+
                 if (Type == ImageType.FFMPEG)
                 {
                     if (_backgroundVideoPlayer != null)

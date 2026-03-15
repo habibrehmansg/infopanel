@@ -200,6 +200,11 @@ namespace InfoPanel.Monitors
             return connection;
         }
 
+        public IEnumerable<PluginHostConnection> GetAllConnections()
+        {
+            return _connections.Values;
+        }
+
         public bool IsHostRunning(string filePath)
         {
             return _connections.TryGetValue(filePath, out var conn) && conn.IsProcessRunning && conn.IsConnected;

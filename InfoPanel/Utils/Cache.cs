@@ -1,10 +1,13 @@
 ﻿using AsyncKeyedLock;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
+using InfoPanel.Monitors;
+using InfoPanel.Monitors.PluginProxies;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using Serilog;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -35,6 +38,8 @@ namespace InfoPanel
             _ = ImageCache.Get("__dummy_key_for_expiration__");
         }
 
+        private const string PluginImageScheme = "plugin-image://";
+
         public static LockedImage? GetLocalImage(ImageDisplayItem imageDisplayItem, bool initialiseIfMissing = true)
         {
             LockedImage? result = null;
@@ -42,9 +47,18 @@ namespace InfoPanel
             {
                 var sensorReading = httpImageDisplayItem.GetValue();
 
-                if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText) && sensorReading.Value.ValueText.IsUrl())
+                if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText))
                 {
-                    result = GetLocalImage(sensorReading.Value.ValueText, initialiseIfMissing, imageDisplayItem);
+                    var valueText = sensorReading.Value.ValueText;
+
+                    if (valueText.StartsWith(PluginImageScheme, StringComparison.Ordinal))
+                    {
+                        result = GetPluginImageFromUri(valueText);
+                    }
+                    else if (valueText.IsUrl())
+                    {
+                        result = GetLocalImage(valueText, initialiseIfMissing, imageDisplayItem);
+                    }
                 }
             }
             else
@@ -58,6 +72,22 @@ namespace InfoPanel
             result?.AddImageDisplayItem(imageDisplayItem);
 
             return result;
+        }
+
+        /// <summary>
+        /// Parses a plugin-image://{pluginId}/{imageId} URI and returns the cached LockedImage.
+        /// </summary>
+        private static LockedImage? GetPluginImageFromUri(string uri)
+        {
+            // Parse "plugin-image://pluginId/imageId"
+            var path = uri[PluginImageScheme.Length..];
+            var slashIndex = path.IndexOf('/');
+            if (slashIndex < 0) return null;
+
+            var pluginId = path[..slashIndex];
+            var imageId = path[(slashIndex + 1)..];
+
+            return GetPluginImage(pluginId, imageId);
         }
 
         private static LockedImage? GetLocalImage(string path, bool initialiseIfMissing = true, ImageDisplayItem? imageDisplayItem = null)
@@ -148,9 +178,13 @@ namespace InfoPanel
             if (imageDisplayItem is HttpImageDisplayItem httpImageDisplayItem)
             {
                 var sensorReading = httpImageDisplayItem.GetValue();
-                if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText) && sensorReading.Value.ValueText.IsUrl())
+                if (sensorReading.HasValue && !string.IsNullOrEmpty(sensorReading.Value.ValueText))
                 {
-                    ImageCache.TryGetValue(sensorReading.Value.ValueText, out _);
+                    var valueText = sensorReading.Value.ValueText;
+                    if (valueText.StartsWith(PluginImageScheme, StringComparison.Ordinal) || valueText.IsUrl())
+                    {
+                        ImageCache.TryGetValue(valueText, out _);
+                    }
                 }
             }
             else if (!string.IsNullOrEmpty(imageDisplayItem.CalculatedPath))
@@ -184,6 +218,73 @@ namespace InfoPanel
                         Log.Error(e, "Failed to invalidate image from cache '{Path}'", path);
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Gets or creates a LockedImage backed by a plugin image proxy (shared memory).
+        /// Uses a persistent cache entry since the image is always live.
+        /// Cache key format: plugin-image://{pluginId}/{imageId}
+        /// </summary>
+        public static LockedImage? GetPluginImage(string pluginId, string imageId)
+        {
+            var cacheKey = $"plugin-image://{pluginId}/{imageId}";
+
+            if (ImageCache.TryGetValue(cacheKey, out LockedImage? cachedImage))
+            {
+                return cachedImage;
+            }
+
+            using var semLock = _locks.LockOrNull(cacheKey, 0);
+            if (semLock == null) return null; // Another thread is initializing
+
+            // Double-check after lock
+            if (ImageCache.TryGetValue(cacheKey, out cachedImage))
+            {
+                return cachedImage;
+            }
+
+            var proxy = PluginMonitor.Instance.GetImageProxy(pluginId, imageId);
+            if (proxy == null) return null;
+
+            var lockedImage = new LockedImage(cacheKey, proxy);
+
+            var cacheOptions = new MemoryCacheEntryOptions
+            {
+                PostEvictionCallbacks = {
+                    new PostEvictionCallbackRegistration
+                    {
+                        EvictionCallback = (key, value, reason, state) =>
+                        {
+                            Logger.Debug("Plugin image cache entry '{Key}' evicted due to {Reason}", key, reason);
+                            // Don't dispose — the ProxyPluginImage lifecycle is managed by PluginHostConnection
+                        }
+                    }
+                }
+            };
+            // No sliding expiration — persistent cache for plugin images
+
+            ImageCache.Set(cacheKey, lockedImage, cacheOptions);
+
+            Logger.Information("Plugin image cached: {CacheKey} ({W}x{H})", cacheKey, proxy.Width, proxy.Height);
+
+            return lockedImage;
+        }
+
+        /// <summary>
+        /// Invalidates plugin image cache entries for specific image IDs.
+        /// Called when a plugin host disconnects or is reloaded.
+        /// </summary>
+        public static void InvalidatePluginImages(string pluginId, IEnumerable<string> imageIds)
+        {
+            foreach (var imageId in imageIds)
+            {
+                var cacheKey = $"plugin-image://{pluginId}/{imageId}";
+                using (_locks.Lock(cacheKey))
+                {
+                    ImageCache.Remove(cacheKey);
+                }
+                Logger.Debug("Invalidated plugin image cache: {CacheKey}", cacheKey);
             }
         }
     }

@@ -1,3 +1,4 @@
+using InfoPanel.Monitors.PluginProxies;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
@@ -242,6 +243,34 @@ namespace InfoPanel.Monitors
         {
             List<PluginReading> OrderedList = [.. SENSORHASH.Values.OrderBy(x => x.IndexOrder)];
             return OrderedList;
+        }
+
+        /// <summary>
+        /// Gets a plugin image proxy by plugin ID and image ID.
+        /// Returns null if not found.
+        /// </summary>
+        public ProxyPluginImage? GetImageProxy(string pluginId, string imageId)
+        {
+            foreach (var conn in ProcessManager.GetAllConnections())
+            {
+                var images = conn.GetProxyImages(pluginId);
+                var match = images.FirstOrDefault(i => i.ImageId == imageId);
+                if (match != null) return match;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Gets all plugin image proxies across all connections.
+        /// </summary>
+        public List<ProxyPluginImage> GetAllImageProxies()
+        {
+            var result = new List<ProxyPluginImage>();
+            foreach (var conn in ProcessManager.GetAllConnections())
+            {
+                result.AddRange(conn.GetAllProxyImages());
+            }
+            return result;
         }
 
         public record struct PluginReading
