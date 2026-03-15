@@ -21,5 +21,11 @@ namespace InfoPanel.Plugins.Graphics
         /// After calling this, Bitmap points to the new inactive buffer for the next frame.
         /// </summary>
         void Invalidate();
+
+        /// <summary>
+        /// Resizes the image buffer. Creates a new shared memory region with the new dimensions.
+        /// After this call, Bitmap points to a new buffer with the specified size.
+        /// </summary>
+        void Resize(int width, int height);
     }
 }

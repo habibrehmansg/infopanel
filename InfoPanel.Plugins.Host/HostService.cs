@@ -18,6 +18,7 @@ namespace InfoPanel.Plugins.Host
         private readonly List<PluginWrapper> _wrappers = [];
         private readonly SensorSnapshotManager _snapshotManager = new();
         private readonly List<PluginImageWriter> _imageWriters = [];
+    private readonly Dictionary<PluginImageWriter, (string PluginId, string ImageId)> _writerMappings = [];
         private CancellationTokenSource? _updateCts;
         private Task? _updateTask;
         private Task? _perfUpdateTask;
@@ -102,8 +103,10 @@ namespace InfoPanel.Plugins.Host
 
                             var mmf = MemoryMappedFile.CreateOrOpen(mmfName, mmfSize);
                             var accessor = mmf.CreateViewAccessor(0, mmfSize);
-                            var writer = new PluginImageWriter(mmf, accessor, imgDescriptor.Width, imgDescriptor.Height);
+                            var writer = new PluginImageWriter(mmfName, mmf, accessor, imgDescriptor.Width, imgDescriptor.Height);
                             _imageWriters.Add(writer);
+                            _writerMappings[writer] = (wrapper.Id, imgDescriptor.Id);
+                            writer.Resized += OnWriterResized;
 
                             writers[imgDescriptor.Id] = writer;
 
@@ -365,9 +368,11 @@ namespace InfoPanel.Plugins.Host
             // Dispose image writers (releases MMF handles)
             foreach (var writer in _imageWriters)
             {
+                writer.Resized -= OnWriterResized;
                 try { writer.Dispose(); } catch { }
             }
             _imageWriters.Clear();
+            _writerMappings.Clear();
 
             // Signal the host process to exit gracefully by disposing the JsonRpc connection.
             // This causes jsonRpc.Completion in Program.cs to complete naturally.
@@ -585,6 +590,38 @@ namespace InfoPanel.Plugins.Host
             catch (Exception ex)
             {
                 Logger.Error(ex, "Failed to notify plugin error");
+            }
+        }
+
+        private void OnWriterResized(PluginImageWriter writer)
+        {
+            if (!_writerMappings.TryGetValue(writer, out var mapping)) return;
+
+            var descriptor = new ImageDescriptorDto
+            {
+                Id = mapping.ImageId,
+                Name = mapping.ImageId,
+                Width = writer.Width,
+                Height = writer.Height,
+                MmfName = writer.MmfName,
+                BufferSize = PluginImageWriter.ComputeMmfSize(writer.Width, writer.Height)
+            };
+
+            Logger.Information("Image resized: {PluginId}/{ImageId} -> {W}x{H} (MMF: {MmfName})",
+                mapping.PluginId, mapping.ImageId, writer.Width, writer.Height, writer.MmfName);
+
+            NotifyImageResize(mapping.PluginId, descriptor);
+        }
+
+        private void NotifyImageResize(string pluginId, ImageDescriptorDto descriptor)
+        {
+            try
+            {
+                _jsonRpc?.NotifyAsync(nameof(IPluginClientCallback.OnImageResize), pluginId, descriptor);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to notify image resize");
             }
         }
 

@@ -18,19 +18,33 @@ namespace InfoPanel.Plugins.Graphics
     public class PluginImageWriter : IPluginImageWriter
     {
         public SKBitmap Bitmap { get; private set; }
-        public int Width { get; }
-        public int Height { get; }
+        public int Width { get; private set; }
+        public int Height { get; private set; }
 
-        private readonly MemoryMappedFile _mmf;
-        private readonly MemoryMappedViewAccessor _accessor;
-        private readonly unsafe byte* _basePtr;
-        private readonly int _pixelBufferSize;
+        /// <summary>
+        /// Current MMF name. Changes on resize (versioned).
+        /// </summary>
+        public string MmfName { get; private set; }
+
+        private MemoryMappedFile _mmf;
+        private MemoryMappedViewAccessor _accessor;
+        private unsafe byte* _basePtr;
+        private int _pixelBufferSize;
         private int _writeIndex;
+        private int _version;
+        private readonly string _mmfBaseName;
 
         private const int HeaderSize = 16;
 
-        public PluginImageWriter(MemoryMappedFile mmf, MemoryMappedViewAccessor accessor, int width, int height)
+        /// <summary>
+        /// Raised after a successful resize. Host subscribes to notify the main app.
+        /// </summary>
+        public event Action<PluginImageWriter>? Resized;
+
+        public PluginImageWriter(string mmfName, MemoryMappedFile mmf, MemoryMappedViewAccessor accessor, int width, int height)
         {
+            _mmfBaseName = mmfName;
+            MmfName = mmfName;
             _mmf = mmf;
             _accessor = accessor;
             Width = width;
@@ -68,6 +82,51 @@ namespace InfoPanel.Plugins.Graphics
             var old = Bitmap;
             Bitmap = CreateBitmapForBuffer(_writeIndex);
             old?.Dispose();
+        }
+
+        public void Resize(int newWidth, int newHeight)
+        {
+            if (newWidth == Width && newHeight == Height) return;
+            if (newWidth <= 0 || newHeight <= 0)
+                throw new ArgumentException("Width and height must be positive.");
+
+            // Dispose old resources
+            Bitmap?.Dispose();
+            unsafe
+            {
+                if (_basePtr != null)
+                    _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+            }
+            _accessor.Dispose();
+            _mmf.Dispose();
+
+            // Create new MMF with versioned name
+            _version++;
+            MmfName = $"{_mmfBaseName}.v{_version}";
+            Width = newWidth;
+            Height = newHeight;
+            _pixelBufferSize = newWidth * newHeight * 4;
+            _writeIndex = 1;
+
+            var mmfSize = ComputeMmfSize(newWidth, newHeight);
+            _mmf = MemoryMappedFile.CreateOrOpen(MmfName, mmfSize);
+            _accessor = _mmf.CreateViewAccessor(0, mmfSize);
+
+            unsafe
+            {
+                byte* ptr = null;
+                _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+                _basePtr = ptr;
+
+                *(int*)(_basePtr + 0) = 0;
+                *(int*)(_basePtr + 4) = newWidth;
+                *(int*)(_basePtr + 8) = newHeight;
+                *(int*)(_basePtr + 12) = 0;
+            }
+
+            Bitmap = CreateBitmapForBuffer(_writeIndex);
+
+            Resized?.Invoke(this);
         }
 
         private SKBitmap CreateBitmapForBuffer(int bufferIndex)

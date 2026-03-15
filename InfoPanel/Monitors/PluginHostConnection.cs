@@ -429,6 +429,36 @@ namespace InfoPanel.Monitors
             }
         }
 
+        public void OnImageResize(string pluginId, ImageDescriptorDto descriptor)
+        {
+            Logger.Information("Image resize received: {PluginId}/{ImageId} -> {W}x{H} (MMF: {MmfName})",
+                pluginId, descriptor.Id, descriptor.Width, descriptor.Height, descriptor.MmfName);
+
+            if (!_proxyImages.TryGetValue(pluginId, out var images)) return;
+
+            // Replace proxy FIRST so that any cache recreation picks up the new one
+            var oldIndex = images.FindIndex(img => img.ImageId == descriptor.Id);
+            if (oldIndex >= 0)
+            {
+                var oldProxy = images[oldIndex];
+                try
+                {
+                    var newProxy = new ProxyPluginImage(pluginId, descriptor);
+                    images[oldIndex] = newProxy;
+
+                    // Invalidate cache AFTER proxy is replaced
+                    Cache.InvalidatePluginImages(pluginId, [descriptor.Id]);
+
+                    oldProxy.Dispose();
+                    Logger.Information("Replaced proxy image for {PluginId}/{ImageId}", pluginId, descriptor.Id);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Failed to create replacement proxy image for {PluginId}/{ImageId}", pluginId, descriptor.Id);
+                }
+            }
+        }
+
         #endregion
 
         private static ProxyPluginSensor CreateProxySensor(EntryDto dto)
