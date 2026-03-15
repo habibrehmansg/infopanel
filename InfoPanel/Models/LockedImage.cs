@@ -76,7 +76,7 @@ namespace InfoPanel.Models
 
         public TimeSpan? CurrentTime => TimeSpan.FromMilliseconds(_backgroundVideoPlayer?.CurTime / 10000 ?? 0);
         public TimeSpan? Duration => TimeSpan.FromMilliseconds(_backgroundVideoPlayer?.Duration / 10000 ?? 0);
-        public double? FrameRate => _backgroundVideoPlayer?.Video.FPS;
+        public double? FrameRate => _backgroundVideoPlayer?.VideoDecoder.VideoStream.FPS;
 
         public bool HasAudio => !_backgroundVideoPlayer?.Audio.Mute ?? false;
 
@@ -175,9 +175,9 @@ namespace InfoPanel.Models
 
                         Thread.Sleep(50);
 
-                        Width = _backgroundVideoPlayer.Video.Width;
-                        Height = _backgroundVideoPlayer.Video.Height;
-                        Frames = _backgroundVideoPlayer.Video.FramesTotal;
+                        Width = (int)_backgroundVideoPlayer.decoder.VideoStream.Width;
+                        Height = (int)_backgroundVideoPlayer.decoder.VideoStream.Height;
+                        Frames = _backgroundVideoPlayer.decoder.VideoStream.TotalFrames;
 
                         if (Frames == 0 && _backgroundVideoPlayer.IsLive)
                         {
@@ -185,6 +185,15 @@ namespace InfoPanel.Models
                         }
 
                         TotalFrameTime = _backgroundVideoPlayer.Duration;
+
+                        Log.Information("Player Status: {Status}, IsLive: {IsLive}",
+                         _backgroundVideoPlayer.Status, _backgroundVideoPlayer.IsLive);
+                        Log.Information("Video: {Width}x{Height}, Codec: {Codec}, FPS: {FPS}",
+                            Width, Height,
+                            _backgroundVideoPlayer.Video.Codec, _backgroundVideoPlayer.VideoDecoder.VideoStream.FPS);
+                        Log.Information("Renderer VP: {VP}, CanPresent: {CanPresent}",
+                            _backgroundVideoPlayer.Renderer.VideoProcessor,
+                            _backgroundVideoPlayer.Renderer.SwapChain.CanPresent);
 
                         Loaded = true;
                         return;
