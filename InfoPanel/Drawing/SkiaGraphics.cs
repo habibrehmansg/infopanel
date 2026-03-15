@@ -1,4 +1,4 @@
-﻿using InfoPanel.Extensions;
+using InfoPanel.Extensions;
 using InfoPanel.Models;
 using Serilog;
 using SkiaSharp;
@@ -41,23 +41,26 @@ namespace InfoPanel.Drawing
             this.Canvas.Dispose();
         }
 
-        public void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
+        public void DrawBitmap(SKBitmap bitmap, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false, float opacity = 1f)
         {
             using var image = SKImage.FromBitmap(bitmap);
-            DrawImage(image, x, y, width, height, rotation, rotationCenterX, rotationCenterY, flipX, flipY);
+            DrawImage(image, x, y, width, height, rotation, rotationCenterX, rotationCenterY, flipX, flipY, opacity);
         }
 
-        public void DrawImage(SKImage image, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false)
+        public void DrawImage(SKImage image, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, bool flipY = false, float opacity = 1f)
         {
-            using var paint = new SKPaint
-            {
-                IsAntialias = true
-            };
+            using var paint = new SKPaint { IsAntialias = true };
 
             var destRect = new SKRect(x, y, x + width, y + height);
             var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Nearest);
 
             Canvas.Save();
+
+            if (opacity < 1f)
+            {
+                using var layerPaint = new SKPaint { Color = new SKColor(255, 255, 255, (byte)(255 * opacity)) };
+                Canvas.SaveLayer(layerPaint);
+            }
 
             if (flipX || flipY)
             {
@@ -78,10 +81,13 @@ namespace InfoPanel.Drawing
             }
             Canvas.DrawImage(image, destRect, sampling, paint);
 
+            if (opacity < 1f)
+                Canvas.Restore();
+
             Canvas.Restore();
         }
 
-        public void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default")
+        public void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default", float opacity = 1f)
         {
             if (lockedImage.Type == LockedImage.ImageType.SVG)
             {
@@ -92,10 +98,11 @@ namespace InfoPanel.Drawing
             }
             else
             {
-                lockedImage.AccessSK(width, height, bitmap =>
+                lockedImage.AccessSK(width, height, image =>
                 {
-                    if (bitmap != null) { 
-                        DrawImage(bitmap, x, y, width, height, rotation, rotationCenterX, rotationCenterY);
+                    if (image != null)
+                    {
+                        DrawImage(image, x, y, width, height, rotation, rotationCenterX, rotationCenterY, opacity: opacity);
                     }
                 }, cache, cacheHint, GRContext);
             }

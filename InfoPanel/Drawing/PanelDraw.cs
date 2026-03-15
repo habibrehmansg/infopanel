@@ -1,4 +1,4 @@
-﻿using FlyleafLib.MediaPlayer;
+using FlyleafLib.MediaPlayer;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
 using InfoPanel.Plugins;
@@ -339,31 +339,32 @@ namespace InfoPanel.Drawing
                     }
                 case GaugeDisplayItem gaugeDisplayItem:
                     {
-                        var imageDisplayItem = gaugeDisplayItem.EvaluateImage();
+                        gaugeDisplayItem.EvaluateImageFrame(out var imageA, out var imageB, out var blend);
 
-                        if (imageDisplayItem != null)
+                        if (imageA != null)
                         {
-                            var cachedImage = Cache.GetLocalImage(imageDisplayItem);
-
-                            if (cachedImage != null)
+                            var cachedA = Cache.GetLocalImage(imageA);
+                            if (cachedA != null)
                             {
                                 var scaledWidth = gaugeDisplayItem.Width;
                                 var scaledHeight = gaugeDisplayItem.Height;
 
-                                if (scaledWidth == 0)
-                                {
-                                    scaledWidth = cachedImage.Width;
-                                }
-
-                                if (scaledHeight == 0)
-                                {
-                                    scaledHeight = cachedImage.Height;
-                                }
+                                if (scaledWidth == 0) scaledWidth = cachedA.Width;
+                                if (scaledHeight == 0) scaledHeight = cachedA.Height;
 
                                 scaledWidth = (int)Math.Floor(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
                                 scaledHeight = (int)Math.Floor(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
 
-                                g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint);
+                                g.DrawImage(cachedA, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint);
+
+                                if (imageB != null && imageB != imageA && blend > 0f)
+                                {
+                                    var cachedB = Cache.GetLocalImage(imageB);
+                                    if (cachedB != null)
+                                    {
+                                        g.DrawImage(cachedB, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint, opacity: blend);
+                                    }
+                                }
                             }
                         }
                         break;
