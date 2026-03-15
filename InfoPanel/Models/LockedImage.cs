@@ -339,7 +339,7 @@ namespace InfoPanel.Models
                     }
                 }
                 catch { }
-            }, null, 0, 100);
+            }, null, 0, 33);
         }
 
         public void AddImageDisplayItem(ImageDisplayItem item)
