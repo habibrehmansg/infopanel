@@ -1228,10 +1228,18 @@
       "infopanel.plugins": {
         "type": "Project"
       },
+      "infopanel.plugins.graphics": {
+        "type": "Project",
+        "dependencies": {
+          "InfoPanel.Plugins": "[1.0.0, )",
+          "SkiaSharp": "[3.119.1, )"
+        }
+      },
       "infopanel.plugins.host": {
         "type": "Project",
         "dependencies": {
           "InfoPanel.Plugins": "[1.0.0, )",
+          "InfoPanel.Plugins.Graphics": "[1.0.0, )",
           "InfoPanel.Plugins.Ipc": "[1.0.0, )",
           "InfoPanel.Plugins.Loader": "[1.0.0, )",
           "Serilog": "[4.3.0, )",

@@ -7,8 +7,23 @@ namespace InfoPanel.Plugins.Loader
     {
         private readonly AssemblyDependencyResolver _resolver = new(pluginPath);
 
+        // Assemblies that must be shared with the host process to enable cross-context
+        // interop (e.g. IPluginImageWriter.Bitmap returns SKBitmap — the type must be
+        // the same instance in both the host and the plugin).
+        private static readonly HashSet<string> SharedAssemblies = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "InfoPanel.Plugins.Graphics",
+            "SkiaSharp",
+        };
+
         protected override Assembly? Load(AssemblyName assemblyName)
         {
+            if (assemblyName.Name != null && SharedAssemblies.Contains(assemblyName.Name))
+            {
+                // Fall back to the default (host) context so types are shared
+                return null;
+            }
+
             var assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
             if (assemblyPath != null)
             {

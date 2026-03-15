@@ -40,6 +40,7 @@ namespace InfoPanel.Monitors
         // Proxy data indexed by plugin ID -> container ID -> entry ID
         private readonly ConcurrentDictionary<string, Dictionary<string, ProxyPluginContainer>> _proxyContainers = new();
         private readonly ConcurrentDictionary<string, Dictionary<string, IPluginData>> _proxyEntries = new();
+        private readonly ConcurrentDictionary<string, List<ProxyPluginImage>> _proxyImages = new();
         private readonly ConcurrentDictionary<string, long> _performanceData = new();
         private volatile PerformanceCounter? _privateWorkingSetCounter;
         private volatile ProcessMetrics? _cachedMetrics;
@@ -223,6 +224,35 @@ namespace InfoPanel.Monitors
             return [];
         }
 
+        public List<ProxyPluginImage> GetProxyImages(string pluginId)
+        {
+            if (_proxyImages.TryGetValue(pluginId, out var images))
+                return images;
+            return [];
+        }
+
+        public List<ProxyPluginImage> GetAllProxyImages()
+        {
+            var result = new List<ProxyPluginImage>();
+            foreach (var images in _proxyImages.Values)
+                result.AddRange(images);
+            return result;
+        }
+
+        /// <summary>
+        /// Invalidates all plugin image cache entries for this connection.
+        /// Must be called before disposing so new entries can be created on reconnect.
+        /// </summary>
+        public void InvalidateImageCaches()
+        {
+            foreach (var kvp in _proxyImages)
+            {
+                var pluginId = kvp.Key;
+                var imageIds = kvp.Value.Select(img => img.ImageId);
+                Cache.InvalidatePluginImages(pluginId, imageIds);
+            }
+        }
+
         public bool HasMetricsCounter => _privateWorkingSetCounter != null;
 
         public ProcessMetrics? ProcessMetrics => _cachedMetrics;
@@ -314,6 +344,29 @@ namespace InfoPanel.Monitors
 
                 _proxyContainers[pluginId] = containers;
                 _proxyEntries[pluginId] = entries;
+            }
+
+            // Build proxy images from metadata
+            foreach (var pluginMeta in plugins)
+            {
+                if (pluginMeta.ImageDescriptors.Count > 0)
+                {
+                    var images = new List<ProxyPluginImage>();
+                    foreach (var imgDesc in pluginMeta.ImageDescriptors)
+                    {
+                        try
+                        {
+                            var proxyImage = new ProxyPluginImage(pluginMeta.Id, imgDesc);
+                            images.Add(proxyImage);
+                            Logger.Information("Created proxy image for {PluginId}/{ImageId}", pluginMeta.Id, imgDesc.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error(ex, "Failed to create proxy image for {PluginId}/{ImageId}", pluginMeta.Id, imgDesc.Id);
+                        }
+                    }
+                    _proxyImages[pluginMeta.Id] = images;
+                }
             }
 
             _pluginsLoadedTcs.TrySetResult();
@@ -526,6 +579,19 @@ namespace InfoPanel.Monitors
         {
             _privateWorkingSetCounter?.Dispose();
             _privateWorkingSetCounter = null;
+
+            // Invalidate image caches before disposing proxies
+            InvalidateImageCaches();
+
+            // Dispose image proxies
+            foreach (var images in _proxyImages.Values)
+            {
+                foreach (var image in images)
+                {
+                    try { image.Dispose(); } catch { }
+                }
+            }
+            _proxyImages.Clear();
 
             _jsonRpc?.Dispose();
             _jsonRpc = null;
