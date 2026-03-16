@@ -58,17 +58,6 @@
                                     Content="Update"
                                     IsEnabled="{Binding DownloadInProgress, Converter={StaticResource InverseBooleanConverter}}"
                                     Visibility="{Binding UpdateAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <ProgressBar
-                                    Name="ProgressBarDownload"
-                                    Grid.Column="1"
-                                    Width="150"
-                                    Height="7"
-                                    Margin="0,0,0,0"
-                                    VerticalAlignment="Bottom"
-                                    Maximum="100"
-                                    Minimum="0"
-                                    Visibility="{Binding DownloadInProgress, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                    Value="{Binding DownloadProgress}" />
                                 <ui:Button
                                     Grid.Column="2"
                                     Width="150"
@@ -80,6 +69,23 @@
                         </ui:CardControl.Header>
                     </ui:CardControl>
 
+                    <StackPanel
+                        Margin="0,10,0,0"
+                        Visibility="{Binding DownloadInProgress, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ProgressBar
+                            Name="ProgressBarDownload"
+                            Height="7"
+                            Maximum="100"
+                            Minimum="0"
+                            Value="{Binding DownloadProgress}" />
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            HorizontalAlignment="Center"
+                            FontSize="11"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="{Binding DownloadStatus}" />
+                    </StackPanel>
+
                     <Label
                         Margin="0,30,0,0"
                         Content="What's New"
@@ -90,37 +96,27 @@
                     <ItemsControl ItemsSource="{Binding UpdateVersions}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <ui:CardExpander
-                                    Margin="0,10,0,0"
-                                    HorizontalContentAlignment="Left"
-                                    IsExpanded="{Binding Expanded}">
-                                    <ui:CardExpander.Header>
-                                        <StackPanel VerticalAlignment="Center">
-                                            <TextBlock
-                                                FontSize="13"
-                                                FontWeight="Medium"
-                                                Text="{Binding Version}" />
-                                            <ItemsControl Margin="0,5,0,0" ItemsSource="{Binding ChangelogItems}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock
-                                                            Margin="0,0,0,2"
-                                                            FontSize="12"
-                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="{Binding StringFormat='- {0}'}"
-                                                            TextWrapping="Wrap" />
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </ui:CardExpander.Header>
-
-                                    <TextBlock
-                                        FontSize="12"
-                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="{Binding Title}"
-                                        TextWrapping="Wrap" />
-                                </ui:CardExpander>
+                                <ui:Card Margin="0,10,0,0" Padding="16">
+                                    <StackPanel>
+                                        <TextBlock
+                                            FontSize="13"
+                                            FontWeight="Medium"
+                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                            Text="{Binding Version}" />
+                                        <ItemsControl Margin="0,5,0,0" ItemsSource="{Binding ChangelogItems}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock
+                                                        Margin="0,0,0,2"
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                        Text="{Binding StringFormat='- {0}'}"
+                                                        TextWrapping="Wrap" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ui:Card>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

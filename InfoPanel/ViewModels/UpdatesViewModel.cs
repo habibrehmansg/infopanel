@@ -34,6 +34,13 @@ namespace InfoPanel.ViewModels
             set { SetProperty(ref _downloadProgress, value); }
         }
 
+        private string _downloadStatus = string.Empty;
+        public string DownloadStatus
+        {
+            get { return _downloadStatus; }
+            set { SetProperty(ref _downloadStatus, value); }
+        }
+
         private bool _updateAvailable = false;
         public bool UpdateAvailable
         {

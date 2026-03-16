@@ -124,9 +124,10 @@ namespace InfoPanel.Views.Pages
                 ViewModel.DownloadProgress = 0;
 
                 var cts = new CancellationTokenSource();
-                IProgress<DownloadProgressArgs> progressReporter = new Progress<DownloadProgressArgs>(progressReporter =>
+                IProgress<DownloadProgressArgs> progressReporter = new Progress<DownloadProgressArgs>(args =>
                 {
-                    ViewModel.DownloadProgress = progressReporter.PercentComplete;
+                    ViewModel.DownloadProgress = args.PercentComplete;
+                    ViewModel.DownloadStatus = $"{FormatBytes(args.BytesReceived)} / {FormatBytes(args.TotalBytes)} ({args.PercentComplete:F0}%)";
                 });
 
                 using (var stream = await DownloadStreamWithProgressAsync(url, cts.Token, progressReporter))
@@ -194,6 +195,17 @@ namespace InfoPanel.Views.Pages
 
             memStream.Position = 0;
             return memStream;
+        }
+
+        private static string FormatBytes(double bytes)
+        {
+            return bytes switch
+            {
+                >= 1_073_741_824 => $"{bytes / 1_073_741_824:F2} GB",
+                >= 1_048_576 => $"{bytes / 1_048_576:F1} MB",
+                >= 1_024 => $"{bytes / 1_024:F0} KB",
+                _ => $"{bytes:F0} B"
+            };
         }
 
         public class DownloadProgressArgs : EventArgs
