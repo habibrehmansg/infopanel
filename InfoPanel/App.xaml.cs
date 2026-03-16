@@ -150,6 +150,8 @@ namespace InfoPanel
            services.AddScoped<UpdatesViewModel>();
            services.AddScoped<Views.Pages.UsbPanelsPage>();
            services.AddScoped<UsbPanelsViewModel>();
+           services.AddScoped<Views.Pages.AccountPage>();
+           services.AddSingleton<AccountViewModel>();
 
            // Configuration
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
@@ -383,6 +385,8 @@ namespace InfoPanel
             Exit += App_Exit;
 
             await StartPanels();
+
+            _ = Task.Run(() => GetService<AccountViewModel>()?.TryRestoreSessionAsync());
 
             _ = Task.Run(() => Services.UpdateChecker.Instance.CheckAsync(showNotification: true));
         }

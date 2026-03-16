@@ -1,0 +1,111 @@
+<Page
+    x:Class="InfoPanel.Views.Pages.AccountPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:viewmodels="clr-namespace:InfoPanel.ViewModels"
+    Title="AccountPage"
+    d:DataContext="{d:DesignInstance Type=viewmodels:AccountViewModel}"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
+
+    <StackPanel Margin="20,20,20,20">
+
+        <!--  Logged-out state  -->
+        <StackPanel Visibility="{Binding ViewModel.IsLoggedIn, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+            <ui:CardControl>
+                <ui:CardControl.Icon>
+                    <ui:SymbolIcon Symbol="Person20" />
+                </ui:CardControl.Icon>
+                <ui:CardControl.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Text="Sign In" />
+                            <TextBlock
+                                Margin="0,5,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="Sign in with your Discord account to unlock features like plugin discovery." />
+                        </StackPanel>
+                        <StackPanel
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal">
+                            <ui:ProgressRing
+                                Width="20"
+                                Height="20"
+                                Margin="0,0,10,0"
+                                IsIndeterminate="True"
+                                Visibility="{Binding ViewModel.IsLoggingIn, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ui:Button
+                                Appearance="Primary"
+                                Command="{Binding ViewModel.LoginWithDiscordCommand}"
+                                Content="Sign in with Discord"
+                                IsEnabled="{Binding ViewModel.IsLoggingIn, Converter={StaticResource InverseBooleanConverter}}" />
+                        </StackPanel>
+                    </Grid>
+                </ui:CardControl.Header>
+            </ui:CardControl>
+
+            <TextBlock
+                Margin="0,10,0,0"
+                FontSize="12"
+                Foreground="IndianRed"
+                Text="{Binding ViewModel.ErrorMessage}"
+                Visibility="{Binding ViewModel.ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}" />
+        </StackPanel>
+
+        <!--  Logged-in state  -->
+        <StackPanel Visibility="{Binding ViewModel.IsLoggedIn, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ui:CardControl>
+                <ui:CardControl.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Grid.Column="0"
+                            Width="40"
+                            Height="40"
+                            Margin="0,0,12,0"
+                            CornerRadius="20">
+                            <Border.Background>
+                                <ImageBrush ImageSource="{Binding ViewModel.AvatarUrl}" Stretch="UniformToFill" />
+                            </Border.Background>
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Text="{Binding ViewModel.Username}" />
+                            <TextBlock
+                                Margin="0,3,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="Signed in with Discord" />
+                        </StackPanel>
+                        <ui:Button
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Appearance="Secondary"
+                            Command="{Binding ViewModel.LogoutCommand}"
+                            Content="Sign Out" />
+                    </Grid>
+                </ui:CardControl.Header>
+            </ui:CardControl>
+        </StackPanel>
+
+    </StackPanel>
+</Page>
