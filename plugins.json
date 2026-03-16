@@ -83,6 +83,12 @@
       "name": "Text File",
       "description": "Display content from text files as a data source",
       "category": "utilities"
-    }
+    },
+    {
+      "repo": "ken47-1/InfoPanel.NetworkQuality",
+      "name": "Network Quality",
+      "description": "ICMP-based InfoPanel plugin for monitoring Network quality.",
+      "category": "monitoring"
+  }
   ]
 }
