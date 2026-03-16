@@ -14,10 +14,12 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Newtonsoft.Json.Linq;
+using Wpf.Ui.Controls;
 
 namespace InfoPanel.ViewModels
 {
@@ -27,9 +29,6 @@ namespace InfoPanel.ViewModels
 
         [ObservableProperty]
         private string _pluginFolder = FileUtil.GetExternalPluginFolder();
-
-        [ObservableProperty]
-        private bool _showRestartBanner = false;
 
         public ObservableCollection<PluginViewModel> BundledPlugins { get; } = [];
 
@@ -66,7 +65,27 @@ namespace InfoPanel.ViewModels
 
         private void BuildPluginModels()
         {
-            foreach (var pluginDescriptor in PluginMonitor.Instance.Plugins)
+            List<PluginDescriptor> pluginsSnapshot;
+            lock (PluginMonitor.Instance.PluginsLock)
+            {
+                pluginsSnapshot = PluginMonitor.Instance.Plugins.ToList();
+            }
+
+            var currentFilePaths = pluginsSnapshot.Select(p => p.FilePath).ToHashSet();
+
+            // Remove stale entries (e.g. after uninstall)
+            for (int i = BundledPlugins.Count - 1; i >= 0; i--)
+            {
+                if (!currentFilePaths.Contains(BundledPlugins[i].FilePath))
+                    BundledPlugins.RemoveAt(i);
+            }
+            for (int i = ExternalPlugins.Count - 1; i >= 0; i--)
+            {
+                if (!currentFilePaths.Contains(ExternalPlugins[i].FilePath))
+                    ExternalPlugins.RemoveAt(i);
+            }
+
+            foreach (var pluginDescriptor in pluginsSnapshot)
             {
                 if (pluginDescriptor.FolderPath?.IsSubdirectoryOf(FileUtil.GetBundledPluginFolder()) ?? false)
                 {
@@ -101,7 +120,7 @@ namespace InfoPanel.ViewModels
 
 
         [RelayCommand]
-        public void AddPluginFromZip()
+        public async Task AddPluginFromZip()
         {
             Microsoft.Win32.OpenFileDialog openFileDialog = new()
             {
@@ -111,18 +130,31 @@ namespace InfoPanel.ViewModels
             };
             if (openFileDialog.ShowDialog() == true)
             {
-                var pluginFilePath = openFileDialog.FileName;
+                var safeName = openFileDialog.SafeFileName;
 
-                using var fs = new FileStream(pluginFilePath, FileMode.Open);
-                using var za = new ZipArchive(fs, ZipArchiveMode.Read);
-                var entry = za.Entries[0];
-                if (Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
+                // Accept both structured ZIPs (InfoPanel.Name/...) and flat ZIPs (filename is InfoPanel.Name.zip)
+                bool isValid;
+                using (var fs = new FileStream(openFileDialog.FileName, FileMode.Open))
+                using (var za = new ZipArchive(fs, ZipArchiveMode.Read))
+                {
+                    var entry = za.Entries[0];
+                    isValid = Regex.IsMatch(entry.FullName, @"InfoPanel\.[a-zA-Z0-9]+\/")
+                           || Regex.IsMatch(Path.GetFileNameWithoutExtension(safeName), @"^InfoPanel\.[a-zA-Z0-9]+$");
+                }
+
+                if (isValid)
                 {
                     try
                     {
-                        File.Copy(openFileDialog.FileName, Path.Combine(FileUtil.GetExternalPluginFolder(), openFileDialog.SafeFileName), true);
-                        ShowRestartBanner = true;
-                    }catch { }
+                        var destPath = Path.Combine(FileUtil.GetExternalPluginFolder(), safeName);
+                        File.Copy(openFileDialog.FileName, destPath, true);
+                        await PluginMonitor.Instance.InstallPluginFromZipAsync(destPath);
+                        BuildPluginModels();
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(ex, "Failed to install plugin from ZIP");
+                    }
                 }
             }
         }
@@ -496,6 +528,9 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private string? _website;
 
+        public bool IsExternal { get; }
+
+        public bool ShowRemoveButton => IsExternal && !_activated;
 
         private bool _activated;
         public bool Activated
@@ -505,6 +540,7 @@ namespace InfoPanel.ViewModels
             {
                 if (SetProperty(ref _activated, value))
                 {
+                    OnPropertyChanged(nameof(ShowRemoveButton));
                     _ = OnActivatedChanged();
                 }
             }
@@ -559,6 +595,40 @@ namespace InfoPanel.ViewModels
             }
         }
 
+        [RelayCommand]
+        public async Task Remove()
+        {
+            var contentDialogService = App.GetService<Wpf.Ui.IContentDialogService>();
+            if (contentDialogService != null)
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = "Uninstall Plugin",
+                    Content = $"Are you sure you want to uninstall \"{Name}\"? This will delete the plugin folder from disk.",
+                    PrimaryButtonText = "Uninstall",
+                    CloseButtonText = "Cancel"
+                };
+
+                var result = await contentDialogService.ShowAsync(dialog, CancellationToken.None);
+                if (result != ContentDialogResult.Primary)
+                    return;
+            }
+
+            ControlEnabled = false;
+            try
+            {
+                await PluginMonitor.Instance.UninstallPluginAsync(_pluginDescriptor);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error uninstalling plugin {PluginName}", _pluginDescriptor.FileName);
+            }
+            finally
+            {
+                ControlEnabled = true;
+            }
+        }
+
         public PluginViewModel(PluginDescriptor pluginDescriptor)
         {
             _pluginDescriptor = pluginDescriptor;
@@ -569,6 +639,7 @@ namespace InfoPanel.ViewModels
             Description = pluginDescriptor.PluginInfo?.Description;
             Version = pluginDescriptor.PluginInfo?.Version;
             Website = pluginDescriptor.PluginInfo?.Website;
+            IsExternal = !(pluginDescriptor.FolderPath?.IsSubdirectoryOf(FileUtil.GetBundledPluginFolder()) ?? false);
             _activated = PluginMonitor.Instance.ProcessManager.IsHostRunning(pluginDescriptor.FilePath);
 
             if (PluginMonitor.Instance.RemoteWrappers.TryGetValue(pluginDescriptor.FilePath, out var wrappers))
@@ -586,6 +657,7 @@ namespace InfoPanel.ViewModels
 
             _activated = PluginMonitor.Instance.ProcessManager.IsHostRunning(_pluginDescriptor.FilePath);
             OnPropertyChanged(nameof(Activated));
+            OnPropertyChanged(nameof(ShowRemoveButton));
 
             if (_activated)
             {

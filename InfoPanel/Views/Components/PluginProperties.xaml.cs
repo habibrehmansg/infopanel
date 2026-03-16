@@ -1,4 +1,4 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using InfoPanel.ViewModels;
 using System;
 using System.Collections.Generic;
