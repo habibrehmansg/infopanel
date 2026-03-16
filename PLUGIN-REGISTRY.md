@@ -34,19 +34,44 @@ To list your plugin in the registry, open a pull request that adds an entry to t
 }
 ```
 
+### Naming Convention
+
+The repository name is used to match marketplace plugins to locally installed plugins. The API exposes a `repoName` field (the `repo` portion after the `/`) which the desktop app compares against installed plugin folder names.
+
+For this matching to work, your **repository name must match your plugin's installed folder name**. For example, if your repo is `YourUsername/InfoPanel.MyPlugin`, the installed folder must be `InfoPanel.MyPlugin`.
+
 ### Release Requirements
 
 The API automatically discovers releases from your GitHub repository. For downloads to work:
 
 - Create a [GitHub Release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) with a tag (e.g. `v1.0.0`)
-- Attach a ZIP asset named `InfoPanel.{YourPluginName}.zip` (must start with `InfoPanel.` and end with `.zip`)
-- The ZIP should follow the standard plugin folder structure:
+- Attach a ZIP asset whose name starts with `InfoPanel.` and ends with `.zip` (e.g. `InfoPanel.MyPlugin.zip` or `InfoPanel.MyPlugin-v1.0.0.zip`)
+- The ZIP **must** contain a top-level folder matching the plugin name. The DLLs go **inside** that folder, not at the ZIP root:
+
+  **Correct** — DLLs inside a named folder:
   ```
-  YourPluginName/
-  ├── YourPluginName.dll
+  InfoPanel.MyPlugin.zip
+  └── InfoPanel.MyPlugin/
+      ├── InfoPanel.MyPlugin.dll
+      ├── [dependency DLLs]
+      └── PluginInfo.ini
+  ```
+
+  **Wrong** — DLLs at the ZIP root (no containing folder):
+  ```
+  InfoPanel.MyPlugin.zip
+  ├── InfoPanel.MyPlugin.dll
   ├── [dependency DLLs]
   └── PluginInfo.ini
   ```
+
+  To get the correct structure, zip the **folder itself**, not its contents. For example:
+  - **Windows Explorer:** Right-click the `InfoPanel.MyPlugin` folder → Compress to ZIP file
+  - **Command line:** `Compress-Archive -Path InfoPanel.MyPlugin -DestinationPath InfoPanel.MyPlugin.zip`
+  - **CI (GitHub Actions):**
+    ```yaml
+    - run: Compress-Archive -Path InfoPanel.MyPlugin -DestinationPath InfoPanel.MyPlugin.zip
+    ```
 
 The latest release version, download URL, and changelog are pulled automatically from your repo.
 
