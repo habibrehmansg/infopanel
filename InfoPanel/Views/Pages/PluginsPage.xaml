@@ -46,7 +46,7 @@
                             FontSize="12"
                             TextWrapping="Wrap"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="If you would like to develop a plugin, visit our GitHub and reference Infopanel.Extras project for guidelines." />
+                            Text="If you would like to develop a plugin, visit our GitHub and reference InfoPanel.Extras project for guidelines." />
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
                         <ui:Anchor
