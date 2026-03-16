@@ -16,10 +16,14 @@ namespace InfoPanel.ThermalrightPanel
     {
         private static readonly ILogger Logger = Log.ForContext(typeof(ScsiPanelDevice));
 
-        // SCSI protocol constants
-        private const int POLL_BUFFER_SIZE = 0xE100;   // 57,600 bytes — poll/init buffer size
-        private const int FRAME_CHUNK_SIZE = 0x10000;  // 65,536 bytes — 64KB frame chunks
-        private const byte SCSI_PROTOCOL_MARKER = 0xF5;
+        // SCSI protocol constants (from Lexonight1/thermalright-trcc-linux)
+        private const int POLL_BUFFER_SIZE = 0xE100;       // 57,600 bytes
+        private const int FRAME_CHUNK_SIZE_LARGE = 0x10000; // 65,536 bytes (for displays > 76,800 pixels)
+        private const int FRAME_CHUNK_SIZE_SMALL = 0xE100;  // 57,600 bytes (for displays <= 76,800 pixels)
+        private const int SMALL_DISPLAY_PIXELS = 76800;     // 320x240 threshold
+        private const uint CMD_POLL = 0xF5;
+        private const uint CMD_INIT = 0x1F5;
+        private const uint CMD_FRAME_BASE = 0x101F5;
         private const byte SCSI_IOCTL_DATA_IN = 1;
         private const byte SCSI_IOCTL_DATA_OUT = 0;
 
@@ -108,6 +112,9 @@ namespace InfoPanel.ThermalrightPanel
 
         private SafeFileHandle _handle;
         private readonly string _devicePath;
+        private byte _lastSenseKey;
+        private byte _lastAsc;
+        private byte _lastAscq;
 
         private ScsiPanelDevice(SafeFileHandle handle, string devicePath)
         {
@@ -235,25 +242,41 @@ namespace InfoPanel.ThermalrightPanel
         }
 
         /// <summary>
-        /// Sends a SCSI TEST UNIT READY command (CDB opcode 0x00, 6 bytes, no data).
-        /// Returns true if the device responds, false on timeout/error.
-        /// Used as a diagnostic to verify the SCSI pass-through path works at all.
+        /// Builds a 20-byte CDB: cmd(4 LE) + zeros(8) + size(4 LE) + crc32(4 LE).
+        /// CRC32 covers the first 16 bytes only.
         /// </summary>
-        public bool TestUnitReady()
+        private static byte[] BuildCdb(uint cmd, uint dataSize)
         {
-            var cdb = new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-            var noData = Array.Empty<byte>();
-            return SendScsiCommand(cdb, noData, SCSI_IOCTL_DATA_IN);
+            var cdb = new byte[20];
+            BitConverter.GetBytes(cmd).CopyTo(cdb, 0);       // bytes 0-3: command LE
+            // bytes 4-11: zeros (already)
+            BitConverter.GetBytes(dataSize).CopyTo(cdb, 12);  // bytes 12-15: data size LE
+
+            // CRC32 over first 16 bytes
+            uint crc = Crc32(cdb, 0, 16);
+            BitConverter.GetBytes(crc).CopyTo(cdb, 16);       // bytes 16-19: CRC32 LE
+            return cdb;
+        }
+
+        private static uint Crc32(byte[] data, int offset, int length)
+        {
+            uint crc = 0xFFFFFFFF;
+            for (int i = offset; i < offset + length; i++)
+            {
+                crc ^= data[i];
+                for (int j = 0; j < 8; j++)
+                    crc = (crc >> 1) ^ (0xEDB88320 & ~((crc & 1) - 1));
+            }
+            return ~crc;
         }
 
         /// <summary>
-        /// Polls the device by sending CDB F5 00 00 00, reading 0xE100 bytes.
+        /// Polls the device by sending cmd=0xF5, reading 0xE100 bytes.
         /// Returns the poll response or null on failure.
         /// </summary>
         public byte[]? Poll()
         {
-            var cdb = new byte[] { SCSI_PROTOCOL_MARKER, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
+            var cdb = BuildCdb(CMD_POLL, (uint)POLL_BUFFER_SIZE);
             var response = new byte[POLL_BUFFER_SIZE];
             if (SendScsiCommand(cdb, response, SCSI_IOCTL_DATA_IN))
                 return response;
@@ -274,43 +297,47 @@ namespace InfoPanel.ThermalrightPanel
         }
 
         /// <summary>
-        /// Initializes the display controller by sending CDB F5 01 00 00 with 0xE100 zero bytes.
+        /// Initializes the display controller by sending cmd=0x1F5 with 0xE100 zero bytes.
         /// </summary>
         public bool Init()
         {
-            var cdb = new byte[] { SCSI_PROTOCOL_MARKER, 0x01, 0x00, 0x00, 0x00, 0x00 };
-
+            var cdb = BuildCdb(CMD_INIT, (uint)POLL_BUFFER_SIZE);
             var data = new byte[POLL_BUFFER_SIZE]; // 0xE100 zero bytes
             return SendScsiCommand(cdb, data, SCSI_IOCTL_DATA_OUT);
         }
 
         /// <summary>
-        /// Sends a complete RGB565 frame by splitting it into 64KB chunks.
-        /// CDB: F5 01 01 [chunk_index] for each chunk.
+        /// Sends a complete RGB565 frame by splitting into chunks.
+        /// cmd = 0x101F5 | (chunkIndex &lt;&lt; 24) for each chunk.
+        /// Chunk size is 57,600 for small displays (&lt;= 76,800 pixels), 65,536 for larger.
         /// </summary>
-        public bool SendFrame(byte[] rgb565Data)
+        public bool SendFrame(byte[] rgb565Data, int width, int height)
         {
+            int pixels = width * height;
+            int chunkSize = pixels <= SMALL_DISPLAY_PIXELS ? FRAME_CHUNK_SIZE_SMALL : FRAME_CHUNK_SIZE_LARGE;
+
             int offset = 0;
             int chunkIndex = 0;
 
             while (offset < rgb565Data.Length)
             {
                 int remaining = rgb565Data.Length - offset;
-                int chunkSize = Math.Min(FRAME_CHUNK_SIZE, remaining);
+                int thisChunkSize = Math.Min(chunkSize, remaining);
 
-                var cdb = new byte[] { SCSI_PROTOCOL_MARKER, 0x01, 0x01, (byte)chunkIndex, 0x00, 0x00 };
+                uint cmd = CMD_FRAME_BASE | ((uint)chunkIndex << 24);
+                var cdb = BuildCdb(cmd, (uint)thisChunkSize);
 
-                var chunk = new byte[chunkSize];
-                Array.Copy(rgb565Data, offset, chunk, 0, chunkSize);
+                var chunk = new byte[thisChunkSize];
+                Array.Copy(rgb565Data, offset, chunk, 0, thisChunkSize);
 
                 if (!SendScsiCommand(cdb, chunk, SCSI_IOCTL_DATA_OUT))
                 {
                     Logger.Warning("ScsiPanelDevice: Failed to send frame chunk {Index} ({Size} bytes)",
-                        chunkIndex, chunkSize);
+                        chunkIndex, thisChunkSize);
                     return false;
                 }
 
-                offset += chunkSize;
+                offset += thisChunkSize;
                 chunkIndex++;
             }
 
@@ -387,11 +414,11 @@ namespace InfoPanel.ThermalrightPanel
                     if (scsiStatus != 0)
                     {
                         // Log sense data for diagnostics
-                        byte senseKey = (byte)(Marshal.ReadByte(ptr, SPTD_SIZE + 2) & 0x0F);
-                        byte asc = Marshal.ReadByte(ptr, SPTD_SIZE + 12);
-                        byte ascq = Marshal.ReadByte(ptr, SPTD_SIZE + 13);
+                        _lastSenseKey = (byte)(Marshal.ReadByte(ptr, SPTD_SIZE + 2) & 0x0F);
+                        _lastAsc = Marshal.ReadByte(ptr, SPTD_SIZE + 12);
+                        _lastAscq = Marshal.ReadByte(ptr, SPTD_SIZE + 13);
                         Logger.Warning("ScsiPanelDevice: SCSI status 0x{Status:X2}, sense key=0x{Key:X} ASC=0x{ASC:X2} ASCQ=0x{ASCQ:X2}",
-                            scsiStatus, senseKey, asc, ascq);
+                            scsiStatus, _lastSenseKey, _lastAsc, _lastAscq);
                         return false;
                     }
 

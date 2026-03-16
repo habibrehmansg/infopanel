@@ -427,24 +427,11 @@ namespace InfoPanel.Services
                     return;
                 }
 
-                Logger.Information("ThermalrightPanelDevice {Device}: SCSI device opened, verifying SCSI path...", _device);
-
-                // Diagnostic: verify SCSI pass-through works with a standard TEST UNIT READY
-                if (!scsiDevice.TestUnitReady())
-                {
-                    Logger.Warning("ThermalrightPanelDevice {Device}: TEST UNIT READY failed — SCSI pass-through may be blocked. " +
-                        "Check: (1) running as Administrator, (2) no other app using the device, (3) device not mounted as a drive letter", _device);
-                    _device.UpdateRuntimeProperties(errorMessage:
-                        "SCSI commands timed out. Try:\n" +
-                        "1. Run InfoPanel as Administrator\n" +
-                        "2. Close TRCC or other LCD software\n" +
-                        "3. If the device shows as a drive letter,\n   eject it first in Windows Explorer");
-                    await Task.Delay(OPEN_FAILURE_BACKOFF_MS, token);
-                    return;
-                }
-                Logger.Information("ThermalrightPanelDevice {Device}: TEST UNIT READY OK, polling...", _device);
+                Logger.Information("ThermalrightPanelDevice {Device}: SCSI device opened, polling...", _device);
 
                 // Poll device to detect resolution and boot status
+                // Note: we skip TEST UNIT READY -- these LCD panels report "Medium Not Present"
+                // which is normal. Go straight to the F5 poll command.
                 bool pollSucceeded = false;
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
@@ -513,7 +500,7 @@ namespace InfoPanel.Services
                 // Run the shared render-send loop with SCSI frame sender
                 await RunRenderSendLoop(frameData =>
                 {
-                    if (!scsiDevice.SendFrame(frameData))
+                    if (!scsiDevice.SendFrame(frameData, _panelWidth, _panelHeight))
                         throw new Exception("SCSI frame send failed");
                 }, token);
             }
