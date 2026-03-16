@@ -2,216 +2,410 @@
 
 ## Table of Contents
 - [Introduction](#introduction)
-- [Plugin Architecture](#plugin-architecture)
-- [Creating Your First Plugin](#creating-your-first-plugin)
+- [Quick Start](#quick-start)
 - [Plugin Components](#plugin-components)
   - [Base Plugin](#base-plugin)
   - [Plugin Containers](#plugin-containers)
   - [Plugin Data Types](#plugin-data-types)
+- [Image Providers](#image-providers)
+- [Plugin Actions](#plugin-actions)
+- [Plugin Configuration](#plugin-configuration)
 - [Plugin Lifecycle](#plugin-lifecycle)
-- [Configuration](#configuration)
+- [Configuration Files](#configuration-files)
 - [Examples](#examples)
   - [Simple Sensor Plugin](#simple-sensor-plugin)
   - [Table Data Plugin](#table-data-plugin)
 - [Building and Deployment](#building-and-deployment)
-- [Debugging Plugins](#debugging-plugins)
+- [Debugging](#debugging)
 - [Best Practices](#best-practices)
 
 ## Introduction
 
-InfoPanel features a robust plugin system that enables developers to extend its capabilities with custom data sources and visualizations. Plugins can provide various types of data, including sensors, text values, and even complex data tables that can be displayed in InfoPanel's interface.
+InfoPanel features a plugin system that enables developers to extend its capabilities with custom data sources, visualizations, and images. Plugins can provide sensors, text values, tables, and rendered images that are displayed in InfoPanel's overlays and panels.
 
-This guide will walk you through the process of creating, testing, and deploying plugins for InfoPanel.
+Each plugin runs in an isolated host process, communicating with the main application over named pipes. This ensures that a misbehaving plugin cannot crash InfoPanel. For details on how the host system works internally, see [PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md).
 
-## Plugin Architecture
+## Quick Start
 
-The InfoPanel plugin system is based on a clean, modular architecture with the following key components:
+### 1. Create a .NET Class Library
 
-1. **Plugin Interface** (`IPlugin`): The core interface that all plugins must implement
-2. **Plugin Loader**: Handles dynamic loading of plugin assemblies
-3. **Plugin Containers**: Group related data items within a plugin
-4. **Plugin Data Types**: Various data types that plugins can provide (sensors, text, tables)
-
-Plugins are loaded as separate assemblies and run in their own context, ensuring stability and isolation from the main application.
-
-## Creating Your First Plugin
-
-To create a new InfoPanel plugin:
-
-1. Create a new .NET class library project targeting .NET 8.0
-2. Add references to the InfoPanel.Plugins package or DLL
-3. Create a main plugin class that inherits from `BasePlugin`
-4. Implement the required methods
-5. Compile and deploy your plugin
-
-### Required Project Structure
+Create a new .NET 8.0 class library project:
 
 ```
-MyCustomPlugin/
-  |- MyCustomPlugin.csproj  (Target .NET 8.0)
-  |- MyCustomPlugin.cs      (Main plugin class)
-  |- PluginInfo.ini         (Plugin metadata)
-  |- [Other code files]
+MyPlugin/
+  |- MyPlugin.csproj
+  |- MyPlugin.cs
+  |- PluginInfo.ini
 ```
 
-### Plugin Metadata (PluginInfo.ini)
+### 2. Add Project References
 
-Every plugin should have a `PluginInfo.ini` file with the following format:
+For sensor/text/table plugins, reference the core package:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
+</ItemGroup>
+```
+
+If your plugin provides images, also reference the graphics package:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
+  <ProjectReference Include="..\InfoPanel.Plugins.Graphics\InfoPanel.Plugins.Graphics.csproj" />
+</ItemGroup>
+```
+
+### 3. Create PluginInfo.ini
+
+Every plugin must include a `PluginInfo.ini` file in its output directory:
 
 ```ini
-[Plugin]
-Name=My Custom Plugin
+[PluginInfo]
+Name=My Plugin
 Description=A description of what your plugin does
 Author=Your Name
 Version=1.0.0
 Website=https://yourwebsite.com
 ```
 
+> **Important:** The section header must be `[PluginInfo]`, not `[Plugin]`.
+
+### 4. Implement Your Plugin
+
+```csharp
+using InfoPanel.Plugins;
+
+namespace MyCompany.MyPlugin;
+
+public class MyPlugin : BasePlugin
+{
+    private readonly PluginSensor _value = new("value", "My Value", 0, "units");
+
+    public MyPlugin() : base("my-plugin", "My Plugin", "A sample plugin") { }
+
+    public override string? ConfigFilePath => null;
+    public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
+
+    public override void Initialize() { }
+
+    public override void Load(List<IPluginContainer> containers)
+    {
+        var container = new PluginContainer("main", "Main Data");
+        container.Entries.Add(_value);
+        containers.Add(container);
+    }
+
+    public override Task UpdateAsync(CancellationToken cancellationToken)
+    {
+        _value.Value = 42.0f;
+        return Task.CompletedTask;
+    }
+
+    public override void Update() => throw new NotImplementedException();
+    public override void Close() { }
+}
+```
+
 ## Plugin Components
 
 ### Base Plugin
 
-Your main plugin class should inherit from `BasePlugin` and implement all required methods:
+Your main plugin class must inherit from `BasePlugin` and implement all required members:
 
 ```csharp
-using InfoPanel.Plugins;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace MyCompany.MyCustomPlugin
+public class MyPlugin : BasePlugin
 {
-    public class MyCustomPlugin : BasePlugin
-    {
-        public MyCustomPlugin() : base("my-custom-plugin", "My Custom Plugin", "Description of my plugin")
-        {
-        }
+    // Constructor: provide a unique ID, display name, and description
+    public MyPlugin() : base("my-plugin", "My Plugin", "Description") { }
 
-        public override string? ConfigFilePath => null; // Path to plugin config file if needed
-        
-        public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1); // How often the plugin should update
+    // Path to a config file, or null if not needed
+    public override string? ConfigFilePath => null;
 
-        public override void Initialize()
-        {
-            // Initialize your plugin, set up resources
-        }
+    // How often UpdateAsync is called
+    public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
-        public override void Load(List<IPluginContainer> containers)
-        {
-            // Create containers and add data items
-            var container = new PluginContainer("main", "Main Data");
-            container.Entries.Add(new PluginText("greeting", "Greeting", "Hello World"));
-            container.Entries.Add(new PluginSensor("sample-value", "Sample Value", 42.5f, "units"));
-            containers.Add(container);
-        }
+    // Called once after loading
+    public override void Initialize() { }
 
-        public override void Update()
-        {
-            // Synchronous update method (optional implementation)
-            throw new NotImplementedException();
-        }
+    // Register containers and data items
+    public override void Load(List<IPluginContainer> containers) { }
 
-        public override Task UpdateAsync(CancellationToken cancellationToken)
-        {
-            // Asynchronous update method - update your sensor values here
-            return Task.CompletedTask;
-        }
+    // Periodic async update — update your sensor values here
+    public override Task UpdateAsync(CancellationToken cancellationToken)
+        => Task.CompletedTask;
 
-        public override void Close()
-        {
-            // Clean up resources
-        }
-    }
+    // Synchronous update (alternative to UpdateAsync)
+    public override void Update() => throw new NotImplementedException();
+
+    // Clean up resources on shutdown
+    public override void Close() { }
 }
 ```
 
+> **Note:** `BasePlugin` also has a constructor overload `BasePlugin(string name, string description = "")` that auto-generates the ID from the name.
+
 ### Plugin Containers
 
-Containers group related data items within your plugin:
+Containers group related data items. Each container appears as a section in the InfoPanel UI:
 
 ```csharp
-var container = new PluginContainer("container-id", "Container Display Name");
-// Add data items to the container
+var container = new PluginContainer("container-id", "Container Name");
+container.Entries.Add(mySensor);
+container.Entries.Add(myText);
 containers.Add(container);
 ```
 
+The `isEphemeralPath` parameter (default `false`) can be set to `true` for containers whose entries change dynamically between updates.
+
 ### Plugin Data Types
 
-InfoPanel supports several data types that plugins can provide:
-
-#### Plugin Text
+#### PluginText
 
 Simple text values:
 
 ```csharp
-var textValue = new PluginText("text-id", "Text Name", "Initial value");
-container.Entries.Add(textValue);
+var text = new PluginText("text-id", "Text Name", "Initial value");
+container.Entries.Add(text);
+
+// Update later:
+text.Value = "New value";
 ```
 
-#### Plugin Sensor
+#### PluginSensor
 
-Numeric sensor values with optional units:
+Numeric sensor values with optional units. Automatically tracks min, max, and rolling average (60 samples):
 
 ```csharp
-var sensor = new PluginSensor("sensor-id", "Sensor Name", 42.0f, "units");
+var sensor = new PluginSensor("sensor-id", "Sensor Name", 0f, "°C");
 container.Entries.Add(sensor);
+
+// Update later:
+sensor.Value = 65.5f;  // Min, Max, Avg are computed automatically
 ```
 
-#### Plugin Table
+#### PluginTable
 
-Complex tabular data:
+Tabular data displayed in InfoPanel's table view:
 
 ```csharp
-var table = new DataTable();
-table.Columns.Add("Process Name", typeof(PluginText));
-table.Columns.Add("CPU Usage", typeof(PluginSensor));
+var dataTable = new DataTable();
+dataTable.Columns.Add("Process", typeof(PluginText));
+dataTable.Columns.Add("CPU", typeof(PluginSensor));
+dataTable.Columns.Add("Memory", typeof(PluginSensor));
 
-var row = table.NewRow();
-row[0] = new PluginText("Process Name", "chrome.exe");
-row[1] = new PluginSensor("CPU Usage", 12.5f, "%");
-table.Rows.Add(row);
+var row = dataTable.NewRow();
+row[0] = new PluginText("name", "chrome.exe");
+row[1] = new PluginSensor("cpu", 12.5f, "%");
+row[2] = new PluginSensor("memory", 450f, " MB");
+dataTable.Rows.Add(row);
 
-var tableData = new PluginTable("table-id", "Table Name", table, "0:100|1:80");
-container.Entries.Add(tableData);
+// Format string: "columnIndex:width|columnIndex:width"
+var table = new PluginTable("table-id", "Table Name", dataTable, "0:150|1:60|2:80");
+container.Entries.Add(table);
 ```
+
+## Image Providers
+
+Plugins can render custom images that appear as display items in InfoPanel. To provide images, implement `IPluginImageProvider` alongside `BasePlugin`, and reference `InfoPanel.Plugins.Graphics`.
+
+### Declaring Image Outputs
+
+Return descriptors for each image your plugin produces:
+
+```csharp
+using InfoPanel.Plugins;
+using InfoPanel.Plugins.Graphics;
+
+public class MyImagePlugin : BasePlugin, IPluginImageProvider
+{
+    public IReadOnlyList<PluginImageDescriptor> ImageDescriptors { get; } =
+    [
+        new PluginImageDescriptor("main-image", "Main Display", 400, 200)
+    ];
+
+    private IPluginImageWriter? _writer;
+
+    public void OnImageBuffersReady(IReadOnlyDictionary<string, IPluginImageWriter> writers)
+    {
+        // Called after Load() — store writer references for use in UpdateAsync
+        _writer = writers["main-image"];
+    }
+
+    // ... rest of BasePlugin implementation
+}
+```
+
+### Drawing with IPluginImageWriter
+
+The `IPluginImageWriter` gives you an `SKBitmap` to draw on. Call `Invalidate()` after drawing to publish the frame:
+
+```csharp
+public override Task UpdateAsync(CancellationToken cancellationToken)
+{
+    if (_writer is null) return Task.CompletedTask;
+
+    using var canvas = new SKCanvas(_writer.Bitmap);
+    canvas.Clear(SKColors.Black);
+
+    using var paint = new SKPaint
+    {
+        Color = SKColors.White,
+        TextSize = 24,
+        IsAntialias = true
+    };
+    canvas.DrawText("Hello from plugin!", 10, 40, paint);
+
+    _writer.Invalidate(); // Publish the frame
+
+    return Task.CompletedTask;
+}
+```
+
+### IPluginImageWriter API
+
+| Member | Description |
+|---|---|
+| `SKBitmap Bitmap` | The SkiaSharp bitmap to draw on |
+| `int Width` | Current image width |
+| `int Height` | Current image height |
+| `void Invalidate()` | Publish the current frame to InfoPanel |
+| `void Resize(int width, int height)` | Request a new image size (recreates the backing buffer) |
+
+> **Note:** Images are backed by memory-mapped files with double buffering. `Invalidate()` atomically swaps the active buffer, so drawing and reading never conflict.
+
+## Plugin Actions
+
+Plugins can expose actions that appear as buttons in the InfoPanel UI. Decorate methods with `[PluginAction]`:
+
+```csharp
+public class MyPlugin : BasePlugin
+{
+    [PluginAction(DisplayName = "Reset Counters")]
+    public void ResetCounters()
+    {
+        _counter.Value = 0;
+        _total.Value = 0;
+    }
+
+    [PluginAction(DisplayName = "Refresh Data")]
+    public void RefreshData()
+    {
+        // Force an immediate data refresh
+    }
+
+    // ... rest of plugin
+}
+```
+
+Action methods must be `public`, take no parameters, and return `void`. The `DisplayName` is shown in the UI.
+
+## Plugin Configuration
+
+Plugins can expose configurable properties that appear in the InfoPanel settings UI. Implement `IPluginConfigurable`:
+
+```csharp
+public class MyPlugin : BasePlugin, IPluginConfigurable
+{
+    private string _apiKey = "";
+    private int _refreshInterval = 30;
+    private bool _showDetails = true;
+
+    public IReadOnlyList<PluginConfigProperty> ConfigProperties =>
+    [
+        new PluginConfigProperty
+        {
+            Key = "apiKey",
+            DisplayName = "API Key",
+            Type = PluginConfigType.String,
+            Value = _apiKey
+        },
+        new PluginConfigProperty
+        {
+            Key = "refreshInterval",
+            DisplayName = "Refresh Interval (seconds)",
+            Type = PluginConfigType.Integer,
+            Value = _refreshInterval,
+            MinValue = 5,
+            MaxValue = 300,
+            Step = 5
+        },
+        new PluginConfigProperty
+        {
+            Key = "showDetails",
+            DisplayName = "Show Detailed Info",
+            Type = PluginConfigType.Boolean,
+            Value = _showDetails
+        },
+        new PluginConfigProperty
+        {
+            Key = "unit",
+            DisplayName = "Temperature Unit",
+            Type = PluginConfigType.Choice,
+            Value = "Celsius",
+            Options = ["Celsius", "Fahrenheit"]
+        }
+    ];
+
+    public void ApplyConfig(string key, object? value)
+    {
+        switch (key)
+        {
+            case "apiKey":
+                _apiKey = value as string ?? "";
+                break;
+            case "refreshInterval":
+                _refreshInterval = Convert.ToInt32(value);
+                break;
+            case "showDetails":
+                _showDetails = Convert.ToBoolean(value);
+                break;
+            case "unit":
+                // Handle unit change
+                break;
+        }
+    }
+
+    // ... rest of plugin
+}
+```
+
+### Configuration Types
+
+| Type | C# Type | UI Control | Extra Properties |
+|---|---|---|---|
+| `String` | `string` | Text box | — |
+| `Integer` | `int` | Numeric input | `MinValue`, `MaxValue`, `Step` |
+| `Double` | `double` | Numeric input | `MinValue`, `MaxValue`, `Step` |
+| `Boolean` | `bool` | Toggle switch | — |
+| `Choice` | `string` | Dropdown | `Options` (string array) |
 
 ## Plugin Lifecycle
 
-1. **Loading**: The plugin assembly is loaded by InfoPanel
-2. **Initialization**: `Initialize()` is called once when the plugin is first loaded
-3. **Container Setup**: `Load()` is called to set up containers and initial data items
-4. **Updates**: `UpdateAsync()` is called periodically according to the `UpdateInterval` property
-5. **Closing**: `Close()` is called when InfoPanel is shutting down or the plugin is being disabled
+1. **Discovery**: InfoPanel scans plugin directories for folders containing `{FolderName}/{FolderName}.dll`
+2. **Host Launch**: A separate host process is spawned for the plugin, connected via named pipe
+3. **Loading**: The plugin assembly is loaded in an isolated `AssemblyLoadContext`
+4. **Initialization**: `Initialize()` is called once
+5. **Container Setup**: `Load()` is called — register all containers and data items here
+6. **Image Setup**: If `IPluginImageProvider` is implemented, `OnImageBuffersReady()` is called with writers
+7. **Updates**: `UpdateAsync()` is called periodically according to `UpdateInterval`
+8. **Shutdown**: `Close()` is called when InfoPanel exits or the plugin is disabled
 
-## Configuration
+## Configuration Files
 
-If your plugin requires configuration, you can specify a configuration file path:
-
-```csharp
-public override string? ConfigFilePath => Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, "config.ini");
-```
-
-You can then use the `Config` class to load and save configuration:
+If your plugin needs persistent configuration beyond `IPluginConfigurable`, you can use a config file:
 
 ```csharp
-// Initialize configuration
-Config.Instance.Load();
-
-// Get a configuration value
-if (Config.Instance.TryGetValue("Section", "Key", out var value))
-{
-    // Use value
-}
-
-// Save a configuration value
-Config.Instance.SetValue("Section", "Key", "Value");
-Config.Instance.Save();
+public override string? ConfigFilePath =>
+    Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, "config.ini");
 ```
 
 ## Examples
 
 ### Simple Sensor Plugin
 
-Here's an example of a plugin that provides system uptime information:
+A plugin that provides system uptime information:
 
 ```csharp
 public class UptimePlugin : BasePlugin
@@ -220,10 +414,8 @@ public class UptimePlugin : BasePlugin
     private readonly PluginSensor _uptimeDays = new("days", "Days", 0);
     private readonly PluginSensor _uptimeHours = new("hours", "Hours", 0);
     private readonly PluginSensor _uptimeMinutes = new("minutes", "Minutes", 0);
-    
-    public UptimePlugin() : base("uptime-plugin", "System Uptime", "Provides system uptime information")
-    {
-    }
+
+    public UptimePlugin() : base("uptime-plugin", "System Uptime", "Provides system uptime information") { }
 
     public override string? ConfigFilePath => null;
     public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
@@ -241,12 +433,12 @@ public class UptimePlugin : BasePlugin
     {
         long uptimeMilliseconds = Environment.TickCount64;
         TimeSpan uptime = TimeSpan.FromMilliseconds(uptimeMilliseconds);
-        
+
         _uptimeFormatted.Value = $"{uptime.Days}:{uptime.Hours:D2}:{uptime.Minutes:D2}:{uptime.Seconds:D2}";
         _uptimeDays.Value = uptime.Days;
         _uptimeHours.Value = uptime.Hours;
         _uptimeMinutes.Value = uptime.Minutes;
-        
+
         return Task.CompletedTask;
     }
 
@@ -257,13 +449,13 @@ public class UptimePlugin : BasePlugin
 
 ### Table Data Plugin
 
-Here's an example of a plugin that provides process information in table format:
+A plugin that provides process information in table format:
 
 ```csharp
 public class ProcessInfoPlugin : BasePlugin
 {
     private readonly PluginTable _processTable;
-    
+
     public ProcessInfoPlugin() : base("process-info", "Process Information", "Shows top processes by CPU usage")
     {
         _processTable = new PluginTable("processes", "Top Processes", new DataTable(), "0:150|1:60|2:80");
@@ -301,7 +493,7 @@ public class ProcessInfoPlugin : BasePlugin
             {
                 var row = dataTable.NewRow();
                 row[0] = new PluginText("name", process.ProcessName);
-                row[1] = new PluginSensor("cpu", 0, "%"); // You'd need to calculate real CPU usage
+                row[1] = new PluginSensor("cpu", 0, "%");
                 row[2] = new PluginSensor("memory", process.WorkingSet64 / (1024 * 1024), " MB");
                 dataTable.Rows.Add(row);
             }
@@ -319,71 +511,52 @@ public class ProcessInfoPlugin : BasePlugin
 
 ## Building and Deployment
 
-Once you've built your plugin, you need to deploy it to the InfoPanel plugins directory:
+1. Build your plugin project in Release mode
+2. Copy the output folder (DLL, dependencies, and `PluginInfo.ini`) to:
+   - **External plugins:** `%ProgramData%\InfoPanel\plugins\YourPluginName\`
+3. The folder must follow the convention: `YourPluginName/YourPluginName.dll`
 
-1. Build your plugin project
-2. Copy the output DLL and any dependencies to one of the following locations:
-   - For user plugins: `%APPDATA%\Roaming\InfoPanel\Plugins\YourPluginName\`
-   - For development: `[InfoPanel Directory]\Plugins\YourPluginName\`
+### Distributing Your Plugin
 
-Make sure to include your `PluginInfo.ini` file in the same directory.
+Create a ZIP file with this structure:
 
-## Distributing Your Plugin
+```
+YourPluginName.zip
+└── YourPluginName/
+    ├── YourPluginName.dll
+    ├── [dependency DLLs]
+    └── PluginInfo.ini
+```
 
-To share your plugin with other InfoPanel users:
+Users can install by:
+- Extracting the ZIP to `%ProgramData%\InfoPanel\plugins\`
+- Or using the "Add Plugin from ZIP" option in InfoPanel's Plugins page
 
-1. Compile your plugin in Release mode
-2. Create a ZIP file with the following structure:
-   ```
-   YourPluginName.zip
-   └── YourPluginName/
-       ├── YourPlugin.dll
-       ├── [Any dependency DLLs]
-       └── PluginInfo.ini
-   ```
+## Debugging
 
-3. The folder name inside the ZIP must match the ZIP filename (without the .zip extension)
-4. Users can install your plugin by:
-   - Extracting the ZIP to `%APPDATA%\Roaming\InfoPanel\Plugins\`
-   - Or using the "Add Plugin from ZIP" option in InfoPanel's Plugins page
+Use the Plugin Simulator to test your plugin without launching the full InfoPanel application:
 
-### Publishing Your Plugin
-
-If you'd like your plugin to be featured in the official InfoPanel documentation:
-
-1. Host your plugin on a public GitHub repository
-2. Ensure your repository includes:
-   - Source code
-   - Compiled releases
-   - Clear documentation and usage instructions
-3. Submit a pull request to the [InfoPanel repository](https://github.com/habibrehmansg/infopanel) to add your plugin to the "Community Plugins" section of the README.md
-
-## Debugging Plugins
-
-To debug your plugin:
-
-1. Set up a reference to your plugin project in the InfoPanel.Plugins.Simulator project
-2. Modify the simulator's `Program.cs` to load and test your plugin
+1. Reference your plugin project from `InfoPanel.Plugins.Simulator`
+2. Modify the simulator's `Program.cs` to load your plugin
 3. Set the simulator as the startup project
 4. Run in debug mode
 
-This allows you to test your plugin's functionality without launching the full InfoPanel application.
+```bash
+dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj
+```
 
 ## Best Practices
 
-1. **Provide Meaningful Names**: Use clear, descriptive names for your plugin, containers, and data items
-2. **Handle Exceptions**: Wrap potentially problematic code in try-catch blocks
-3. **Clean Up Resources**: Properly dispose of any resources in the `Close()` method
-4. **Optimize Updates**: Keep your `UpdateAsync()` method efficient
-5. **Thread Safety**: Ensure your plugin is thread-safe, especially when updating data
-6. **Configuration**: Use configuration files for user-configurable settings
-7. **Documentation**: Document your plugin's features and requirements
-8. **Testing**: Thoroughly test your plugin in isolation before deploying
-
-For examples of well-structured plugins, check out the built-in plugins in the InfoPanel.Extras directory of the InfoPanel repository.
+1. **Use meaningful IDs**: Plugin and container IDs should be stable across versions — they're used for data binding
+2. **Handle exceptions**: Wrap potentially problematic code in try-catch blocks — unhandled exceptions in `UpdateAsync` will be reported but won't crash the host
+3. **Clean up resources**: Dispose of resources in `Close()` — the host process will terminate, but clean shutdown is preferred
+4. **Optimize updates**: Keep `UpdateAsync()` fast — long-running updates block the next cycle
+5. **Thread safety**: `UpdateAsync()` runs on a single thread, but image writers may be read concurrently — always call `Invalidate()` after completing a frame
+6. **Minimize allocations**: Reuse data objects where possible; avoid allocating new `PluginSensor`/`PluginText` instances every update
+7. **Use delta-friendly data**: The host only transmits changed values — keep sensor values stable when unchanged to reduce IPC overhead
 
 ---
 
-Feel free to join the [InfoPanel Discord][discord] community if you have questions or need help with plugin development.
+For questions or help with plugin development, join the [InfoPanel Discord][discord] community.
 
 [discord]: https://discord.gg/aNGeJxjE7Q
