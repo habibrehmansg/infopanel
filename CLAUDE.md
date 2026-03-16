@@ -180,6 +180,27 @@ GitHub Actions workflow: `.github/workflows/dotnet-desktop.yml`
 - No unit test projects currently exist
 - Plugins are loaded from the `plugins` directory at runtime
 
+## API Client
+
+The C# API client (`InfoPanel/ApiClient/InfoPanelApiClient.cs`) is auto-generated from the OpenAPI spec using NSwag. It is committed to source control — no build-time generation.
+
+- **Spec:** `InfoPanel/ApiClient/openapi.json` (OpenAPI 3.0, fetched from the live API)
+- **Config:** `InfoPanel/ApiClient/nswag.json`
+- **Generated client:** `InfoPanel/ApiClient/InfoPanelApiClient.cs`
+- **Wrapper service:** `InfoPanel/Services/InfoPanelApiService.cs` (singleton with `Instance` pattern)
+
+### Regenerating the client
+
+When the API changes, run:
+
+```powershell
+pwsh scripts/generate-api-client.ps1
+```
+
+This fetches the latest spec from `https://api.infopanel.net/openapi.json` and regenerates the client. Review the diff in both `openapi.json` and `InfoPanelApiClient.cs` before committing.
+
+> **Note:** NSwag is installed as a local dotnet tool (`.config/dotnet-tools.json`). Run `dotnet tool restore` after cloning.
+
 ## Related Documentation
 
 - `PLUGINS.md` — Plugin development guide
