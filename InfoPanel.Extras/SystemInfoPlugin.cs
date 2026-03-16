@@ -27,11 +27,11 @@ namespace InfoPanel.Extras
         private readonly PluginTable _topCpuUtility = new("Top CPU Utility", new DataTable(), _defaultTopFormat);
         private readonly PluginTable _topMemoryUsage = new("Top Memory Usage", new DataTable(), _defaultTopFormat);
 
-        public override string? ConfigFilePath => Config.FilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
-        private string[] blacklist = [];
-        private string _blacklistRaw = "";
+        private static readonly string _defaultBlacklist = "_Total,Idle,dwm,csrss,svchost,lsass,system,spoolsv,Memory Compression";
+        private string[] blacklist = _defaultBlacklist.Split(',');
+        private string _blacklistRaw = _defaultBlacklist;
 
         public SystemInfoPlugin() : base("system-info-plugin", "System Info", "Misc system information and statistics.")
         {
@@ -56,19 +56,10 @@ namespace InfoPanel.Extras
             var strValue = value?.ToString() ?? "";
             _blacklistRaw = strValue;
             blacklist = strValue.Split(',', StringSplitOptions.TrimEntries);
-
-            Config.Instance.SetValue(Config.SECTION_SYSTEM_INFO, key, strValue);
-            Config.Instance.Save();
         }
 
         public override void Initialize()
         {
-            Config.Instance.Load();
-            if(Config.Instance.TryGetValue(Config.SECTION_SYSTEM_INFO, "Blacklist", out var result))
-            {
-                _blacklistRaw = result;
-                blacklist = result.Split(',');
-            }
         }
 
         public override void Load(List<IPluginContainer> containers)

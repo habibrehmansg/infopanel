@@ -8,7 +8,8 @@ namespace InfoPanel.Extras
     public class WeatherPlugin : BasePlugin, IPluginConfigurable
     {
         private OpenWeatherMapCache? _current;
-        private City? _cityObj;
+        private City _cityObj;
+        private bool _isConfigured;
         private string _apiKey = "";
         private string _cityName = "";
 
@@ -40,7 +41,6 @@ namespace InfoPanel.Extras
         {
         }
 
-        public override string? ConfigFilePath => Config.FilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromMinutes(1);
 
         public IReadOnlyList<PluginConfigProperty> ConfigProperties =>
@@ -79,34 +79,25 @@ namespace InfoPanel.Extras
                     return;
             }
 
-            Config.Instance.SetValue(Config.SECTION_WEATHER, key, strValue);
-            Config.Instance.Save();
+            RebuildClient();
+        }
 
+        private void RebuildClient()
+        {
             _current?.Dispose();
             _current = null;
-            _cityObj = null;
+            _isConfigured = false;
 
             if (!string.IsNullOrEmpty(_apiKey) && !string.IsNullOrEmpty(_cityName))
             {
                 _current = new OpenWeatherMapCache(_apiKey, 10_000);
                 _cityObj = new City(_cityName);
+                _isConfigured = true;
             }
         }
 
         public override void Initialize()
         {
-            Config.Instance.Load();
-            Config.Instance.TryGetValue(Config.SECTION_WEATHER, "APIKey", out string apiKey);
-            Config.Instance.TryGetValue(Config.SECTION_WEATHER, "City", out string city);
-
-            _apiKey = apiKey;
-            _cityName = city;
-
-            if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(city))
-            {
-                _current = new(apiKey, 10_000);
-                _cityObj = new(city);
-            }
         }
 
         public override void Close()
@@ -117,7 +108,7 @@ namespace InfoPanel.Extras
 
         public override void Load(List<IPluginContainer> containers)
         {
-            if (_cityObj != null)
+            if (_isConfigured)
             {
                 var container = new PluginContainer(_cityObj.CityName);
                 container.Entries.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);
@@ -156,7 +147,7 @@ namespace InfoPanel.Extras
 
         private async Task GetWeather()
         {
-            if (_current == null || _cityObj == null)
+            if (_current == null || !_isConfigured)
             {
                 return;
             }

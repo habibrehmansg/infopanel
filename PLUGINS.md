@@ -381,25 +381,23 @@ public class MyPlugin : BasePlugin, IPluginConfigurable
 | `Boolean` | `bool` | Toggle switch | — |
 | `Choice` | `string` | Dropdown | `Options` (string array) |
 
+### Automatic Config Persistence
+
+Config values are automatically persisted by the host process. When a user changes a config value in the UI, the host saves all current `ConfigProperties` values to a JSON sidecar file next to the plugin DLL (e.g. `MyPlugin.dll.my-plugin-id.config.json`). On next startup, stored values are automatically restored via `ApplyConfig()` after `Initialize()` returns.
+
+**You do not need to implement any file I/O** — just keep your config state in memory and the host handles persistence transparently.
+
 ## Plugin Lifecycle
 
 1. **Discovery**: InfoPanel scans plugin directories for folders containing `{FolderName}/{FolderName}.dll`
 2. **Host Launch**: A separate host process is spawned for the plugin, connected via named pipe
 3. **Loading**: The plugin assembly is loaded in an isolated `AssemblyLoadContext`
 4. **Initialization**: `Initialize()` is called once
-5. **Container Setup**: `Load()` is called — register all containers and data items here
-6. **Image Setup**: If `IPluginImageProvider` is implemented, `OnImageBuffersReady()` is called with writers
-7. **Updates**: `UpdateAsync()` is called periodically according to `UpdateInterval`
-8. **Shutdown**: `Close()` is called when InfoPanel exits or the plugin is disabled
-
-## Configuration Files
-
-If your plugin needs persistent configuration beyond `IPluginConfigurable`, you can use a config file:
-
-```csharp
-public override string? ConfigFilePath =>
-    Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, "config.ini");
-```
+5. **Config Restore**: If the plugin implements `IPluginConfigurable`, stored config values are loaded and applied via `ApplyConfig()` calls
+6. **Container Setup**: `Load()` is called — register all containers and data items here
+7. **Image Setup**: If `IPluginImageProvider` is implemented, `OnImageBuffersReady()` is called with writers
+8. **Updates**: `UpdateAsync()` is called periodically according to `UpdateInterval`
+9. **Shutdown**: `Close()` is called when InfoPanel exits or the plugin is disabled
 
 ## Examples
 

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.MemoryMappedFiles;
 using System.Reflection;
+using System.Text.Json;
 using Newtonsoft.Json.Linq;
 using InfoPanel.Plugins.Graphics;
 using InfoPanel.Plugins.Ipc;
@@ -64,6 +65,17 @@ namespace InfoPanel.Plugins.Host
                     _wrappers.Add(wrapper);
                     Logger.Information("Plugin {PluginName} initialized successfully", wrapper.Name);
 
+                    // Load and apply stored config for configurable plugins (only if plugin doesn't manage its own config file)
+                    if (plugin is IPluginConfigurable earlyConfigurable && wrapper.ConfigFilePath == null)
+                    {
+                        LoadAndApplyConfig(wrapper, earlyConfigurable);
+                        // Ensure the sidecar JSON exists (creates with defaults if missing)
+                        if (!File.Exists(GetConfigFilePath(wrapper)))
+                        {
+                            SaveConfig(wrapper, earlyConfigurable);
+                        }
+                    }
+
                     // Discover actions
                     var actions = new List<PluginActionDto>();
                     var methods = plugin.GetType().GetMethods()
@@ -83,7 +95,9 @@ namespace InfoPanel.Plugins.Host
                         Id = wrapper.Id,
                         Name = wrapper.Name,
                         Description = wrapper.Description,
-                        ConfigFilePath = wrapper.ConfigFilePath,
+                        ConfigFilePath = plugin is IPluginConfigurable && wrapper.ConfigFilePath == null
+                            ? GetConfigFilePath(wrapper)
+                            : wrapper.ConfigFilePath,
                         UpdateIntervalMs = wrapper.UpdateInterval.TotalMilliseconds,
                         Actions = actions,
                         IsConfigurable = plugin is IPluginConfigurable,
@@ -224,6 +238,10 @@ namespace InfoPanel.Plugins.Host
                 {
                     configurable.ApplyConfig(key, nativeValue);
                     Logger.Information("Config applied successfully for key={Key}", key);
+                    if (wrapper.ConfigFilePath == null)
+                    {
+                        SaveConfig(wrapper, configurable);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -554,6 +572,86 @@ namespace InfoPanel.Plugins.Host
                 MaxValue = prop.MaxValue,
                 Step = prop.Step,
                 Options = prop.Options
+            };
+        }
+
+        private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+
+        private string GetConfigFilePath(PluginWrapper wrapper)
+            => Path.GetFullPath($"{_pluginPath}.{wrapper.Id}.config.json");
+
+        private void LoadAndApplyConfig(PluginWrapper wrapper, IPluginConfigurable configurable)
+        {
+            var configPath = GetConfigFilePath(wrapper);
+            if (!File.Exists(configPath)) return;
+
+            try
+            {
+                var json = File.ReadAllText(configPath);
+                var stored = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+                if (stored == null) return;
+
+                var props = configurable.ConfigProperties;
+                foreach (var kvp in stored)
+                {
+                    var prop = props.FirstOrDefault(p => p.Key == kvp.Key);
+                    if (prop == null) continue;
+
+                    var value = CoerceJsonElement(kvp.Value, prop.Type);
+                    try
+                    {
+                        configurable.ApplyConfig(kvp.Key, value);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning(ex, "Failed to apply stored config key {Key} on plugin {PluginId}", kvp.Key, wrapper.Id);
+                    }
+                }
+
+                Logger.Information("Loaded stored config for plugin {PluginId} from {Path}", wrapper.Id, configPath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to load config file for plugin {PluginId}", wrapper.Id);
+            }
+        }
+
+        private void SaveConfig(PluginWrapper wrapper, IPluginConfigurable configurable)
+        {
+            try
+            {
+                var configPath = GetConfigFilePath(wrapper);
+                var values = new Dictionary<string, object?>();
+                foreach (var prop in configurable.ConfigProperties)
+                {
+                    values[prop.Key] = prop.Value;
+                }
+                var json = JsonSerializer.Serialize(values, _jsonOptions);
+                File.WriteAllText(configPath, json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to save config for plugin {PluginId}", wrapper.Id);
+            }
+        }
+
+        private static object? CoerceJsonElement(JsonElement element, PluginConfigType type)
+        {
+            return type switch
+            {
+                PluginConfigType.Boolean => element.ValueKind == JsonValueKind.True || element.ValueKind == JsonValueKind.False
+                    ? element.GetBoolean()
+                    : bool.TryParse(element.GetString(), out var b) && b,
+                PluginConfigType.Integer => element.ValueKind == JsonValueKind.Number
+                    ? element.GetInt32()
+                    : int.TryParse(element.GetString(), out var i) ? i : 0,
+                PluginConfigType.Double => element.ValueKind == JsonValueKind.Number
+                    ? element.GetDouble()
+                    : double.TryParse(element.GetString(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0.0,
+                PluginConfigType.String => element.GetString() ?? "",
+                PluginConfigType.Choice => element.GetString() ?? "",
+                _ => element.GetString() ?? ""
             };
         }
 

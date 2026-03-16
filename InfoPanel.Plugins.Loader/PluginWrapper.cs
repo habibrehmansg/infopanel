@@ -14,7 +14,9 @@ namespace InfoPanel.Plugins.Loader
         public string Id => Plugin.Id;
         public string Name => Plugin.Name;
         public string Description => Plugin.Description;
+#pragma warning disable CS0618 // ConfigFilePath is obsolete but we need it for backward compatibility
         public string? ConfigFilePath => Plugin.ConfigFilePath;
+#pragma warning restore CS0618
 
         public TimeSpan UpdateInterval => Plugin.UpdateInterval;
 
