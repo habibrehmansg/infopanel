@@ -67,11 +67,29 @@ namespace InfoPanel.ApiClient
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Logout and invalidate session
+        /// Logout and invalidate session(s)
         /// </summary>
+        /// <param name="all">Set to 'true' to logout all sessions</param>
         /// <returns>Successfully logged out</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response5> Post_LogoutAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response5> Post_LogoutAsync(All? all = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>
+        /// List all active sessions for the current user
+        /// </summary>
+        /// <returns>List of active sessions</returns>
+        /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
+        System.Threading.Tasks.Task<Response6> Get_ListSessionsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>
+        /// Revoke a specific session
+        /// </summary>
+        /// <param name="id">Session ID (first 8 chars of hash)</param>
+        /// <returns>Session revoked</returns>
+        /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
+        System.Threading.Tasks.Task<Response7> Delete_RevokeSessionAsync(string id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -79,7 +97,7 @@ namespace InfoPanel.ApiClient
         /// </summary>
         /// <returns>List of recent versions</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response6> Get_ListVersionsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response8> Get_ListVersionsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -87,7 +105,7 @@ namespace InfoPanel.ApiClient
         /// </summary>
         /// <returns>Latest version info</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response7> Get_GetLatestVersionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response9> Get_GetLatestVersionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -100,7 +118,7 @@ namespace InfoPanel.ApiClient
         /// <param name="sort">Sort order</param>
         /// <returns>Paginated list of plugins</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response8> Get_ListPluginsAsync(int? page = null, int? pageSize = null, string? search = null, Category? category = null, Sort? sort = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response10> Get_ListPluginsAsync(int? page = null, int? pageSize = null, string? search = null, Category? category = null, Sort? sort = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -109,7 +127,7 @@ namespace InfoPanel.ApiClient
         /// <param name="slug">Plugin slug</param>
         /// <returns>Plugin details</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response9> Get_GetPluginAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response11> Get_GetPluginAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -118,7 +136,7 @@ namespace InfoPanel.ApiClient
         /// <param name="slug">Plugin slug</param>
         /// <returns>List of plugin versions</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response10> Get_ListPluginVersionsAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response12> Get_ListPluginVersionsAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -127,7 +145,7 @@ namespace InfoPanel.ApiClient
         /// <param name="slug">Plugin slug</param>
         /// <returns>Download recorded</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response11> Post_RecordPluginDownloadAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response13> Post_RecordPluginDownloadAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -136,7 +154,7 @@ namespace InfoPanel.ApiClient
         /// <param name="slug">Plugin slug</param>
         /// <returns>Rating saved</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response12> Post_RatePluginAsync(string slug, Body? body = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response14> Post_RatePluginAsync(string slug, Body? body = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -147,7 +165,7 @@ namespace InfoPanel.ApiClient
         /// <param name="search">Search by name</param>
         /// <returns>Paginated list of themes</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response13> Get_ListThemesAsync(int? page = null, int? pageSize = null, string? search = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response15> Get_ListThemesAsync(int? page = null, int? pageSize = null, string? search = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -155,7 +173,7 @@ namespace InfoPanel.ApiClient
         /// </summary>
         /// <returns>Theme created successfully</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response14> Post_UploadThemeAsync(Body2? body = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response16> Post_UploadThemeAsync(Body2? body = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -164,7 +182,7 @@ namespace InfoPanel.ApiClient
         /// <param name="id">Theme ID</param>
         /// <returns>Theme details</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response15> Get_GetThemeAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response17> Get_GetThemeAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -173,7 +191,7 @@ namespace InfoPanel.ApiClient
         /// <param name="id">Theme ID</param>
         /// <returns>Like toggled</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task<Response16> Post_ToggleThemeLikeAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+        System.Threading.Tasks.Task<Response18> Post_ToggleThemeLikeAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
     }
 
@@ -347,12 +365,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 400)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response17>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response19>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response17>("Invalid redirect URI", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response19>("Invalid redirect URI", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -443,12 +461,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 400)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response18>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response20>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response18>("Invalid request", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response20>("Invalid request", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -527,22 +545,22 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 401)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response19>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response21>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response19>("Unauthorized", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response21>("Unauthorized", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         if (status_ == 404)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response20>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response22>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response20>("User not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response22>("User not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -566,11 +584,12 @@ namespace InfoPanel.ApiClient
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Logout and invalidate session
+        /// Logout and invalidate session(s)
         /// </summary>
+        /// <param name="all">Set to 'true' to logout all sessions</param>
         /// <returns>Successfully logged out</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response5> Post_LogoutAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response5> Post_LogoutAsync(All? all = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             var client_ = _httpClient;
             var disposeClient_ = false;
@@ -586,6 +605,12 @@ namespace InfoPanel.ApiClient
                 
                     // Operation Path: "v1/auth/logout"
                     urlBuilder_.Append("v1/auth/logout");
+                    urlBuilder_.Append('?');
+                    if (all != null)
+                    {
+                        urlBuilder_.Append(System.Uri.EscapeDataString("all")).Append('=').Append(System.Uri.EscapeDataString(ConvertToString(all, System.Globalization.CultureInfo.InvariantCulture))).Append('&');
+                    }
+                    urlBuilder_.Length--;
 
                     PrepareRequest(client_, request_, urlBuilder_);
 
@@ -641,11 +666,11 @@ namespace InfoPanel.ApiClient
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Get recent releases from GitHub (last 10)
+        /// List all active sessions for the current user
         /// </summary>
-        /// <returns>List of recent versions</returns>
+        /// <returns>List of active sessions</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response6> Get_ListVersionsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response6> Get_ListSessionsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             var client_ = _httpClient;
             var disposeClient_ = false;
@@ -658,8 +683,8 @@ namespace InfoPanel.ApiClient
 
                     var urlBuilder_ = new System.Text.StringBuilder();
                 
-                    // Operation Path: "v1/versions"
-                    urlBuilder_.Append("v1/versions");
+                    // Operation Path: "v1/auth/sessions"
+                    urlBuilder_.Append("v1/auth/sessions");
 
                     PrepareRequest(client_, request_, urlBuilder_);
 
@@ -715,11 +740,184 @@ namespace InfoPanel.ApiClient
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
+        /// Revoke a specific session
+        /// </summary>
+        /// <param name="id">Session ID (first 8 chars of hash)</param>
+        /// <returns>Session revoked</returns>
+        /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
+        public virtual async System.Threading.Tasks.Task<Response7> Delete_RevokeSessionAsync(string id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        {
+            if (id == null)
+                throw new System.ArgumentNullException("id");
+
+            var client_ = _httpClient;
+            var disposeClient_ = false;
+            try
+            {
+                using (var request_ = new System.Net.Http.HttpRequestMessage())
+                {
+                    request_.Method = new System.Net.Http.HttpMethod("DELETE");
+                    request_.Headers.Accept.Add(System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
+
+                    var urlBuilder_ = new System.Text.StringBuilder();
+                
+                    // Operation Path: "v1/auth/sessions/{id}"
+                    urlBuilder_.Append("v1/auth/sessions/");
+                    urlBuilder_.Append(System.Uri.EscapeDataString(ConvertToString(id, System.Globalization.CultureInfo.InvariantCulture)));
+
+                    PrepareRequest(client_, request_, urlBuilder_);
+
+                    var url_ = urlBuilder_.ToString();
+                    request_.RequestUri = new System.Uri(url_, System.UriKind.RelativeOrAbsolute);
+
+                    PrepareRequest(client_, request_, url_);
+
+                    var response_ = await client_.SendAsync(request_, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                    var disposeResponse_ = true;
+                    try
+                    {
+                        var headers_ = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.IEnumerable<string>>();
+                        foreach (var item_ in response_.Headers)
+                            headers_[item_.Key] = item_.Value;
+                        if (response_.Content != null && response_.Content.Headers != null)
+                        {
+                            foreach (var item_ in response_.Content.Headers)
+                                headers_[item_.Key] = item_.Value;
+                        }
+
+                        ProcessResponse(client_, response_);
+
+                        var status_ = (int)response_.StatusCode;
+                        if (status_ == 200)
+                        {
+                            var objectResponse_ = await ReadObjectResponseAsync<Response7>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            if (objectResponse_.Object == null)
+                            {
+                                throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
+                            }
+                            return objectResponse_.Object;
+                        }
+                        else
+                        if (status_ == 400)
+                        {
+                            var objectResponse_ = await ReadObjectResponseAsync<Response23>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            if (objectResponse_.Object == null)
+                            {
+                                throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
+                            }
+                            throw new InfoPanelApiException<Response23>("Cannot revoke current session", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                        }
+                        else
+                        if (status_ == 404)
+                        {
+                            var objectResponse_ = await ReadObjectResponseAsync<Response24>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            if (objectResponse_.Object == null)
+                            {
+                                throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
+                            }
+                            throw new InfoPanelApiException<Response24>("Session not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                        }
+                        else
+                        {
+                            var responseData_ = response_.Content == null ? null : await ReadAsStringAsync(response_.Content, cancellationToken).ConfigureAwait(false);
+                            throw new InfoPanelApiException("The HTTP status code of the response was not expected (" + status_ + ").", status_, responseData_, headers_, null);
+                        }
+                    }
+                    finally
+                    {
+                        if (disposeResponse_)
+                            response_.Dispose();
+                    }
+                }
+            }
+            finally
+            {
+                if (disposeClient_)
+                    client_.Dispose();
+            }
+        }
+
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>
+        /// Get recent releases from GitHub (last 10)
+        /// </summary>
+        /// <returns>List of recent versions</returns>
+        /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
+        public virtual async System.Threading.Tasks.Task<Response8> Get_ListVersionsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        {
+            var client_ = _httpClient;
+            var disposeClient_ = false;
+            try
+            {
+                using (var request_ = new System.Net.Http.HttpRequestMessage())
+                {
+                    request_.Method = new System.Net.Http.HttpMethod("GET");
+                    request_.Headers.Accept.Add(System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
+
+                    var urlBuilder_ = new System.Text.StringBuilder();
+                
+                    // Operation Path: "v1/versions"
+                    urlBuilder_.Append("v1/versions");
+
+                    PrepareRequest(client_, request_, urlBuilder_);
+
+                    var url_ = urlBuilder_.ToString();
+                    request_.RequestUri = new System.Uri(url_, System.UriKind.RelativeOrAbsolute);
+
+                    PrepareRequest(client_, request_, url_);
+
+                    var response_ = await client_.SendAsync(request_, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                    var disposeResponse_ = true;
+                    try
+                    {
+                        var headers_ = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.IEnumerable<string>>();
+                        foreach (var item_ in response_.Headers)
+                            headers_[item_.Key] = item_.Value;
+                        if (response_.Content != null && response_.Content.Headers != null)
+                        {
+                            foreach (var item_ in response_.Content.Headers)
+                                headers_[item_.Key] = item_.Value;
+                        }
+
+                        ProcessResponse(client_, response_);
+
+                        var status_ = (int)response_.StatusCode;
+                        if (status_ == 200)
+                        {
+                            var objectResponse_ = await ReadObjectResponseAsync<Response8>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            if (objectResponse_.Object == null)
+                            {
+                                throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
+                            }
+                            return objectResponse_.Object;
+                        }
+                        else
+                        {
+                            var responseData_ = response_.Content == null ? null : await ReadAsStringAsync(response_.Content, cancellationToken).ConfigureAwait(false);
+                            throw new InfoPanelApiException("The HTTP status code of the response was not expected (" + status_ + ").", status_, responseData_, headers_, null);
+                        }
+                    }
+                    finally
+                    {
+                        if (disposeResponse_)
+                            response_.Dispose();
+                    }
+                }
+            }
+            finally
+            {
+                if (disposeClient_)
+                    client_.Dispose();
+            }
+        }
+
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>
         /// Get latest release version from GitHub
         /// </summary>
         /// <returns>Latest version info</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response7> Get_GetLatestVersionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response9> Get_GetLatestVersionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             var client_ = _httpClient;
             var disposeClient_ = false;
@@ -760,7 +958,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response7>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response9>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -798,7 +996,7 @@ namespace InfoPanel.ApiClient
         /// <param name="sort">Sort order</param>
         /// <returns>Paginated list of plugins</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response8> Get_ListPluginsAsync(int? page = null, int? pageSize = null, string? search = null, Category? category = null, Sort? sort = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response10> Get_ListPluginsAsync(int? page = null, int? pageSize = null, string? search = null, Category? category = null, Sort? sort = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             var client_ = _httpClient;
             var disposeClient_ = false;
@@ -861,7 +1059,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response8>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response10>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -895,7 +1093,7 @@ namespace InfoPanel.ApiClient
         /// <param name="slug">Plugin slug</param>
         /// <returns>Plugin details</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response9> Get_GetPluginAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response11> Get_GetPluginAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             if (slug == null)
                 throw new System.ArgumentNullException("slug");
@@ -940,7 +1138,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response9>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response11>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -950,12 +1148,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 404)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response21>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response25>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response21>("Plugin not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response25>("Plugin not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -984,7 +1182,7 @@ namespace InfoPanel.ApiClient
         /// <param name="slug">Plugin slug</param>
         /// <returns>List of plugin versions</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response10> Get_ListPluginVersionsAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response12> Get_ListPluginVersionsAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             if (slug == null)
                 throw new System.ArgumentNullException("slug");
@@ -1030,7 +1228,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response10>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response12>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -1040,12 +1238,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 404)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response22>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response26>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response22>("Plugin not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response26>("Plugin not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -1074,7 +1272,7 @@ namespace InfoPanel.ApiClient
         /// <param name="slug">Plugin slug</param>
         /// <returns>Download recorded</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response11> Post_RecordPluginDownloadAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response13> Post_RecordPluginDownloadAsync(string slug, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             if (slug == null)
                 throw new System.ArgumentNullException("slug");
@@ -1121,7 +1319,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response11>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response13>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -1131,12 +1329,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 404)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response23>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response27>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response23>("Plugin not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response27>("Plugin not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -1165,7 +1363,7 @@ namespace InfoPanel.ApiClient
         /// <param name="slug">Plugin slug</param>
         /// <returns>Rating saved</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response12> Post_RatePluginAsync(string slug, Body? body = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response14> Post_RatePluginAsync(string slug, Body? body = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             if (slug == null)
                 throw new System.ArgumentNullException("slug");
@@ -1215,7 +1413,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response12>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response14>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -1225,12 +1423,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 404)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response24>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response28>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response24>("Plugin not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response28>("Plugin not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -1261,7 +1459,7 @@ namespace InfoPanel.ApiClient
         /// <param name="search">Search by name</param>
         /// <returns>Paginated list of themes</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response13> Get_ListThemesAsync(int? page = null, int? pageSize = null, string? search = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response15> Get_ListThemesAsync(int? page = null, int? pageSize = null, string? search = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             var client_ = _httpClient;
             var disposeClient_ = false;
@@ -1316,7 +1514,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response13>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response15>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -1349,7 +1547,7 @@ namespace InfoPanel.ApiClient
         /// </summary>
         /// <returns>Theme created successfully</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response14> Post_UploadThemeAsync(Body2? body = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response16> Post_UploadThemeAsync(Body2? body = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             var client_ = _httpClient;
             var disposeClient_ = false;
@@ -1394,7 +1592,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 201)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response14>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response16>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -1404,12 +1602,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 401)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response25>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response29>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response25>("Unauthorized", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response29>("Unauthorized", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -1438,7 +1636,7 @@ namespace InfoPanel.ApiClient
         /// <param name="id">Theme ID</param>
         /// <returns>Theme details</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response15> Get_GetThemeAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response17> Get_GetThemeAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             if (id == null)
                 throw new System.ArgumentNullException("id");
@@ -1483,7 +1681,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response15>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response17>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -1493,12 +1691,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 404)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response26>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response30>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response26>("Theme not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response30>("Theme not found", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -1527,7 +1725,7 @@ namespace InfoPanel.ApiClient
         /// <param name="id">Theme ID</param>
         /// <returns>Like toggled</returns>
         /// <exception cref="InfoPanelApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task<Response16> Post_ToggleThemeLikeAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        public virtual async System.Threading.Tasks.Task<Response18> Post_ToggleThemeLikeAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
             if (id == null)
                 throw new System.ArgumentNullException("id");
@@ -1574,7 +1772,7 @@ namespace InfoPanel.ApiClient
                         var status_ = (int)response_.StatusCode;
                         if (status_ == 200)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response16>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response18>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -1584,12 +1782,12 @@ namespace InfoPanel.ApiClient
                         else
                         if (status_ == 401)
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<Response27>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Response31>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new InfoPanelApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
                             }
-                            throw new InfoPanelApiException<Response27>("Unauthorized", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
+                            throw new InfoPanelApiException<Response31>("Unauthorized", status_, objectResponse_.Text, headers_, objectResponse_.Object, null);
                         }
                         else
                         {
@@ -1738,6 +1936,21 @@ namespace InfoPanel.ApiClient
             var result = System.Convert.ToString(value, cultureInfo);
             return result == null ? "" : result;
         }
+    }
+
+    /// <summary>
+    /// Set to 'true' to logout all sessions
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public enum All
+    {
+
+        [System.Runtime.Serialization.EnumMember(Value = @"true")]
+        True = 0,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"false")]
+        False = 1,
+
     }
 
     /// <summary>
@@ -1931,6 +2144,9 @@ namespace InfoPanel.ApiClient
         [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
         public string Message { get; set; } = default!;
 
+        [System.Text.Json.Serialization.JsonPropertyName("revokedCount")]
+        public double RevokedCount { get; set; } = default!;
+
         private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
 
         [System.Text.Json.Serialization.JsonExtensionData]
@@ -1944,6 +2160,44 @@ namespace InfoPanel.ApiClient
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class Response6
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("sessions")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public System.Collections.Generic.ICollection<Sessions> Sessions { get; set; } = new System.Collections.ObjectModel.Collection<Sessions>();
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Response7
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Message { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Response8
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("versions")]
@@ -1962,7 +2216,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response7
+    public partial class Response9
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("version")]
@@ -2000,7 +2254,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response8
+    public partial class Response10
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("data")]
@@ -2023,7 +2277,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response9
+    public partial class Response11
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("data")]
@@ -2042,7 +2296,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response10
+    public partial class Response12
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("data")]
@@ -2061,7 +2315,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response11
+    public partial class Response13
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("downloadUrl")]
@@ -2082,7 +2336,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response12
+    public partial class Response14
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("rating")]
@@ -2106,7 +2360,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response13
+    public partial class Response15
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("data")]
@@ -2129,7 +2383,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response14
+    public partial class Response16
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("data")]
@@ -2148,7 +2402,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response15
+    public partial class Response17
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("data")]
@@ -2167,7 +2421,7 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response16
+    public partial class Response18
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("liked")]
@@ -2175,58 +2429,6 @@ namespace InfoPanel.ApiClient
 
         [System.Text.Json.Serialization.JsonPropertyName("totalLikes")]
         public double TotalLikes { get; set; } = default!;
-
-        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
-
-        [System.Text.Json.Serialization.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
-        {
-            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
-            set { _additionalProperties = value; }
-        }
-
-    }
-
-    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response17
-    {
-
-        [System.Text.Json.Serialization.JsonPropertyName("success")]
-        public bool Success { get; set; } = default!;
-
-        [System.Text.Json.Serialization.JsonPropertyName("error")]
-        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
-        public string Error { get; set; } = default!;
-
-        [System.Text.Json.Serialization.JsonPropertyName("code")]
-        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
-        public string Code { get; set; } = default!;
-
-        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
-
-        [System.Text.Json.Serialization.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
-        {
-            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
-            set { _additionalProperties = value; }
-        }
-
-    }
-
-    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
-    public partial class Response18
-    {
-
-        [System.Text.Json.Serialization.JsonPropertyName("success")]
-        public bool Success { get; set; } = default!;
-
-        [System.Text.Json.Serialization.JsonPropertyName("error")]
-        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
-        public string Error { get; set; } = default!;
-
-        [System.Text.Json.Serialization.JsonPropertyName("code")]
-        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
-        public string Code { get; set; } = default!;
 
         private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
 
@@ -2474,6 +2676,110 @@ namespace InfoPanel.ApiClient
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Response28
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("success")]
+        public bool Success { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Error { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Code { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Response29
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("success")]
+        public bool Success { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Error { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Code { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Response30
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("success")]
+        public bool Success { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Error { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Code { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Response31
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("success")]
+        public bool Success { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Error { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Code { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class User
     {
 
@@ -2521,6 +2827,43 @@ namespace InfoPanel.ApiClient
         [System.Text.Json.Serialization.JsonPropertyName("linkedAccounts")]
         [System.ComponentModel.DataAnnotations.Required]
         public System.Collections.Generic.ICollection<LinkedAccounts> LinkedAccounts { get; set; } = new System.Collections.ObjectModel.Collection<LinkedAccounts>();
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Sessions
+    {
+
+        /// <summary>
+        /// Session hash (first 8 chars) for identification
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Id { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("current")]
+        public bool Current { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("createdAt")]
+        public string? CreatedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("lastUsedAt")]
+        public string? LastUsedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("ip")]
+        public string? Ip { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("userAgent")]
+        public string? UserAgent { get; set; } = default!;
 
         private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
 

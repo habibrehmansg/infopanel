@@ -14,8 +14,26 @@
 
     <StackPanel Margin="20,20,20,20">
 
+        <!--  Restoring state (validating token on startup)  -->
+        <StackPanel
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Orientation="Horizontal"
+            Visibility="{Binding ViewModel.IsRestoring, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ui:ProgressRing
+                Width="20"
+                Height="20"
+                Margin="0,0,10,0"
+                IsIndeterminate="True" />
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="13"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="Signing in..." />
+        </StackPanel>
+
         <!--  Logged-out state  -->
-        <StackPanel Visibility="{Binding ViewModel.IsLoggedIn, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+        <StackPanel Visibility="{Binding ViewModel.ShowSignIn, Converter={StaticResource BooleanToVisibilityConverter}}">
             <ui:CardControl>
                 <ui:CardControl.Icon>
                     <ui:SymbolIcon Symbol="Person20" />
@@ -67,6 +85,8 @@
 
         <!--  Logged-in state  -->
         <StackPanel Visibility="{Binding ViewModel.IsLoggedIn, Converter={StaticResource BooleanToVisibilityConverter}}">
+
+            <!--  User card  -->
             <ui:CardControl>
                 <ui:CardControl.Header>
                     <Grid>
@@ -100,11 +120,105 @@
                             Grid.Column="2"
                             VerticalAlignment="Center"
                             Appearance="Secondary"
-                            Command="{Binding ViewModel.LogoutCommand}"
+                            Click="SignOut_Click"
                             Content="Sign Out" />
                     </Grid>
                 </ui:CardControl.Header>
             </ui:CardControl>
+
+            <!--  Sessions  -->
+            <ui:CardExpander
+                Margin="0,10,0,0"
+                HorizontalContentAlignment="Left"
+                IsExpanded="True">
+                <ui:CardExpander.Icon>
+                    <ui:SymbolIcon Symbol="Desktop20" />
+                </ui:CardExpander.Icon>
+                <ui:CardExpander.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Text="Active Sessions" />
+                            <TextBlock
+                                Margin="0,5,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="Devices where you are currently signed in." />
+                        </StackPanel>
+                        <ui:Button
+                            Grid.Column="1"
+                            Margin="0,0,8,0"
+                            Padding="6"
+                            VerticalAlignment="Center"
+                            Appearance="Transparent"
+                            Command="{Binding ViewModel.RefreshSessionsCommand}"
+                            ToolTip="Refresh sessions">
+                            <ui:SymbolIcon
+                                FontSize="16"
+                                RenderTransformOrigin="0.5,0.5"
+                                Symbol="ArrowSync20">
+                                <ui:SymbolIcon.RenderTransform>
+                                    <RotateTransform x:Name="RefreshRotation" />
+                                </ui:SymbolIcon.RenderTransform>
+                            </ui:SymbolIcon>
+                        </ui:Button>
+                    </Grid>
+                </ui:CardExpander.Header>
+
+                <ItemsControl ItemsSource="{Binding ViewModel.Sessions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock
+                                            FontSize="13"
+                                            FontWeight="Medium"
+                                            Text="{Binding Ip}" />
+                                        <TextBlock
+                                            Margin="8,0,0,0"
+                                            FontSize="12"
+                                            FontWeight="Medium"
+                                            Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                                            Text="(current)"
+                                            Visibility="{Binding Current, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    </StackPanel>
+                                    <TextBlock
+                                        Margin="0,2,0,0"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding UserAgent}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Margin="0,2,0,0"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                        Text="{Binding LastUsedAt, Converter={StaticResource UtcToLocalTimeConverter}, ConverterParameter='Last used: '}" />
+                                </StackPanel>
+                                <ui:Button
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Appearance="Secondary"
+                                    Command="{Binding DataContext.ViewModel.RevokeSessionCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                    CommandParameter="{Binding Id}"
+                                    Content="Revoke"
+                                    Visibility="{Binding Current, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ui:CardExpander>
+
         </StackPanel>
 
     </StackPanel>

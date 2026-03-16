@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using System.Reflection;
 using InfoPanel.ApiClient;
 using Serilog;
 
@@ -21,10 +22,14 @@ public sealed class InfoPanelApiService
 
     private InfoPanelApiService()
     {
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+        var machineName = Environment.MachineName;
+
         _httpClient = new HttpClient
         {
             BaseAddress = new Uri(BaseUrl)
         };
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"InfoPanel/{version} ({machineName})");
         _client = new InfoPanelApiClient(_httpClient);
     }
 
