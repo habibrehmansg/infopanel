@@ -169,7 +169,7 @@ namespace InfoPanel.Extras
                 {
                     _name.Value = result.CityName;
 
-                    if (result.Weather is { Count: > 0 })
+                    if (result.Weather is { Length: > 0 })
                     {
                         _weather.Value = result.Weather[0].Main;
                         _weatherDesc.Value = result.Weather[0].Description;
