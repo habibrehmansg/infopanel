@@ -117,10 +117,12 @@ namespace InfoPanel.ThermalrightPanel
             // Scan HID devices via HidSharp
             foreach (var (vendorId, productId) in hidDevices)
             {
-                Logger.Information("ThermalrightPanelHelper: Scanning for HID devices VID={VendorId:X4} PID={ProductId:X4}",
-                    vendorId, productId);
+                var allHidDevices = DeviceList.Local.GetHidDevices(vendorId, productId).ToList();
+                // Filter to data interface only (512-byte packets + report ID)
+                var hidDeviceList = allHidDevices.Where(d => d.GetMaxOutputReportLength() >= 513).ToList();
+                Logger.Information("ThermalrightPanelHelper: Scanning for HID devices VID={VendorId:X4} PID={ProductId:X4}: {Total} found, {DataOnly} data interfaces",
+                    vendorId, productId, allHidDevices.Count, hidDeviceList.Count);
 
-                var hidDeviceList = DeviceList.Local.GetHidDevices(vendorId, productId).ToList();
                 foreach (var hidDevice in hidDeviceList)
                 {
                     var modelInfo = ThermalrightPanelModelDatabase.GetModelByVidPid(vendorId, productId);

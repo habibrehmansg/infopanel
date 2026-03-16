@@ -155,8 +155,8 @@ namespace InfoPanel.Models
                     matchRule = "DeviceId+Location";
                     matched = true;
                 }
-                // fallback: match by deviceId only
-                else if (DeviceId.Equals(deviceId))
+                // fallback: match by deviceId and model (but NOT for HID devices with shared VID/PID)
+                else if (DeviceId.Equals(deviceId) && !deviceId.StartsWith("HID\\", StringComparison.OrdinalIgnoreCase))
                 {
                     matchRule = "DeviceId";
                     matched = true;
