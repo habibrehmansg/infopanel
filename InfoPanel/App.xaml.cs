@@ -384,8 +384,7 @@ namespace InfoPanel
 
             await StartPanels();
 
-            //var window = new SkiaDisplayWindow();
-            //window.Show();
+            _ = Task.Run(() => Services.UpdateChecker.Instance.CheckAsync());
         }
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)

@@ -1,8 +1,9 @@
-﻿using Flurl;
-using Flurl.Http;
 using InfoPanel.Models;
+using InfoPanel.Services;
 using InfoPanel.ViewModels;
+using Serilog;
 using System;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -18,6 +19,8 @@ namespace InfoPanel.Views.Pages
     /// </summary>
     public partial class UpdatesPage : Page
     {
+        private static readonly ILogger Logger = Log.ForContext<UpdatesPage>();
+
         public UpdatesViewModel ViewModel
         {
             get;
@@ -29,7 +32,7 @@ namespace InfoPanel.Views.Pages
             DataContext = viewModel;
 
             InitializeComponent();
-            CheckUpdates();
+            ApplyUpdateCheckResults();
         }
 
         private void ButtonCheckUpdates_Click(object sender, RoutedEventArgs e)
@@ -37,40 +40,85 @@ namespace InfoPanel.Views.Pages
             CheckUpdates();
         }
 
+        private void ApplyUpdateCheckResults()
+        {
+            var checker = UpdateChecker.Instance;
+
+            if (checker.LatestVersion != null)
+            {
+                ApplyVersionResult(checker);
+                ApplyChangelog(checker);
+            }
+            else
+            {
+                // Startup check hasn't completed yet — listen for it
+                ViewModel.UpdateCheckInProgress = true;
+                checker.UpdateCheckCompleted += OnStartupCheckCompleted;
+            }
+        }
+
+        private void OnStartupCheckCompleted()
+        {
+            UpdateChecker.Instance.UpdateCheckCompleted -= OnStartupCheckCompleted;
+            Dispatcher.Invoke(() =>
+            {
+                var checker = UpdateChecker.Instance;
+                ApplyVersionResult(checker);
+                ApplyChangelog(checker);
+                ViewModel.UpdateCheckInProgress = false;
+            });
+        }
+
+        private void ApplyVersionResult(UpdateChecker checker)
+        {
+            if (checker.UpdateAvailable && checker.LatestVersion != null)
+            {
+                ViewModel.VersionModel = checker.LatestVersion;
+                ViewModel.UpdateAvailable = true;
+            }
+            else
+            {
+                ViewModel.UpdateAvailable = false;
+            }
+        }
+
+        private void ApplyChangelog(UpdateChecker checker)
+        {
+            ViewModel.UpdateVersions.Clear();
+
+            if (checker.Versions == null) return;
+
+            bool first = true;
+            foreach (var v in checker.Versions)
+            {
+                ViewModel.UpdateVersions.Add(new UpdateVersion
+                {
+                    Version = v.Version,
+                    Title = v.Changelog,
+                    Expanded = first,
+                    ChangelogItems = new ObservableCollection<string>(v.ChangelogItems)
+                });
+
+                first = false;
+            }
+        }
+
         private async void CheckUpdates()
         {
             ViewModel.UpdateCheckInProgress = true;
 
-            var latestVersion = await "https://update.infopanel.net"
-                .AppendPathSegment("latest")
-                .GetAsync()
-                .ReceiveJson<VersionModel>();
+            var checker = UpdateChecker.Instance;
+            await checker.CheckAsync();
 
-            await Task.Delay(500);
-
-            if (IsNewerVersionAvailable(ViewModel.Version, latestVersion.Version))
-            {
-                ViewModel.VersionModel = latestVersion;
-                ViewModel.UpdateAvailable = true;
-            } else
-            {
-                ViewModel.UpdateAvailable = false;
-            }
+            ApplyVersionResult(checker);
+            ApplyChangelog(checker);
 
             ViewModel.UpdateCheckInProgress = false;
         }
 
-        private bool IsNewerVersionAvailable(string currentVersion, string newVersion)
-        {
-            Version current = Version.Parse(currentVersion);
-            Version latest = Version.Parse(newVersion);
-
-            return latest > current;
-        }
-
         private async void ButtonUpdate_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.VersionModel?.Url is string url)
+            if (ViewModel.VersionModel?.DownloadUrl is string url)
             {
                 ViewModel.DownloadInProgress = true;
                 ViewModel.DownloadProgress = 0;
@@ -115,41 +163,37 @@ namespace InfoPanel.Views.Pages
 
         public static async Task<Stream> DownloadStreamWithProgressAsync(string url, CancellationToken cancellationToken, IProgress<DownloadProgressArgs> progessReporter)
         {
-            try
+            using var httpClient = new HttpClient();
+            using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var receivedBytes = 0;
+            var buffer = new byte[4096];
+            var totalBytes = Convert.ToDouble(response.Content.Headers.ContentLength);
+
+            var memStream = new MemoryStream();
+
+            while (true)
             {
-                using IFlurlResponse response = await url.GetAsync(HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-                using var stream = await response.GetStreamAsync();
-                var receivedBytes = 0;
-                var buffer = new byte[4096];
-                var totalBytes = Convert.ToDouble(response.ResponseMessage.Content.Headers.ContentLength);
+                cancellationToken.ThrowIfCancellationRequested();
 
-                var memStream = new MemoryStream();
+                int bytesRead = await stream.ReadAsync(buffer, cancellationToken);
 
-                while (true)
+                await memStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+
+                if (bytesRead == 0)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-
-                    await memStream.WriteAsync(buffer, 0, bytesRead);
-
-                    if (bytesRead == 0)
-                    {
-                        break;
-                    }
-                    receivedBytes += bytesRead;
-
-                    var args = new DownloadProgressArgs(receivedBytes, totalBytes);
-                    progessReporter.Report(args);
+                    break;
                 }
+                receivedBytes += bytesRead;
 
-                memStream.Position = 0;
-                return memStream;
+                var args = new DownloadProgressArgs(receivedBytes, totalBytes);
+                progessReporter.Report(args);
             }
-            catch (Exception e)
-            {
-                throw e;
-            }
+
+            memStream.Position = 0;
+            return memStream;
         }
 
         public class DownloadProgressArgs : EventArgs

@@ -95,53 +95,31 @@
                                     HorizontalContentAlignment="Left"
                                     IsExpanded="{Binding Expanded}">
                                     <ui:CardExpander.Header>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock
-                                                    FontSize="13"
-                                                    FontWeight="Medium"
-                                                    Text="{Binding Version}" />
-                                                <TextBlock
-                                                    Margin="0,5,0,0"
-                                                    FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                    Text="{Binding Title}" />
-                                            </StackPanel>
-                                        </Grid>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock
+                                                FontSize="13"
+                                                FontWeight="Medium"
+                                                Text="{Binding Version}" />
+                                            <ItemsControl Margin="0,5,0,0" ItemsSource="{Binding ChangelogItems}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock
+                                                            Margin="0,0,0,2"
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                            Text="{Binding StringFormat='- {0}'}"
+                                                            TextWrapping="Wrap" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
                                     </ui:CardExpander.Header>
 
-
-                                    <StackPanel VerticalAlignment="Center">
-                                        <ItemsControl ItemsSource="{Binding Items}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <StackPanel Margin="0,0,0,10">
-                                                        <TextBlock
-                                                            FontSize="13"
-                                                            FontWeight="Medium"
-                                                            Text="{Binding Title}" />
-
-                                                        <ItemsControl ItemsSource="{Binding Description}">
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <TextBlock
-                                                                        Margin="0,0,0,0"
-                                                                        FontSize="12"
-                                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                        Text="{Binding StringFormat='- {0}'}"
-                                                                        TextWrapping="Wrap" />
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding Title}"
+                                        TextWrapping="Wrap" />
                                 </ui:CardExpander>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
