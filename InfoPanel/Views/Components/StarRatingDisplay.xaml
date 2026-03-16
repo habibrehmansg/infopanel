@@ -1,0 +1,14 @@
+<UserControl
+    x:Class="InfoPanel.Views.Components.StarRatingDisplay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+
+    <StackPanel Orientation="Horizontal">
+        <ui:SymbolIcon x:Name="Star1" FontSize="14" Symbol="Star20" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+        <ui:SymbolIcon x:Name="Star2" FontSize="14" Symbol="Star20" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+        <ui:SymbolIcon x:Name="Star3" FontSize="14" Symbol="Star20" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+        <ui:SymbolIcon x:Name="Star4" FontSize="14" Symbol="Star20" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+        <ui:SymbolIcon x:Name="Star5" FontSize="14" Symbol="Star20" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+    </StackPanel>
+</UserControl>

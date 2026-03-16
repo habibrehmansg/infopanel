@@ -2922,6 +2922,10 @@ namespace InfoPanel.ApiClient
         [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
         public string Slug { get; set; } = default!;
 
+        [System.Text.Json.Serialization.JsonPropertyName("repoName")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string RepoName { get; set; } = default!;
+
         [System.Text.Json.Serialization.JsonPropertyName("name")]
         [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
         public string Name { get; set; } = default!;
@@ -3018,6 +3022,10 @@ namespace InfoPanel.ApiClient
         [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
         public string Slug { get; set; } = default!;
 
+        [System.Text.Json.Serialization.JsonPropertyName("repoName")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string RepoName { get; set; } = default!;
+
         [System.Text.Json.Serialization.JsonPropertyName("name")]
         [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
         public string Name { get; set; } = default!;
@@ -3070,14 +3078,6 @@ namespace InfoPanel.ApiClient
 
         [System.Text.Json.Serialization.JsonPropertyName("stars")]
         public double Stars { get; set; } = default!;
-
-        [System.Text.Json.Serialization.JsonPropertyName("changelog")]
-        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
-        public string Changelog { get; set; } = default!;
-
-        [System.Text.Json.Serialization.JsonPropertyName("changelogItems")]
-        [System.ComponentModel.DataAnnotations.Required]
-        public System.Collections.Generic.ICollection<string> ChangelogItems { get; set; } = new System.Collections.ObjectModel.Collection<string>();
 
         [System.Text.Json.Serialization.JsonPropertyName("releases")]
         [System.ComponentModel.DataAnnotations.Required]
