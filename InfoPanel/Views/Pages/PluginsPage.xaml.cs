@@ -1,5 +1,6 @@
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Components;
+using System.ComponentModel;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -14,6 +15,7 @@ namespace InfoPanel.Views.Pages
         public PluginBrowserViewModel BrowserViewModel { get; }
 
         private readonly IContentDialogService _contentDialogService;
+        private readonly AccountViewModel? _accountVm;
 
         public PluginsPage(PluginsViewModel viewModel, PluginBrowserViewModel browserViewModel)
         {
@@ -23,6 +25,7 @@ namespace InfoPanel.Views.Pages
 
             _contentDialogService = App.GetService<IContentDialogService>()
                 ?? throw new System.InvalidOperationException("ContentDialogService is not registered.");
+            _accountVm = App.GetService<AccountViewModel>();
 
             InitializeComponent();
 
@@ -35,24 +38,37 @@ namespace InfoPanel.Views.Pages
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             ViewModel.Start();
+
+            if (_accountVm != null)
+            {
+                _accountVm.PropertyChanged += OnAccountPropertyChanged;
+                BrowserViewModel.IsLoggedIn = _accountVm.IsLoggedIn;
+            }
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
             ViewModel.Stop();
+
+            if (_accountVm != null)
+            {
+                _accountVm.PropertyChanged -= OnAccountPropertyChanged;
+            }
+        }
+
+        private void OnAccountPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(AccountViewModel.IsLoggedIn))
+            {
+                BrowserViewModel.IsLoggedIn = _accountVm?.IsLoggedIn ?? false;
+            }
         }
 
         private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (e.AddedItems.Count > 0 && e.AddedItems[0] == DiscoverTab)
             {
-                var accountVm = App.GetService<AccountViewModel>();
-                BrowserViewModel.IsLoggedIn = accountVm?.IsLoggedIn ?? false;
-
-                if (BrowserViewModel.IsLoggedIn)
-                {
-                    _ = BrowserViewModel.EnsureLoadedAsync();
-                }
+                BrowserViewModel.IsLoggedIn = _accountVm?.IsLoggedIn ?? false;
             }
         }
 

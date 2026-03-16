@@ -46,6 +46,15 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private bool _isLoggedIn;
 
+        partial void OnIsLoggedInChanged(bool value)
+        {
+            if (value)
+            {
+                _hasLoaded = false;
+                _ = EnsureLoadedAsync();
+            }
+        }
+
         partial void OnSearchTextChanged(string value)
         {
             _searchCts?.Cancel();

@@ -38,17 +38,19 @@
                             TextWrapping="Wrap">
                             <Bold>Warning!</Bold>
                             Plugins run under the same privileges as InfoPanel (Administrator). Do not load untrusted plugins. Always verify the source of the plugin.
-                            If unsure, do NOT install the plugin.
-                        </TextBlock>
+                            If unsure, do NOT install the plugin.</TextBlock>
                         <TextBlock
                             Margin="0,5,0,0"
                             VerticalAlignment="Center"
                             FontSize="12"
-                            TextWrapping="Wrap"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="If you would like to develop a plugin, visit our Github and reference Infopanel.Extras project for guidelines." />
+                            Text="If you would like to develop a plugin, visit our GitHub and reference Infopanel.Extras project for guidelines."
+                            TextWrapping="Wrap" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                    <StackPanel
+                        Grid.Column="1"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Center">
                         <ui:Anchor
                             Width="150"
                             Appearance="Secondary"
@@ -66,9 +68,9 @@
         </ui:CardControl>
 
         <Label
-            DockPanel.Dock="Top"
             Margin="0,40,0,0"
             Content="Bundled Plugins"
+            DockPanel.Dock="Top"
             FontSize="14"
             FontWeight="Medium"
             Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -81,19 +83,26 @@
         </ItemsControl>
 
         <Label
-            DockPanel.Dock="Top"
             Margin="0,40,0,0"
             Content="User Plugins"
+            DockPanel.Dock="Top"
             FontSize="14"
             FontWeight="Medium"
             Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
 
-        <TabControl Margin="0,10,0,0" TabStripPlacement="Top" SelectionChanged="TabControl_SelectionChanged">
+        <TabControl
+            Margin="0,10,0,0"
+            SelectionChanged="TabControl_SelectionChanged"
+            TabStripPlacement="Top">
             <TabItem IsSelected="True">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
-                        <ui:SymbolIcon Symbol="PlugConnected20" FontSize="16" />
-                        <TextBlock Margin="8,0,0,0" Text="Installed" FontSize="13" FontWeight="Medium" />
+                        <ui:SymbolIcon FontSize="16" Symbol="PlugConnected20" />
+                        <TextBlock
+                            Margin="8,0,0,0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Installed" />
                     </StackPanel>
                 </TabItem.Header>
                 <components:PluginInstalledControl x:Name="InstalledControl" />
@@ -101,8 +110,12 @@
             <TabItem x:Name="DiscoverTab">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
-                        <ui:SymbolIcon Symbol="AppsAddIn20" FontSize="16" />
-                        <TextBlock Margin="8,0,0,0" Text="Discover" FontSize="13" FontWeight="Medium" />
+                        <ui:SymbolIcon FontSize="16" Symbol="AppsAddIn20" />
+                        <TextBlock
+                            Margin="8,0,0,0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Discover" />
                     </StackPanel>
                 </TabItem.Header>
                 <components:PluginBrowserControl x:Name="BrowserControl" />
