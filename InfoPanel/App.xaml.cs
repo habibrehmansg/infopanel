@@ -321,10 +321,10 @@ namespace InfoPanel
                 catch { }
             }
 
-            _host.Start();
+            await _host.StartAsync();
             Logger.Debug("Application host started");
 
-            Engine.Start(new EngineConfig()
+            await Task.Run(() => Engine.Start(new EngineConfig()
             {
 #if DEBUG
                 LogOutput = ":debug",
@@ -333,7 +333,7 @@ namespace InfoPanel
 #endif
                 PluginsPath = ":FlyleafPlugins",
                 FFmpegPath = ":FFmpeg",
-            });
+            }));
             Logger.Debug("Flyleaf engine started");
 
             ConfigModel.Instance.Initialize();
