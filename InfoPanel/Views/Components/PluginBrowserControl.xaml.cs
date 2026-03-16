@@ -54,8 +54,6 @@ namespace InfoPanel.Views.Components
         {
             if (sender is FrameworkElement { DataContext: PluginBrowserItemViewModel item })
             {
-                var page = Window.GetWindow(this)?.FindName("RootFrame") as Frame;
-
                 // Navigate up to the PluginsPage to trigger the detail dialog
                 if (this.FindParentPage() is Views.Pages.PluginsPage pluginsPage)
                 {
