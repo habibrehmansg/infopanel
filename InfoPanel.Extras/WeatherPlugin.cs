@@ -8,7 +8,7 @@ namespace InfoPanel.Extras
     public class WeatherPlugin : BasePlugin, IPluginConfigurable
     {
         private OpenWeatherMapCache? _current;
-        private City? _cityObj;
+        private City _cityObj;
         private bool _isConfigured;
         private string _apiKey = "";
         private string _cityName = "";
@@ -108,7 +108,7 @@ namespace InfoPanel.Extras
 
         public override void Load(List<IPluginContainer> containers)
         {
-            if (_isConfigured && _cityObj != null)
+            if (_isConfigured)
             {
                 var container = new PluginContainer(_cityObj.CityName);
                 container.Entries.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);

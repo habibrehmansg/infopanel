@@ -577,8 +577,14 @@ namespace InfoPanel.Plugins.Host
 
         private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
-        private string GetConfigFilePath(PluginWrapper wrapper)
-            => Path.GetFullPath($"{_pluginPath}.{wrapper.Id}.config.json");
+        private static string GetConfigFilePath(PluginWrapper wrapper)
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "InfoPanel", "plugins");
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"{wrapper.Id}.config.json");
+        }
 
         private void LoadAndApplyConfig(PluginWrapper wrapper, IPluginConfigurable configurable)
         {
