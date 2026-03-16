@@ -25,6 +25,7 @@ namespace InfoPanel.Monitors
 
         public static readonly ConcurrentDictionary<string, PluginReading> SENSORHASH = new();
 
+        internal readonly object PluginsLock = new();
         public List<PluginDescriptor> Plugins { get; private set; } = [];
 
         internal PluginProcessManager ProcessManager { get; } = new();
@@ -48,10 +49,14 @@ namespace InfoPanel.Monitors
         {
             try
             {
-                var deactivatedPlugins = Plugins
-                    .Where(p => !ProcessManager.IsHostRunning(p.FilePath))
-                    .Select(p => p.FilePath)
-                    .ToList();
+                List<string> deactivatedPlugins;
+                lock (PluginsLock)
+                {
+                    deactivatedPlugins = Plugins
+                        .Where(p => !ProcessManager.IsHostRunning(p.FilePath))
+                        .Select(p => p.FilePath)
+                        .ToList();
+                }
                 File.WriteAllLines(FileUtil.GetPluginStateFile(), deactivatedPlugins);
             }
             catch (Exception ex)
@@ -80,8 +85,11 @@ namespace InfoPanel.Monitors
             {
                 foreach (var file in Directory.GetFiles(FileUtil.GetExternalPluginFolder(), "InfoPanel.*.zip"))
                 {
-                    UnzipPluginArchive(file);
-                    File.Delete(file);
+                    var extracted = UnzipPluginArchive(file);
+                    if (extracted != null)
+                    {
+                        File.Delete(file);
+                    }
                 }
             }
             catch (Exception ex)
@@ -90,19 +98,120 @@ namespace InfoPanel.Monitors
             }
         }
 
-        private static bool UnzipPluginArchive(string filePath)
+        /// <summary>
+        /// Extracts a plugin ZIP archive to the external plugin folder.
+        /// Handles both structured ZIPs (InfoPanel.Name/files) and flat ZIPs (files at root).
+        /// Returns the extracted folder path, or null on failure.
+        /// </summary>
+        internal static string? UnzipPluginArchive(string filePath)
         {
             using var fs = new FileStream(filePath, FileMode.Open);
             using var za = new ZipArchive(fs, ZipArchiveMode.Read);
             var entry = za.Entries[0];
 
-            if (!Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
+            var match = Regex.Match(entry.FullName, @"(InfoPanel\.[a-zA-Z0-9]+)\/");
+            if (match.Success)
             {
-                return false;
+                // Structured ZIP: has InfoPanel.Name/ folder inside
+                za.ExtractToDirectory(FileUtil.GetExternalPluginFolder(), true);
+                return Path.Combine(FileUtil.GetExternalPluginFolder(), match.Groups[1].Value);
             }
 
-            za.ExtractToDirectory(FileUtil.GetExternalPluginFolder(), true);
-            return true;
+            // Flat ZIP: DLLs at root. Derive folder name from ZIP filename (e.g. InfoPanel.MyPlugin.zip -> InfoPanel.MyPlugin)
+            var zipFileName = Path.GetFileNameWithoutExtension(filePath);
+            if (!Regex.IsMatch(zipFileName, @"^InfoPanel\.[a-zA-Z0-9]+$"))
+            {
+                return null;
+            }
+
+            var targetFolder = Path.Combine(FileUtil.GetExternalPluginFolder(), zipFileName);
+            Directory.CreateDirectory(targetFolder);
+            za.ExtractToDirectory(targetFolder, true);
+            return targetFolder;
+        }
+
+        /// <summary>
+        /// Installs a plugin from a ZIP file at runtime. Extracts, creates descriptor,
+        /// and adds to the Plugins list. If upgrading an existing plugin, stops the old one first.
+        /// </summary>
+        public async Task<PluginDescriptor?> InstallPluginFromZipAsync(string zipFilePath)
+        {
+            var extractedFolder = UnzipPluginArchive(zipFilePath);
+            if (extractedFolder == null)
+            {
+                Logger.Warning("Failed to extract plugin from {ZipPath}", zipFilePath);
+                return null;
+            }
+
+            try
+            {
+                File.Delete(zipFilePath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to delete ZIP after extraction: {ZipPath}", zipFilePath);
+            }
+
+            var descriptor = CreatePluginDescriptor(extractedFolder);
+
+            // Check for existing plugin with same FilePath (upgrade scenario)
+            PluginDescriptor? existing;
+            lock (PluginsLock)
+            {
+                existing = Plugins.FirstOrDefault(p => p.FilePath == descriptor.FilePath);
+            }
+
+            if (existing != null)
+            {
+                await StopPluginModulesAsync(existing);
+                lock (PluginsLock)
+                {
+                    Plugins.Remove(existing);
+                }
+            }
+
+            lock (PluginsLock)
+            {
+                Plugins.Add(descriptor);
+            }
+
+            // Auto-start the newly installed plugin
+            await StartPluginModulesAsync(descriptor);
+            SavePluginState();
+
+            Logger.Information("Plugin installed from ZIP: {PluginPath}", descriptor.FilePath);
+            return descriptor;
+        }
+
+        /// <summary>
+        /// Uninstalls a plugin at runtime. Stops it if running, removes from list,
+        /// cleans up state, and deletes the folder from disk.
+        /// </summary>
+        public async Task UninstallPluginAsync(PluginDescriptor descriptor)
+        {
+            if (ProcessManager.IsHostRunning(descriptor.FilePath))
+            {
+                await StopPluginModulesAsync(descriptor);
+            }
+
+            lock (PluginsLock)
+            {
+                Plugins.Remove(descriptor);
+            }
+            SavePluginState();
+
+            if (descriptor.FolderPath != null && Directory.Exists(descriptor.FolderPath))
+            {
+                try
+                {
+                    Directory.Delete(descriptor.FolderPath, true);
+                    Logger.Information("Plugin folder deleted: {FolderPath}", descriptor.FolderPath);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Failed to delete plugin folder: {FolderPath}", descriptor.FolderPath);
+                }
+            }
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
@@ -115,7 +224,12 @@ namespace InfoPanel.Monitors
                 FindPlugins();
 
                 var deactivatedPlugins = GetPluginState();
-                foreach (var descriptor in Plugins)
+                List<PluginDescriptor> pluginsSnapshot;
+                lock (PluginsLock)
+                {
+                    pluginsSnapshot = Plugins.ToList();
+                }
+                foreach (var descriptor in pluginsSnapshot)
                 {
                     if(deactivatedPlugins.Contains(descriptor.FilePath))
                     {
@@ -156,20 +270,23 @@ namespace InfoPanel.Monitors
         internal void FindPlugins()
         {
             UnzipPluginArchives();
-            //bundled plugins
-            foreach (var directory in Directory.GetDirectories(FileUtil.GetBundledPluginFolder()))
+            lock (PluginsLock)
             {
-                //whitelist plugins
-                if (_bundledPlugins.Contains(directory))
+                //bundled plugins
+                foreach (var directory in Directory.GetDirectories(FileUtil.GetBundledPluginFolder()))
+                {
+                    //whitelist plugins
+                    if (_bundledPlugins.Contains(directory))
+                    {
+                        Plugins.Add(CreatePluginDescriptor(directory));
+                    }
+                }
+
+                //external plugins
+                foreach (var directory in Directory.GetDirectories(FileUtil.GetExternalPluginFolder()))
                 {
                     Plugins.Add(CreatePluginDescriptor(directory));
                 }
-            }
-
-            //external plugins
-            foreach (var directory in Directory.GetDirectories(FileUtil.GetExternalPluginFolder()))
-            {
-                Plugins.Add(CreatePluginDescriptor(directory));
             }
         }
 
