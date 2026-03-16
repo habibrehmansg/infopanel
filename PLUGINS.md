@@ -383,7 +383,7 @@ public class MyPlugin : BasePlugin, IPluginConfigurable
 
 ### Automatic Config Persistence
 
-Config values are automatically persisted by the host process. When a user changes a config value in the UI, the host saves all current `ConfigProperties` values to a JSON sidecar file next to the plugin DLL (e.g. `MyPlugin.dll.my-plugin-id.config.json`). On next startup, stored values are automatically restored via `ApplyConfig()` after `Initialize()` returns.
+Config values are automatically persisted by the host process. When a user changes a config value in the UI, the host saves all current `ConfigProperties` values to a JSON file under `%LOCALAPPDATA%\InfoPanel\plugins\` (e.g. `my-plugin-id.config.json`). On next startup, stored values are automatically restored via `ApplyConfig()` after `Initialize()` returns.
 
 **You do not need to implement any file I/O** — just keep your config state in memory and the host handles persistence transparently.
 
@@ -513,6 +513,10 @@ public class ProcessInfoPlugin : BasePlugin
 2. Copy the output folder (DLL, dependencies, and `PluginInfo.ini`) to:
    - **External plugins:** `%ProgramData%\InfoPanel\plugins\YourPluginName\`
 3. The folder must follow the convention: `YourPluginName/YourPluginName.dll`
+
+### Listing in the Plugin Browser
+
+To make your plugin discoverable inside InfoPanel, add it to the community plugin registry. See the [Plugin Registry Guide](PLUGIN-REGISTRY.md) for instructions.
 
 ### Distributing Your Plugin
 
