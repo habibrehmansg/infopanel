@@ -56,6 +56,14 @@ namespace InfoPanel.Extras
 
             if (IsDirty)
             {
+                Save();
+            }
+        }
+
+        public void Save()
+        {
+            if (IniData != null && IsDirty)
+            {
                 var parser = new FileIniDataParser();
                 parser.WriteFile(_configFilePath, IniData);
                 IsDirty = false;
@@ -79,7 +87,7 @@ namespace InfoPanel.Extras
             return false;
         }
 
-        private void SetValue(string section, string key, string value)
+        public void SetValue(string section, string key, string value)
         {
             if (IniData != null)
             {
