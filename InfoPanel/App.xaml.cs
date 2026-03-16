@@ -142,6 +142,7 @@ namespace InfoPanel
            services.AddScoped<DesignViewModel>();
            services.AddScoped<Views.Pages.PluginsPage>();
            services.AddScoped<PluginsViewModel>();
+           services.AddScoped<PluginBrowserViewModel>();
            services.AddScoped<Views.Pages.AboutPage>();
            services.AddScoped<AboutViewModel>();
            services.AddScoped<Views.Pages.SettingsPage>();
@@ -150,6 +151,8 @@ namespace InfoPanel
            services.AddScoped<UpdatesViewModel>();
            services.AddScoped<Views.Pages.UsbPanelsPage>();
            services.AddScoped<UsbPanelsViewModel>();
+           services.AddScoped<Views.Pages.AccountPage>();
+           services.AddSingleton<AccountViewModel>();
 
            // Configuration
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
@@ -384,8 +387,9 @@ namespace InfoPanel
 
             await StartPanels();
 
-            //var window = new SkiaDisplayWindow();
-            //window.Show();
+            _ = Task.Run(() => GetService<AccountViewModel>()?.TryRestoreSessionAsync());
+
+            _ = Task.Run(() => Services.UpdateChecker.Instance.CheckAsync(showNotification: true));
         }
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)

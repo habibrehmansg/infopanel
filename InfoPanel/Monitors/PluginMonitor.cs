@@ -131,11 +131,60 @@ namespace InfoPanel.Monitors
         }
 
         /// <summary>
-        /// Installs a plugin from a ZIP file at runtime. Extracts, creates descriptor,
-        /// and adds to the Plugins list. If upgrading an existing plugin, stops the old one first.
+        /// Peeks into a ZIP to determine the plugin folder name without extracting.
+        /// Returns the folder name (e.g. "InfoPanel.Weather") or null.
+        /// </summary>
+        private static string? PeekZipPluginFolderName(string zipFilePath)
+        {
+            try
+            {
+                using var fs = new FileStream(zipFilePath, FileMode.Open, FileAccess.Read);
+                using var za = new ZipArchive(fs, ZipArchiveMode.Read);
+                if (za.Entries.Count == 0) return null;
+
+                var entry = za.Entries[0];
+                var match = Regex.Match(entry.FullName, @"(InfoPanel\.[a-zA-Z0-9]+)\/");
+                if (match.Success)
+                    return match.Groups[1].Value;
+
+                // Flat ZIP: derive from filename
+                var zipFileName = Path.GetFileNameWithoutExtension(zipFilePath);
+                if (Regex.IsMatch(zipFileName, @"^InfoPanel\.[a-zA-Z0-9]+$"))
+                    return zipFileName;
+            }
+            catch (Exception) { }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Installs a plugin from a ZIP file at runtime. Stops the existing plugin first
+        /// (if upgrading), extracts, creates descriptor, and starts the new plugin.
         /// </summary>
         public async Task<PluginDescriptor?> InstallPluginFromZipAsync(string zipFilePath)
         {
+            // Determine the target folder name from the ZIP before extracting,
+            // so we can stop any running plugin that would lock the DLLs.
+            var targetFolderName = PeekZipPluginFolderName(zipFilePath);
+            if (targetFolderName != null)
+            {
+                PluginDescriptor? running;
+                lock (PluginsLock)
+                {
+                    running = Plugins.FirstOrDefault(p =>
+                        string.Equals(p.FolderName, targetFolderName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (running != null)
+                {
+                    await StopPluginModulesAsync(running);
+                    lock (PluginsLock)
+                    {
+                        Plugins.Remove(running);
+                    }
+                }
+            }
+
             var extractedFolder = UnzipPluginArchive(zipFilePath);
             if (extractedFolder == null)
             {
@@ -153,22 +202,6 @@ namespace InfoPanel.Monitors
             }
 
             var descriptor = CreatePluginDescriptor(extractedFolder);
-
-            // Check for existing plugin with same FilePath (upgrade scenario)
-            PluginDescriptor? existing;
-            lock (PluginsLock)
-            {
-                existing = Plugins.FirstOrDefault(p => p.FilePath == descriptor.FilePath);
-            }
-
-            if (existing != null)
-            {
-                await StopPluginModulesAsync(existing);
-                lock (PluginsLock)
-                {
-                    Plugins.Remove(existing);
-                }
-            }
 
             lock (PluginsLock)
             {
