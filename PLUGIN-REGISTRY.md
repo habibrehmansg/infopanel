@@ -73,7 +73,7 @@ The API automatically discovers releases from your GitHub repository. For downlo
     - run: Compress-Archive -Path InfoPanel.MyPlugin -DestinationPath InfoPanel.MyPlugin.zip
     ```
 
-The latest release version, download URL, and changelog are pulled automatically from your repo.
+The latest release version, download URL, and changelog are pulled automatically from your repo. The registry syncs hourly, so it may take up to an hour for new releases or registry changes to appear in the app.
 
 ## PR Checklist
 
