@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using InfoPanel.Models;
+using Microsoft.Toolkit.Uwp.Notifications;
 using Serilog;
 
 namespace InfoPanel.Services;
@@ -21,9 +22,28 @@ public sealed class UpdateChecker
 
     public event Action? UpdateCheckCompleted;
 
-    private UpdateChecker() { }
+    private UpdateChecker()
+    {
+        ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+    }
 
-    public async Task CheckAsync()
+    private static void OnToastActivated(ToastNotificationActivatedEventArgsCompat e)
+    {
+        var args = ToastArguments.Parse(e.Argument);
+        if (args.Contains("action") && args["action"] == "viewUpdate")
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (System.Windows.Application.Current.MainWindow is Views.Windows.MainWindow mainWindow)
+                {
+                    mainWindow.RestoreWindow();
+                    mainWindow.Navigate(typeof(Views.Pages.UpdatesPage));
+                }
+            });
+        }
+    }
+
+    public async Task CheckAsync(bool showNotification = false)
     {
         try
         {
@@ -60,6 +80,14 @@ public sealed class UpdateChecker
                 if (UpdateAvailable)
                 {
                     Logger.Information("Update available: {Version}", latest.Version);
+                    if (showNotification)
+                    {
+                        ShowUpdateNotification(latest.Version);
+                    }
+                }
+                else
+                {
+                    ClearUpdateNotification();
                 }
             }
         }
@@ -69,6 +97,40 @@ public sealed class UpdateChecker
         }
 
         UpdateCheckCompleted?.Invoke();
+    }
+
+    private static void ShowUpdateNotification(string version)
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText("InfoPanel Update Available")
+                .AddText($"Version {version} is ready to download.")
+                .AddButton(new ToastButton()
+                    .SetContent("View Update")
+                    .AddArgument("action", "viewUpdate"))
+                .Show(toast =>
+                {
+                    toast.Tag = "update";
+                    toast.Group = "infopanel";
+                });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to show update notification");
+        }
+    }
+
+    private static void ClearUpdateNotification()
+    {
+        try
+        {
+            ToastNotificationManagerCompat.History.Remove("update", "infopanel");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to clear update notification");
+        }
     }
 
     public class VersionEntry

@@ -11,7 +11,7 @@
 		<Platforms>x64</Platforms>
 		<FileVersion>$(AssemblyVersion)</FileVersion>
 		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
-		<Version>1.3.1.0</Version>
+		<Version>1.2.1.0</Version>
 		<UseWindowsForms>True</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
@@ -200,6 +200,7 @@
 		<PackageReference Include="AsyncKeyedLock" Version="8.0.2" />
 		<PackageReference Include="AutoMapper" Version="14.0.0" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
+		<PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
 		<PackageReference Include="StreamJsonRpc" Version="2.19.27" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />

@@ -384,7 +384,7 @@ namespace InfoPanel
 
             await StartPanels();
 
-            _ = Task.Run(() => Services.UpdateChecker.Instance.CheckAsync());
+            _ = Task.Run(() => Services.UpdateChecker.Instance.CheckAsync(showNotification: true));
         }
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)
