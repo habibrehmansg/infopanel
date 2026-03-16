@@ -462,7 +462,7 @@
                                                 FontSize="14"
                                                 LargeChange="5"
                                                 MaxDecimalPlaces="0"
-                                                Maximum="23"
+                                                Maximum="30"
                                                 Minimum="1"
                                                 SmallChange="1"
                                                 Value="{Binding TargetFrameRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -713,7 +713,7 @@
                                                 FontSize="14"
                                                 LargeChange="5"
                                                 MaxDecimalPlaces="0"
-                                                Maximum="23"
+                                                Maximum="30"
                                                 Minimum="1"
                                                 SmallChange="1"
                                                 Value="{Binding TargetFrameRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
