@@ -35,16 +35,19 @@ InfoPanel is a WPF desktop application built on .NET 8.0 that displays hardware 
 | Project | Role |
 |---|---|
 | **InfoPanel** | Main WPF application (entry point, UI, services, drawing) |
-| **InfoPanel.Plugins** | Plugin interface definitions (`IPlugin`, `IPluginSensor`, `BasePlugin`) |
-| **InfoPanel.Plugins.Loader** | Dynamic plugin loading with assembly isolation |
+| **InfoPanel.Plugins** | Plugin interface definitions (`IPlugin`, `IPluginSensor`, `BasePlugin`, `IPluginConfigurable`, `PluginActionAttribute`) |
+| **InfoPanel.Plugins.Graphics** | Image provider interfaces (`IPluginImageProvider`, `IPluginImageWriter`) and MMF-backed double buffering |
+| **InfoPanel.Plugins.Ipc** | IPC interfaces and DTOs for out-of-process communication (`IPluginHostService`, `IPluginClientCallback`) |
+| **InfoPanel.Plugins.Host** | Out-of-process plugin host executable (StreamJsonRpc over named pipes) |
+| **InfoPanel.Plugins.Loader** | Dynamic plugin loading with assembly isolation (`PluginLoadContext`, `PluginWrapper`) |
 | **InfoPanel.Plugins.Simulator** | Test harness for plugin development |
 | **InfoPanel.Extras** | Built-in plugins (system info, network, drives, weather) |
 
-> **Local DLL references:** LibreHardwareMonitor DLLs are referenced from `../LibreHardwareMonitor/` relative to the repo root. Ensure that sibling repo is checked out when building.
+> **Local DLL references:** LibreHardwareMonitor DLLs are referenced from `../LibreHardwareMonitor/` relative to the repo root. FlyleafLib.dll is referenced from `../libs/` (custom build with headless renderer fix). Ensure that sibling repos/directories are present when building.
 
 ### Application Startup
 
-Entry point is `App.xaml.cs` → `OnStartup()`:
+Entry point is `Program.cs` (`[STAThread] Main`) → `App.xaml.cs` → `OnStartup()`:
 
 1. Single-instance check (prompts to kill existing process)
 2. `_host.Start()` — starts the Generic Host, which runs `ApplicationHostService` (an `IHostedService` that creates `MainWindow` and sets up navigation)
@@ -72,6 +75,8 @@ These singletons use the `Lazy<T>` / `Instance` pattern and are **not** in the D
 | `BeadaPanelTask.Instance` | `Services/BeadaPanelTask.cs` | BeadaPanel USB device communication. |
 | `TuringPanelTask.Instance` | `Services/TuringPanelTask.cs` | TuringPanel USB/serial communication. |
 | `WebServerTask.Instance` | `Services/WebServerTask.cs` | Built-in HTTP API and web interface. |
+| `ProfilePreviewCoordinator.Instance` | `Services/ProfilePreviewCoordinator.cs` | Batched profile preview rendering. |
+| `UndoManager.Instance` | `Services/UndoManager.cs` | Per-profile undo/redo via XML snapshots. |
 
 ### DI Container Services
 
@@ -117,9 +122,9 @@ Base class: `DisplayItem` (abstract, in `Models/DisplayItem.cs`) — inherits `O
 
 | Source | Class | Notes |
 |---|---|---|
-| **HWiNFO** | `HWHash` (`Utils/HWHash.cs`) | Reads shared memory; must be running externally |
+| **HWiNFO** | `HWHash` (`HWHash/HWHash.cs`) | Reads shared memory; must be running externally |
 | **LibreHardwareMonitor** | `LibreMonitor` (`Monitors/LibreMonitor.cs`) | Built-in; requires PawniO driver for low-level access |
-| **Plugins** | `PluginMonitor` (`Monitors/PluginMonitor.cs`) | Loads from `plugins/` directory via `InfoPanel.Plugins.Loader` |
+| **Plugins** | `PluginMonitor` (`Monitors/PluginMonitor.cs`) | Bundled from `plugins/`; external from `%ProgramData%\InfoPanel\plugins\`. Each plugin runs in a separate host process via StreamJsonRpc over named pipes. |
 
 ### USB Panel Support
 
@@ -150,6 +155,13 @@ All user data is stored under `%LOCALAPPDATA%/InfoPanel/`:
 | `assets/{guid}/` | Profile-specific images and assets |
 | `logs/infopanel-*.log` | Rolling daily logs (7-day retention, 100MB limit) |
 | `updates/` | Downloaded update installers (auto-cleaned) |
+| `plugins.bin` | Plugin activation state |
+
+External plugin data is stored under `%ProgramData%/InfoPanel/`:
+
+| Path | Contents |
+|---|---|
+| `plugins/` | User-installed (external) plugins |
 
 ## CI/CD
 
@@ -203,6 +215,7 @@ This fetches the latest spec from `https://api.infopanel.net/openapi.json` and r
 
 ## Related Documentation
 
-- `PLUGINS.md` — Plugin development guide
+- `PLUGINS.md` — Plugin development guide (for plugin authors)
+- `PLUGIN-ARCHITECTURE.md` — Plugin system internals (for contributors)
 - `PANELS.md` — Hardware panel support and models
 - `LoggingGuidelines.md` — Serilog usage standards and log levels

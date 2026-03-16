@@ -5,7 +5,7 @@ using System.Diagnostics;
 
 namespace InfoPanel.Extras
 {
-    public class SystemInfoPlugin : BasePlugin
+    public class SystemInfoPlugin : BasePlugin, IPluginConfigurable
     {
         private readonly PluginText _uptimeFormattedSensor = new("Formatted", "-");
         private readonly PluginText _uptimeDaysSensor = new("Days", "-");
@@ -27,22 +27,39 @@ namespace InfoPanel.Extras
         private readonly PluginTable _topCpuUtility = new("Top CPU Utility", new DataTable(), _defaultTopFormat);
         private readonly PluginTable _topMemoryUsage = new("Top Memory Usage", new DataTable(), _defaultTopFormat);
 
-        public override string? ConfigFilePath => Config.FilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
-        private string[] blacklist = [];
+        private static readonly string _defaultBlacklist = "_Total,Idle,dwm,csrss,svchost,lsass,system,spoolsv,Memory Compression";
+        private string[] blacklist = _defaultBlacklist.Split(',');
+        private string _blacklistRaw = _defaultBlacklist;
 
         public SystemInfoPlugin() : base("system-info-plugin", "System Info", "Misc system information and statistics.")
         {
         }
 
+        public IReadOnlyList<PluginConfigProperty> ConfigProperties =>
+        [
+            new PluginConfigProperty
+            {
+                Key = "Blacklist",
+                DisplayName = "Process Blacklist",
+                Description = "Comma-separated list of process names to exclude from top process tables.",
+                Type = PluginConfigType.String,
+                Value = _blacklistRaw
+            }
+        ];
+
+        public void ApplyConfig(string key, object? value)
+        {
+            if (key != "Blacklist") return;
+
+            var strValue = value?.ToString() ?? "";
+            _blacklistRaw = strValue;
+            blacklist = strValue.Split(',', StringSplitOptions.TrimEntries);
+        }
+
         public override void Initialize()
         {
-            Config.Instance.Load();
-            if(Config.Instance.TryGetValue(Config.SECTION_SYSTEM_INFO, "Blacklist", out var result))
-            {
-                blacklist = result.Split(',');
-            }
         }
 
         public override void Load(List<IPluginContainer> containers)

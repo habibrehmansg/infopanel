@@ -5,10 +5,13 @@ using System.Diagnostics;
 
 namespace InfoPanel.Extras
 {
-    public class WeatherPlugin : BasePlugin
+    public class WeatherPlugin : BasePlugin, IPluginConfigurable
     {
         private OpenWeatherMapCache? _current;
-        private City? _city;
+        private City _cityObj;
+        private bool _isConfigured;
+        private string _apiKey = "";
+        private string _cityName = "";
 
         private readonly PluginText _name = new("name", "Name", "-");
         private readonly PluginText _weather = new("weather", "Weather", "-");
@@ -38,20 +41,63 @@ namespace InfoPanel.Extras
         {
         }
 
-        public override string? ConfigFilePath => Config.FilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromMinutes(1);
+
+        public IReadOnlyList<PluginConfigProperty> ConfigProperties =>
+        [
+            new PluginConfigProperty
+            {
+                Key = "APIKey",
+                DisplayName = "API Key",
+                Description = "OpenWeatherMap API key. Use the 'Get API Key' action to obtain one.",
+                Type = PluginConfigType.String,
+                Value = _apiKey
+            },
+            new PluginConfigProperty
+            {
+                Key = "City",
+                DisplayName = "City",
+                Description = "City name for weather data (e.g. Singapore, London).",
+                Type = PluginConfigType.String,
+                Value = _cityName
+            }
+        ];
+
+        public void ApplyConfig(string key, object? value)
+        {
+            var strValue = value?.ToString() ?? "";
+
+            switch (key)
+            {
+                case "APIKey":
+                    _apiKey = strValue;
+                    break;
+                case "City":
+                    _cityName = strValue;
+                    break;
+                default:
+                    return;
+            }
+
+            RebuildClient();
+        }
+
+        private void RebuildClient()
+        {
+            _current?.Dispose();
+            _current = null;
+            _isConfigured = false;
+
+            if (!string.IsNullOrEmpty(_apiKey) && !string.IsNullOrEmpty(_cityName))
+            {
+                _current = new OpenWeatherMapCache(_apiKey, 10_000);
+                _cityObj = new City(_cityName);
+                _isConfigured = true;
+            }
+        }
 
         public override void Initialize()
         {
-            Config.Instance.Load();
-            Config.Instance.TryGetValue(Config.SECTION_WEATHER, "APIKey", out string apiKey);
-            Config.Instance.TryGetValue(Config.SECTION_WEATHER, "City", out string city);
-
-            if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(city))
-            {
-                _current = new(apiKey, 10_000);
-                _city = new(city);
-            }
         }
 
         public override void Close()
@@ -62,9 +108,9 @@ namespace InfoPanel.Extras
 
         public override void Load(List<IPluginContainer> containers)
         {
-            if (_city != null)
+            if (_isConfigured)
             {
-                var container = new PluginContainer(_city.CityName);
+                var container = new PluginContainer(_cityObj.CityName);
                 container.Entries.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);
                 container.Entries.AddRange([_temp, _maxTemp, _minTemp, _pressure, _seaLevel, _groundLevel, _feelsLike, _humidity, _windSpeed, _windDeg, _windGust, _clouds, _rain, _snow]);
                 containers.Add(container);
@@ -101,20 +147,20 @@ namespace InfoPanel.Extras
 
         private async Task GetWeather()
         {
-            if (_current == null || _city == null)
+            if (_current == null || !_isConfigured)
             {
                 return;
             }
 
             try
             {
-                var result = await _current.GetReadingsAsync(_city);
+                var result = await _current.GetReadingsAsync(_cityObj);
 
                 if (result != null)
                 {
                     _name.Value = result.CityName;
 
-                    if (result.Weather is { Count: > 0 })
+                    if (result.Weather is { Length: > 0 })
                     {
                         _weather.Value = result.Weather[0].Main;
                         _weatherDesc.Value = result.Weather[0].Description;
@@ -140,7 +186,10 @@ namespace InfoPanel.Extras
                     _rain.Value = Convert.ToSingle(result.RainfallLastHour?.Millimeters ?? 0);
                     _snow.Value = Convert.ToSingle(result.SnowfallLastHour?.Millimeters ?? 0);
                 }
-            }catch(Exception e) { }
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 }
