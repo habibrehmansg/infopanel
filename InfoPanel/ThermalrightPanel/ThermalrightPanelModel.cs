@@ -53,8 +53,10 @@ namespace InfoPanel.ThermalrightPanel
         // ChiZhu bulk (87AD:70DB) PM=0x20 variant — 320x320, RGB565
         ChiZhuVision320x320,
 
-        // SCSI pass-through (VID 0x0402 / PID 0x3922) — Elite Vision 360 2.73", resolution detected at runtime from poll response
-        EliteVisionScsi,
+        // SCSI pass-through — resolution detected at runtime from poll response
+        EliteVisionScsi,      // VID 0x0402 / PID 0x3922 — Frozen Warframe, Elite Vision 360
+        ThermalrightScsi,     // VID 0x87CD / PID 0x70DB — Frozen Horizon Pro, Core Vision, Elite Vision, Wonder Vision
+        WinbondScsi,          // VID 0x0416 / PID 0x5406 — LC1, LC2, LC3, LC5 AIO pump heads
 
         // ALi chipset (VID 0x0416 / PID 0x5406) — F5 protocol, raw RGB565 pixels
         AliVision320x240,    // Device type 54 -> 320x240

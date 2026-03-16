@@ -180,8 +180,8 @@ namespace InfoPanel.ThermalrightPanel
                             DeviceId = deviceId,
                             DeviceLocation = deviceLocation,
                             DevicePath = scsiInfo.DevicePath,
-                            VendorId = ThermalrightPanelModelDatabase.SCSI_VENDOR_ID,
-                            ProductId = ThermalrightPanelModelDatabase.SCSI_PRODUCT_ID,
+                            VendorId = 0,  // SCSI devices found by vendor string, VID/PID unknown at scan time
+                            ProductId = 0,
                             Model = modelInfo?.Model ?? ThermalrightPanelModel.Unknown,
                             ModelInfo = modelInfo
                         };

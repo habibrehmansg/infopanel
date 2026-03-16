@@ -20,9 +20,16 @@ namespace InfoPanel.ThermalrightPanel
         public const int TROFEO_PRODUCT_ID_5303 = 0x5303;  // 64-byte HID reports
         public const int TROFEO_PRODUCT_ID_5304 = 0x5304;  // 512-byte HID reports
 
-        // SCSI pass-through panels (Elite Vision 360 / Frozen Warframe SCSI variant)
-        public const int SCSI_VENDOR_ID = 0x0402;
-        public const int SCSI_PRODUCT_ID = 0x3922;
+        // SCSI pass-through panels — multiple VID/PID combos present as USB Mass Storage
+        // 0x87CD:0x70DB — Frozen Horizon Pro, Frozen Magic Pro, Frozen Vision V2, Core Vision, Elite Vision, AK120, AX120, PA120 Digital, Wonder Vision
+        // 0x0416:0x5406 — LC1, LC2, LC3, LC5 (AIO pump heads)
+        // 0x0402:0x3922 — Frozen Warframe, Frozen Warframe 360, Frozen Warframe SE, Elite Vision 360
+        public const int SCSI_THERMALRIGHT_VID = 0x87CD;
+        public const int SCSI_THERMALRIGHT_PID = 0x70DB;
+        public const int SCSI_WINBOND_VID = 0x0416;
+        public const int SCSI_WINBOND_PID = 0x5406;
+        public const int SCSI_ALI_VID = 0x0402;
+        public const int SCSI_ALI_PID = 0x3922;
 
         // HID identifier string reported by Trofeo HID panels (init response bytes 20-27)
         // Both 6.86" and 2.4" report "BP21940" — PM byte distinguishes them
@@ -61,7 +68,9 @@ namespace InfoPanel.ThermalrightPanel
             (TROFEO_VENDOR_ID, ALI_PRODUCT_ID),
             (TROFEO_VENDOR_ID_2, TROFEO_PRODUCT_ID_5303),
             (TROFEO_VENDOR_ID_2, TROFEO_PRODUCT_ID_5304),
-            (SCSI_VENDOR_ID, SCSI_PRODUCT_ID)
+            (SCSI_THERMALRIGHT_VID, SCSI_THERMALRIGHT_PID),
+            (SCSI_WINBOND_VID, SCSI_WINBOND_PID),
+            (SCSI_ALI_VID, SCSI_ALI_PID)
         };
 
         // Device identifiers returned in init response
@@ -460,8 +469,40 @@ namespace InfoPanel.ThermalrightPanel
                 Height = 320,
                 RenderWidth = 320,
                 RenderHeight = 320,
-                VendorId = SCSI_VENDOR_ID,
-                ProductId = SCSI_PRODUCT_ID,
+                VendorId = SCSI_ALI_VID,
+                ProductId = SCSI_ALI_PID,
+                TransportType = ThermalrightTransportType.Scsi,
+                PixelFormat = ThermalrightPixelFormat.Rgb565BigEndian
+            },
+
+            // SCSI 87CD:70DB — Frozen Horizon Pro, Core Vision, Elite Vision, Wonder Vision, etc.
+            // Resolution detected at runtime from poll response FBL byte.
+            [ThermalrightPanelModel.ThermalrightScsi] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.ThermalrightScsi,
+                Name = "Thermalright LCD (SCSI)",
+                DeviceIdentifier = "",
+                Width = 320,
+                Height = 320,
+                RenderWidth = 320,
+                RenderHeight = 320,
+                VendorId = SCSI_THERMALRIGHT_VID,
+                ProductId = SCSI_THERMALRIGHT_PID,
+                TransportType = ThermalrightTransportType.Scsi,
+                PixelFormat = ThermalrightPixelFormat.Rgb565BigEndian
+            },
+            // SCSI 0416:5406 — LC1, LC2, LC3, LC5 AIO pump heads
+            [ThermalrightPanelModel.WinbondScsi] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.WinbondScsi,
+                Name = "Thermalright AIO LCD (SCSI)",
+                DeviceIdentifier = "",
+                Width = 320,
+                Height = 320,
+                RenderWidth = 320,
+                RenderHeight = 320,
+                VendorId = SCSI_WINBOND_VID,
+                ProductId = SCSI_WINBOND_PID,
                 TransportType = ThermalrightTransportType.Scsi,
                 PixelFormat = ThermalrightPixelFormat.Rgb565BigEndian
             },
