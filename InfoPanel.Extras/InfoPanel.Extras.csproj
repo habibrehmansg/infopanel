@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-<PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="OpenWeatherMap.Cache" Version="3.0.0" />
     <PackageReference Include="Sentry" Version="5.16.1" />
     <PackageReference Include="Serilog" Version="4.3.0" />

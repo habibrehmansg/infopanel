@@ -641,7 +641,7 @@ namespace InfoPanel.Plugins.Host
             {
                 PluginConfigType.Boolean => element.ValueKind == JsonValueKind.True || element.ValueKind == JsonValueKind.False
                     ? element.GetBoolean()
-                    : bool.TryParse(element.GetString(), out var b) && b,
+                    : bool.TryParse(element.GetString(), out var b) ? b : false,
                 PluginConfigType.Integer => element.ValueKind == JsonValueKind.Number
                     ? element.GetInt32()
                     : int.TryParse(element.GetString(), out var i) ? i : 0,
