@@ -144,6 +144,7 @@ namespace InfoPanel
            services.AddScoped<DesignViewModel>();
            services.AddScoped<Views.Pages.PluginsPage>();
            services.AddScoped<PluginsViewModel>();
+           services.AddScoped<PluginBrowserViewModel>();
            services.AddScoped<Views.Pages.AboutPage>();
            services.AddScoped<AboutViewModel>();
            services.AddScoped<Views.Pages.SettingsPage>();
@@ -154,6 +155,8 @@ namespace InfoPanel
            services.AddScoped<UsbPanelsViewModel>();
            services.AddScoped<Views.Pages.LogsPage>();
            services.AddScoped<LogsViewModel>();
+           services.AddScoped<Views.Pages.AccountPage>();
+           services.AddSingleton<AccountViewModel>();
 
            // Configuration
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
@@ -325,10 +328,10 @@ namespace InfoPanel
                 catch { }
             }
 
-            _host.Start();
+            await _host.StartAsync();
             Logger.Debug("Application host started");
 
-            Engine.Start(new EngineConfig()
+            await Task.Run(() => Engine.Start(new EngineConfig()
             {
 #if DEBUG
                 LogOutput = ":debug",
@@ -337,7 +340,7 @@ namespace InfoPanel
 #endif
                 PluginsPath = ":FlyleafPlugins",
                 FFmpegPath = ":FFmpeg",
-            });
+            }));
             Logger.Debug("Flyleaf engine started");
 
             ConfigModel.Instance.Initialize();
@@ -389,8 +392,9 @@ namespace InfoPanel
             await StartPanels();
             Services.GlobalHotkeyService.Instance.Start();
 
-            //var window = new SkiaDisplayWindow();
-            //window.Show();
+            _ = Task.Run(() => GetService<AccountViewModel>()?.TryRestoreSessionAsync());
+
+            _ = Task.Run(() => Services.UpdateChecker.Instance.CheckAsync(showNotification: true));
         }
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)

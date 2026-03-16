@@ -128,7 +128,7 @@ namespace InfoPanel.Views.Controls
                                 }, true, "MyImage");
                             }
 
-                            if (image.Frames <= 1 && sender is Timer timer)
+                            if (image.Frames <= 1 && image.Type != LockedImage.ImageType.PLUGIN && sender is Timer timer)
                             {
                                 timer.Stop();
                             }

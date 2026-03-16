@@ -1,0 +1,36 @@
+{
+  "runtime": "Net100",
+  "documentGenerator": {
+    "fromDocument": {
+      "url": "openapi.json"
+    }
+  },
+  "codeGenerators": {
+    "openApiToCSharpClient": {
+      "className": "InfoPanelApiClient",
+      "namespace": "InfoPanel.ApiClient",
+      "generateClientInterfaces": true,
+      "generateDtoTypes": true,
+      "useBaseUrl": false,
+      "jsonLibrary": "SystemTextJson",
+      "generateOptionalParameters": true,
+      "generateNullableReferenceTypes": true,
+      "dateType": "System.DateTimeOffset",
+      "dateTimeType": "System.DateTimeOffset",
+      "arrayType": "System.Collections.Generic.ICollection",
+      "arrayBaseType": "System.Collections.Generic.ICollection",
+      "arrayInstanceType": "System.Collections.ObjectModel.Collection",
+      "operationGenerationMode": "SingleClientFromOperationId",
+      "classStyle": "Poco",
+      "exceptionClass": "InfoPanelApiException",
+      "generateExceptionClasses": true,
+      "generateResponseClasses": true,
+      "responseClass": "SwaggerResponse",
+      "wrapResponses": false,
+      "generateUpdateJsonSerializerSettingsMethod": true,
+      "serializeTypeInformation": false,
+      "queryNullValue": "",
+      "output": "InfoPanelApiClient.cs"
+    }
+  }
+}

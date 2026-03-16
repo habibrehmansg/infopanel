@@ -248,16 +248,42 @@
                             </Border>
                         </StackPanel>
 
-                        <ui:ToggleSwitch
-                            Grid.Column="2"
-                            Margin="0,0,0,0"
-                            VerticalAlignment="Center"
-                            IsChecked="{Binding Activated}" />
+                        <Grid Grid.Column="2" Margin="0,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <ui:ToggleSwitch
+                                Margin="0,0,0,0"
+                                VerticalAlignment="Center"
+                                IsChecked="{Binding Activated}" />
+                            <ui:Button
+                                Grid.Row="1"
+                                Width="32"
+                                Height="32"
+                                Margin="0,10,0,0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Bottom"
+                                Appearance="Danger"
+                                BorderThickness="0"
+                                Command="{Binding RemoveCommand}"
+                                Icon="{ui:SymbolIcon Delete20}"
+                                ToolTip="Uninstall plugin"
+                                Visibility="{Binding ShowRemoveButton, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </Grid>
                     </Grid>
 
 
                 </StackPanel>
             </ui:CardExpander.Header>
+
+            <StackPanel>
+            <TextBlock
+                Margin="0,0,0,0"
+                FontSize="12"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="Plugin not loaded."
+                Visibility="{Binding Activated, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
 
             <ItemsControl
                 Margin="0,0,0,0"
@@ -335,6 +361,7 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </StackPanel>
 
         </ui:CardExpander>
     </Grid>

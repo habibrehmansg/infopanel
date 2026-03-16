@@ -12,6 +12,17 @@ namespace InfoPanel.Plugins.Ipc
         public List<PluginActionDto> Actions { get; set; } = [];
         public bool IsConfigurable { get; set; }
         public List<PluginConfigPropertyDto> ConfigProperties { get; set; } = [];
+        public List<ImageDescriptorDto> ImageDescriptors { get; set; } = [];
+    }
+
+    public class ImageDescriptorDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public string MmfName { get; set; } = "";
+        public long BufferSize { get; set; }
     }
 
     public class PluginActionDto

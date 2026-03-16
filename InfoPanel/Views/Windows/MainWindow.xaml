@@ -119,6 +119,14 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
+                    Content="Account"
+                    Tag="account"
+                    TargetPageType="{x:Type pages:AccountPage}">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="Person20" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+                <ui:NavigationViewItem
                     Content="Settings"
                     Tag="settings"
                     TargetPageType="{x:Type pages:SettingsPage}">

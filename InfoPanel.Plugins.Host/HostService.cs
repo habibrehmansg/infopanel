@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using System.IO.MemoryMappedFiles;
 using System.Reflection;
+using System.Text.Json;
 using Newtonsoft.Json.Linq;
+using InfoPanel.Plugins.Graphics;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using Serilog;
@@ -15,6 +18,8 @@ namespace InfoPanel.Plugins.Host
         private JsonRpc? _jsonRpc;
         private readonly List<PluginWrapper> _wrappers = [];
         private readonly SensorSnapshotManager _snapshotManager = new();
+        private readonly List<PluginImageWriter> _imageWriters = [];
+        private readonly Dictionary<PluginImageWriter, (string PluginId, string ImageId)> _writerMappings = [];
         private CancellationTokenSource? _updateCts;
         private Task? _updateTask;
         private Task? _perfUpdateTask;
@@ -60,6 +65,17 @@ namespace InfoPanel.Plugins.Host
                     _wrappers.Add(wrapper);
                     Logger.Information("Plugin {PluginName} initialized successfully", wrapper.Name);
 
+                    // Load and apply stored config for configurable plugins (only if plugin doesn't manage its own config file)
+                    if (plugin is IPluginConfigurable earlyConfigurable && wrapper.ConfigFilePath == null)
+                    {
+                        LoadAndApplyConfig(wrapper, earlyConfigurable);
+                        // Ensure the sidecar JSON exists (creates with defaults if missing)
+                        if (!File.Exists(GetConfigFilePath(wrapper)))
+                        {
+                            SaveConfig(wrapper, earlyConfigurable);
+                        }
+                    }
+
                     // Discover actions
                     var actions = new List<PluginActionDto>();
                     var methods = plugin.GetType().GetMethods()
@@ -79,7 +95,9 @@ namespace InfoPanel.Plugins.Host
                         Id = wrapper.Id,
                         Name = wrapper.Name,
                         Description = wrapper.Description,
-                        ConfigFilePath = wrapper.ConfigFilePath,
+                        ConfigFilePath = plugin is IPluginConfigurable && wrapper.ConfigFilePath == null
+                            ? GetConfigFilePath(wrapper)
+                            : wrapper.ConfigFilePath,
                         UpdateIntervalMs = wrapper.UpdateInterval.TotalMilliseconds,
                         Actions = actions,
                         IsConfigurable = plugin is IPluginConfigurable,
@@ -87,6 +105,42 @@ namespace InfoPanel.Plugins.Host
                             ? configurable.ConfigProperties.Select(ConvertConfigPropertyToDto).ToList()
                             : []
                     };
+                    // Detect image provider and set up shared memory buffers
+                    if (plugin is IPluginImageProvider imageProvider)
+                    {
+                        var writers = new Dictionary<string, IPluginImageWriter>();
+
+                        foreach (var imgDescriptor in imageProvider.ImageDescriptors)
+                        {
+                            var mmfName = $"InfoPanel.Image.{Environment.ProcessId}.{wrapper.Id}.{imgDescriptor.Id}";
+                            var mmfSize = PluginImageWriter.ComputeMmfSize(imgDescriptor.Width, imgDescriptor.Height);
+
+                            var mmf = MemoryMappedFile.CreateOrOpen(mmfName, mmfSize);
+                            var accessor = mmf.CreateViewAccessor(0, mmfSize);
+                            var writer = new PluginImageWriter(mmfName, mmf, accessor, imgDescriptor.Width, imgDescriptor.Height);
+                            _imageWriters.Add(writer);
+                            _writerMappings[writer] = (wrapper.Id, imgDescriptor.Id);
+                            writer.Resized += OnWriterResized;
+
+                            writers[imgDescriptor.Id] = writer;
+
+                            metadata.ImageDescriptors.Add(new ImageDescriptorDto
+                            {
+                                Id = imgDescriptor.Id,
+                                Name = imgDescriptor.Name,
+                                Width = imgDescriptor.Width,
+                                Height = imgDescriptor.Height,
+                                MmfName = mmfName,
+                                BufferSize = mmfSize
+                            });
+
+                            Logger.Information("Created MMF {MmfName} for image {ImageId} ({W}x{H})",
+                                mmfName, imgDescriptor.Id, imgDescriptor.Width, imgDescriptor.Height);
+                        }
+
+                        imageProvider.OnImageBuffersReady(writers);
+                    }
+
                     metadataList.Add(metadata);
 
                     // Convert containers to DTOs
@@ -102,6 +156,25 @@ namespace InfoPanel.Plugins.Host
                         };
                         containerDtos.Add(containerDto);
                     }
+                    // Add image descriptors as text entries so they appear as selectable sensors
+                    if (metadata.ImageDescriptors.Count > 0)
+                    {
+                        var imagesContainer = new ContainerDto
+                        {
+                            Id = $"__images_{wrapper.Id}",
+                            Name = "Images",
+                            IsEphemeralPath = false,
+                            Entries = metadata.ImageDescriptors.Select(img => new EntryDto
+                            {
+                                Id = img.Id,
+                                Name = img.Name,
+                                Type = "text",
+                                TextValue = $"plugin-image://{wrapper.Id}/{img.Id}"
+                            }).ToList()
+                        };
+                        containerDtos.Add(imagesContainer);
+                    }
+
                     containersByPluginId[wrapper.Id] = containerDtos;
                 }
                 catch (Exception ex)
@@ -165,6 +238,10 @@ namespace InfoPanel.Plugins.Host
                 {
                     configurable.ApplyConfig(key, nativeValue);
                     Logger.Information("Config applied successfully for key={Key}", key);
+                    if (wrapper.ConfigFilePath == null)
+                    {
+                        SaveConfig(wrapper, configurable);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -305,6 +382,15 @@ namespace InfoPanel.Plugins.Host
                     Logger.Error(ex, "Error stopping plugin {PluginName}", wrapper.Name);
                 }
             }
+
+            // Dispose image writers (releases MMF handles)
+            foreach (var writer in _imageWriters)
+            {
+                writer.Resized -= OnWriterResized;
+                try { writer.Dispose(); } catch { }
+            }
+            _imageWriters.Clear();
+            _writerMappings.Clear();
 
             // Signal the host process to exit gracefully by disposing the JsonRpc connection.
             // This causes jsonRpc.Completion in Program.cs to complete naturally.
@@ -489,6 +575,92 @@ namespace InfoPanel.Plugins.Host
             };
         }
 
+        private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+
+        private static string GetConfigFilePath(PluginWrapper wrapper)
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "InfoPanel", "plugins");
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"{wrapper.Id}.config.json");
+        }
+
+        private void LoadAndApplyConfig(PluginWrapper wrapper, IPluginConfigurable configurable)
+        {
+            var configPath = GetConfigFilePath(wrapper);
+            if (!File.Exists(configPath)) return;
+
+            try
+            {
+                var json = File.ReadAllText(configPath);
+                var stored = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+                if (stored == null) return;
+
+                var props = configurable.ConfigProperties;
+                foreach (var kvp in stored)
+                {
+                    var prop = props.FirstOrDefault(p => p.Key == kvp.Key);
+                    if (prop == null) continue;
+
+                    var value = CoerceJsonElement(kvp.Value, prop.Type);
+                    try
+                    {
+                        configurable.ApplyConfig(kvp.Key, value);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning(ex, "Failed to apply stored config key {Key} on plugin {PluginId}", kvp.Key, wrapper.Id);
+                    }
+                }
+
+                Logger.Information("Loaded stored config for plugin {PluginId} from {Path}", wrapper.Id, configPath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to load config file for plugin {PluginId}", wrapper.Id);
+            }
+        }
+
+        private void SaveConfig(PluginWrapper wrapper, IPluginConfigurable configurable)
+        {
+            try
+            {
+                var configPath = GetConfigFilePath(wrapper);
+                var values = new Dictionary<string, object?>();
+                foreach (var prop in configurable.ConfigProperties)
+                {
+                    values[prop.Key] = prop.Value;
+                }
+                var json = JsonSerializer.Serialize(values, _jsonOptions);
+                File.WriteAllText(configPath, json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to save config for plugin {PluginId}", wrapper.Id);
+            }
+        }
+
+        private static object? CoerceJsonElement(JsonElement element, PluginConfigType type)
+        {
+            return type switch
+            {
+                PluginConfigType.Boolean => element.ValueKind == JsonValueKind.True || element.ValueKind == JsonValueKind.False
+                    ? element.GetBoolean()
+                    : bool.TryParse(element.GetString(), out var b) ? b : false,
+                PluginConfigType.Integer => element.ValueKind == JsonValueKind.Number
+                    ? element.GetInt32()
+                    : int.TryParse(element.GetString(), out var i) ? i : 0,
+                PluginConfigType.Double => element.ValueKind == JsonValueKind.Number
+                    ? element.GetDouble()
+                    : double.TryParse(element.GetString(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0.0,
+                PluginConfigType.String => element.GetString() ?? "",
+                PluginConfigType.Choice => element.GetString() ?? "",
+                _ => element.GetString() ?? ""
+            };
+        }
+
         private void NotifyPluginsLoaded(List<PluginMetadataDto> plugins, Dictionary<string, List<ContainerDto>> containers)
         {
             try
@@ -522,6 +694,38 @@ namespace InfoPanel.Plugins.Host
             catch (Exception ex)
             {
                 Logger.Error(ex, "Failed to notify plugin error");
+            }
+        }
+
+        private void OnWriterResized(PluginImageWriter writer)
+        {
+            if (!_writerMappings.TryGetValue(writer, out var mapping)) return;
+
+            var descriptor = new ImageDescriptorDto
+            {
+                Id = mapping.ImageId,
+                Name = mapping.ImageId,
+                Width = writer.Width,
+                Height = writer.Height,
+                MmfName = writer.MmfName,
+                BufferSize = PluginImageWriter.ComputeMmfSize(writer.Width, writer.Height)
+            };
+
+            Logger.Information("Image resized: {PluginId}/{ImageId} -> {W}x{H} (MMF: {MmfName})",
+                mapping.PluginId, mapping.ImageId, writer.Width, writer.Height, writer.MmfName);
+
+            NotifyImageResize(mapping.PluginId, descriptor);
+        }
+
+        private void NotifyImageResize(string pluginId, ImageDescriptorDto descriptor)
+        {
+            try
+            {
+                _jsonRpc?.NotifyAsync(nameof(IPluginClientCallback.OnImageResize), pluginId, descriptor);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to notify image resize");
             }
         }
 

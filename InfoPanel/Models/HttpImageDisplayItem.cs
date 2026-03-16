@@ -167,28 +167,33 @@ namespace InfoPanel.Models
 
         public override SKSize EvaluateSize()
         {
-            var result = base.EvaluateSize();
+            var result = new SKSize(Width, Height);
 
             if (result.Width == 0 || result.Height == 0)
             {
-                var sensorReading = GetValue();
-
-                if (sensorReading.HasValue && sensorReading.Value.ValueText != null && sensorReading.Value.ValueText.IsUrl())
+                var cachedImage = InfoPanel.Cache.GetLocalImage(this, false);
+                if (cachedImage != null)
                 {
-                    var cachedImage = InfoPanel.Cache.GetLocalImage(this);
-                    if (cachedImage != null)
+                    if (result.Width == 0)
                     {
-                        if (result.Width == 0)
-                        {
-                            result.Width = cachedImage.Width * Scale / 100.0f;
-                        }
+                        result.Width = cachedImage.Width;
+                    }
 
-                        if (result.Height == 0)
-                        {
-                            result.Height = cachedImage.Height * Scale / 100.0f;
-                        }
+                    if (result.Height == 0)
+                    {
+                        result.Height = cachedImage.Height;
                     }
                 }
+            }
+
+            if (result.Width != 0)
+            {
+                result.Width *= Scale / 100.0f;
+            }
+
+            if (result.Height != 0)
+            {
+                result.Height *= Scale / 100.0f;
             }
 
             return result;

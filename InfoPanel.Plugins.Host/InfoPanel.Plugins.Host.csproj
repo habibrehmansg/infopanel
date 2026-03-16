@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
+    <ProjectReference Include="..\InfoPanel.Plugins.Graphics\InfoPanel.Plugins.Graphics.csproj" />
     <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
     <ProjectReference Include="..\InfoPanel.Plugins.Ipc\InfoPanel.Plugins.Ipc.csproj" />
   </ItemGroup>

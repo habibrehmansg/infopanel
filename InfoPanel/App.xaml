@@ -49,6 +49,7 @@
             <local:IsPluginTableConverter x:Key="IsPluginTableConverter" />
             <local:CustomStepIndexConverter x:Key="CustomStepIndexConverter" />
             <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+            <local:UtcToLocalTimeConverter x:Key="UtcToLocalTimeConverter" />
             <local:NullToBooleanConverter x:Key="NullToBooleanConverter" />
             <local:IntToBooleanConverter x:Key="IntToBooleanConverter" />
             <local:SelectedItemTextConverter x:Key="SelectedItemTextConverter" />

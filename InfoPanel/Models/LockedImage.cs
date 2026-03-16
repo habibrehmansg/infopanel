@@ -1,6 +1,7 @@
 ﻿using FlyleafLib;
 using FlyleafLib.MediaPlayer;
 using InfoPanel.Extensions;
+using InfoPanel.Monitors.PluginProxies;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using SkiaSharp;
@@ -25,7 +26,7 @@ namespace InfoPanel.Models
         
         public enum ImageType
         {
-            SK, SVG, FFMPEG
+            SK, SVG, FFMPEG, PLUGIN
         }
 
         public readonly string ImagePath;
@@ -76,7 +77,7 @@ namespace InfoPanel.Models
 
         public TimeSpan? CurrentTime => TimeSpan.FromMilliseconds(_backgroundVideoPlayer?.CurTime / 10000 ?? 0);
         public TimeSpan? Duration => TimeSpan.FromMilliseconds(_backgroundVideoPlayer?.Duration / 10000 ?? 0);
-        public double? FrameRate => _backgroundVideoPlayer?.Video.FPS;
+        public double? FrameRate => _backgroundVideoPlayer?.VideoDecoder.VideoStream.FPS;
 
         public bool HasAudio => !_backgroundVideoPlayer?.Audio.Mute ?? false;
 
@@ -113,12 +114,28 @@ namespace InfoPanel.Models
         private readonly long[]? _cumulativeFrameTimes;
         private int _lastRenderedFrame = -1;
 
+        private readonly ProxyPluginImage? _pluginImage;
+
         private readonly object Lock = new();
         private bool IsDisposed = false;
 
         private readonly Stopwatch Stopwatch = new();
 
         public bool Loaded { get; private set; } = false;
+
+        /// <summary>
+        /// Creates a LockedImage backed by a plugin image proxy (shared memory).
+        /// </summary>
+        internal LockedImage(string imagePath, ProxyPluginImage pluginImage)
+        {
+            ImagePath = imagePath;
+            _pluginImage = pluginImage;
+            Type = ImageType.PLUGIN;
+            Width = pluginImage.Width;
+            Height = pluginImage.Height;
+            Frames = 1;
+            Loaded = true;
+        }
 
         public LockedImage(string imagePath, ImageDisplayItem? sourceImageDisplayItem)
         {
@@ -175,9 +192,9 @@ namespace InfoPanel.Models
 
                         Thread.Sleep(50);
 
-                        Width = _backgroundVideoPlayer.Video.Width;
-                        Height = _backgroundVideoPlayer.Video.Height;
-                        Frames = _backgroundVideoPlayer.Video.FramesTotal;
+                        Width = (int)_backgroundVideoPlayer.decoder.VideoStream.Width;
+                        Height = (int)_backgroundVideoPlayer.decoder.VideoStream.Height;
+                        Frames = _backgroundVideoPlayer.decoder.VideoStream.TotalFrames;
 
                         if (Frames == 0 && _backgroundVideoPlayer.IsLive)
                         {
@@ -185,6 +202,15 @@ namespace InfoPanel.Models
                         }
 
                         TotalFrameTime = _backgroundVideoPlayer.Duration;
+
+                        Log.Information("Player Status: {Status}, IsLive: {IsLive}",
+                         _backgroundVideoPlayer.Status, _backgroundVideoPlayer.IsLive);
+                        Log.Information("Video: {Width}x{Height}, Codec: {Codec}, FPS: {FPS}",
+                            Width, Height,
+                            _backgroundVideoPlayer.Video.Codec, _backgroundVideoPlayer.VideoDecoder.VideoStream.FPS);
+                        Log.Information("Renderer VP: {VP}, CanPresent: {CanPresent}",
+                            _backgroundVideoPlayer.Renderer.VideoProcessor,
+                            _backgroundVideoPlayer.Renderer.SwapChain.CanPresent);
 
                         Loaded = true;
                         return;
@@ -620,6 +646,28 @@ namespace InfoPanel.Models
 
             lock (Lock)
             {
+                if (Type == ImageType.PLUGIN)
+                {
+                    if (_pluginImage != null)
+                    {
+                        using var snapshot = _pluginImage.GetCurrentFrame();
+                        if (snapshot != null)
+                        {
+                            var resizeInfo = new SKImageInfo(targetWidth, targetHeight);
+                            using var surface = SKSurface.Create(resizeInfo);
+                            if (surface != null)
+                            {
+                                surface.Canvas.DrawImage(snapshot, new SKRect(0, 0, targetWidth, targetHeight),
+                                    new SKSamplingOptions(SKCubicResampler.Mitchell));
+                                using var image = surface.Snapshot();
+                                access(image);
+                            }
+                        }
+                    }
+
+                    return;
+                }
+
                 if (Type == ImageType.FFMPEG)
                 {
                     if (_backgroundVideoPlayer != null)

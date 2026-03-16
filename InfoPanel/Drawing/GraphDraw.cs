@@ -1,4 +1,4 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using LibreHardwareMonitor.Hardware;
@@ -160,7 +160,7 @@ namespace InfoPanel.Drawing
                     queue = GetGraphDataQueue(chartDisplayItem.HwInfoRemoteIndex, chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId);
                 }
 
-                if (queue.Count == 0)
+                if (queue.Count == 0 && chartDisplayItem is not BarDisplayItem)
                 {
                     return;
                 }

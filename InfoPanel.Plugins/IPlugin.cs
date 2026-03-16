@@ -5,6 +5,7 @@
         string Id { get; }
         string Name { get; }
         string Description { get; }
+        [System.Obsolete("Use IPluginConfigurable for config UI and automatic persistence. ConfigFilePath is only needed for legacy manual config file management.")]
         string? ConfigFilePath { get; }
         TimeSpan UpdateInterval { get; } 
         void Initialize();

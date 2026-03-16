@@ -6,5 +6,6 @@ namespace InfoPanel.Plugins.Ipc
         void OnSensorUpdate(List<SensorUpdateBatchDto> updates);
         void OnPluginError(string pluginId, string errorMessage);
         void OnPerformanceUpdate(List<PluginPerformanceDto> performances);
+        void OnImageResize(string pluginId, ImageDescriptorDto descriptor);
     }
 }

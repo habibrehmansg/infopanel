@@ -76,6 +76,8 @@ InfoPanel features a robust plugin system that extends its capabilities:
 - [InfoPanel FPS Plugin](https://github.com/F3NN3X/InfoPanel.FPS) - Shows FPS and performance metrics for gaming sessions
 - [InfoPanel YouTube Live Plugin](https://github.com/fweepa/InfoPanel.YoutubeLivePlugin) - Plays a YouTube Live stream in your panel
 
+To browse all available community plugins or submit your own, see the [Plugin Registry](PLUGIN-REGISTRY.md).
+
 ### Plugin Development
 InfoPanel provides a comprehensive API for plugin development that allows access to:
 - Sensor data creation and publishing

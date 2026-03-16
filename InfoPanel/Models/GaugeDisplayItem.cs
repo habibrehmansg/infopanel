@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Enums;
 using SkiaSharp;
 using System;
@@ -131,6 +131,19 @@ namespace InfoPanel.Models
             }
         }
 
+        /// <summary>
+        /// Animation speed in index-units per second. 0 = instant (no smoothing). Typical: 5–20.
+        /// </summary>
+        private double _animationSpeed = 0;
+        public double AnimationSpeed
+        {
+            get { return _animationSpeed; }
+            set
+            {
+                SetProperty(ref _animationSpeed, value);
+            }
+        }
+
         [ObservableProperty]
         private int _width = 0;
 
@@ -232,42 +245,83 @@ namespace InfoPanel.Models
         }
 
         private double currentImageIndex = 0;
-        public ImageDisplayItem? EvaluateImage(double interpolationDelay = 1)
+        private DateTime _lastGaugeUpdate = DateTime.MinValue;
+
+        /// <summary>
+        /// Returns frame A (floor), optional frame B (ceil), and blend factor for crossfade.
+        /// Updates currentImageIndex internally with smoothing logic.
+        /// </summary>
+        public void EvaluateImageFrame(out ImageDisplayItem? imageA, out ImageDisplayItem? imageB, out float blend)
         {
-            ImageDisplayItem? result = null;
+            imageA = null;
+            imageB = null;
+            blend = 0f;
+
+            if (_images.Count == 0) return;
             if (_images.Count == 1)
             {
-                result = Images[0];
+                imageA = Images[0];
+                imageA.Scale = _scale;
+                return;
             }
 
-            if (_images.Count > 1)
+            var sensorReading = GetValue();
+            if (!sensorReading.HasValue)
             {
-                var sensorReading = GetValue();
-                if(sensorReading.HasValue) {
-                    var step = 100.0 / (_images.Count - 1);
-
-                    var value = sensorReading.Value.ValueNow;
-                    value = ((value - _minValue) / (_maxValue - _minValue)) * 100;
-
-                    var index = (int)(value / step);
-
-                    var intermediateIndex = Interpolate(currentImageIndex, index, interpolationDelay * 2);
-                    intermediateIndex = Math.Clamp(intermediateIndex, 0, Images.Count - 1);
-                    currentImageIndex = intermediateIndex;
-
-                    result = Images[(int)Math.Round(intermediateIndex)];
-                } else
-                {
-                    result = Images[0];
-                }
+                imageA = Images[0];
+                imageA.Scale = _scale;
+                return;
             }
 
-            if(result != null)
+            var step = 100.0 / (_images.Count - 1);
+            var value = sensorReading.Value.ValueNow;
+            value = ((value - _minValue) / (_maxValue - _minValue)) * 100;
+            var targetIndex = (int)Math.Round(value / step);
+            targetIndex = Math.Clamp(targetIndex, 0, Images.Count - 1);
+
+            var now = DateTime.UtcNow;
+            // First evaluation: use a nominal delta (1/60s) so smoothing runs instead of snapping (log evidence: deltaSeconds=0 on first frame caused usedSmoothing=false).
+            double deltaSeconds;
+            if (_lastGaugeUpdate == DateTime.MinValue)
             {
-                result.Scale = _scale;
+                deltaSeconds = _animationSpeed > 0 ? 1.0 / 60.0 : 0;
+                _lastGaugeUpdate = now;
+            }
+            else
+            {
+                deltaSeconds = (now - _lastGaugeUpdate).TotalSeconds;
+                _lastGaugeUpdate = now;
             }
 
-            return result;
+            if (_animationSpeed > 0 && deltaSeconds > 0)
+            {
+                var maxStep = _animationSpeed * deltaSeconds;
+                var diff = targetIndex - currentImageIndex;
+                if (Math.Abs(diff) <= maxStep)
+                    currentImageIndex = targetIndex;
+                else
+                    currentImageIndex += Math.Sign(diff) * maxStep;
+                currentImageIndex = Math.Clamp(currentImageIndex, 0, Images.Count - 1);
+            }
+            else
+            {
+                currentImageIndex = targetIndex;
+            }
+
+            var idxFloor = (int)Math.Floor(currentImageIndex);
+            var idxCeil = (int)Math.Ceiling(currentImageIndex);
+            idxFloor = Math.Clamp(idxFloor, 0, Images.Count - 1);
+            idxCeil = Math.Clamp(idxCeil, 0, Images.Count - 1);
+
+            imageA = Images[idxFloor];
+            imageA.Scale = _scale;
+
+            if (idxCeil != idxFloor)
+            {
+                imageB = Images[idxCeil];
+                imageB.Scale = _scale;
+                blend = (float)(currentImageIndex - idxFloor);
+            }
         }
 
         public ImageDisplayItem? CurrentImage
@@ -284,23 +338,6 @@ namespace InfoPanel.Models
 
                 return null;
             }
-        }
-
-        private static double Interpolate(double startValue, int endValue, double position)
-        {
-            // Ensure position is within the range of 0 to 100
-            position = Math.Clamp(position, 0, 1);
-
-            // Handle case where start and target positions are equal
-            if (startValue == endValue)
-            {
-                return startValue;
-            }
-
-            // Calculate the interpolated value
-            double interpolatedValue = startValue + (endValue - startValue) * position;
-
-            return interpolatedValue;
         }
 
         public override SKRect EvaluateBounds()
@@ -356,6 +393,8 @@ namespace InfoPanel.Models
         {
             var clone = (GaugeDisplayItem)MemberwiseClone();
             clone.Guid = Guid.NewGuid();
+            clone.currentImageIndex = 0;
+            clone._lastGaugeUpdate = DateTime.MinValue;
 
             clone.Images = new ObservableCollection<ImageDisplayItem>();
 

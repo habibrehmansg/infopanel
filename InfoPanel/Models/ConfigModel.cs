@@ -53,6 +53,7 @@ namespace InfoPanel
         // Debouncing and async save fields
         private Timer? _saveDebounceTimer;
         private readonly AsyncNonKeyedLocker _saveLock = new(1);
+        private static readonly SemaphoreSlim _validateStartupSemaphore = new(1, 1);
         private const int SaveDebounceDelayMs = 500;
 
         private DispatcherTimer? _autosaveIdleTimer;
@@ -351,36 +352,44 @@ namespace InfoPanel
             }
         }
 
-        private void ValidateStartup()
+        private async Task ValidateStartupAsync()
         {
-            //legacy startup removal
-            using var registryKey = Registry.CurrentUser?.OpenSubKey(RegistryRunKey, true);
-            registryKey?.DeleteValue("InfoPanel", false);
-
-            //new startup removal
-            using var taskService = new TaskService();
-
-            if (!Settings.AutoStart)
+            await _validateStartupSemaphore.WaitAsync();
+            try
             {
-                //delete task if exists
-                taskService.RootFolder.DeleteTask("InfoPanel", false);
+                //legacy startup removal
+                using var registryKey = Registry.CurrentUser?.OpenSubKey(RegistryRunKey, true);
+                registryKey?.DeleteValue("InfoPanel", false);
+
+                //new startup removal
+                using var taskService = new TaskService();
+
+                if (!Settings.AutoStart)
+                {
+                    //delete task if exists
+                    taskService.RootFolder.DeleteTask("InfoPanel", false);
+                }
+                else
+                {
+                    using var taskDefinition = taskService.NewTask();
+                    taskDefinition.RegistrationInfo.Description = "Runs InfoPanel on startup.";
+                    taskDefinition.RegistrationInfo.Author = "Habib Rehman";
+                    taskDefinition.Triggers.Add(new LogonTrigger { Delay = TimeSpan.FromSeconds(Settings.AutoStartDelay) });
+                    taskDefinition.Actions.Add(new ExecAction(Application.ExecutablePath));
+                    taskDefinition.Principal.RunLevel = TaskRunLevel.Highest;
+                    taskDefinition.Settings.DisallowStartIfOnBatteries = false;
+                    taskDefinition.Settings.StopIfGoingOnBatteries = false;
+                    taskDefinition.Settings.AllowDemandStart = true;
+                    taskDefinition.Settings.AllowHardTerminate = true;
+                    taskDefinition.Settings.ExecutionTimeLimit = TimeSpan.Zero;
+
+                    taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition, TaskCreation.CreateOrUpdate,
+                        System.Security.Principal.WindowsIdentity.GetCurrent().Name, null, TaskLogonType.InteractiveToken);
+                }
             }
-            else
+            finally
             {
-                using var taskDefinition = taskService.NewTask();
-                taskDefinition.RegistrationInfo.Description = "Runs InfoPanel on startup.";
-                taskDefinition.RegistrationInfo.Author = "Habib Rehman";
-                taskDefinition.Triggers.Add(new LogonTrigger { Delay = TimeSpan.FromSeconds(Settings.AutoStartDelay) });
-                taskDefinition.Actions.Add(new ExecAction(Application.ExecutablePath));
-                taskDefinition.Principal.RunLevel = TaskRunLevel.Highest;
-                taskDefinition.Settings.DisallowStartIfOnBatteries = false;
-                taskDefinition.Settings.StopIfGoingOnBatteries = false;
-                taskDefinition.Settings.AllowDemandStart = true;
-                taskDefinition.Settings.AllowHardTerminate = true;
-                taskDefinition.Settings.ExecutionTimeLimit = TimeSpan.Zero;
-
-                taskService.RootFolder.RegisterTaskDefinition("InfoPanel", taskDefinition, TaskCreation.CreateOrUpdate,
-                    System.Security.Principal.WindowsIdentity.GetCurrent().Name, null, TaskLogonType.InteractiveToken);
+                _validateStartupSemaphore.Release();
             }
         }
 
@@ -388,7 +397,7 @@ namespace InfoPanel
         {
             if (e.PropertyName == nameof(Settings.AutoStart) || e.PropertyName == nameof(Settings.AutoStartDelay))
             {
-                ValidateStartup();
+                await ValidateStartupAsync();
             }
             else if (e.PropertyName == nameof(Settings.LibreHardwareMonitor))
             {
@@ -664,7 +673,7 @@ namespace InfoPanel
                             }
                         }
 
-                        ValidateStartup();
+                        _ = Task.Run(ValidateStartupAsync);
 
                         if (loadedFromBackup)
                         {
