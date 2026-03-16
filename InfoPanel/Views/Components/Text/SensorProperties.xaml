@@ -65,6 +65,14 @@
                             IsChecked="{Binding ShowUnit}">
                             <ui:SymbolIcon Symbol="TextAsterisk20" ToolTip="Show Unit" />
                         </ToggleButton>
+
+                        <ToggleButton
+                            Grid.Column="2"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Right"
+                            IsChecked="{Binding ShowThousandsSeparator}">
+                            <ui:SymbolIcon Symbol="NumberRow20" ToolTip="Thousands Separator" />
+                        </ToggleButton>
                     </StackPanel>
                 </StackPanel>
 
