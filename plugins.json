@@ -89,6 +89,18 @@
       "name": "Network Quality",
       "description": "ICMP-based InfoPanel plugin for monitoring Network quality.",
       "category": "monitoring"
-  }
+    },
+    {
+      "repo": "fweepa/InfoPanel.YoutubeLivePlugin",
+      "name": "YouTube Live Stream",
+      "description": "Provides YouTube Live Stream HLS URL for display in InfoPanel via image item",
+      "category": "media"
+    },
+    {
+      "repo": "fweepa/InfoPanel.Windows11NowPlaying",
+      "name": "Windows 11 Now Playing",
+      "description": "Displays currently playing media information from Windows 11's Global Media Transport Controls",
+      "category": "media"
+    }
   ]
 }
