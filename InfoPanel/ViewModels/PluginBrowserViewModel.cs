@@ -181,6 +181,11 @@ namespace InfoPanel.ViewModels
                     {
                         _installedPlugins.TryAdd(folderName, descriptor.PluginInfo?.Version);
                     }
+
+                    if (descriptor.Slug != null)
+                    {
+                        _installedPlugins.TryAdd(descriptor.Slug, descriptor.PluginInfo?.Version);
+                    }
                 }
             }
         }
