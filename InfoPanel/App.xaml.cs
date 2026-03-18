@@ -98,6 +98,7 @@ namespace InfoPanel
            .Enrich.WithMachineName()
            .Enrich.FromLogContext()
            .WriteTo.Debug()
+           .WriteTo.Sink(Logging.InMemoryLogSink.Instance)
            .WriteTo.File(
                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "logs", "infopanel-.log"),
                rollingInterval: RollingInterval.Day,
@@ -151,6 +152,8 @@ namespace InfoPanel
            services.AddScoped<UpdatesViewModel>();
            services.AddScoped<Views.Pages.UsbPanelsPage>();
            services.AddScoped<UsbPanelsViewModel>();
+           services.AddScoped<Views.Pages.LogsPage>();
+           services.AddScoped<LogsViewModel>();
            services.AddScoped<Views.Pages.AccountPage>();
            services.AddSingleton<AccountViewModel>();
 
