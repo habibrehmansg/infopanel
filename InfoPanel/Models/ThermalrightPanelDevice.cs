@@ -34,7 +34,7 @@ namespace InfoPanel.Models
 
         partial void OnDeviceLocationChanged(string value)
         {
-            OnPropertyChanged(DevicePort);
+            OnPropertyChanged(nameof(DevicePort));
         }
 
         public string DevicePort => DeviceLocation.Split('.').FirstOrDefault() ?? string.Empty;

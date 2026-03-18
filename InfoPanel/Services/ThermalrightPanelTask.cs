@@ -22,6 +22,12 @@ namespace InfoPanel.Services
 
         private ThermalrightPanelTask() { }
 
+        public override async Task StopAsync(bool shutdown = false)
+        {
+            await base.StopAsync(shutdown);
+            await StopAllDevices();
+        }
+
         public async Task StartDevice(ThermalrightPanelDevice device)
         {
             if (_deviceTasks.TryGetValue(device.Id, out var task))

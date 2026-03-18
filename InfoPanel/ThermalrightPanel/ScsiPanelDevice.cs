@@ -373,8 +373,10 @@ namespace InfoPanel.ThermalrightPanel
                 //  56: UCHAR  SenseBuf[32]
                 //  -- total: 88 bytes --
                 const int SPTD_SIZE = 56;       // sizeof(SCSI_PASS_THROUGH_DIRECT) on x64
+                const int CDB_MAX = 20;         // Support 20-byte CDBs (16 in struct + 4 overflow)
                 const int SENSE_SIZE = 32;
-                const int TOTAL_SIZE = SPTD_SIZE + SENSE_SIZE; // 88
+                const int SENSE_OFFSET = SPTD_SIZE + (CDB_MAX - 16); // 60: sense starts after CDB overflow
+                const int TOTAL_SIZE = SENSE_OFFSET + SENSE_SIZE;    // 92
 
                 var ptr = Marshal.AllocHGlobal(TOTAL_SIZE);
                 try
@@ -385,7 +387,7 @@ namespace InfoPanel.ThermalrightPanel
 
                     // Fill SCSI_PASS_THROUGH_DIRECT fields
                     Marshal.WriteInt16(ptr, 0, (short)SPTD_SIZE);                    // Length
-                    int cdbLen = Math.Min(cdb.Length, 16);
+                    int cdbLen = Math.Min(cdb.Length, CDB_MAX);
                     Marshal.WriteByte(ptr, 6, (byte)cdbLen);                         // CdbLength
                     Marshal.WriteByte(ptr, 7, SENSE_SIZE);                           // SenseInfoLength
                     Marshal.WriteByte(ptr, 8, direction);                            // DataIn
@@ -393,9 +395,9 @@ namespace InfoPanel.ThermalrightPanel
                     Marshal.WriteInt32(ptr, 16, 10);                                 // TimeOutValue (seconds)
                     if (data.Length > 0)
                         Marshal.WriteIntPtr(ptr, 24, dataHandle.AddrOfPinnedObject()); // DataBuffer
-                    Marshal.WriteInt32(ptr, 32, SPTD_SIZE);                          // SenseInfoOffset
+                    Marshal.WriteInt32(ptr, 32, SENSE_OFFSET);                       // SenseInfoOffset
 
-                    // Copy CDB bytes at offset 36
+                    // Copy CDB bytes at offset 36 (may overflow into sense area for >16 byte CDBs)
                     Marshal.Copy(cdb, 0, ptr + 36, cdbLen);
 
                     if (!DeviceIoControl(_handle, IOCTL_SCSI_PASS_THROUGH_DIRECT,
@@ -414,9 +416,9 @@ namespace InfoPanel.ThermalrightPanel
                     if (scsiStatus != 0)
                     {
                         // Log sense data for diagnostics
-                        _lastSenseKey = (byte)(Marshal.ReadByte(ptr, SPTD_SIZE + 2) & 0x0F);
-                        _lastAsc = Marshal.ReadByte(ptr, SPTD_SIZE + 12);
-                        _lastAscq = Marshal.ReadByte(ptr, SPTD_SIZE + 13);
+                        _lastSenseKey = (byte)(Marshal.ReadByte(ptr, SENSE_OFFSET + 2) & 0x0F);
+                        _lastAsc = Marshal.ReadByte(ptr, SENSE_OFFSET + 12);
+                        _lastAscq = Marshal.ReadByte(ptr, SENSE_OFFSET + 13);
                         Logger.Warning("ScsiPanelDevice: SCSI status 0x{Status:X2}, sense key=0x{Key:X} ASC=0x{ASC:X2} ASCQ=0x{ASCQ:X2}",
                             scsiStatus, _lastSenseKey, _lastAsc, _lastAscq);
                         return false;

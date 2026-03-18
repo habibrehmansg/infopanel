@@ -254,13 +254,21 @@ namespace InfoPanel.ThermalrightPanel
         private static ThermalrightPanelModelInfo? ProbeWinUsbModel(UsbRegistry deviceReg)
         {
             const int PROBE_TIMEOUT_MS = 5000;
+            using var cts = new CancellationTokenSource(PROBE_TIMEOUT_MS);
 
             try
             {
-                var probeTask = Task.Run(() => ProbeWinUsbModelInner(deviceReg));
-                if (probeTask.Wait(PROBE_TIMEOUT_MS))
-                    return probeTask.Result;
-
+                var probeTask = Task.Run(() => ProbeWinUsbModelInner(deviceReg, cts.Token), cts.Token);
+                probeTask.Wait(cts.Token);
+                return probeTask.Result;
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Warning("ThermalrightPanelHelper: Probe timed out after {Timeout}ms", PROBE_TIMEOUT_MS);
+                return null;
+            }
+            catch (AggregateException ae) when (ae.InnerException is OperationCanceledException)
+            {
                 Logger.Warning("ThermalrightPanelHelper: Probe timed out after {Timeout}ms", PROBE_TIMEOUT_MS);
                 return null;
             }
@@ -276,8 +284,9 @@ namespace InfoPanel.ThermalrightPanel
             }
         }
 
-        private static ThermalrightPanelModelInfo? ProbeWinUsbModelInner(UsbRegistry deviceReg)
+        private static ThermalrightPanelModelInfo? ProbeWinUsbModelInner(UsbRegistry deviceReg, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
             using var usbDevice = deviceReg.Device;
             if (usbDevice == null)
             {

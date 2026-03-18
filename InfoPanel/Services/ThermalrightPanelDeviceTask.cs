@@ -510,6 +510,10 @@ namespace InfoPanel.Services
                 Logger.Error(e, "ThermalrightPanelDevice {Device}: SCSI error", _device);
                 _device.UpdateRuntimeProperties(errorMessage: e.Message);
             }
+            finally
+            {
+                _device.UpdateRuntimeProperties(isRunning: false);
+            }
         }
 
         private async Task DoWorkWinUsbAsync(CancellationToken token)
@@ -1792,37 +1796,47 @@ namespace InfoPanel.Services
             var renderTask = Task.Run(async () =>
             {
                 Thread.CurrentThread.Name ??= $"Thermalright-Render-{_device.DeviceLocation}";
-                var stopwatch = new Stopwatch();
-                bool lastFlickerFix = _device.FlickerFix;
-
-                while (!renderToken.IsCancellationRequested)
+                try
                 {
-                    // Update display name if flicker fix toggle changed
-                    if (_flickerFixCropHeight > 0 && _device.FlickerFix != lastFlickerFix)
+                    var stopwatch = new Stopwatch();
+                    bool lastFlickerFix = _device.FlickerFix;
+
+                    while (!renderToken.IsCancellationRequested)
                     {
-                        lastFlickerFix = _device.FlickerFix;
-                        UpdateDeviceDisplayName();
+                        // Update display name if flicker fix toggle changed
+                        if (_flickerFixCropHeight > 0 && _device.FlickerFix != lastFlickerFix)
+                        {
+                            lastFlickerFix = _device.FlickerFix;
+                            UpdateDeviceDisplayName();
+                        }
+
+                        stopwatch.Restart();
+                        var frame = GenerateFrameBuffer();
+                        Interlocked.Exchange(ref _latestFrame, frame);
+                        _frameAvailable.Set();
+
+                        var targetFrameTime = 1000 / Math.Max(1, _device.TargetFrameRate);
+                        var adaptiveFrameTime = 0;
+
+                        var elapsedMs = (int)stopwatch.ElapsedMilliseconds;
+
+                        if (elapsedMs < targetFrameTime)
+                        {
+                            adaptiveFrameTime = targetFrameTime - elapsedMs;
+                        }
+
+                        if (adaptiveFrameTime > 0)
+                        {
+                            await Task.Delay(adaptiveFrameTime, token);
+                        }
                     }
-
-                    stopwatch.Restart();
-                    var frame = GenerateFrameBuffer();
-                    Interlocked.Exchange(ref _latestFrame, frame);
-                    _frameAvailable.Set();
-
-                    var targetFrameTime = 1000 / Math.Max(1, _device.TargetFrameRate);
-                    var adaptiveFrameTime = 0;
-
-                    var elapsedMs = (int)stopwatch.ElapsedMilliseconds;
-
-                    if (elapsedMs < targetFrameTime)
-                    {
-                        adaptiveFrameTime = targetFrameTime - elapsedMs;
-                    }
-
-                    if (adaptiveFrameTime > 0)
-                    {
-                        await Task.Delay(adaptiveFrameTime, token);
-                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception e)
+                {
+                    Logger.Error(e, "ThermalrightPanelDevice {Device}: Error in render task", _device);
+                    _device.UpdateRuntimeProperties(errorMessage: e.Message);
+                    renderCts.Cancel();
                 }
             }, renderToken);
 
@@ -1862,6 +1876,11 @@ namespace InfoPanel.Services
             }, token);
 
             await Task.WhenAll(renderTask, sendTask);
+
+            _frameAvailable.Dispose();
+            renderCts.Dispose();
+            _gdiEncoderParams?.Dispose();
+            _gdiEncoderParams = null;
         }
 
         /// <summary>

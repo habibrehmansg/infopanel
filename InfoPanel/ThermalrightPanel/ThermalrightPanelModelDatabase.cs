@@ -626,12 +626,12 @@ namespace InfoPanel.ThermalrightPanel
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
 
-            // --- 640x480 ---
+            // --- 320x240 ---
             [ThermalrightPanelModel.MjolnirVision] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.MjolnirVision,
                 Name = "Mjolnir Vision",
-                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
+                Width = 320, Height = 240, RenderWidth = 320, RenderHeight = 240,
                 VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
@@ -639,7 +639,7 @@ namespace InfoPanel.ThermalrightPanel
             {
                 Model = ThermalrightPanelModel.FrozenWarframeUltra,
                 Name = "Frozen Warframe Ultra",
-                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
                 VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
@@ -647,7 +647,7 @@ namespace InfoPanel.ThermalrightPanel
             {
                 Model = ThermalrightPanelModel.FrozenVisionV2,
                 Name = "Frozen Vision V2",
-                Width = 640, Height = 480, RenderWidth = 640, RenderHeight = 480,
+                Width = 480, Height = 480, RenderWidth = 480, RenderHeight = 480,
                 VendorId = THERMALRIGHT_VENDOR_ID, ProductId = THERMALRIGHT_PRODUCT_ID,
                 ProtocolType = ThermalrightProtocolType.ChiZhu
             },
