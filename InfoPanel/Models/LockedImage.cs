@@ -1,6 +1,7 @@
 ﻿using FlyleafLib;
 using FlyleafLib.MediaPlayer;
 using InfoPanel.Extensions;
+using InfoPanel.Monitors.PluginProxies;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using SkiaSharp;
@@ -9,12 +10,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Serilog;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace InfoPanel.Models
@@ -25,7 +26,7 @@ namespace InfoPanel.Models
         
         public enum ImageType
         {
-            SK, SVG, FFMPEG
+            SK, SVG, FFMPEG, PLUGIN
         }
 
         public readonly string ImagePath;
@@ -38,8 +39,34 @@ namespace InfoPanel.Models
 
         private readonly TypedMemoryCache<SKImageFrameSlot[]> SKGLImageMemoryCache = new();
 
-        public int Width { get; private set; } = 0;
-        public int Height { get; private set; } = 0;
+        private int _width;
+        private int _height;
+
+        public int Width
+        {
+            get
+            {
+                if (_width == 0 && _backgroundVideoPlayer != null)
+                {
+                    _width = _backgroundVideoPlayer.Video.Width;
+                }
+                return _width;
+            }
+            private set => _width = value;
+        }
+
+        public int Height
+        {
+            get
+            {
+                if (_height == 0 && _backgroundVideoPlayer != null)
+                {
+                    _height = _backgroundVideoPlayer.Video.Height;
+                }
+                return _height;
+            }
+            private set => _height = value;
+        }
 
         public readonly ImageType Type;
 
@@ -50,7 +77,7 @@ namespace InfoPanel.Models
 
         public TimeSpan? CurrentTime => TimeSpan.FromMilliseconds(_backgroundVideoPlayer?.CurTime / 10000 ?? 0);
         public TimeSpan? Duration => TimeSpan.FromMilliseconds(_backgroundVideoPlayer?.Duration / 10000 ?? 0);
-        public double? FrameRate => _backgroundVideoPlayer?.Video.FPS;
+        public double? FrameRate => _backgroundVideoPlayer?.VideoDecoder.VideoStream.FPS;
 
         public bool HasAudio => !_backgroundVideoPlayer?.Audio.Mute ?? false;
 
@@ -61,19 +88,19 @@ namespace InfoPanel.Models
         {
             get
             {
-                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Audio != null)
                 {
-                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Player.VolumeMax;
+                    return (float)_backgroundVideoPlayer.Audio.Volume / _config.Audio.VolumeMax;
                 }
                 return 0f;
             }
             set
             {
-                if (_backgroundVideoPlayer?.Audio != null && _config?.Player != null)
+                if (_backgroundVideoPlayer?.Audio != null && _config?.Audio != null)
                 {
                     // Clamp value between 0 and 1
                     value = Math.Clamp(value, 0f, 1f);
-                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Player.VolumeMax);
+                    _backgroundVideoPlayer.Audio.Volume = (int)Math.Round(value * _config.Audio.VolumeMax);
                 }
             }
         }
@@ -87,12 +114,28 @@ namespace InfoPanel.Models
         private readonly long[]? _cumulativeFrameTimes;
         private int _lastRenderedFrame = -1;
 
+        private readonly ProxyPluginImage? _pluginImage;
+
         private readonly object Lock = new();
         private bool IsDisposed = false;
 
         private readonly Stopwatch Stopwatch = new();
 
         public bool Loaded { get; private set; } = false;
+
+        /// <summary>
+        /// Creates a LockedImage backed by a plugin image proxy (shared memory).
+        /// </summary>
+        internal LockedImage(string imagePath, ProxyPluginImage pluginImage)
+        {
+            ImagePath = imagePath;
+            _pluginImage = pluginImage;
+            Type = ImageType.PLUGIN;
+            Width = pluginImage.Width;
+            Height = pluginImage.Height;
+            Frames = 1;
+            Loaded = true;
+        }
 
         public LockedImage(string imagePath, ImageDisplayItem? sourceImageDisplayItem)
         {
@@ -137,6 +180,7 @@ namespace InfoPanel.Models
 
                         // Inform the lib to refresh stats
                         _config.Player.Stats = true;
+                        _config.Player.UICurTime = UIRefreshType.PerFrame; // Refresh CurTime on every frame for progress bar
 
                         _backgroundVideoPlayer = new(_config)
                         {
@@ -148,9 +192,9 @@ namespace InfoPanel.Models
 
                         Thread.Sleep(50);
 
-                        Width = _backgroundVideoPlayer.Video.Width;
-                        Height = _backgroundVideoPlayer.Video.Height;
-                        Frames = _backgroundVideoPlayer.Video.FramesTotal;
+                        Width = (int)_backgroundVideoPlayer.decoder.VideoStream.Width;
+                        Height = (int)_backgroundVideoPlayer.decoder.VideoStream.Height;
+                        Frames = _backgroundVideoPlayer.decoder.VideoStream.TotalFrames;
 
                         if (Frames == 0 && _backgroundVideoPlayer.IsLive)
                         {
@@ -158,6 +202,15 @@ namespace InfoPanel.Models
                         }
 
                         TotalFrameTime = _backgroundVideoPlayer.Duration;
+
+                        Log.Information("Player Status: {Status}, IsLive: {IsLive}",
+                         _backgroundVideoPlayer.Status, _backgroundVideoPlayer.IsLive);
+                        Log.Information("Video: {Width}x{Height}, Codec: {Codec}, FPS: {FPS}",
+                            Width, Height,
+                            _backgroundVideoPlayer.Video.Codec, _backgroundVideoPlayer.VideoDecoder.VideoStream.FPS);
+                        Log.Information("Renderer VP: {VP}, CanPresent: {CanPresent}",
+                            _backgroundVideoPlayer.Renderer.VideoProcessor,
+                            _backgroundVideoPlayer.Renderer.SwapChain.CanPresent);
 
                         Loaded = true;
                         return;
@@ -174,8 +227,12 @@ namespace InfoPanel.Models
 
                     try
                     {
-                        var data = client.GetByteArrayAsync(ImagePath).GetAwaiter().GetResult();
-                        _stream = new MemoryStream(data);
+                        using var request = new HttpRequestMessage(HttpMethod.Get, ImagePath);
+                        using var response = client.Send(request);
+                        response.EnsureSuccessStatusCode();
+                        _stream = new MemoryStream();
+                        response.Content.ReadAsStream().CopyTo(_stream);
+                        _stream.Position = 0;
                     }
                     catch (Exception e)
                     {
@@ -546,32 +603,20 @@ namespace InfoPanel.Models
             }
         }
 
-        public static SKImage ConvertToSKImage(Bitmap bitmap)
+        public static SKImage ConvertBitmapSourceToSKImage(BitmapSource bitmapSource)
         {
-            var bitmapData = bitmap.LockBits(
-                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                ImageLockMode.ReadOnly,
-                bitmap.PixelFormat);
+            var info = new SKImageInfo(bitmapSource.PixelWidth, bitmapSource.PixelHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
+            var pixels = new byte[info.RowBytes * info.Height];
+            bitmapSource.CopyPixels(pixels, info.RowBytes, 0);
 
+            var pinnedArray = GCHandle.Alloc(pixels, GCHandleType.Pinned);
             try
             {
-                var colorType = bitmap.PixelFormat switch
-                {
-                    PixelFormat.Format32bppArgb => SKColorType.Bgra8888,
-                    PixelFormat.Format32bppRgb => SKColorType.Bgra8888,
-                    PixelFormat.Format24bppRgb => SKColorType.Rgb888x,
-                    PixelFormat.Format8bppIndexed => SKColorType.Gray8,
-                    _ => SKColorType.Bgra8888
-                };
-
-                var info = new SKImageInfo(bitmap.Width, bitmap.Height, colorType);
-
-                // Create SKImage directly from pixels
-                return SKImage.FromPixelCopy(info, bitmapData.Scan0, bitmapData.Stride);
+                return SKImage.FromPixelCopy(info, pinnedArray.AddrOfPinnedObject(), info.RowBytes);
             }
             finally
             {
-                bitmap.UnlockBits(bitmapData);
+                pinnedArray.Free();
             }
         }
 
@@ -589,14 +634,36 @@ namespace InfoPanel.Models
 
             lock (Lock)
             {
+                if (Type == ImageType.PLUGIN)
+                {
+                    if (_pluginImage != null)
+                    {
+                        using var snapshot = _pluginImage.GetCurrentFrame();
+                        if (snapshot != null)
+                        {
+                            var resizeInfo = new SKImageInfo(targetWidth, targetHeight);
+                            using var surface = SKSurface.Create(resizeInfo);
+                            if (surface != null)
+                            {
+                                surface.Canvas.DrawImage(snapshot, new SKRect(0, 0, targetWidth, targetHeight),
+                                    new SKSamplingOptions(SKCubicResampler.Mitchell));
+                                using var image = surface.Snapshot();
+                                access(image);
+                            }
+                        }
+                    }
+
+                    return;
+                }
+
                 if (Type == ImageType.FFMPEG)
                 {
                     if (_backgroundVideoPlayer != null)
                     {
-                        using var bitmap = _backgroundVideoPlayer.renderer.GetBitmap(targetWidth, targetHeight);
-                        if (bitmap != null)
+                        var bitmapSource = _backgroundVideoPlayer.TakeSnapshotToBitmapSource((uint)targetWidth, (uint)targetHeight);
+                        if (bitmapSource != null)
                         {
-                            using var image = ConvertToSKImage(bitmap);
+                            using var image = ConvertBitmapSourceToSKImage(bitmapSource);
                             access(image);
                         }
                     }

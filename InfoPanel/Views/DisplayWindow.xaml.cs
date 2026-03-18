@@ -336,6 +336,19 @@ namespace InfoPanel.Views.Common
             }
         }
 
+        private System.Windows.Point GetProfilePoint(MouseEventArgs e)
+        {
+            var point = e.GetPosition(this);
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget != null)
+            {
+                var dpiX = source.CompositionTarget.TransformToDevice.M11;
+                var dpiY = source.CompositionTarget.TransformToDevice.M22;
+                return new System.Windows.Point(point.X * dpiX, point.Y * dpiY);
+            }
+            return point;
+        }
+
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
             if (_renderInvalidationPending) return;
@@ -438,18 +451,18 @@ namespace InfoPanel.Views.Common
             }
             else if (e.PropertyName == nameof(Profile.Width) || e.PropertyName == nameof(Profile.Height))
             {
-                _isProgrammaticSizeChange = true;
-                try
+                _ = _dispatcher.InvokeAsync(() =>
                 {
-                    _dispatcher.Invoke(() =>
+                    _isProgrammaticSizeChange = true;
+                    try
                     {
                         MaintainPixelSize();
-                    });
-                }
-                finally
-                {
-                    _isProgrammaticSizeChange = false;
-                }
+                    }
+                    finally
+                    {
+                        _isProgrammaticSizeChange = false;
+                    }
+                });
             }
         }
 
@@ -529,7 +542,7 @@ namespace InfoPanel.Views.Common
                     var inSelectionBounds = false;
                     foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                     {
-                        if (displayItem.ContainsPoint(e.GetPosition(this)))
+                        if (displayItem.ContainsPoint(GetProfilePoint(e)))
                         {
                             inSelectionBounds = true;
                             break;
@@ -540,7 +553,7 @@ namespace InfoPanel.Views.Common
                     {
                         foreach (var selectedItem in SharedModel.Instance.SelectedVisibleItems)
                         {
-                            App.Current.Dispatcher.Invoke(() =>
+                            _ = App.Current.Dispatcher.InvokeAsync(() =>
                             {
                                 selectedItem.Selected = false;
                             });
@@ -589,7 +602,7 @@ namespace InfoPanel.Views.Common
                 }
                 else
                 {
-                    startPosition = e.GetPosition((UIElement)sender);
+                    startPosition = GetProfilePoint(e);
 
                     foreach (var item in SharedModel.Instance.SelectedVisibleItems)
                     {
@@ -629,7 +642,7 @@ namespace InfoPanel.Views.Common
                                 continue;
                             }
 
-                            if (groupItem.ContainsPoint(e.GetPosition(this)))
+                            if (groupItem.ContainsPoint(GetProfilePoint(e)))
                             {
                                 clickedItem = groupItem;
                                 break;
@@ -647,7 +660,7 @@ namespace InfoPanel.Views.Common
                         break;
                     }
 
-                    if (item.ContainsPoint(e.GetPosition(this)))
+                    if (item.ContainsPoint(GetProfilePoint(e)))
                     {
                         clickedItem = item;
                         break;
@@ -693,7 +706,7 @@ namespace InfoPanel.Views.Common
 
                 var gridSize = SharedModel.Instance.MoveValue;
 
-                var currentPosition = e.GetPosition((UIElement)sender);
+                var currentPosition = GetProfilePoint(e);
 
                 foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                 {

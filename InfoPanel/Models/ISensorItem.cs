@@ -19,6 +19,7 @@ namespace InfoPanel.Models
         SensorType SensorType { get; set; }
         SensorValueType ValueType { get; set; }
         SensorReading? GetValue();
+        int HwInfoRemoteIndex { get; set; }
         UInt32 Id { get; set; }
         UInt32 Instance { get; set; }
         UInt32 EntryId { get; set; }

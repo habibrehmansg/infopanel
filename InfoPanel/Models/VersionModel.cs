@@ -1,14 +1,12 @@
-﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace InfoPanel.Models
 {
-    public struct VersionModel
+    public class VersionModel
     {
-        public string Version { get; set; }
-        public string Url { get; set; }
+        public string Version { get; set; } = string.Empty;
+        public string? DownloadUrl { get; set; }
+        public string Changelog { get; set; } = string.Empty;
+        public ICollection<string> ChangelogItems { get; set; } = [];
     }
 }

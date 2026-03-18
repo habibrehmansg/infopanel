@@ -1,4 +1,6 @@
-﻿using InfoPanel.Plugins;
+using InfoPanel.Monitors.PluginProxies;
+using InfoPanel.Plugins;
+using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using InfoPanel.Utils;
 using Serilog;
@@ -23,7 +25,13 @@ namespace InfoPanel.Monitors
 
         public static readonly ConcurrentDictionary<string, PluginReading> SENSORHASH = new();
 
+        internal readonly object PluginsLock = new();
         public List<PluginDescriptor> Plugins { get; private set; } = [];
+
+        internal PluginProcessManager ProcessManager { get; } = new();
+
+        // Track remote wrappers per descriptor for ViewModel access
+        internal readonly ConcurrentDictionary<string, List<RemotePluginWrapper>> RemoteWrappers = new();
 
         private PluginMonitor() {
             if(!Directory.Exists(FileUtil.GetExternalPluginFolder()))
@@ -32,14 +40,29 @@ namespace InfoPanel.Monitors
             }
         }
 
+        /// <summary>
+        /// Persists the list of deactivated plugins. A plugin is considered "deactivated" when
+        /// its host process is NOT currently running, so we save those file paths to disk.
+        /// On next startup, plugins in this list will be skipped.
+        /// </summary>
         public void SavePluginState()
         {
             try
             {
-                var deactivatedPlugins = Plugins.Where(p => p.PluginWrappers.All(w => !w.Value.IsRunning)).Select(p => p.FilePath).ToList();
+                List<string> deactivatedPlugins;
+                lock (PluginsLock)
+                {
+                    deactivatedPlugins = Plugins
+                        .Where(p => !ProcessManager.IsHostRunning(p.FilePath))
+                        .Select(p => p.FilePath)
+                        .ToList();
+                }
                 File.WriteAllLines(FileUtil.GetPluginStateFile(), deactivatedPlugins);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to save plugin state");
+            }
         }
 
         public string[] GetPluginState()
@@ -62,31 +85,166 @@ namespace InfoPanel.Monitors
             {
                 foreach (var file in Directory.GetFiles(FileUtil.GetExternalPluginFolder(), "InfoPanel.*.zip"))
                 {
-                    UnzipPluginArchive(file);
-                    File.Delete(file);
+                    var extracted = UnzipPluginArchive(file);
+                    if (extracted != null)
+                    {
+                        File.Delete(file);
+                    }
                 }
             }
-            catch (Exception e) { }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to unzip plugin archives");
+            }
         }
 
-        private static bool UnzipPluginArchive(string filePath)
+        /// <summary>
+        /// Extracts a plugin ZIP archive to the external plugin folder.
+        /// Handles both structured ZIPs (InfoPanel.Name/files) and flat ZIPs (files at root).
+        /// Returns the extracted folder path, or null on failure.
+        /// </summary>
+        internal static string? UnzipPluginArchive(string filePath)
         {
             using var fs = new FileStream(filePath, FileMode.Open);
             using var za = new ZipArchive(fs, ZipArchiveMode.Read);
             var entry = za.Entries[0];
 
-            if (!Regex.IsMatch(entry.FullName, "InfoPanel.[a-zA-Z0-9]+\\/"))
+            var match = Regex.Match(entry.FullName, @"(InfoPanel\.[a-zA-Z0-9]+)\/");
+            if (match.Success)
             {
-                return false;
+                // Structured ZIP: has InfoPanel.Name/ folder inside
+                za.ExtractToDirectory(FileUtil.GetExternalPluginFolder(), true);
+                return Path.Combine(FileUtil.GetExternalPluginFolder(), match.Groups[1].Value);
             }
 
-            //if (Directory.Exists(Path.Combine(FileUtil.GetExternalPluginFolder(), entry.FullName)))
-            //{
-            //    return false;
-            //}
+            // Flat ZIP: DLLs at root. Derive folder name from ZIP filename (e.g. InfoPanel.MyPlugin.zip -> InfoPanel.MyPlugin)
+            var zipFileName = Path.GetFileNameWithoutExtension(filePath);
+            if (!Regex.IsMatch(zipFileName, @"^InfoPanel\.[a-zA-Z0-9]+$"))
+            {
+                return null;
+            }
 
-            za.ExtractToDirectory(FileUtil.GetExternalPluginFolder(), true);
-            return true;
+            var targetFolder = Path.Combine(FileUtil.GetExternalPluginFolder(), zipFileName);
+            Directory.CreateDirectory(targetFolder);
+            za.ExtractToDirectory(targetFolder, true);
+            return targetFolder;
+        }
+
+        /// <summary>
+        /// Peeks into a ZIP to determine the plugin folder name without extracting.
+        /// Returns the folder name (e.g. "InfoPanel.Weather") or null.
+        /// </summary>
+        private static string? PeekZipPluginFolderName(string zipFilePath)
+        {
+            try
+            {
+                using var fs = new FileStream(zipFilePath, FileMode.Open, FileAccess.Read);
+                using var za = new ZipArchive(fs, ZipArchiveMode.Read);
+                if (za.Entries.Count == 0) return null;
+
+                var entry = za.Entries[0];
+                var match = Regex.Match(entry.FullName, @"(InfoPanel\.[a-zA-Z0-9]+)\/");
+                if (match.Success)
+                    return match.Groups[1].Value;
+
+                // Flat ZIP: derive from filename
+                var zipFileName = Path.GetFileNameWithoutExtension(zipFilePath);
+                if (Regex.IsMatch(zipFileName, @"^InfoPanel\.[a-zA-Z0-9]+$"))
+                    return zipFileName;
+            }
+            catch (Exception) { }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Installs a plugin from a ZIP file at runtime. Stops the existing plugin first
+        /// (if upgrading), extracts, creates descriptor, and starts the new plugin.
+        /// </summary>
+        public async Task<PluginDescriptor?> InstallPluginFromZipAsync(string zipFilePath)
+        {
+            // Determine the target folder name from the ZIP before extracting,
+            // so we can stop any running plugin that would lock the DLLs.
+            var targetFolderName = PeekZipPluginFolderName(zipFilePath);
+            if (targetFolderName != null)
+            {
+                PluginDescriptor? running;
+                lock (PluginsLock)
+                {
+                    running = Plugins.FirstOrDefault(p =>
+                        string.Equals(p.FolderName, targetFolderName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (running != null)
+                {
+                    await StopPluginModulesAsync(running);
+                    lock (PluginsLock)
+                    {
+                        Plugins.Remove(running);
+                    }
+                }
+            }
+
+            var extractedFolder = UnzipPluginArchive(zipFilePath);
+            if (extractedFolder == null)
+            {
+                Logger.Warning("Failed to extract plugin from {ZipPath}", zipFilePath);
+                return null;
+            }
+
+            try
+            {
+                File.Delete(zipFilePath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to delete ZIP after extraction: {ZipPath}", zipFilePath);
+            }
+
+            var descriptor = CreatePluginDescriptor(extractedFolder);
+
+            lock (PluginsLock)
+            {
+                Plugins.Add(descriptor);
+            }
+
+            // Auto-start the newly installed plugin
+            await StartPluginModulesAsync(descriptor);
+            SavePluginState();
+
+            Logger.Information("Plugin installed from ZIP: {PluginPath}", descriptor.FilePath);
+            return descriptor;
+        }
+
+        /// <summary>
+        /// Uninstalls a plugin at runtime. Stops it if running, removes from list,
+        /// cleans up state, and deletes the folder from disk.
+        /// </summary>
+        public async Task UninstallPluginAsync(PluginDescriptor descriptor)
+        {
+            if (ProcessManager.IsHostRunning(descriptor.FilePath))
+            {
+                await StopPluginModulesAsync(descriptor);
+            }
+
+            lock (PluginsLock)
+            {
+                Plugins.Remove(descriptor);
+            }
+            SavePluginState();
+
+            if (descriptor.FolderPath != null && Directory.Exists(descriptor.FolderPath))
+            {
+                try
+                {
+                    Directory.Delete(descriptor.FolderPath, true);
+                    Logger.Information("Plugin folder deleted: {FolderPath}", descriptor.FolderPath);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Failed to delete plugin folder: {FolderPath}", descriptor.FolderPath);
+                }
+            }
         }
 
         protected override async Task DoWorkAsync(CancellationToken token)
@@ -96,11 +254,15 @@ namespace InfoPanel.Monitors
             try
             {
                 var stopwatch = Stopwatch.StartNew();
-                //await LoadAllPluginsAsync();
                 FindPlugins();
 
                 var deactivatedPlugins = GetPluginState();
-                foreach (var descriptor in Plugins)
+                List<PluginDescriptor> pluginsSnapshot;
+                lock (PluginsLock)
+                {
+                    pluginsSnapshot = Plugins.ToList();
+                }
+                foreach (var descriptor in pluginsSnapshot)
                 {
                     if(deactivatedPlugins.Contains(descriptor.FilePath))
                     {
@@ -113,28 +275,12 @@ namespace InfoPanel.Monitors
                 stopwatch.Stop();
                 Logger.Information("Plugins loaded in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
 
+                // No polling loop needed - host processes handle their own update scheduling
+                // Metrics loop is started on-demand when the plugins page is visible.
+                // Just keep alive until cancellation
                 while (!token.IsCancellationRequested)
                 {
-                    stopwatch.Restart();
-
-                    foreach(var pluginDescriptor in Plugins)
-                    {
-                        foreach(var wrapper in pluginDescriptor.PluginWrappers.Values)
-                        {
-                            if (wrapper.IsLoaded)
-                            {
-                                try
-                                {
-                                    wrapper.Update();
-                                }
-                                catch { }
-                            }
-                        }
-                    }
-                   
-                    stopwatch.Stop();
-                    //Trace.WriteLine($"Plugins updated: {stopwatch.ElapsedMilliseconds}ms");
-                    await Task.Delay(100, token);
+                    await Task.Delay(1000, token);
                 }
             }
             catch (TaskCanceledException)
@@ -145,26 +291,35 @@ namespace InfoPanel.Monitors
             {
                 Logger.Error(ex, "Exception during PluginMonitor work");
             }
+            finally
+            {
+                await ProcessManager.StopMetricsLoopAsync();
+                await ProcessManager.StopAllAsync();
+                ProcessManager.Dispose();
+            }
         }
 
-        private static readonly string[] _bundledPlugins = ["plugins\\InfoPanel.Extras"];
+        private static readonly string[] _bundledPlugins = [Path.Combine("plugins", "InfoPanel.Extras")];
         internal void FindPlugins()
         {
             UnzipPluginArchives();
-            //bundled plugins
-            foreach (var directory in Directory.GetDirectories(FileUtil.GetBundledPluginFolder()))
+            lock (PluginsLock)
             {
-                //whitelist plugins
-                if (_bundledPlugins.Contains(directory))
+                //bundled plugins
+                foreach (var directory in Directory.GetDirectories(FileUtil.GetBundledPluginFolder()))
+                {
+                    //whitelist plugins
+                    if (_bundledPlugins.Contains(directory))
+                    {
+                        Plugins.Add(CreatePluginDescriptor(directory));
+                    }
+                }
+
+                //external plugins
+                foreach (var directory in Directory.GetDirectories(FileUtil.GetExternalPluginFolder()))
                 {
                     Plugins.Add(CreatePluginDescriptor(directory));
                 }
-            }
-
-            //external plugins
-            foreach (var directory in Directory.GetDirectories(FileUtil.GetExternalPluginFolder()))
-            {
-                Plugins.Add(CreatePluginDescriptor(directory));
             }
         }
 
@@ -175,130 +330,108 @@ namespace InfoPanel.Monitors
             var pluginFile = Path.Combine(directory, Path.GetFileName(directory) + ".dll");
             var pluginDescriptor = new PluginDescriptor(pluginFile, pluginInfo);
 
-            var plugins = PluginLoader.InitializePlugin(pluginFile);
-
-            foreach (var plugin in plugins)
+            var hubFile = Path.Combine(directory, ".hub");
+            if (File.Exists(hubFile))
             {
-                PluginWrapper wrapper = new(pluginDescriptor, plugin);
-                pluginDescriptor.PluginWrappers.TryAdd(wrapper.Id, wrapper);
+                pluginDescriptor.Slug = File.ReadAllText(hubFile).Trim();
             }
 
+            // Don't load the assembly in the main process - host process will do that
             return pluginDescriptor;
+        }
+
+        internal static void WriteHubSlug(string folderPath, string slug)
+        {
+            File.WriteAllText(Path.Combine(folderPath, ".hub"), slug);
         }
 
         public async Task StopPluginModulesAsync(PluginDescriptor pluginDescriptor)
         {
-            foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
-            {
-                foreach (var container in wrapper.PluginContainers)
+            // Clean up SENSORHASH entries
+            var keysToRemove = SENSORHASH.Keys
+                .Where(k =>
                 {
-                    foreach (var entry in container.Entries)
-                    {
-                        var id = BuildEntryId(wrapper, container, entry);
-                        SENSORHASH.TryRemove(id, out _);
-                    }
-                }
+                    if (RemoteWrappers.TryGetValue(pluginDescriptor.FilePath, out var wrappers))
+                        return wrappers.Any(w => k.StartsWith($"/{w.Id}/"));
+                    return false;
+                })
+                .ToList();
 
-                await wrapper.StopAsync();
+            foreach (var key in keysToRemove)
+            {
+                SENSORHASH.TryRemove(key, out _);
             }
+
+            RemoteWrappers.TryRemove(pluginDescriptor.FilePath, out _);
+            await ProcessManager.StopHostAsync(pluginDescriptor);
         }
 
         public async Task StartPluginModulesAsync(PluginDescriptor pluginDescriptor)
         {
-            foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
-            {
-                try
-                {
-                    await wrapper.Initialize();
-                    Log.Information("Plugin {PluginName} loaded successfully", wrapper.Name);
-
-                    int indexOrder = 0;
-                    foreach (var container in wrapper.PluginContainers)
-                    {
-                        foreach (var entry in container.Entries)
-                        {
-                            var id = BuildEntryId(wrapper, container, entry);
-                            SENSORHASH[id] = new()
-                            {
-                                Id = id,
-                                Name = entry.Name,
-                                ContainerId = container.Id,
-                                ContainerName = container.Name,
-                                PluginId = wrapper.Id,
-                                PluginName = wrapper.Name,
-                                Data = entry,
-                                IndexOrder = indexOrder++
-                            };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Plugin {PluginName} failed to load", wrapper.Name);
-                }
-            }
-        }
-
-
-
-        public async Task ReloadPluginModule(PluginWrapper wrapper)
-        {
-            foreach (var container in wrapper.PluginContainers)
-            {
-                foreach (var entry in container.Entries)
-                {
-                    var id = BuildEntryId(wrapper, container, entry);
-                    SENSORHASH.TryRemove(id, out _);
-                }
-            }
-
-            await wrapper.StopAsync();
-
             try
             {
-                await wrapper.Initialize();
-                Log.Information("Plugin {PluginName} reloaded successfully", wrapper.Name);
+                var connection = await ProcessManager.LaunchHostAsync(pluginDescriptor);
 
-                int indexOrder = 0;
-                foreach (var container in wrapper.PluginContainers)
+                // Register proxy entries in SENSORHASH
+                PluginProcessManager.RegisterProxiesInSensorHash(pluginDescriptor, connection);
+
+                // Build remote wrappers for ViewModel access
+                var wrappers = new List<RemotePluginWrapper>();
+                if (connection.PluginMetadata != null)
                 {
-                    foreach (var entry in container.Entries)
+                    foreach (var metadata in connection.PluginMetadata)
                     {
-                        var id = BuildEntryId(wrapper, container, entry);
-                        SENSORHASH[id] = new()
-                        {
-                            Id = id,
-                            Name = entry.Name,
-                            ContainerId = container.Id,
-                            ContainerName = container.Name,
-                            PluginId = wrapper.Id,
-                            PluginName = wrapper.Name,
-                            Data = entry,
-                            IndexOrder = indexOrder++
-                        };
+                        wrappers.Add(new RemotePluginWrapper(connection, metadata));
                     }
                 }
+                RemoteWrappers[pluginDescriptor.FilePath] = wrappers;
+
+                Logger.Information("Plugin modules started for {PluginPath}", pluginDescriptor.FilePath);
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Plugin {PluginName} failed to load", wrapper.Name);
+                Logger.Error(ex, "Failed to start plugin modules for {PluginPath}", pluginDescriptor.FilePath);
             }
         }
 
-        private static string BuildEntryId(PluginWrapper wrapper, IPluginContainer container, IPluginData entry)
+        public async Task ReloadPluginModule(PluginDescriptor pluginDescriptor)
         {
-            if(container.IsEphemeralPath)
-            {
-                return $"/{wrapper.Id}/{entry.Id}";
-            }
-
-            return $"/{wrapper.Id}/{container.Id}/{entry.Id}";
+            await StopPluginModulesAsync(pluginDescriptor);
+            await StartPluginModulesAsync(pluginDescriptor);
         }
 
         public static List<PluginReading> GetOrderedList()
         {
             List<PluginReading> OrderedList = [.. SENSORHASH.Values.OrderBy(x => x.IndexOrder)];
             return OrderedList;
+        }
+
+        /// <summary>
+        /// Gets a plugin image proxy by plugin ID and image ID.
+        /// Returns null if not found.
+        /// </summary>
+        public ProxyPluginImage? GetImageProxy(string pluginId, string imageId)
+        {
+            foreach (var conn in ProcessManager.GetAllConnections())
+            {
+                var images = conn.GetProxyImages(pluginId);
+                var match = images.FirstOrDefault(i => i.ImageId == imageId);
+                if (match != null) return match;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Gets all plugin image proxies across all connections.
+        /// </summary>
+        public List<ProxyPluginImage> GetAllImageProxies()
+        {
+            var result = new List<ProxyPluginImage>();
+            foreach (var conn in ProcessManager.GetAllConnections())
+            {
+                result.AddRange(conn.GetAllProxyImages());
+            }
+            return result;
         }
 
         public record struct PluginReading

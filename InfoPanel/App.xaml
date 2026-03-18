@@ -1,4 +1,4 @@
-﻿<Application
+<Application
     x:Class="InfoPanel.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -49,6 +49,7 @@
             <local:IsPluginTableConverter x:Key="IsPluginTableConverter" />
             <local:CustomStepIndexConverter x:Key="CustomStepIndexConverter" />
             <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+            <local:UtcToLocalTimeConverter x:Key="UtcToLocalTimeConverter" />
             <local:NullToBooleanConverter x:Key="NullToBooleanConverter" />
             <local:IntToBooleanConverter x:Key="IntToBooleanConverter" />
             <local:SelectedItemTextConverter x:Key="SelectedItemTextConverter" />
@@ -57,9 +58,11 @@
             <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter" />
             <local:FontFamilyConverter x:Key="FontFamilyConverter" />
             <local:EnumEqualsConverter x:Key="EnumEqualsConverter" />
+            <local:SensorSourceConverter x:Key="SensorSourceConverter" />
 
             <converters:LockSymbolConverter x:Key="LockSymbolConverter" />
             <converters:LockColorConverter x:Key="LockColorConverter" />
+            <converters:ThemeToIndexConverter x:Key="ThemeToIndexConverter" />
 
             <BitmapImage x:Key="HwinfoIcon" UriSource="Resources/Images/hwinfo_icon.ico" />
             <BitmapImage x:Key="LibreIcon" UriSource="Resources/Images/libre_icon.ico" />

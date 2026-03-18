@@ -7,7 +7,8 @@
 
         public string Description { get; } = description;
 
-        public abstract string? ConfigFilePath { get; }
+        [System.Obsolete("Use IPluginConfigurable for config UI and automatic persistence. ConfigFilePath is only needed for legacy manual config file management.")]
+        public virtual string? ConfigFilePath => null;
         public abstract TimeSpan UpdateInterval { get; }
 
         public BasePlugin(string name, string description = "") : this(IdUtil.Encode(name), name, description)

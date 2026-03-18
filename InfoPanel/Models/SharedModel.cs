@@ -1,7 +1,9 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Drawing;
 using InfoPanel.Extensions;
 using InfoPanel.Models;
+using InfoPanel.Services;
 using InfoPanel.Utils;
 using Serilog;
 using SkiaSharp;
@@ -10,6 +12,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -18,6 +22,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 using System.Xml;
 using System.Xml.Linq;
@@ -28,62 +33,78 @@ namespace InfoPanel
     public partial class SharedModel : ObservableObject
     {
         private static readonly ILogger Logger = Log.ForContext<SharedModel>();
-        private static readonly Lazy<SharedModel> lazy = new(() => new SharedModel());
+        private static readonly Lazy<SharedModel> Lazy = new(() => new SharedModel());
 
-        public static SharedModel Instance { get { return lazy.Value; } }
+        public static SharedModel Instance => Lazy.Value;
 
         private bool _hwInfoAvailable = false;
+        private bool _isUndoRedoInProgress;
+        private readonly ConcurrentDictionary<Guid, bool> _dirtyPerProfile = [];
+        private readonly ConcurrentDictionary<Guid, Debouncer> _propertyChangeDebouncers = [];
+        /// <summary>Last serialized state per profile. When debouncer fires, we push this (state before edit) then update to current.</summary>
+        private readonly ConcurrentDictionary<Guid, string> _lastStateSnapshotPerProfile = [];
+        private readonly ConcurrentDictionary<ObservableCollection<DisplayItem>, NotifyCollectionChangedEventHandler> _groupCollectionChangedHandlers = [];
+
+        public bool IsDirty => SelectedProfile is Profile p && _dirtyPerProfile.TryGetValue(p.Guid, out var d) && d;
+        /// <summary>Raised when MarkDirty() is called so autosave can reset its idle timer.</summary>
+        public event Action? DirtyChanged;
+        public void MarkDirty()
+        {
+            if (SelectedProfile is Profile p)
+            {
+                _dirtyPerProfile[p.Guid] = true;
+                OnPropertyChanged(nameof(IsDirty));
+                DirtyChanged?.Invoke();
+            }
+        }
+        public void ClearDirty()
+        {
+            if (SelectedProfile is Profile p)
+            {
+                _dirtyPerProfile[p.Guid] = false;
+                OnPropertyChanged(nameof(IsDirty));
+            }
+        }
 
         public bool HwInfoAvailable
         {
-            get { return _hwInfoAvailable; }
-            set
-            {
-                SetProperty(ref _hwInfoAvailable, value);
-            }
+            get => _hwInfoAvailable;
+            set => SetProperty(ref _hwInfoAvailable, value);
         }
 
         private int _webserverFrameRate = 0;
         public int WebserverFrameRate
         {
-            get { return _webserverFrameRate; }
-            set
-            {
-                SetProperty(ref _webserverFrameRate, value);
-            }
+            get => _webserverFrameRate;
+            set => SetProperty(ref _webserverFrameRate, value);
         }
 
         private int _webserverFrameTime = 0;
         public int WebserverFrameTime
         {
-            get { return _webserverFrameTime; }
-            set
-            {
-                SetProperty(ref _webserverFrameTime, value);
-            }
+            get => _webserverFrameTime;
+            set => SetProperty(ref _webserverFrameTime, value);
         }
 
         private bool _placementControlExpanded = false;
         public bool PlacementControlExpanded
         {
-            get { return _placementControlExpanded; }
-            set
-            {
-                SetProperty(ref _placementControlExpanded, value);
-            }
+            get => _placementControlExpanded;
+            set => SetProperty(ref _placementControlExpanded, value);
         }
 
         private Profile? _selectedProfile;
 
         public Profile? SelectedProfile
         {
-            get { return _selectedProfile; }
+            get => _selectedProfile;
             set
             {
                 SetProperty(ref _selectedProfile, value);
-
                 OnPropertyChanged(nameof(DisplayItems));
                 NotifySelectedItemChange();
+                OnPropertyChanged(nameof(CanUndo));
+                OnPropertyChanged(nameof(CanRedo));
             }
         }
 
@@ -95,11 +116,8 @@ namespace InfoPanel
 
         private ObservableCollection<DisplayItem> GetProfileDisplayItems()
         {
-            if(SelectedProfile is Profile profile)
-            {
+            if (SelectedProfile is Profile profile)
                 return GetProfileDisplayItems(profile);
-            }
-
             return [];
         }
 
@@ -112,104 +130,331 @@ namespace InfoPanel
                 {
                     if (s is ObservableCollection<DisplayItem> observableCollection)
                     {
-                        var debouncer = _debouncers.GetOrAdd(guid, guid => new Debouncer());
+                        var debouncer = _debouncers.GetOrAdd(guid, _ => new Debouncer());
                         debouncer.Debounce(() => ProfileDisplayItemsCopy[guid] = [.. observableCollection]);
+                    }
+                    if (e.NewItems != null)
+                    {
+                        foreach (var item in e.NewItems)
+                            SubscribeDisplayItemForUndo(item as DisplayItem, profile);
+                    }
+                    if (e.OldItems != null)
+                    {
+                        foreach (var item in e.OldItems)
+                            UnsubscribeDisplayItemForUndo(item as DisplayItem);
                     }
                 };
                 _ = ReloadDisplayItems(profile);
-
                 return collection;
             });
+        }
+
+        private void SubscribeDisplayItemForUndo(DisplayItem? item, Profile profile)
+        {
+            if (item == null) return;
+            item.PropertyChanged += DisplayItem_PropertyChanged;
+            if (item is GroupDisplayItem group && group.DisplayItems != null)
+            {
+                var coll = group.DisplayItems;
+                NotifyCollectionChangedEventHandler handler = (_, ce) =>
+                {
+                    if (ce.NewItems != null)
+                    {
+                        foreach (var child in ce.NewItems)
+                            SubscribeDisplayItemForUndo(child as DisplayItem, profile);
+                    }
+                    if (ce.OldItems != null)
+                    {
+                        foreach (var child in ce.OldItems)
+                            UnsubscribeDisplayItemForUndo(child as DisplayItem);
+                    }
+                };
+                coll.CollectionChanged += handler;
+                _groupCollectionChangedHandlers[coll] = handler;
+                foreach (var child in coll)
+                    SubscribeDisplayItemForUndo(child, profile);
+            }
+        }
+
+        private void UnsubscribeDisplayItemForUndo(DisplayItem? item)
+        {
+            if (item == null) return;
+            item.PropertyChanged -= DisplayItem_PropertyChanged;
+            if (item is GroupDisplayItem group && group.DisplayItems != null)
+            {
+                var coll = group.DisplayItems;
+                if (_groupCollectionChangedHandlers.TryRemove(coll, out var handler))
+                    coll.CollectionChanged -= handler;
+                foreach (var child in coll.ToList())
+                    UnsubscribeDisplayItemForUndo(child);
+            }
+        }
+
+        private void DisplayItem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (_isUndoRedoInProgress || SelectedProfile is not Profile profile) return;
+            var debouncer = _propertyChangeDebouncers.GetOrAdd(profile.Guid, _ => new Debouncer());
+            debouncer.Debounce(() =>
+            {
+                if (_isUndoRedoInProgress) return;
+                var copy = GetProfileDisplayItemsCopy(profile);
+                if (copy.Count > 0)
+                {
+                    var currentXml = UndoManager.SerializeDisplayItemsForProfile(copy.ToList());
+                    if (!string.IsNullOrEmpty(currentXml))
+                    {
+                        if (_lastStateSnapshotPerProfile.TryGetValue(profile.Guid, out var prevXml) && !string.IsNullOrEmpty(prevXml) && prevXml != currentXml)
+                        {
+                            UndoManager.Instance.PushUndoSnapshot(profile, prevXml);
+                            MarkDirty();
+                        }
+                        _lastStateSnapshotPerProfile[profile.Guid] = currentXml;
+                    }
+                    void NotifyUndoRedo()
+                    {
+                        OnPropertyChanged(nameof(CanUndo));
+                        OnPropertyChanged(nameof(CanRedo));
+                        CommandManager.InvalidateRequerySuggested();
+                    }
+                    if (Application.Current?.Dispatcher?.CheckAccess() == true)
+                        NotifyUndoRedo();
+                    else
+                        Application.Current?.Dispatcher?.BeginInvoke(NotifyUndoRedo);
+                }
+            }, 400);
+        }
+
+        public bool CanUndo => SelectedProfile != null && UndoManager.Instance.CanUndo(SelectedProfile);
+        public bool CanRedo => SelectedProfile != null && UndoManager.Instance.CanRedo(SelectedProfile);
+
+        [RelayCommand(CanExecute = nameof(CanUndo))]
+        private void UndoCommand() => Undo();
+
+        [RelayCommand(CanExecute = nameof(CanRedo))]
+        private void RedoCommand() => Redo();
+
+        /// <summary>Call after a mutation that bypasses the property-change debouncer (e.g. drop/reorder) to keep last-state cache in sync.</summary>
+        public void UpdateLastStateSnapshot()
+        {
+            if (SelectedProfile is not Profile profile) return;
+            AccessDisplayItems(profile, collection =>
+            {
+                if (collection.Count == 0) return;
+                var xml = UndoManager.SerializeDisplayItemsForProfile(collection.ToList());
+                if (!string.IsNullOrEmpty(xml))
+                    _lastStateSnapshotPerProfile[profile.Guid] = xml;
+            });
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+            CommandManager.InvalidateRequerySuggested();
         }
 
         public async Task ReloadDisplayItems()
         {
             if (SelectedProfile is Profile profile)
-            {
                 await ReloadDisplayItems(profile);
-            }
         }
 
-        /// <summary>
-        /// Provides thread-safe access to the DisplayItems collection for the currently selected profile.
-        /// The action is executed on the UI thread if available.
-        /// </summary>
-        /// <param name="action">The action to perform with the DisplayItems collection</param>
         public void AccessDisplayItems(Action<ObservableCollection<DisplayItem>> action)
         {
-            if (SelectedProfile is not Profile profile)
-            {
-                return;
-            }
-
+            if (SelectedProfile is not Profile profile) return;
             AccessDisplayItems(profile, action);
         }
 
-        /// <summary>
-        /// Provides thread-safe access to the DisplayItems collection for a specific profile.
-        /// The action is executed on the UI thread if available.
-        /// </summary>
-        /// <param name="profile">The profile whose DisplayItems to access</param>
-        /// <param name="action">The action to perform with the DisplayItems collection</param>
         public void AccessDisplayItems(Profile profile, Action<ObservableCollection<DisplayItem>> action)
         {
             var collection = GetProfileDisplayItems(profile);
-
-            if (collection == null)
-            {
-                return;
-            }
-
+            if (collection == null) return;
             if (Application.Current.Dispatcher is Dispatcher dispatcher)
             {
                 if (dispatcher.CheckAccess())
-                {
                     action(collection);
-                }
                 else
-                {
-                    dispatcher.Invoke(() =>
-                    {
-                        action(collection);
-                    });
-                }
+                    dispatcher.Invoke(() => action(collection));
             }
         }
 
         private async Task ReloadDisplayItems(Profile profile)
         {
             var displayItems = await LoadDisplayItemsAsync(profile);
-
+            UndoManager.Instance.ClearHistory(profile);
+            _lastStateSnapshotPerProfile.TryRemove(profile.Guid, out _);
             AccessDisplayItems(profile, collection =>
             {
+                foreach (var item in collection)
+                    UnsubscribeDisplayItemForUndo(item);
                 collection.Clear();
-
                 foreach (var item in displayItems)
+                {
                     collection.Add(item);
+                    SubscribeDisplayItemForUndo(item, profile);
+                }
             });
+            var initialXml = UndoManager.SerializeDisplayItemsForProfile(displayItems);
+            if (!string.IsNullOrEmpty(initialXml))
+                _lastStateSnapshotPerProfile[profile.Guid] = initialXml;
+            ClearDirty();
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+
+            // Read file timestamp as the profile's "Saved" time
+            var filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
+            if (File.Exists(filePath))
+                ConfigModel.Instance.SetProfileLoadedTimestamp(profile.Guid, File.GetLastWriteTimeUtc(filePath));
+        }
+
+        public void Undo()
+        {
+            if (SelectedProfile is not Profile profile) return;
+            var selectedIndices = CaptureSelectedIndices(profile);
+            var currentXml = UndoManager.SerializeDisplayItemsForProfile(GetProfileDisplayItemsCopy(profile).ToList());
+            var items = UndoManager.Instance.Undo(profile, currentXml);
+            if (items == null) return;
+            _isUndoRedoInProgress = true;
+            try
+            {
+                AccessDisplayItems(profile, collection =>
+                {
+                    foreach (var item in collection)
+                        UnsubscribeDisplayItemForUndo(item);
+                    collection.Clear();
+                    foreach (var item in items)
+                    {
+                        collection.Add(item);
+                        SubscribeDisplayItemForUndo(item, profile);
+                    }
+                });
+                var restoredXml = UndoManager.SerializeDisplayItemsForProfile(items);
+                if (!string.IsNullOrEmpty(restoredXml))
+                    _lastStateSnapshotPerProfile[profile.Guid] = restoredXml;
+                RestoreSelectionByIndices(items, selectedIndices);
+                OnPropertyChanged(nameof(CanUndo));
+                OnPropertyChanged(nameof(CanRedo));
+                CommandManager.InvalidateRequerySuggested();
+            }
+            finally
+            {
+                _isUndoRedoInProgress = false;
+                MarkDirty();
+            }
+        }
+
+        public void Redo()
+        {
+            if (SelectedProfile is not Profile profile) return;
+            var selectedIndices = CaptureSelectedIndices(profile);
+            var currentXml = UndoManager.SerializeDisplayItemsForProfile(GetProfileDisplayItemsCopy(profile).ToList());
+            var items = UndoManager.Instance.Redo(profile);
+            if (items == null) return;
+            if (!string.IsNullOrEmpty(currentXml))
+                UndoManager.Instance.PushUndoSnapshotWithoutClearingRedo(profile, currentXml);
+            _isUndoRedoInProgress = true;
+            try
+            {
+                AccessDisplayItems(profile, collection =>
+                {
+                    foreach (var item in collection)
+                        UnsubscribeDisplayItemForUndo(item);
+                    collection.Clear();
+                    foreach (var item in items)
+                    {
+                        collection.Add(item);
+                        SubscribeDisplayItemForUndo(item, profile);
+                    }
+                });
+                var restoredXml = UndoManager.SerializeDisplayItemsForProfile(items);
+                if (!string.IsNullOrEmpty(restoredXml))
+                    _lastStateSnapshotPerProfile[profile.Guid] = restoredXml;
+                RestoreSelectionByIndices(items, selectedIndices);
+                OnPropertyChanged(nameof(CanUndo));
+                OnPropertyChanged(nameof(CanRedo));
+                CommandManager.InvalidateRequerySuggested();
+            }
+            finally
+            {
+                _isUndoRedoInProgress = false;
+                MarkDirty();
+            }
+        }
+
+        /// <summary>
+        /// Replaces the profile's display items with the given list (e.g. from autosave restore). Clears undo history for this profile and marks dirty.
+        /// Must be called on UI thread.
+        /// </summary>
+        public void ReplaceDisplayItemsFromBackup(Profile profile, List<DisplayItem> displayItems)
+        {
+            if (profile == null) return;
+            UndoManager.Instance.ClearHistory(profile);
+            _lastStateSnapshotPerProfile.TryRemove(profile.Guid, out _);
+            AccessDisplayItems(profile, collection =>
+            {
+                foreach (var item in collection)
+                    UnsubscribeDisplayItemForUndo(item);
+                collection.Clear();
+                foreach (var item in displayItems)
+                {
+                    collection.Add(item);
+                    SubscribeDisplayItemForUndo(item, profile);
+                }
+            });
+            var xml = UndoManager.SerializeDisplayItemsForProfile(displayItems);
+            if (!string.IsNullOrEmpty(xml))
+                _lastStateSnapshotPerProfile[profile.Guid] = xml;
+            MarkDirty();
+            OnPropertyChanged(nameof(DisplayItems));
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        /// <summary>Flatten in same order as SelectedItems (group + its DisplayItems, one level per group).</summary>
+        private static List<DisplayItem> FlattenForSelection(IEnumerable<DisplayItem> items)
+        {
+            return items
+                .SelectMany(item =>
+                    item is GroupDisplayItem group && group.DisplayItems != null
+                        ? group.DisplayItems.Prepend(group)
+                        : [item])
+                .ToList();
+        }
+
+        private List<int> CaptureSelectedIndices(Profile profile)
+        {
+            var indices = new List<int>();
+            AccessDisplayItems(profile, collection =>
+            {
+                var flat = FlattenForSelection(collection);
+                for (int i = 0; i < flat.Count; i++)
+                    if (flat[i].Selected)
+                        indices.Add(i);
+            });
+            return indices;
+        }
+
+        private void RestoreSelectionByIndices(List<DisplayItem> restoredItems, List<int> selectedIndices)
+        {
+            if (selectedIndices.Count == 0) return;
+            var flat = FlattenForSelection(restoredItems);
+            foreach (var idx in selectedIndices)
+            {
+                if (idx >= 0 && idx < flat.Count)
+                    flat[idx].Selected = true;
+            }
+            NotifySelectedItemChange();
         }
 
         public DisplayItem? SelectedItem
         {
-            get
-            {
-                return SelectedItems.FirstOrDefault();
-            }
+            get => SelectedItems.FirstOrDefault();
             set
             {
                 foreach (var selectedItem in SelectedItems)
                 {
                     if (selectedItem != value)
-                    {
                         selectedItem.Selected = false;
-                    }
                 }
-
                 if (value is DisplayItem displayItem)
-                {
                     displayItem.Selected = true;
-                }
-
                 NotifySelectedItemChange();
             }
         }
@@ -233,7 +478,7 @@ namespace InfoPanel
                     result = result.AddRange(items
                         .SelectMany<DisplayItem, DisplayItem>(item =>
                             item is GroupDisplayItem group && group.DisplayItems is { } groupItems
-                                ? [group, .. groupItems]
+                                ? groupItems.Prepend(group)
                                 : [item])
                         .Where(item => item.Selected));
                 });
@@ -241,105 +486,90 @@ namespace InfoPanel
             }
         }
 
-        public ImmutableList<DisplayItem> SelectedVisibleItems
-        {
-            get
-            {
-                return [.. SelectedItems.Where(item => item.Selected && !item.Hidden)];
-            }
-        }
+        public ImmutableList<DisplayItem> SelectedVisibleItems =>
+            [.. SelectedItems.Where(item => item.Selected && !item.Hidden)];
+
         public bool IsSelectedItemsMovable => SelectedItems.FindAll(item => item is not GroupDisplayItem).Count > 0;
-
         public bool IsSelectedItemMovable => SelectedItem is not null && SelectedItem is not GroupDisplayItem;
-
         public bool IsItemSelected => SelectedItem != null;
         public bool IsSingleItemSelected => SelectedItems.Count == 1;
 
         [ObservableProperty]
         private int _moveValue = 5;
 
-        private SharedModel()
-        { }
+        private SharedModel() { }
+
+        private void PushUndoSnapshot(Profile profile, ObservableCollection<DisplayItem> displayItems)
+        {
+            if (_isUndoRedoInProgress) return;
+            UndoManager.Instance.PushUndo(profile, displayItems.ToList());
+            MarkDirty();
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+        }
 
         public void AddDisplayItem(DisplayItem newDisplayItem)
         {
-            if (SelectedProfile is Profile profile)
+            if (SelectedProfile is not Profile profile) return;
+            AccessDisplayItems(profile, displayItems =>
             {
-                AccessDisplayItems(profile, displayItems =>
+                PushUndoSnapshot(profile, displayItems);
+                bool addedInGroup = false;
+                if (newDisplayItem is not GroupDisplayItem && SelectedItem is DisplayItem selectedItem)
                 {
-                    bool addedInGroup = false;
-
-                    if (newDisplayItem is not GroupDisplayItem && SelectedItem is DisplayItem selectedItem)
+                    if (selectedItem is GroupDisplayItem group && !group.IsLocked)
                     {
-                        // SelectedItem is a group — add directly to it
-                        if (selectedItem is GroupDisplayItem group && !group.IsLocked)
+                        group.DisplayItems.Add(newDisplayItem);
+                        addedInGroup = true;
+                    }
+                    else
+                    {
+                        _ = FindParentCollection(selectedItem, out var parentGroup);
+                        if (parentGroup is not null && !parentGroup.IsLocked)
                         {
-                            group.DisplayItems.Add(newDisplayItem);
+                            parentGroup.DisplayItems.Add(newDisplayItem);
                             addedInGroup = true;
                         }
-                        else
-                        {
-                            //SelectedItem is inside a group — find its parent
-                            _ = FindParentCollection(selectedItem, out var parentGroup);
-                            if (parentGroup is not null && !parentGroup.IsLocked)
-                            {
-                                parentGroup.DisplayItems.Add(newDisplayItem);
-                                addedInGroup = true;
-                            }
-                        }
                     }
-
-                    if (!addedInGroup)
-                    {
-                        displayItems.Add(newDisplayItem);
-                    }
-
-                    SelectedItem = newDisplayItem;
-                });
-            }
+                }
+                if (!addedInGroup)
+                    displayItems.Add(newDisplayItem);
+                SelectedItem = newDisplayItem;
+                UpdateLastStateSnapshot();
+            });
         }
 
         public void RemoveDisplayItem(DisplayItem displayItem)
         {
-
-            if (SelectedProfile is Profile profile)
+            if (SelectedProfile is not Profile profile) return;
+            AccessDisplayItems(profile, displayItems =>
             {
-                AccessDisplayItems(profile, displayItems =>
+                PushUndoSnapshot(profile, displayItems);
+                _ = FindParentCollection(displayItem, out var parentGroup);
+                if (parentGroup is not null)
                 {
-                    _ = FindParentCollection(displayItem, out var parentGroup);
-                    if (parentGroup is not null)
+                    int index = parentGroup.DisplayItems.IndexOf(displayItem);
+                    if (index >= 0)
                     {
-                        int index = parentGroup.DisplayItems.IndexOf(displayItem);
-                        if (index >= 0)
-                        {
-                            parentGroup.DisplayItems.RemoveAt(index);
-
-                            if (parentGroup.DisplayItems.Count > 0)
-                            {
-                                parentGroup.DisplayItems[Math.Clamp(index, 0, parentGroup.DisplayItems.Count - 1)].Selected = true;
-                            }
-                            else
-                            {
-                                parentGroup.Selected = true;
-                            }
-                        }
+                        parentGroup.DisplayItems.RemoveAt(index);
+                        if (parentGroup.DisplayItems.Count > 0)
+                            parentGroup.DisplayItems[Math.Clamp(index, 0, parentGroup.DisplayItems.Count - 1)].Selected = true;
+                        else
+                            parentGroup.Selected = true;
                     }
-                    else
+                }
+                else
+                {
+                    int index = displayItems.IndexOf(displayItem);
+                    if (index >= 0)
                     {
-                        // Top-level item
-                        int index = displayItems.IndexOf(displayItem);
-                        if (index >= 0)
-                        {
-                            displayItems.RemoveAt(index);
-
-                            if (displayItems.Count > 0)
-                            {
-                                displayItems[Math.Clamp(index, 0, displayItems.Count - 1)].Selected = true;
-                            }
-                        }
+                        displayItems.RemoveAt(index);
+                        if (displayItems.Count > 0)
+                            displayItems[Math.Clamp(index, 0, displayItems.Count - 1)].Selected = true;
                     }
-                });
-            }
+                }
+                UpdateLastStateSnapshot();
+            });
         }
 
         public GroupDisplayItem? GetParent(DisplayItem displayItem)
@@ -348,16 +578,17 @@ namespace InfoPanel
             return result;
         }
 
+        /// <summary>Returns the collection containing the item (root or a group's DisplayItems).</summary>
+        public ObservableCollection<DisplayItem>? GetParentCollection(DisplayItem item)
+        {
+            return FindParentCollection(item, out _);
+        }
+
         private ObservableCollection<DisplayItem>? FindParentCollection(DisplayItem item, out GroupDisplayItem? parentGroup)
         {
             parentGroup = null;
-
-            if (DisplayItems == null)
-                return null;
-
-            if (DisplayItems.Contains(item))
-                return DisplayItems;
-
+            if (DisplayItems == null) return null;
+            if (DisplayItems.Contains(item)) return DisplayItems;
             foreach (var group in DisplayItems.OfType<GroupDisplayItem>())
             {
                 if (group.DisplayItems != null && group.DisplayItems.Contains(item))
@@ -366,202 +597,192 @@ namespace InfoPanel
                     return group.DisplayItems;
                 }
             }
-
             return null;
         }
 
         public void PushDisplayItemBy(DisplayItem displayItem, int count)
         {
-            if (SelectedProfile is Profile profile)
+            if (SelectedProfile is not Profile profile) return;
+            AccessDisplayItems(profile, displayItems =>
             {
-                AccessDisplayItems(profile, displayItems =>
+                PushUndoSnapshot(profile, displayItems);
+                var parentCollection = FindParentCollection(displayItem, out GroupDisplayItem? parentGroup);
+                if (parentCollection == null) return;
+                int index = parentCollection.IndexOf(displayItem);
+                int newIndex = index + count;
+                if (parentGroup != null && !parentGroup.IsLocked)
                 {
-                    // Find the parent collection and group (if any)
-                    var parentCollection = FindParentCollection(displayItem, out GroupDisplayItem? parentGroup);
-
-                    if (parentCollection == null)
+                    if (newIndex < 0)
+                    {
+                        int groupIndex = displayItems.IndexOf(parentGroup);
+                        if (groupIndex >= 0)
+                        {
+                            parentCollection.RemoveAt(index);
+                            displayItems.Insert(groupIndex, displayItem);
+                        }
                         return;
-
-                    int index = parentCollection.IndexOf(displayItem);
-                    int newIndex = index + count;
-
-                    // Moving out of group (up or down)
-                    if (parentGroup != null && !parentGroup.IsLocked)
+                    }
+                    if (newIndex >= parentCollection.Count)
                     {
-                        if (newIndex < 0)
+                        int groupIndex = displayItems.IndexOf(parentGroup);
+                        if (groupIndex >= 0)
                         {
-                            int groupIndex = displayItems.IndexOf(parentGroup);
-                            if (groupIndex >= 0)
-                            {
-                                parentCollection.RemoveAt(index);
-                                displayItems.Insert(groupIndex, displayItem);
-                            }
-                            return;
+                            parentCollection.RemoveAt(index);
+                            displayItems.Insert(groupIndex + 1, displayItem);
                         }
-
-                        if (newIndex >= parentCollection.Count)
+                        return;
+                    }
+                }
+                if (displayItem is not GroupDisplayItem && parentGroup == null)
+                {
+                    int targetIndex = index + count;
+                    if (targetIndex >= 0 && targetIndex < displayItems.Count)
+                    {
+                        var target = displayItems[targetIndex];
+                        if (target is GroupDisplayItem targetGroup && !targetGroup.IsLocked && targetGroup.DisplayItems != null)
                         {
-                            int groupIndex = displayItems.IndexOf(parentGroup);
-                            if (groupIndex >= 0)
-                            {
-                                parentCollection.RemoveAt(index);
-                                displayItems.Insert(groupIndex + 1, displayItem);
-                            }
+                            parentCollection.RemoveAt(index);
+                            targetGroup.DisplayItems.Insert(count > 0 ? 0 : targetGroup.DisplayItems.Count, displayItem);
+                            targetGroup.IsExpanded = true;
                             return;
                         }
                     }
-
-                    // Moving into a group
-                    if (displayItem is not GroupDisplayItem && parentGroup == null)
-                    {
-                        int targetIndex = index + count;
-                        if (targetIndex >= 0 && targetIndex < displayItems.Count)
-                        {
-                            var target = displayItems[targetIndex];
-                            if (target is GroupDisplayItem targetGroup && !targetGroup.IsLocked && targetGroup.DisplayItems != null)
-                            {
-                                parentCollection.RemoveAt(index);
-                                targetGroup.DisplayItems.Insert(count > 0 ? 0 : targetGroup.DisplayItems.Count, displayItem);
-                                targetGroup.IsExpanded = true;
-                                return;
-                            }
-                        }
-                    }
-
-                    // Normal move within the same collection
-                    if (newIndex >= 0 && newIndex < parentCollection.Count)
-                    {
-                        parentCollection.Move(index, newIndex);
-                        if (parentGroup is GroupDisplayItem)
-                        {
-                            parentGroup.IsExpanded = true;
-                        }
-                    }
-                });
-            }
+                }
+                if (newIndex >= 0 && newIndex < parentCollection.Count)
+                {
+                    parentCollection.Move(index, newIndex);
+                    if (parentGroup is GroupDisplayItem g)
+                        g.IsExpanded = true;
+                }
+                UpdateLastStateSnapshot();
+            });
         }
 
         public void PushDisplayItemTo(DisplayItem displayItem, DisplayItem target)
         {
-            if (displayItem == null || target == null || displayItem == target)
-                return;
-
-
-            if (SelectedProfile is Profile profile)
+            if (displayItem == null || target == null || displayItem == target) return;
+            if (SelectedProfile is not Profile profile) return;
+            AccessDisplayItems(profile, displayItems =>
             {
-                AccessDisplayItems(profile, displayItems =>
-                {
-                    var sourceCollection = FindParentCollection(displayItem, out var sourceGroupDisplayItem);
-                    var targetCollection = FindParentCollection(target, out var targetGroupDisplayItem);
-
-                    if (sourceCollection == null || targetCollection == null || sourceCollection != targetCollection)
-                        return;
-
-                    int sourceIndex = sourceCollection.IndexOf(displayItem);
-                    int targetIndex = targetCollection.IndexOf(target);
-
-                    if (sourceCollection == targetCollection)
-                    {
-                        // Same collection: simple move
-                        sourceCollection.Move(sourceIndex, targetIndex + 1);
-                    }
-                });
-            }
+                PushUndoSnapshot(profile, displayItems);
+                var sourceCollection = FindParentCollection(displayItem, out var sourceGroupDisplayItem);
+                var targetCollection = FindParentCollection(target, out var targetGroupDisplayItem);
+                if (sourceCollection == null || targetCollection == null || sourceCollection != targetCollection) return;
+                int sourceIndex = sourceCollection.IndexOf(displayItem);
+                int targetIndex = targetCollection.IndexOf(target);
+                if (sourceCollection == targetCollection)
+                    sourceCollection.Move(sourceIndex, targetIndex + 1);
+                UpdateLastStateSnapshot();
+            });
         }
 
         public void PushDisplayItemToTop(DisplayItem displayItem)
         {
-            if (SelectedProfile is Profile profile)
+            if (SelectedProfile is not Profile profile) return;
+            AccessDisplayItems(profile, displayItems =>
             {
-                AccessDisplayItems(profile, displayItems =>
+                PushUndoSnapshot(profile, displayItems);
+                var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
+                if (sourceCollection == null) return;
+                int currentIndex = sourceCollection.IndexOf(displayItem);
+                if (sourceCollection == displayItems)
                 {
-                    var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
-                    if (sourceCollection == null)
-                        return;
-
-                    int currentIndex = sourceCollection.IndexOf(displayItem);
-
-                    if (sourceCollection == displayItems)
+                    if (currentIndex > 0) displayItems.Move(currentIndex, 0);
+                }
+                else
+                {
+                    if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
                     {
-                        if (currentIndex > 0)
-                        {
-                            displayItems.Move(currentIndex, 0);
-                        }
+                        sourceCollection.RemoveAt(currentIndex);
+                        displayItems.Insert(0, displayItem);
                     }
-                    else
+                    else if (currentIndex != 0)
                     {
-                        if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
-                        {
-                            sourceCollection.RemoveAt(currentIndex);
-                            displayItems.Insert(0, displayItem);
-                        }
-                        else
-                        {
-                            if (currentIndex != 0)
-                            {
-                                sourceCollection.Move(currentIndex, 0);
-                            }
-                        }
+                        sourceCollection.Move(currentIndex, 0);
                     }
-                });
-            }
+                }
+                UpdateLastStateSnapshot();
+            });
         }
 
         public void PushDisplayItemToEnd(DisplayItem displayItem)
         {
+            if (SelectedProfile is not Profile profile) return;
+            AccessDisplayItems(profile, displayItems =>
+            {
+                PushUndoSnapshot(profile, displayItems);
+                var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
+                if (sourceCollection == null) return;
+                int currentIndex = sourceCollection.IndexOf(displayItem);
+                if (sourceCollection == displayItems)
+                {
+                    if (currentIndex < displayItems.Count - 1) displayItems.Move(currentIndex, displayItems.Count - 1);
+                }
+                else
+                {
+                    if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
+                    {
+                        sourceCollection.RemoveAt(currentIndex);
+                        displayItems.Add(displayItem);
+                    }
+                    else if (currentIndex != sourceCollection.Count - 1)
+                    {
+                        sourceCollection.Move(currentIndex, sourceCollection.Count - 1);
+                    }
+                }
+                UpdateLastStateSnapshot();
+            });
+        }
+
+        public ImmutableList<DisplayItem> GetProfileDisplayItemsCopy()
+        {
             if (SelectedProfile is Profile profile)
+                return GetProfileDisplayItemsCopy(profile);
+            return [];
+        }
+
+        public ImmutableList<DisplayItem> GetProfileDisplayItemsCopy(Profile profile)
+        {
+            if (!ProfileDisplayItemsCopy.TryGetValue(profile.Guid, out var displayItemsCopy))
             {
                 AccessDisplayItems(profile, displayItems =>
                 {
-                    var sourceCollection = FindParentCollection(displayItem, out var groupDisplayItem);
-                    if (sourceCollection == null)
-                        return;
-
-                    int currentIndex = sourceCollection.IndexOf(displayItem);
-
-                    if (sourceCollection == displayItems)
-                    {
-                        if (currentIndex < displayItems.Count - 1)
-                        {
-                            displayItems.Move(currentIndex, displayItems.Count - 1);
-                        }
-                    }
-                    else
-                    {
-                        if (groupDisplayItem != null && !groupDisplayItem.IsLocked)
-                        {
-                            sourceCollection.RemoveAt(currentIndex);
-                            displayItems.Add(displayItem);
-                        }
-                        else
-                        {
-                            if (currentIndex != sourceCollection.Count - 1)
-                            {
-                                sourceCollection.Move(currentIndex, sourceCollection.Count - 1);
-                            }
-                        }
-                    }
+                    displayItemsCopy = [.. displayItems];
+                    ProfileDisplayItemsCopy[profile.Guid] = displayItemsCopy;
                 });
             }
+            return displayItemsCopy ?? [];
         }
-
 
         private static void SaveDisplayItems(Profile profile, ICollection<DisplayItem> displayItems)
         {
-            var profileFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
+            var baseFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel");
+            SaveDisplayItems(profile, displayItems, baseFolder);
+        }
+
+        /// <summary>
+        /// Writes display items to a profile XML file under the given base folder (e.g. autosave slot path).
+        /// Path used is baseFolder/profiles/{Guid}.xml. Uses atomic write (temp + Replace) to avoid corruption on crash.
+        /// </summary>
+        internal static void SaveDisplayItems(Profile profile, ICollection<DisplayItem> displayItems, string baseFolder)
+        {
+            var profileFolder = Path.Combine(baseFolder, "profiles");
             if (!Directory.Exists(profileFolder))
-            {
                 Directory.CreateDirectory(profileFolder);
-            }
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
-
-            XmlSerializer xs = new(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(TextDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
-
+            var tempFileName = fileName + ".tmp";
+            var backupFileName = fileName + ".bak";
+            var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-            using var wr = XmlWriter.Create(fileName, settings);
-
-            // ToList() is necessary to avoid issues with serialization of ICollection directly
-            xs.Serialize(wr, displayItems.ToList());
+            using (var wr = XmlWriter.Create(tempFileName, settings))
+                xs.Serialize(wr, displayItems.ToList());
+            if (File.Exists(fileName))
+            {
+                File.Replace(tempFileName, fileName, backupFileName, ignoreMetadataErrors: true);
+                try { File.Delete(backupFileName); } catch { }
+            }
+            else
+                File.Move(tempFileName, fileName, overwrite: true);
         }
 
         public void SaveDisplayItems(Profile profile)
@@ -570,6 +791,8 @@ namespace InfoPanel
             {
                 var displayItems = GetProfileDisplayItemsCopy(profile);
                 SaveDisplayItems(profile, displayItems);
+                UpdateLastStateSnapshot();
+                ClearDirty();
             }
         }
 
@@ -579,59 +802,249 @@ namespace InfoPanel
                 SaveDisplayItems(SelectedProfile);
         }
 
-        public string? ExportProfile(Profile profile, string outputFolder)
+        /// <summary>
+        /// Saves the given profile's display items to the specified base folder (e.g. autosave slot path).
+        /// Does not clear dirty flag; used for backup only.
+        /// </summary>
+        public void SaveDisplayItems(Profile profile, string baseFolder)
         {
-            var SelectedProfile = profile;
+            if (profile == null || string.IsNullOrEmpty(baseFolder)) return;
+            var displayItems = GetProfileDisplayItemsCopy(profile);
+            SaveDisplayItems(profile, displayItems, baseFolder);
+        }
 
-            if (SelectedProfile != null)
+        public static async Task<List<DisplayItem>> LoadDisplayItemsAsync(Profile profile)
+        {
+            return await Task.Run(() => LoadDisplayItemsFromFile(profile));
+        }
+
+        private static List<DisplayItem> LoadDisplayItemsFromFile(Profile profile)
+        {
+            var baseFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
+            return LoadDisplayItemsFromFilePath(profile, Path.Combine(baseFolder, profile.Guid + ".xml"));
+        }
+
+        /// <summary>
+        /// Loads display items from an autosave slot base folder (e.g. autosave/slot_0). Path: baseFolder/profiles/{Guid}.xml.
+        /// </summary>
+        public static List<DisplayItem> LoadDisplayItemsFromFile(Profile profile, string baseFolder)
+        {
+            var fileName = Path.Combine(baseFolder, "profiles", profile.Guid + ".xml");
+            return LoadDisplayItemsFromFilePath(profile, fileName);
+        }
+
+        private static List<DisplayItem> LoadDisplayItemsFromFilePath(Profile profile, string fullPathToXml)
+        {
+            if (!File.Exists(fullPathToXml)) return [];
+            var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
+            using var rd = XmlReader.Create(fullPathToXml);
+            try
             {
-                var exportFilePath = Path.Combine(outputFolder, SelectedProfile.Name.SanitizeFileName().Replace(" ", "_") + "-" + DateTimeOffset.Now.ToUnixTimeSeconds() + ".infopanel");
-
-
-                if (File.Exists(exportFilePath))
+                if (xs.Deserialize(rd) is List<DisplayItem> displayItems)
                 {
-                    File.Delete(exportFilePath);
+                    foreach (var displayItem in displayItems)
+                        displayItem.SetProfile(profile);
+                    return displayItems;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to load display items from {Path}", fullPathToXml);
+            }
+            return [];
+        }
+
+        /// <summary>
+        /// Import a profile from an .infopanel file (zip archive).
+        /// Expects Profile.xml + DisplayItems.xml + assets\* (1.4.x format).
+        /// </summary>
+        public void ImportProfile(string fileName)
+        {
+            if (!File.Exists(fileName)) return;
+            try
+            {
+                using var archive = ZipFile.OpenRead(fileName);
+                ZipArchiveEntry? profileEntry = null;
+                ZipArchiveEntry? displayItemsEntry = null;
+                var assets = new List<ZipArchiveEntry>();
+
+                foreach (var entry in archive.Entries)
+                {
+                    if (entry.FullName.Equals("Profile.xml", StringComparison.OrdinalIgnoreCase))
+                        profileEntry = entry;
+                    else if (entry.FullName.Equals("DisplayItems.xml", StringComparison.OrdinalIgnoreCase))
+                        displayItemsEntry = entry;
+                    else if (entry.FullName.StartsWith("assets/", StringComparison.OrdinalIgnoreCase) || entry.FullName.StartsWith("assets\\", StringComparison.OrdinalIgnoreCase))
+                        assets.Add(entry);
                 }
 
-                using (ZipArchive archive = ZipFile.Open(exportFilePath, ZipArchiveMode.Create))
+                if (profileEntry == null || displayItemsEntry == null)
                 {
-                    //add profile settings
-                    var exportProfile = new Profile(SelectedProfile.Name, SelectedProfile.Width, SelectedProfile.Height)
+                    Logger.Warning("Import file {FileName} does not contain Profile.xml and DisplayItems.xml (1.4.x format required)", fileName);
+                    return;
+                }
+
+                Profile? profile;
+                using (var stream = profileEntry.Open())
+                {
+                    var xs = new XmlSerializer(typeof(Profile));
+                    using var rd = XmlReader.Create(stream);
+                    profile = xs.Deserialize(rd) as Profile;
+                }
+
+                if (profile == null) return;
+
+                profile.Guid = Guid.NewGuid();
+                profile.Name = "[Import] " + profile.Name;
+
+                var profileFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
+                if (!Directory.Exists(profileFolder))
+                    Directory.CreateDirectory(profileFolder);
+                var profilePath = Path.Combine(profileFolder, profile.Guid + ".xml");
+                displayItemsEntry.ExtractToFile(profilePath, overwrite: true);
+
+                var displayItems = LoadDisplayItemsFromFile(profile);
+                foreach (var displayItem in displayItems)
+                {
+                    if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
                     {
-                        ShowFps = SelectedProfile.ShowFps,
-                        BackgroundColor = SelectedProfile.BackgroundColor,
-                        Font = SelectedProfile.Font,
-                        FontSize = SelectedProfile.FontSize,
-                        Color = SelectedProfile.Color,
-                        OpenGL = SelectedProfile.OpenGL,
-                        FontScale = SelectedProfile.FontScale,
+                        if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.HwInfoRemoteIndex, sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList(sensorDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == sensorDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                sensorDisplayItem.Id = hash.ParentID;
+                                sensorDisplayItem.Instance = hash.ParentInstance;
+                                sensorDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
+                        }
+                    }
+                    else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                    {
+                        if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.HwInfoRemoteIndex, chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList(chartDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == chartDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                chartDisplayItem.Id = hash.ParentID;
+                                chartDisplayItem.Instance = hash.ParentInstance;
+                                chartDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
+                        }
+                    }
+                    else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                    {
+                        if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.HwInfoRemoteIndex, gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList(gaugeDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == gaugeDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                gaugeDisplayItem.Id = hash.ParentID;
+                                gaugeDisplayItem.Instance = hash.ParentInstance;
+                                gaugeDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
+                        }
+                    }
+                    else if (displayItem is SensorImageDisplayItem sensorImageDisplayItem && sensorImageDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                    {
+                        if (!HWHash.SENSORHASH.TryGetValue((sensorImageDisplayItem.HwInfoRemoteIndex, sensorImageDisplayItem.Id, sensorImageDisplayItem.Instance, sensorImageDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList(sensorImageDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == sensorImageDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                sensorImageDisplayItem.Id = hash.ParentID;
+                                sensorImageDisplayItem.Instance = hash.ParentInstance;
+                                sensorImageDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
+                        }
+                    }
+                    else if (displayItem is HttpImageDisplayItem httpImageDisplayItem && httpImageDisplayItem.SensorType == Enums.SensorType.HwInfo)
+                    {
+                        if (!HWHash.SENSORHASH.TryGetValue((httpImageDisplayItem.HwInfoRemoteIndex, httpImageDisplayItem.Id, httpImageDisplayItem.Instance, httpImageDisplayItem.EntryId), out _))
+                        {
+                            var hash = HWHash.GetOrderedList(httpImageDisplayItem.HwInfoRemoteIndex).Find(h => h.NameDefault == httpImageDisplayItem.SensorName);
+                            if (hash != null && hash.NameDefault != null)
+                            {
+                                httpImageDisplayItem.Id = hash.ParentID;
+                                httpImageDisplayItem.Instance = hash.ParentInstance;
+                                httpImageDisplayItem.EntryId = hash.SensorID;
+                                Logger.Information("Smart imported {SensorName}", hash.NameDefault);
+                            }
+                        }
+                    }
+                }
+
+                SaveDisplayItems(profile, displayItems);
+
+                var assetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
+                if (!Directory.Exists(assetFolder))
+                    Directory.CreateDirectory(assetFolder);
+                foreach (var asset in assets)
+                {
+                    var assetPath = Path.Combine(assetFolder, asset.Name);
+                    asset.ExtractToFile(assetPath, overwrite: true);
+                }
+
+                ConfigModel.Instance.AddProfile(profile);
+                ConfigModel.Instance.SaveProfiles();
+                SelectedProfile = profile;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to import profile from {FileName}", fileName);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Export a profile to an .infopanel file (1.4.x format: Profile.xml + DisplayItems.xml + assets).
+        /// Returns the path to the exported file, or null on failure.
+        /// </summary>
+        public string? ExportProfile(Profile profile, string folderPath)
+        {
+            if (profile == null || !Directory.Exists(folderPath)) return null;
+            try
+            {
+                var exportFilePath = Path.Combine(folderPath, profile.Name.SanitizeFileName().Replace(" ", "_") + "-" + DateTimeOffset.Now.ToUnixTimeSeconds() + ".infopanel");
+                if (File.Exists(exportFilePath))
+                    File.Delete(exportFilePath);
+
+                using (var archive = ZipFile.Open(exportFilePath, ZipArchiveMode.Create))
+                {
+                    var exportProfile = new Profile(profile.Name, profile.Width, profile.Height)
+                    {
+                        ShowFps = profile.ShowFps,
+                        BackgroundColor = profile.BackgroundColor,
+                        Font = profile.Font,
+                        FontSize = profile.FontSize,
+                        Color = profile.Color,
+                        OpenGL = profile.OpenGL,
+                        FontScale = profile.FontScale,
                     };
 
                     var entry = archive.CreateEntry("Profile.xml");
-
-                    using (Stream entryStream = entry.Open())
+                    using (var stream = entry.Open())
                     {
-                        XmlSerializer xs = new(typeof(Profile));
-                        var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
-                        using var wr = XmlWriter.Create(entryStream, settings);
+                        var xs = new XmlSerializer(typeof(Profile));
+                        var settings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true };
+                        using var wr = XmlWriter.Create(stream, settings);
                         xs.Serialize(wr, exportProfile);
                     }
 
-                    //add displayitems
-                    var profilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", SelectedProfile.Guid + ".xml");
+                    var profilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
                     if (File.Exists(profilePath))
-                    {
                         archive.CreateEntryFromFile(profilePath, "DisplayItems.xml");
-                    }
 
-                    //add assets
-                    var assetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", SelectedProfile.Guid.ToString());
-
+                    var assetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
                     if (Directory.Exists(assetFolder))
                     {
                         foreach (var file in Directory.GetFiles(assetFolder))
                         {
-                            string entryName = file.Substring(assetFolder.Length + 1);
+                            var entryName = Path.GetFileName(file);
                             archive.CreateEntryFromFile(file, Path.Combine("assets", entryName));
                         }
                     }
@@ -639,776 +1052,12 @@ namespace InfoPanel
 
                 return exportFilePath;
             }
-
-            return null;
-        }
-
-
-
-        public static async Task ImportSensorPanel(string importPath)
-        {
-            if (!File.Exists(importPath))
+            catch (Exception ex)
             {
-                return;
-            }
-
-            var lines = File.ReadAllLines(importPath, Encoding.GetEncoding("iso-8859-1"));
-
-            if (lines.Length < 2)
-            {
-                Console.WriteLine("Invalid file format");
-                return;
-            }
-
-            int page = 0;
-            var items = new List<Dictionary<string, string>>();
-            string importBaseName = Path.GetFileNameWithoutExtension(importPath);
-
-            Regex openTagRegex = new(@"<LCDPAGE(\d+)>", RegexOptions.Compiled);
-            Regex closeTagRegex = new(@"</LCDPAGE(\d+)>", RegexOptions.Compiled);
-
-
-            for (int i = 0; i < lines.Length; i++)
-            {
-                var openMatch = openTagRegex.Match(lines[i]);
-                if (openMatch.Success)
-                {
-                    page = int.Parse(openMatch.Groups[1].Value);
-                    continue;
-                }
-
-                var closeMatch = closeTagRegex.Match(lines[i]);
-                if (closeMatch.Success)
-                {
-                    await ProcessSensorPanelImport($"[Import] {importBaseName} - Page {page}", items);
-                    items.Clear();
-                    continue;
-                }
-
-                try
-                {
-                    var rootElement = XElement.Parse($"<Root>{EscapeContentWithinLBL(lines[i])}</Root>");
-
-                    var item = new Dictionary<string, string>();
-
-                    foreach (XElement element in rootElement.Elements())
-                    {
-                        item[element.Name.LocalName] = element.Value;
-                    }
-
-                    items.Add(item);
-                }
-                catch (Exception ex)
-                {
-                    // Handle parsing errors here
-                    Console.WriteLine($"Error parsing line {i}: {ex.Message}");
-                }
-            }
-
-            if (items.Count > 2)
-            {
-                await ProcessSensorPanelImport($"[Import] {Path.GetFileNameWithoutExtension(importPath)}", items);
-            }
-
-        }
-
-        private static async Task ProcessSensorPanelImport(string name, List<Dictionary<string, string>> items)
-        {
-            if (items.Count > 2)
-            {
-                var SPWIDTH = items[1].GetIntValue("SPWIDTH", 1024);
-                var SPHEIGHT = items[1].GetIntValue("SPHEIGHT", 600);
-                var LCDBGCOLOR = items[1].GetIntValue("LCDBGCOLOR", 0);
-                var SPBGCOLOR = items[1].GetIntValue("SPBGCOLOR", LCDBGCOLOR);
-
-                Profile profile = new(name, SPWIDTH, SPHEIGHT)
-                {
-                    BackgroundColor = DecimalBgrToHex(SPBGCOLOR)
-                };
-
-                using var bitmap = new SKBitmap(1, 1);
-                using var graphics = SkiaGraphics.FromBitmap(bitmap, profile.FontScale);
-
-                List<DisplayItem> displayItems = [];
-
-                for (int i = 2; i < items.Count; i++)
-                {
-                    var item = items[i];
-                    var key = item.GetStringValue("ID", string.Empty);
-
-                    var hidden = false;
-                    var simple = false;
-                    var gauge = false;
-                    var graph = false;
-
-                    if (key.StartsWith('-'))
-                    {
-                        hidden = true;
-                        key = key[1..];
-                    }
-
-                    if (key.StartsWith("[SIMPLE]"))
-                    {
-                        simple = true;
-                        key = key[8..];
-                    }
-
-                    if (key.StartsWith("[GAUGE]"))
-                    {
-                        gauge = true;
-                        key = key[7..];
-                    }
-
-                    if (key.StartsWith("[GRAPH]"))
-                    {
-                        graph = true;
-                        key = key[7..];
-                    }
-
-                    //global items
-                    var ITMX = item.GetIntValue("ITMX", 0);
-                    var ITMY = item.GetIntValue("ITMY", 0);
-
-                    var LBL = item.GetStringValue("LBL", key);
-                    var TXTBIR = item.GetStringValue("TXTBIR", string.Empty);
-                    var FNTNAM = item.GetStringValue("FNTNAM", "Arial");
-                    var WID = item.GetIntValue("WID", 0);
-                    var HEI = item.GetIntValue("HEI", 0);
-                    var TYP = item.GetStringValue("TYP", string.Empty);
-                    var MINVAL = item.GetIntValue("MINVAL", 0);
-                    var MAXVAL = item.GetIntValue("MAXVAL", 100);
-
-                    var UNT = item.GetStringValue("UNT", string.Empty);
-                    var SHWUNT = item.GetIntValue("SHWUNT", 1);
-                    var UNTWID = item.GetIntValue("UNTWID", 0);
-                    var TXTSIZ = item.GetIntValue("TXTSIZ", 12);
-                    var LBLCOL = item.GetIntValue("LBLCOL", 0);
-                    var TXTCOL = item.GetIntValue("TXTCOL", LBLCOL);
-                    var VALCOL = item.GetIntValue("VALCOL", TXTCOL);
-
-                    var bold = false;
-                    var italic = false;
-                    var rightAlign = false;
-
-                    if (simple)
-                    {
-                        if (TXTBIR.Length == 3)
-                        {
-                            if (int.TryParse(TXTBIR.AsSpan(0, 1), out int _bold))
-                            {
-                                bold = _bold == 1;
-                            }
-                            if (int.TryParse(TXTBIR.AsSpan(1, 1), out int _italic))
-                            {
-                                italic = _italic == 1;
-                            }
-                            if (int.TryParse(TXTBIR.AsSpan(2, 1), out int _rightAlign))
-                            {
-                                rightAlign = _rightAlign == 1;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        //all other non-simple items are right align
-                        if (key != "LBL")
-                        {
-                            rightAlign = true;
-                        }
-                    }
-
-                    if (graph)
-                    {
-                        if (WID != 0 && HEI != 0)
-                        {
-                            GraphDisplayItem.GraphType? graphType = null;
-                            switch (TYP)
-                            {
-                                case "AG":
-                                case "LG":
-                                    graphType = GraphDisplayItem.GraphType.LINE;
-                                    break;
-                                case "HG":
-                                    graphType = GraphDisplayItem.GraphType.HISTOGRAM;
-                                    break;
-                            }
-
-                            if (graphType.HasValue)
-                            {
-                                var AUTSCL = item.GetIntValue("AUTSCL", 0);
-                                var GPHCOL = item.GetIntValue("GPHCOL", 0);
-                                var BGCOL = item.GetIntValue("BGCOL", 0);
-                                var FRMCOL = item.GetIntValue("FRMCOL", 0);
-
-                                //graph step
-                                var GPHSTP = item.GetIntValue("GPHSTP", 1);
-
-                                //graph thickness
-                                var GPHTCK = item.GetIntValue("GPHTCK", 1);
-
-                                //graph background, frame, grid
-                                var GPHBFG = item.GetStringValue("GPHBFG", "000");
-
-                                var background = false;
-                                var frame = false;
-                                if (GPHBFG.Length == 3)
-                                {
-                                    if (int.TryParse(GPHBFG.AsSpan(0, 1), out int _background))
-                                    {
-                                        background = _background == 1;
-                                    }
-                                    if (int.TryParse(GPHBFG.AsSpan(1, 1), out int _frame))
-                                    {
-                                        frame = _frame == 1;
-                                    }
-                                }
-
-                                var libreSensorId = SensorMapping.FindMatchingIdentifier(key) ?? "unknown";
-                                GraphDisplayItem graphDisplayItem = new(LBL, profile, graphType.Value, libreSensorId)
-                                {
-                                    SensorName = key,
-                                    Width = WID,
-                                    Height = HEI,
-                                    MinValue = MINVAL,
-                                    MaxValue = MAXVAL,
-                                    AutoValue = AUTSCL == 1,
-                                    Step = GPHSTP,
-                                    Thickness = GPHTCK,
-                                    Background = background,
-                                    Frame = frame,
-                                    Fill = TYP != "LG",
-                                    FillColor = TYP == "AG" ? $"#7F{DecimalBgrToHex(GPHCOL).Substring(1)}" : DecimalBgrToHex(GPHCOL),
-                                    Color = DecimalBgrToHex(GPHCOL),
-                                    BackgroundColor = DecimalBgrToHex(BGCOL),
-                                    FrameColor = DecimalBgrToHex(FRMCOL),
-                                    X = ITMX,
-                                    Y = ITMY,
-                                    Hidden = hidden,
-                                };
-
-                                displayItems.Add(graphDisplayItem);
-                            }
-                        }
-                    }
-                    else if (gauge)
-                    {
-                        var STAFLS = item.GetStringValue("STAFLS", string.Empty);
-
-                        var RESIZW = item.GetIntValue("RESIZW", 0);
-                        var RESIZH = item.GetIntValue("RESIZH", 0);
-
-                        if (TYP == "Custom" && STAFLS != string.Empty)
-                        {
-                            //var libreSensorId = SensorMapping.SensorPanel.GetStringValue(key, "unknown");
-                            var libreSensorId = SensorMapping.FindMatchingIdentifier(key) ?? "unknown";
-                            GaugeDisplayItem gaugeDisplayItem = new(LBL, profile, libreSensorId)
-                            {
-                                SensorName = key,
-                                MinValue = MINVAL,
-                                MaxValue = MAXVAL,
-                                X = ITMX,
-                                Y = ITMY,
-                                Width = RESIZW,
-                                Height = RESIZH,
-                                Hidden = hidden
-                            };
-
-                            foreach (var image in STAFLS.Split('|'))
-                            {
-                                ImageDisplayItem imageDisplayItem = new(image, profile, image, true);
-                                gaugeDisplayItem.Images.Add(imageDisplayItem);
-                            }
-
-                            displayItems.Add(gaugeDisplayItem);
-                        }
-
-                    }
-                    else if (key == string.Empty)
-                    {
-                        var GAUSTAFNM = item.GetStringValue("GAUSTAFNM", string.Empty);
-                        var GAUSTADAT = item.GetStringValue("GAUSTADAT", string.Empty);
-
-                        if (GAUSTAFNM != string.Empty && GAUSTADAT != string.Empty)
-                        {
-                            var data = ConvertHexStringToByteArray(GAUSTADAT);
-                            await FileUtil.SaveAsset(profile, GAUSTAFNM, data);
-                        }
-                    }
-                    else if (key == "IMG")
-                    {
-                        var IMGFIL = item.GetStringValue("IMGFIL", string.Empty);
-                        var IMGDAT = item.GetStringValue("IMGDAT", string.Empty);
-                        var BGIMG = item.GetIntValue("BGIMG", 0);
-                        var RESIZW = item.GetIntValue("RESIZW", 0);
-                        var RESIZH = item.GetIntValue("RESIZH", 0);
-
-                        if (IMGFIL != string.Empty && IMGDAT != string.Empty)
-                        {
-                            var data = ConvertHexStringToByteArray(IMGDAT);
-                            var result = await FileUtil.SaveAsset(profile, IMGFIL, data);
-                            if (result)
-                            {
-                                ImageDisplayItem imageDisplayItem = new(IMGFIL, profile, IMGFIL, true)
-                                {
-                                    X = ITMX,
-                                    Y = ITMY,
-                                    Width = BGIMG == 1 ? SPWIDTH : RESIZW,
-                                    Height = BGIMG == 1 ? SPHEIGHT : RESIZH,
-                                    Hidden = hidden
-                                };
-                                displayItems.Add(imageDisplayItem);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        switch (key)
-                        {
-                            case "PROPERTIES":
-                                //do nothing
-                                break;
-                            case "LBL":
-                                TextDisplayItem textDisplayItem = new(LBL, profile)
-                                {
-                                    Font = FNTNAM,
-                                    FontSize = TXTSIZ,
-                                    Color = DecimalBgrToHex(VALCOL),
-                                    RightAlign = rightAlign,
-                                    X = ITMX,
-                                    Y = ITMY,
-                                    Width = WID,
-                                    Hidden = hidden
-                                };
-                                displayItems.Add(textDisplayItem);
-                                break;
-                            case "SDATE":
-                                {
-                                    CalendarDisplayItem calendarDisplayItem = new(LBL, profile)
-                                    {
-                                        Font = FNTNAM,
-                                        FontSize = TXTSIZ,
-                                        Color = DecimalBgrToHex(VALCOL),
-                                        Bold = bold,
-                                        Italic = italic,
-                                        RightAlign = rightAlign,
-                                        X = ITMX,
-                                        Y = ITMY,
-                                        Width = WID,
-                                        Hidden = hidden
-                                    };
-                                    displayItems.Add(calendarDisplayItem);
-                                }
-                                break;
-                            case "STIME":
-                            case "STIMENS":
-                                {
-                                    ClockDisplayItem clockDisplayItem = new(LBL, profile)
-                                    {
-                                        Font = FNTNAM,
-                                        FontSize = TXTSIZ,
-                                        Format = key == "STIME" ? "H:mm:ss" : "H:mm",
-                                        Color = DecimalBgrToHex(VALCOL),
-                                        Bold = bold,
-                                        Italic = italic,
-                                        RightAlign = rightAlign,
-                                        X = ITMX,
-                                        Y = ITMY,
-                                        Width = WID,
-                                        Hidden = hidden
-                                    };
-                                    displayItems.Add(clockDisplayItem);
-                                }
-                                break;
-                            default:
-                                {
-                                    var SHWLBL = item.GetIntValue("SHWLBL", 0);
-
-                                    if (SHWLBL == 1)
-                                    {
-                                        var LBLBIS = item.GetStringValue("LBLBIS", string.Empty);
-
-                                        if (LBLBIS.Length == 3)
-                                        {
-                                            if (int.TryParse(LBLBIS.AsSpan(0, 1), out int _bold))
-                                            {
-                                                bold = _bold == 1;
-                                            }
-                                            if (int.TryParse(LBLBIS.AsSpan(1, 1), out int _italic))
-                                            {
-                                                italic = _italic == 1;
-                                            }
-                                        }
-
-                                        TextDisplayItem label = new TextDisplayItem(LBL, profile)
-                                        {
-                                            Font = FNTNAM,
-                                            FontSize = TXTSIZ,
-                                            Color = DecimalBgrToHex(LBLCOL),
-                                            Bold = bold,
-                                            Italic = italic,
-                                            X = ITMX,
-                                            Y = ITMY,
-                                            Width = WID,
-                                            Hidden = hidden,
-                                        };
-                                        displayItems.Add(label);
-                                    }
-
-                                    var libreSensorId = SensorMapping.FindMatchingIdentifier(key) ?? "unknown";
-                                    var SHWVAL = item.GetIntValue("SHWVAL", 0);
-
-                                    if (simple || SHWVAL == 1)
-                                    {
-                                        var VALBIS = item.GetStringValue("VALBIS", string.Empty);
-
-                                        if (VALBIS.Length == 3)
-                                        {
-                                            if (int.TryParse(VALBIS.AsSpan(0, 1), out int _bold))
-                                            {
-                                                bold = _bold == 1;
-                                            }
-                                            if (int.TryParse(VALBIS.AsSpan(1, 1), out int _italic))
-                                            {
-                                                italic = _italic == 1;
-                                            }
-                                        }
-
-                                        SensorDisplayItem sensorDisplayItem = new(LBL, profile, libreSensorId)
-                                        {
-                                            SensorName = key,
-                                            Font = FNTNAM,
-                                            FontSize = TXTSIZ,
-                                            Color = DecimalBgrToHex(VALCOL),
-                                            Unit = UNT,
-                                            ShowUnit = SHWUNT == 1,
-                                            OverrideUnit = SHWUNT == 1,
-                                            Bold = bold,
-                                            Italic = italic,
-                                            RightAlign = rightAlign,
-                                            X = ITMX,
-                                            Y = ITMY,
-                                            Width = WID,
-                                            Hidden = hidden
-                                        };
-                                        displayItems.Add(sensorDisplayItem);
-                                    }
-
-                                    var SHWBAR = item.GetIntValue("SHWBAR", 0);
-
-                                    if (SHWBAR == 1)
-                                    {
-                                        var BARWID = item.GetIntValue("BARWID", 400);
-                                        var BARHEI = item.GetIntValue("BARHEI", 50);
-                                        var BARMIN = item.GetIntValue("BARMIN", 0);
-                                        var BARMAX = item.GetIntValue("BARMAX", 100);
-                                        var BARFRMCOL = item.GetIntValue("BARFRMCOL", 0);
-                                        var BARMINFGC = item.GetIntValue("BARMINFGC", 0);
-                                        var BARMINBGC = item.GetIntValue("BARMINBGC", 0);
-
-                                        var BARLIM3FGC = item.GetIntValue("BARLIM3FGC", 0);
-                                        var BARLIM3BGC = item.GetIntValue("BARLIM3BGC", 0);
-
-                                        //frame, shadow, 3d, right to left
-                                        var BARFS = item.GetStringValue("BARFS", "0000");
-
-                                        //bar placement
-                                        var BARPLC = item.GetStringValue("BARPLC", "SEP");
-
-                                        var offset = 0;
-
-                                        if (BARPLC == "SEP" && SHWVAL == 1)
-                                        {
-                                            var size2 = graphics.MeasureString("HELLO WORLD", FNTNAM, "", TXTSIZ);
-                                            offset = (int)size2.height;
-                                        }
-
-                                        var size = graphics.MeasureString(UNT, FNTNAM, "", TXTSIZ);
-
-                                        var frame = false;
-                                        var gradient = false;
-                                        var flipX = false;
-
-                                        if (BARFS.Length == 4)
-                                        {
-                                            if (int.TryParse(BARFS.AsSpan(0, 1), out int _frame))
-                                            {
-                                                frame = _frame == 1;
-                                            }
-                                            if (int.TryParse(BARFS.AsSpan(2, 1), out int _gradient))
-                                            {
-                                                gradient = _gradient == 1;
-                                            }
-                                            if (int.TryParse(BARFS.AsSpan(3, 1), out int _flipX))
-                                            {
-                                                flipX = _flipX == 1;
-                                            }
-                                        }
-
-                                        BarDisplayItem barDisplayItem = new(LBL, profile, libreSensorId)
-                                        {
-                                            SensorName = key,
-                                            Width = BARWID,
-                                            Height = BARHEI,
-                                            MinValue = BARMIN,
-                                            MaxValue = BARMAX,
-                                            Frame = frame,
-                                            FrameColor = DecimalBgrToHex(BARFRMCOL),
-                                            Color = DecimalBgrToHex(BARLIM3FGC),
-                                            Background = true,
-                                            BackgroundColor = DecimalBgrToHex(BARLIM3BGC),
-                                            Gradient = gradient,
-                                            GradientColor = DecimalBgrToHex(BARLIM3BGC),
-                                            FlipX = flipX,
-                                            X = ITMX,
-                                            Y = ITMY + offset,
-                                            Hidden = hidden,
-                                        };
-                                        displayItems.Add(barDisplayItem);
-                                    }
-                                }
-                                break;
-                        }
-                    }
-                }
-
-                SaveDisplayItems(profile, displayItems);
-
-                Dispatcher.CurrentDispatcher.Invoke(() =>
-                {
-                    ConfigModel.Instance.AddProfile(profile);
-                    ConfigModel.Instance.SaveProfiles();
-                    SharedModel.Instance.SelectedProfile = profile;
-                });
-            }
-        }
-        private static byte[] ConvertHexStringToByteArray(string hex)
-        {
-            if (hex.Length % 2 != 0)
-                throw new ArgumentException("Hex string must have an even length.");
-
-            byte[] bytes = new byte[hex.Length / 2];
-            for (int i = 0; i < hex.Length; i += 2)
-            {
-                bytes[i / 2] = Convert.ToByte(hex.Substring(i, 2), 16);
-            }
-
-            return bytes;
-        }
-        private static string EscapeContentWithinLBL(string xmlContent)
-        {
-            // Regular expression to match content within <LBL>...</LBL>
-            string pattern = @"<LBL>(.*?)</LBL>";
-
-            // Use Regex.Replace to find each match and escape its content
-            string result = Regex.Replace(xmlContent, pattern, match =>
-            {
-                // Escape the inner content
-                string innerContent = match.Groups[1].Value;
-                string escapedContent = innerContent
-                    .Replace("<", "&lt;")
-                    .Replace(">", "&gt;");
-                return $"<LBL>{escapedContent}</LBL>";
-            }, RegexOptions.Singleline);
-
-            return result;
-        }
-
-        private static string DecimalBgrToHex(int bgrValue)
-        {
-            // Handle negative values explicitly
-            if (bgrValue < 0)
-            {
-                return "#000000";
-            }
-
-            // Extract the individual B, G, R components from the BGR integer
-            int blue = (bgrValue & 0xFF0000) >> 16;
-            int green = (bgrValue & 0x00FF00) >> 8;
-            int red = (bgrValue & 0x0000FF);
-
-            // Convert to hexadecimal string with leading #
-            return $"#{red:X2}{green:X2}{blue:X2}";
-        }
-
-        public void ImportProfile(string importPath)
-        {
-            using (ZipArchive archive = ZipFile.OpenRead(importPath))
-            {
-                ZipArchiveEntry? profileEntry = null;
-                ZipArchiveEntry? displayItemsEntry = null;
-                List<ZipArchiveEntry> assets = new List<ZipArchiveEntry>();
-
-                foreach (ZipArchiveEntry entry in archive.Entries)
-                {
-                    if (entry.FullName.Equals("Profile.xml"))
-                    {
-                        profileEntry = entry;
-                    }
-                    else if (entry.FullName.Equals("DisplayItems.xml"))
-                    {
-                        displayItemsEntry = entry;
-                    }
-                    else if (entry.FullName.StartsWith("assets\\"))
-                    {
-                        assets.Add(entry);
-                    }
-                }
-
-                if (profileEntry != null && displayItemsEntry != null)
-                {
-                    //read profile settings
-                    Profile? profile = null;
-                    using (Stream entryStream = profileEntry.Open())
-                    {
-                        XmlSerializer xs = new XmlSerializer(typeof(Profile));
-                        using (var rd = XmlReader.Create(entryStream))
-                        {
-                            profile = xs.Deserialize(rd) as Profile;
-                        }
-                    }
-
-                    if (profile != null)
-                    {
-                        //change profile GUID & Name
-                        profile.Guid = Guid.NewGuid();
-                        profile.Name = "[Import] " + profile.Name;
-
-                        //extract displayitems
-                        var profileFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles");
-                        if (!Directory.Exists(profileFolder))
-                        {
-                            Directory.CreateDirectory(profileFolder);
-                        }
-                        var profilePath = Path.Combine(profileFolder, profile.Guid + ".xml");
-                        displayItemsEntry.ExtractToFile(profilePath);
-
-                        //smart import
-                        var displayItems = LoadDisplayItemsFromFile(profile);
-                        foreach (DisplayItem displayItem in displayItems)
-                        {
-                            if (displayItem is SensorDisplayItem sensorDisplayItem && sensorDisplayItem.SensorType == Enums.SensorType.HwInfo)
-                            {
-                                if (!HWHash.SENSORHASH.TryGetValue((sensorDisplayItem.Id, sensorDisplayItem.Instance, sensorDisplayItem.EntryId), out _))
-                                {
-                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(sensorDisplayItem.SensorName));
-                                    if (hash.NameDefault != null)
-                                    {
-                                        sensorDisplayItem.Id = hash.ParentID;
-                                        sensorDisplayItem.Instance = hash.ParentInstance;
-                                        sensorDisplayItem.EntryId = hash.SensorID;
-                                        Logger.Information("Smart imported {SensorName}", hash.NameDefault);
-                                    }
-                                }
-                            }
-                            else if (displayItem is ChartDisplayItem chartDisplayItem && chartDisplayItem.SensorType == Enums.SensorType.HwInfo)
-                            {
-                                if (!HWHash.SENSORHASH.TryGetValue((chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId), out _))
-                                {
-                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(chartDisplayItem.SensorName));
-                                    if (hash.NameDefault != null)
-                                    {
-                                        chartDisplayItem.Id = hash.ParentID;
-                                        chartDisplayItem.Instance = hash.ParentInstance;
-                                        chartDisplayItem.EntryId = hash.SensorID;
-                                        Logger.Information("Smart imported {SensorName}", hash.NameDefault);
-                                    }
-                                }
-                            }
-                            else if (displayItem is GaugeDisplayItem gaugeDisplayItem && gaugeDisplayItem.SensorType == Enums.SensorType.HwInfo)
-                            {
-                                if (!HWHash.SENSORHASH.TryGetValue((gaugeDisplayItem.Id, gaugeDisplayItem.Instance, gaugeDisplayItem.EntryId), out _))
-                                {
-                                    var hash = HWHash.GetOrderedList().Find(hash => hash.NameDefault.Equals(gaugeDisplayItem.SensorName));
-                                    if (hash.NameDefault != null)
-                                    {
-                                        gaugeDisplayItem.Id = hash.ParentID;
-                                        gaugeDisplayItem.Instance = hash.ParentInstance;
-                                        gaugeDisplayItem.EntryId = hash.SensorID;
-                                        Logger.Information("Smart imported {SensorName}", hash.NameDefault);
-                                    }
-                                }
-                            }
-                        }
-                        //save it back
-                        SaveDisplayItems(profile, displayItems);
-
-                        //extract assets
-                        var assetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "assets", profile.Guid.ToString());
-                        if (!Directory.Exists(assetFolder))
-                        {
-                            Directory.CreateDirectory(assetFolder);
-                        }
-                        foreach (var asset in assets)
-                        {
-                            var assetPath = Path.Combine(assetFolder, asset.Name);
-                            asset.ExtractToFile(assetPath);
-                        }
-
-                        //add profile
-                        ConfigModel.Instance.AddProfile(profile);
-                        ConfigModel.Instance.SaveProfiles();
-                        SharedModel.Instance.SelectedProfile = profile;
-                    }
-                }
+                Logger.Warning(ex, "Failed to export profile {ProfileName}", profile.Name);
+                return null;
             }
         }
 
-        public ImmutableList<DisplayItem> GetProfileDisplayItemsCopy()
-        {
-            if (SelectedProfile is Profile profile)
-            {
-                return GetProfileDisplayItemsCopy(profile);
-            }
-
-            return [];
-        }
-
-        public ImmutableList<DisplayItem> GetProfileDisplayItemsCopy(Profile profile)
-        {
-            if(!ProfileDisplayItemsCopy.TryGetValue(profile.Guid, out var displayItemsCopy))
-            {
-                AccessDisplayItems(profile, new Action<ObservableCollection<DisplayItem>>((displayItems) =>
-                {
-                    displayItemsCopy = [.. displayItems];
-                    ProfileDisplayItemsCopy[profile.Guid] = displayItemsCopy;
-                }));
-            }
-
-            return displayItemsCopy ?? [];
-        }
-
-
-        public static async Task<ICollection<DisplayItem>> LoadDisplayItemsAsync(Profile profile)
-        {
-            return await Task.Run(() => LoadDisplayItemsFromFile(profile));
-        }
-
-        private static List<DisplayItem> LoadDisplayItemsFromFile(Profile profile)
-        {
-            var fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "profiles", profile.Guid + ".xml");
-            if (File.Exists(fileName))
-            {
-                XmlSerializer xs = new(typeof(List<DisplayItem>),
-                    [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
-
-                using var rd = XmlReader.Create(fileName);
-                try
-                {
-                    if (xs.Deserialize(rd) is List<DisplayItem> displayItems)
-                    {
-                        foreach (var displayItem in displayItems)
-                        {
-                            displayItem.SetProfile(profile);
-                        }
-
-                        return displayItems;
-                    }
-                }
-                catch { }
-            }
-
-            return [];
-        }
     }
-
 }

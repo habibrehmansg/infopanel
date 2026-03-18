@@ -1,13 +1,18 @@
-﻿using System;
+using System;
 using System.ComponentModel;
-using System.Reflection;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
+using InfoPanel.Models;
 using InfoPanel.Utils;
 using Serilog;
 using Wpf.Ui;
+using Wpf.Ui.Abstractions;
+using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Windows
@@ -25,25 +30,46 @@ namespace InfoPanel.Views.Windows
         [DllImport("user32.dll")]
         private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr changeFilterStruct);
 
+        [DllImport("kernel32.dll")]
+        private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
+
         private const uint MSGFLT_ALLOW = 1;
 
         private readonly ITaskBarService _taskBarService;
         private uint _taskbarCreatedMessageId;
         private HwndSource? _hwndSource;
+        private bool _isExiting;
+        private readonly IContentDialogService _contentDialogService;
 
-        public MainWindow(INavigationService navigationService, IPageService pageService, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
+        public MainWindow(INavigationService navigationService, INavigationViewPageProvider pageProvider, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
             // Assign the view model
             //ViewModel = viewModel;
             DataContext = this;
 
+            _contentDialogService = contentDialogService;
             // Attach the taskbar service
             _taskBarService = taskBarService;
 
             InitializeComponent();
 
+            // Apply saved theme after InitializeComponent so it overrides the
+            // ThemesDictionary default from App.xaml.
+            var savedTheme = ConfigModel.Instance.Settings.AppTheme switch
+            {
+                1 => ApplicationTheme.Dark,
+                _ => ApplicationTheme.Light
+            };
+            ApplicationThemeManager.Apply(savedTheme, WindowBackdropType.Mica, true);
+            App.SyncMahAppsTheme(savedTheme);
+
+            ApplicationThemeManager.Changed += (theme, _) =>
+            {
+                App.SyncMahAppsTheme(theme);
+            };
+
             // We define a page provider for navigation
-            SetPageService(pageService);
+            SetPageService(pageProvider);
 
             // If you want to use INavigationService instead of INavigationWindow you can define its navigation here.
             navigationService.SetNavigationControl(RootNavigation);
@@ -51,24 +77,18 @@ namespace InfoPanel.Views.Windows
             snackbarService.SetSnackbarPresenter(RootSnackbar);
             contentDialogService.SetDialogHost(RootContentDialog);
 
-            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
-
-            if (version != null)
-            {
-                RootTitleBar.Title = $"InfoPanel - v{version}";
-            }
+            RootTitleBar.Title = $"InfoPanel - v{VersionHelper.AppVersion}";
 
             Loaded += MainWindow_Loaded;
             StateChanged += MainWindow_StateChanged;
-
+            PreviewKeyDown += MainWindow_PreviewKeyDown;
+            SizeChanged += MainWindow_SizeChanged;
             var screenHeight = SystemParameters.PrimaryScreenHeight;
             var desiredHeight = screenHeight * 0.80;
-
             if (desiredHeight > MinHeight)
             {
                 Height = desiredHeight;
             }
-
         }
 
         private void MainWindow_StateChanged(object? sender, EventArgs e)
@@ -76,11 +96,54 @@ namespace InfoPanel.Views.Windows
             if (WindowState == WindowState.Minimized)
             {
                 SharedModel.Instance.SelectedItem = null;
-                
+
                 if (ConfigModel.Instance.Settings.MinimizeToTray)
                 {
                     Hide();
                 }
+
+                // Trim working set — releases physical pages the OS can reclaim
+                SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1));
+            }
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.OriginalSource is System.Windows.Controls.TextBox or
+                System.Windows.Controls.Primitives.TextBoxBase)
+                return;
+
+            if (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    if (SharedModel.Instance.CanRedo)
+                        SharedModel.Instance.Redo();
+                }
+                else
+                {
+                    if (SharedModel.Instance.CanUndo)
+                        SharedModel.Instance.Undo();
+                }
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Y && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if (SharedModel.Instance.CanRedo)
+                    SharedModel.Instance.Redo();
+                e.Handled = true;
+            }
+        }
+
+        private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (WindowState != WindowState.Normal)
+                return;
+
+            if (e.NewSize.Width >= MinWidth && e.NewSize.Height >= MinHeight)
+            {
+                ConfigModel.Instance.Settings.UiWidth = (float)e.NewSize.Width;
+                ConfigModel.Instance.Settings.UiHeight = (float)e.NewSize.Height;
             }
         }
 
@@ -96,6 +159,8 @@ namespace InfoPanel.Views.Windows
             {
                 ChangeWindowMessageFilterEx(hwnd, _taskbarCreatedMessageId, MSGFLT_ALLOW, IntPtr.Zero);
             }
+
+            SystemThemeWatcher.Watch(this);
 
             if (ConfigModel.Instance.Settings.StartMinimized)
             {
@@ -126,8 +191,8 @@ namespace InfoPanel.Views.Windows
 
         private void Window_ContentRendered(object sender, EventArgs e)
         {
-            MinWidth = 1300;
-            MinHeight = 900;
+            MinWidth = 900;
+            MinHeight = 600;
 
             Navigate(typeof(Pages.HomePage));
 
@@ -179,6 +244,7 @@ namespace InfoPanel.Views.Windows
                         Navigate(typeof(Pages.AboutPage));
                         break;
                     case "close":
+                        _isExiting = true;
                         Close();
                         break;
                     default:
@@ -205,27 +271,14 @@ namespace InfoPanel.Views.Windows
 
         #region INavigationWindow methods
 
-        public Frame GetFrame()
-        {
-            // In WPF-UI v3, NavigationView manages its own internal frame
-            // We need to return a Frame for compatibility, so we'll create one if needed
-            if (_navigationFrame == null)
-            {
-                _navigationFrame = new Frame();
-            }
-            return _navigationFrame;
-        }
-        
-        private Frame? _navigationFrame;
-
         public INavigationView GetNavigation()
             => RootNavigation;
 
         public bool Navigate(Type pageType)
-            => RootNavigation.Navigate(pageType) != null;
+            => RootNavigation.Navigate(pageType);
 
-        public void SetPageService(IPageService pageService)
-            => RootNavigation.SetPageService(pageService);
+        public void SetPageService(INavigationViewPageProvider pageProvider)
+            => RootNavigation.SetPageProviderService(pageProvider);
 
         public void ShowWindow()
             => Show();
@@ -235,18 +288,22 @@ namespace InfoPanel.Views.Windows
 
         public void SetServiceProvider(IServiceProvider serviceProvider)
         {
-            // This is used to provide services to the navigation window
-            // Implementation depends on your specific needs
         }
 
         #endregion INavigationWindow methods
 
         private async void MainWindow_Closing(object sender, CancelEventArgs e)
         {
+            if (!_isExiting && ConfigModel.Instance.Settings.CloseToMinimize)
+            {
+                e.Cancel = true;
+                WindowState = WindowState.Minimized;
+                return;
+            }
+
             _hwndSource?.RemoveHook(WndProc);
 
             e.Cancel = true;
-            //perform shutdown operations here
 
             if (WindowState != WindowState.Minimized)
             {

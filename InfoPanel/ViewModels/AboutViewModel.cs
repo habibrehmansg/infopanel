@@ -1,7 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using System.Collections.ObjectModel;
-using System.Reflection;
 
 namespace InfoPanel.ViewModels
 {
@@ -47,7 +47,7 @@ namespace InfoPanel.ViewModels
 
         public AboutViewModel() 
         {
-            Version = Assembly.GetExecutingAssembly().GetName().Version!.ToString(3);
+            Version = VersionHelper.AppVersion;
             InitializeCollections();
         }
 

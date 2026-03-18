@@ -1,4 +1,4 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using InfoPanel.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -14,6 +14,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using Wpf.Ui.Controls;
 
 namespace InfoPanel.Views.Components
 {
@@ -34,6 +35,18 @@ namespace InfoPanel.Views.Components
         public PluginProperties()
         {
             InitializeComponent();
+        }
+
+        private void NumberBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is NumberBox numBox
+                && numBox.DataContext is PluginConfigPropertyViewModel vm
+                && numBox.Value is double newValue
+                && newValue != vm.NumericValue)
+            {
+                // Spinner click — NumberBox already updated Value, push to VM
+                vm.NumericValue = newValue;
+            }
         }
     }
 }

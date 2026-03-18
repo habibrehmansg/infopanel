@@ -1,4 +1,4 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using LibreHardwareMonitor.Hardware;
@@ -18,7 +18,7 @@ namespace InfoPanel.Drawing
         {
             ExpirationScanFrequency = TimeSpan.FromSeconds(5)
         });
-        private static readonly ConcurrentDictionary<(UInt32, UInt32, UInt32), Queue<double>> GraphDataCache = [];
+        private static readonly ConcurrentDictionary<(int, UInt32, UInt32, UInt32), Queue<double>> GraphDataCache = [];
         private static readonly ConcurrentDictionary<string, Queue<double>> GraphDataCache2 = [];
         private static readonly ConcurrentDictionary<string, Queue<double>> GraphDataCache3 = [];
         private static readonly Stopwatch Stopwatch = new();
@@ -28,9 +28,9 @@ namespace InfoPanel.Drawing
             Stopwatch.Start();
         }
 
-        private static Queue<double> GetGraphDataQueue(UInt32 id, UInt32 instance, UInt32 entryId)
+        private static Queue<double> GetGraphDataQueue(int remoteIndex, UInt32 id, UInt32 instance, UInt32 entryId)
         {
-            var key = (id, instance, entryId);
+            var key = (remoteIndex, id, instance, entryId);
 
             GraphDataCache.TryGetValue(key, out Queue<double>? result);
 
@@ -157,10 +157,10 @@ namespace InfoPanel.Drawing
                 }
                 else
                 {
-                    queue = GetGraphDataQueue(chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId);
+                    queue = GetGraphDataQueue(chartDisplayItem.HwInfoRemoteIndex, chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId);
                 }
 
-                if (queue.Count == 0)
+                if (queue.Count == 0 && chartDisplayItem is not BarDisplayItem)
                 {
                     return;
                 }

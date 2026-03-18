@@ -6,11 +6,123 @@
     xmlns:local="clr-namespace:InfoPanel.Views.Components"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:converters="clr-namespace:InfoPanel.Views.Converters"
     xmlns:viewmodels="clr-namespace:InfoPanel.ViewModels"
     d:DataContext="{d:DesignInstance Type=viewmodels:PluginViewModel}"
     d:DesignHeight="450"
     d:DesignWidth="800"
     mc:Ignorable="d">
+    <UserControl.Resources>
+        <converters:PluginConfigTemplateSelector x:Key="PluginConfigTemplateSelector">
+            <converters:PluginConfigTemplateSelector.StringTemplate>
+                <DataTemplate DataType="{x:Type viewmodels:PluginConfigPropertyViewModel}">
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
+                        <TextBox
+                            Grid.Column="1"
+                            FontSize="12"
+                            Text="{Binding StringValue, UpdateSourceTrigger=LostFocus}" />
+                    </Grid>
+                </DataTemplate>
+            </converters:PluginConfigTemplateSelector.StringTemplate>
+            <converters:PluginConfigTemplateSelector.IntegerTemplate>
+                <DataTemplate DataType="{x:Type viewmodels:PluginConfigPropertyViewModel}">
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
+                        <ui:NumberBox
+                            Grid.Column="1"
+                            FontSize="12"
+                            MaxDecimalPlaces="0"
+                            Minimum="{Binding MinValue}"
+                            Maximum="{Binding MaxValue}"
+                            SmallChange="{Binding Step, TargetNullValue=1}"
+                            Text="{Binding NumericValue}"
+                            TextChanged="NumberBox_TextChanged"
+                            Value="{Binding NumericValue, Mode=OneWay}" />
+                    </Grid>
+                </DataTemplate>
+            </converters:PluginConfigTemplateSelector.IntegerTemplate>
+            <converters:PluginConfigTemplateSelector.DoubleTemplate>
+                <DataTemplate DataType="{x:Type viewmodels:PluginConfigPropertyViewModel}">
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
+                        <ui:NumberBox
+                            Grid.Column="1"
+                            FontSize="12"
+                            MaxDecimalPlaces="2"
+                            Minimum="{Binding MinValue}"
+                            Maximum="{Binding MaxValue}"
+                            SmallChange="{Binding Step, TargetNullValue=0.1}"
+                            Text="{Binding NumericValue}"
+                            TextChanged="NumberBox_TextChanged"
+                            Value="{Binding NumericValue, Mode=OneWay}" />
+                    </Grid>
+                </DataTemplate>
+            </converters:PluginConfigTemplateSelector.DoubleTemplate>
+            <converters:PluginConfigTemplateSelector.BooleanTemplate>
+                <DataTemplate DataType="{x:Type viewmodels:PluginConfigPropertyViewModel}">
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
+                        <ui:ToggleSwitch
+                            Grid.Column="1"
+                            IsChecked="{Binding BoolValue}" />
+                    </Grid>
+                </DataTemplate>
+            </converters:PluginConfigTemplateSelector.BooleanTemplate>
+            <converters:PluginConfigTemplateSelector.ChoiceTemplate>
+                <DataTemplate DataType="{x:Type viewmodels:PluginConfigPropertyViewModel}">
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Text="{Binding DisplayName}"
+                            ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
+                        <ComboBox
+                            Grid.Column="1"
+                            FontSize="12"
+                            ItemsSource="{Binding Options}"
+                            SelectedIndex="{Binding SelectedIndex}" />
+                    </Grid>
+                </DataTemplate>
+            </converters:PluginConfigTemplateSelector.ChoiceTemplate>
+        </converters:PluginConfigTemplateSelector>
+    </UserControl.Resources>
     <Grid>
         <ui:CardExpander Margin="0,10,0,0" IsEnabled="{Binding ControlEnabled}">
             <ui:CardExpander.Header>
@@ -37,7 +149,7 @@
                                     Grid.Column="2"
                                     VerticalAlignment="Center"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="{Binding Author, StringFormat=' by {0}'}"
                                     Visibility="{Binding Author, Converter={StaticResource NullToVisibilityConverter}}" />
 
@@ -45,7 +157,7 @@
                                     Grid.Column="1"
                                     VerticalAlignment="Center"
                                     FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="{Binding Version, StringFormat=' v{0}'}"
                                     Visibility="{Binding Version, Converter={StaticResource NullToVisibilityConverter}}" />
 
@@ -57,8 +169,9 @@
                                 Margin="0,5,0,0"
                                 VerticalAlignment="Center"
                                 FontSize="12"
-                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                Text="{Binding Description}" />
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding Description}"
+                                TextWrapping="Wrap" />
 
                             <ui:HyperlinkButton
                                 Margin="0,5,0,0"
@@ -73,52 +186,131 @@
                         </StackPanel>
 
 
-                        <ui:ToggleSwitch
-                            Grid.Column="2"
-                            Margin="0,0,0,0"
+                        <StackPanel
+                            Grid.Column="1"
                             VerticalAlignment="Center"
-                            IsChecked="{Binding Activated}" />
+                            Margin="0,0,20,0"
+                            Visibility="{Binding ShowMetrics, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border
+                                Width="120"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="8,4">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Symbol="TopSpeed20" />
+                                    <TextBlock
+                                        Margin="5,0,0,0"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="CPU" />
+                                    <TextBlock
+                                        Margin="6,0,0,0"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        FontWeight="Medium"
+                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                        Text="{Binding CpuUsage, StringFormat='{}{0:F1}%'}" />
+                                </StackPanel>
+                            </Border>
+                            <Border
+                                Width="120"
+                                Margin="0,4,0,0"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="8,4">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Symbol="Memory16" />
+                                    <TextBlock
+                                        Margin="5,0,0,0"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="MEM" />
+                                    <TextBlock
+                                        Margin="6,0,0,0"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        FontWeight="Medium"
+                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                        Text="{Binding MemoryUsage}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <Grid Grid.Column="2" Margin="0,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <ui:ToggleSwitch
+                                Margin="0,0,0,0"
+                                VerticalAlignment="Center"
+                                IsChecked="{Binding Activated}" />
+                            <ui:Button
+                                Grid.Row="1"
+                                Width="32"
+                                Height="32"
+                                Margin="0,10,0,0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Bottom"
+                                Appearance="Danger"
+                                BorderThickness="0"
+                                Command="{Binding RemoveCommand}"
+                                Icon="{ui:SymbolIcon Delete20}"
+                                ToolTip="Uninstall plugin"
+                                Visibility="{Binding ShowRemoveButton, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </Grid>
                     </Grid>
 
 
                 </StackPanel>
             </ui:CardExpander.Header>
 
+            <StackPanel>
+            <TextBlock
+                Margin="0,0,0,0"
+                FontSize="12"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="Plugin not loaded."
+                Visibility="{Binding Activated, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+
             <ItemsControl
                 Margin="0,0,0,0"
                 d:ItemsSource="{Binding Plugins}"
-                ItemsSource="{Binding Plugins}">
+                ItemsSource="{Binding Plugins}"
+                Visibility="{Binding Activated, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <ui:CardControl Margin="0,10,0,0">
-                            <ui:CardControl.Header>
-                                <Grid>
+                        <ui:CardExpander Margin="0,10,0,0" IsExpanded="{Binding HasConfigProperties, Mode=OneTime}">
+                            <ui:CardExpander.Header>
+                                <Grid Margin="0,0,20,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                FontSize="13"
-                                                FontWeight="Medium"
-                                                Text="{Binding Name}" />
-                                        </Grid>
+                                        <TextBlock
+                                            FontSize="13"
+                                            FontWeight="Medium"
+                                            Text="{Binding Name}" />
 
-                                        <Grid Margin="0,5,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                VerticalAlignment="Center"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                                Text="{Binding Description}" />
-                                        </Grid>
+                                        <TextBlock
+                                            Margin="0,5,0,0"
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding Description}" />
 
                                         <ItemsControl
                                             Margin="0,10,0,0"
@@ -140,7 +332,7 @@
                                         </ItemsControl>
                                     </StackPanel>
 
-                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                         <ui:Anchor
                                             Width="150"
                                             VerticalAlignment="Center"
@@ -157,12 +349,19 @@
                                             Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
                                     </StackPanel>
                                 </Grid>
+                            </ui:CardExpander.Header>
 
-                            </ui:CardControl.Header>
-                        </ui:CardControl>
+                            <ItemsControl
+                                Margin="0,0,0,0"
+                                IsEnabled="{Binding ConfigLoaded}"
+                                ItemsSource="{Binding ConfigProperties}"
+                                ItemTemplateSelector="{StaticResource PluginConfigTemplateSelector}" />
+
+                        </ui:CardExpander>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </StackPanel>
 
         </ui:CardExpander>
     </Grid>

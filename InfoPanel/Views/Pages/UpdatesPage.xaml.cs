@@ -1,7 +1,7 @@
-﻿using Flurl;
-using Flurl.Http;
 using InfoPanel.Models;
+using InfoPanel.Services;
 using InfoPanel.ViewModels;
+using Serilog;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -10,6 +10,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Text.RegularExpressions;
+using System.Windows.Documents;
 
 namespace InfoPanel.Views.Pages
 {
@@ -18,6 +20,8 @@ namespace InfoPanel.Views.Pages
     /// </summary>
     public partial class UpdatesPage : Page
     {
+        private static readonly ILogger Logger = Log.ForContext<UpdatesPage>();
+
         public UpdatesViewModel ViewModel
         {
             get;
@@ -29,7 +33,7 @@ namespace InfoPanel.Views.Pages
             DataContext = viewModel;
 
             InitializeComponent();
-            CheckUpdates();
+            ApplyUpdateCheckResults();
         }
 
         private void ButtonCheckUpdates_Click(object sender, RoutedEventArgs e)
@@ -37,48 +41,173 @@ namespace InfoPanel.Views.Pages
             CheckUpdates();
         }
 
+        private void ApplyUpdateCheckResults()
+        {
+            var checker = UpdateChecker.Instance;
+
+            if (checker.LatestVersion != null)
+            {
+                ApplyVersionResult(checker);
+                ApplyChangelog(checker);
+            }
+            else
+            {
+                // Startup check hasn't completed yet — listen for it
+                ViewModel.UpdateCheckInProgress = true;
+                checker.UpdateCheckCompleted += OnStartupCheckCompleted;
+            }
+        }
+
+        private void OnStartupCheckCompleted()
+        {
+            UpdateChecker.Instance.UpdateCheckCompleted -= OnStartupCheckCompleted;
+            Dispatcher.Invoke(() =>
+            {
+                var checker = UpdateChecker.Instance;
+                ApplyVersionResult(checker);
+                ApplyChangelog(checker);
+                ViewModel.UpdateCheckInProgress = false;
+            });
+        }
+
+        private void ApplyVersionResult(UpdateChecker checker)
+        {
+            if (checker.UpdateAvailable && checker.LatestVersion != null)
+            {
+                ViewModel.VersionModel = checker.LatestVersion;
+                ViewModel.UpdateAvailable = true;
+            }
+            else
+            {
+                ViewModel.UpdateAvailable = false;
+            }
+        }
+
+        private void ApplyChangelog(UpdateChecker checker)
+        {
+            ViewModel.UpdateVersions.Clear();
+
+            if (checker.Versions == null) return;
+
+            bool first = true;
+            foreach (var v in checker.Versions)
+            {
+                ViewModel.UpdateVersions.Add(new UpdateVersion
+                {
+                    Version = v.Version,
+                    Title = v.Changelog,
+                    Expanded = first,
+                    Changelog = v.Changelog
+                });
+
+                first = false;
+            }
+        }
+
         private async void CheckUpdates()
         {
             ViewModel.UpdateCheckInProgress = true;
 
-            var latestVersion = await "https://update.infopanel.net"
-                .AppendPathSegment("latest")
-                .GetAsync()
-                .ReceiveJson<VersionModel>();
+            var checker = UpdateChecker.Instance;
+            await checker.CheckAsync();
 
-            await Task.Delay(500);
-
-            if (IsNewerVersionAvailable(ViewModel.Version, latestVersion.Version))
-            {
-                ViewModel.VersionModel = latestVersion;
-                ViewModel.UpdateAvailable = true;
-            } else
-            {
-                ViewModel.UpdateAvailable = false;
-            }
+            ApplyVersionResult(checker);
+            ApplyChangelog(checker);
 
             ViewModel.UpdateCheckInProgress = false;
         }
 
-        private bool IsNewerVersionAvailable(string currentVersion, string newVersion)
+        private void ChangelogTextBlock_Loaded(object sender, RoutedEventArgs e)
         {
-            Version current = Version.Parse(currentVersion);
-            Version latest = Version.Parse(newVersion);
+            if (sender is TextBlock tb && tb.DataContext is UpdateVersion version)
+            {
+                PopulateChangelogInlines(tb, version.Changelog);
+            }
+        }
 
-            return latest > current;
+        private static void PopulateChangelogInlines(TextBlock textBlock, string markdown)
+        {
+            textBlock.Inlines.Clear();
+            if (string.IsNullOrWhiteSpace(markdown)) return;
+
+            var lines = markdown.Split('\n');
+            bool firstLine = true;
+
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+
+                if (trimmed.StartsWith("# ") && !trimmed.StartsWith("## "))
+                {
+                    // Top-level header (e.g. "# InfoPanel v1.3.1 Release Notes") — skip
+                    continue;
+                }
+
+                if (!firstLine)
+                    textBlock.Inlines.Add(new LineBreak());
+
+                if (trimmed.StartsWith("## "))
+                {
+                    // Category header — bold, slightly larger
+                    if (!firstLine)
+                        textBlock.Inlines.Add(new LineBreak()); // extra spacing before header
+
+                    var header = trimmed[3..];
+                    textBlock.Inlines.Add(new Run(header) { FontWeight = FontWeights.SemiBold, FontSize = 13 });
+                }
+                else if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
+                {
+                    // Bullet item
+                    var text = trimmed[2..];
+                    AddInlineText(textBlock, $"  \u2022 {text}");
+                }
+                else
+                {
+                    AddInlineText(textBlock, trimmed);
+                }
+
+                firstLine = false;
+            }
+        }
+
+        private static readonly Regex BoldPattern = new(@"\*\*(.+?)\*\*", RegexOptions.Compiled);
+
+        private static void AddInlineText(TextBlock textBlock, string text)
+        {
+            var matches = BoldPattern.Matches(text);
+            if (matches.Count == 0)
+            {
+                textBlock.Inlines.Add(new Run(text));
+                return;
+            }
+
+            int pos = 0;
+            foreach (Match match in matches)
+            {
+                if (match.Index > pos)
+                    textBlock.Inlines.Add(new Run(text[pos..match.Index]));
+
+                textBlock.Inlines.Add(new Run(match.Groups[1].Value) { FontWeight = FontWeights.SemiBold });
+                pos = match.Index + match.Length;
+            }
+
+            if (pos < text.Length)
+                textBlock.Inlines.Add(new Run(text[pos..]));
         }
 
         private async void ButtonUpdate_Click(object sender, RoutedEventArgs e)
         {
-            if (ViewModel.VersionModel?.Url is string url)
+            if (ViewModel.VersionModel?.DownloadUrl is string url)
             {
                 ViewModel.DownloadInProgress = true;
                 ViewModel.DownloadProgress = 0;
 
                 var cts = new CancellationTokenSource();
-                IProgress<DownloadProgressArgs> progressReporter = new Progress<DownloadProgressArgs>(progressReporter =>
+                IProgress<DownloadProgressArgs> progressReporter = new Progress<DownloadProgressArgs>(args =>
                 {
-                    ViewModel.DownloadProgress = progressReporter.PercentComplete;
+                    ViewModel.DownloadProgress = args.PercentComplete;
+                    ViewModel.DownloadStatus = $"{FormatBytes(args.BytesReceived)} / {FormatBytes(args.TotalBytes)} ({args.PercentComplete:F0}%)";
                 });
 
                 using (var stream = await DownloadStreamWithProgressAsync(url, cts.Token, progressReporter))
@@ -115,41 +244,48 @@ namespace InfoPanel.Views.Pages
 
         public static async Task<Stream> DownloadStreamWithProgressAsync(string url, CancellationToken cancellationToken, IProgress<DownloadProgressArgs> progessReporter)
         {
-            try
+            using var httpClient = new HttpClient();
+            using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var receivedBytes = 0;
+            var buffer = new byte[4096];
+            var totalBytes = Convert.ToDouble(response.Content.Headers.ContentLength);
+
+            var memStream = new MemoryStream();
+
+            while (true)
             {
-                using IFlurlResponse response = await url.GetAsync(HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-                using var stream = await response.GetStreamAsync();
-                var receivedBytes = 0;
-                var buffer = new byte[4096];
-                var totalBytes = Convert.ToDouble(response.ResponseMessage.Content.Headers.ContentLength);
+                cancellationToken.ThrowIfCancellationRequested();
 
-                var memStream = new MemoryStream();
+                int bytesRead = await stream.ReadAsync(buffer, cancellationToken);
 
-                while (true)
+                await memStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+
+                if (bytesRead == 0)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-
-                    await memStream.WriteAsync(buffer, 0, bytesRead);
-
-                    if (bytesRead == 0)
-                    {
-                        break;
-                    }
-                    receivedBytes += bytesRead;
-
-                    var args = new DownloadProgressArgs(receivedBytes, totalBytes);
-                    progessReporter.Report(args);
+                    break;
                 }
+                receivedBytes += bytesRead;
 
-                memStream.Position = 0;
-                return memStream;
+                var args = new DownloadProgressArgs(receivedBytes, totalBytes);
+                progessReporter.Report(args);
             }
-            catch (Exception e)
+
+            memStream.Position = 0;
+            return memStream;
+        }
+
+        private static string FormatBytes(double bytes)
+        {
+            return bytes switch
             {
-                throw e;
-            }
+                >= 1_073_741_824 => $"{bytes / 1_073_741_824:F2} GB",
+                >= 1_048_576 => $"{bytes / 1_048_576:F1} MB",
+                >= 1_024 => $"{bytes / 1_024:F0} KB",
+                _ => $"{bytes:F0} B"
+            };
         }
 
         public class DownloadProgressArgs : EventArgs

@@ -19,6 +19,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -57,13 +59,33 @@ jobs:
     ###################################
     # Everything below is only for tagged Releases
     ###################################
+    - name: Generate Release Notes
+      if: startsWith(github.ref, 'refs/tags/')
+      shell: bash
+      run: |
+        TAG="${GITHUB_REF#refs/tags/}"
+        RESPONSE=$(curl -sf --max-time 120 -X POST \
+          "https://api.infopanel.net/v1/github/releases/${TAG}/notes" \
+          -H "Authorization: Bearer ${{ secrets.INFOPANEL_GH_ACTIONS_SECRET }}" \
+          -H "Content-Type: application/json") || true
+
+        if [ -n "$RESPONSE" ]; then
+          echo "$RESPONSE" | jq -r '.notes' > release_notes.md
+          echo "Generated release notes:"
+          cat release_notes.md
+        else
+          echo "::warning::Release notes generation failed, using GitHub default"
+          echo "" > release_notes.md
+        fi
+
     - name: Upload Release Asset
       if: startsWith(github.ref, 'refs/tags/')
       id: upload-release-asset
       uses: ncipollo/release-action@v1
       with:
         artifacts: ${{ github.workspace }}/InnoSetup/Output/InfoPanelSetup.exe
-        generateReleaseNotes: true
+        bodyFile: release_notes.md
+        generateReleaseNotes: false
         allowUpdates: true
         draft: false
-        prerelease: false
+        prerelease: ${{ contains(github.ref, '-') }}

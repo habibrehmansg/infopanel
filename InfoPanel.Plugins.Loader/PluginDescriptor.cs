@@ -16,6 +16,7 @@ namespace InfoPanel.Plugins.Loader
         public string? FolderPath => Path.GetDirectoryName(FilePath);
         public string? FolderName => Path.GetFileName(FolderPath);
         public PluginInfo? PluginInfo { get; set; } = pluginInfo;
+        public string? Slug { get; set; }
 
         public readonly Dictionary<string, PluginWrapper> PluginWrappers = [];
     }

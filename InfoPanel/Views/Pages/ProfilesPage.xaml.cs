@@ -1,11 +1,12 @@
 ﻿using InfoPanel.Models;
+using InfoPanel.Utils;
 using InfoPanel.ViewModels;
-using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Forms;
+using Wpf.Ui.Abstractions.Controls;
 using Wpf.Ui.Controls;
 using Wpf.Ui;
 
@@ -27,7 +28,6 @@ namespace InfoPanel.Views.Pages
             ViewModel = viewModel;
             DataContext = this;
 
-            LoadAllFonts();
             _contentDialogService = contentDialogService;
             _snackbarService = snackbarService;
 
@@ -37,20 +37,17 @@ namespace InfoPanel.Views.Pages
             Unloaded += ProfilesPage_Unloaded;
         }
 
-        private void LoadAllFonts()
-        {
-            var allFonts = SKFontManager.Default.GetFontFamilies()
-                .OrderBy(f => f)
-                .ToList();
 
-            foreach (var font in allFonts)
+        private async void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (InstalledFonts.Count == 0)
             {
-                InstalledFonts.Add(font);
+                var fonts = await FontCache.GetFontsAsync();
+                foreach (var font in fonts)
+                {
+                    InstalledFonts.Add(font);
+                }
             }
-        }
-
-        private void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
-        {
         }
 
         private void ProfilesPage_Unloaded(object sender, RoutedEventArgs e)
@@ -130,9 +127,18 @@ namespace InfoPanel.Views.Pages
             }
         }
 
+        private void ListViewProfiles_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (ListViewProfiles.SelectedItem != null)
+            {
+                ProfileDetailOverlay.Visibility = Visibility.Visible;
+            }
+        }
+
         private void ButtonClose_Click(object sender, RoutedEventArgs e)
         {
             ViewModel.Profile = null;
+            ProfileDetailOverlay.Visibility = Visibility.Collapsed;
         }
     }
 }

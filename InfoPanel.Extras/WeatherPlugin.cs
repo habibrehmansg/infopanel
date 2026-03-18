@@ -1,17 +1,17 @@
 ﻿using InfoPanel.Plugins;
-using IniParser;
-using IniParser.Model;
-using OpenWeatherMap.Standard;
-using System.ComponentModel;
+using OpenWeatherMap.Cache;
+using OpenWeatherMap.Cache.Models;
 using System.Diagnostics;
-using System.Reflection;
 
 namespace InfoPanel.Extras
 {
-    public class WeatherPlugin : BasePlugin
+    public class WeatherPlugin : BasePlugin, IPluginConfigurable
     {
-        private Current? _current;
-        private string? _city;
+        private OpenWeatherMapCache? _current;
+        private City _cityObj;
+        private bool _isConfigured;
+        private string _apiKey = "";
+        private string _cityName = "";
 
         private readonly PluginText _name = new("name", "Name", "-");
         private readonly PluginText _weather = new("weather", "Weather", "-");
@@ -41,30 +41,76 @@ namespace InfoPanel.Extras
         {
         }
 
-        public override string? ConfigFilePath => Config.FilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromMinutes(1);
+
+        public IReadOnlyList<PluginConfigProperty> ConfigProperties =>
+        [
+            new PluginConfigProperty
+            {
+                Key = "APIKey",
+                DisplayName = "API Key",
+                Description = "OpenWeatherMap API key. Use the 'Get API Key' action to obtain one.",
+                Type = PluginConfigType.String,
+                Value = _apiKey
+            },
+            new PluginConfigProperty
+            {
+                Key = "City",
+                DisplayName = "City",
+                Description = "City name for weather data (e.g. Singapore, London).",
+                Type = PluginConfigType.String,
+                Value = _cityName
+            }
+        ];
+
+        public void ApplyConfig(string key, object? value)
+        {
+            var strValue = value?.ToString() ?? "";
+
+            switch (key)
+            {
+                case "APIKey":
+                    _apiKey = strValue;
+                    break;
+                case "City":
+                    _cityName = strValue;
+                    break;
+                default:
+                    return;
+            }
+
+            RebuildClient();
+        }
+
+        private void RebuildClient()
+        {
+            _current?.Dispose();
+            _current = null;
+            _isConfigured = false;
+
+            if (!string.IsNullOrEmpty(_apiKey) && !string.IsNullOrEmpty(_cityName))
+            {
+                _current = new OpenWeatherMapCache(_apiKey, 10_000);
+                _cityObj = new City(_cityName);
+                _isConfigured = true;
+            }
+        }
 
         public override void Initialize()
         {
-            Config.Instance.Load();
-            Config.Instance.TryGetValue(Config.SECTION_WEATHER, "APIKey", out string apiKey);
-            Config.Instance.TryGetValue(Config.SECTION_WEATHER, "City", out _city);
-
-            if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(_city))
-            {
-                _current = new(apiKey, OpenWeatherMap.Standard.Enums.WeatherUnits.Metric);
-            }
         }
 
         public override void Close()
         {
+            _current?.Dispose();
+            _current = null;
         }
 
         public override void Load(List<IPluginContainer> containers)
         {
-            if (_city != null)
+            if (_isConfigured)
             {
-                var container = new PluginContainer(_city);
+                var container = new PluginContainer(_cityObj.CityName);
                 container.Entries.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);
                 container.Entries.AddRange([_temp, _maxTemp, _minTemp, _pressure, _seaLevel, _groundLevel, _feelsLike, _humidity, _windSpeed, _windDeg, _windGust, _clouds, _rain, _snow]);
                 containers.Add(container);
@@ -101,42 +147,49 @@ namespace InfoPanel.Extras
 
         private async Task GetWeather()
         {
-            if (_current == null || _city == null)
+            if (_current == null || !_isConfigured)
             {
                 return;
             }
 
             try
             {
-                var result = await _current.GetWeatherDataByCityNameAsync(_city);
+                var result = await _current.GetReadingsAsync(_cityObj);
 
                 if (result != null)
                 {
-                    _name.Value = result.Name;
-                    _weather.Value = result.Weathers[0].Main;
-                    _weatherDesc.Value = result.Weathers[0].Description;
-                    _weatherIcon.Value = result.Weathers[0].Icon;
-                    _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weathers[0].Icon}@2x.png";
+                    _name.Value = result.CityName;
 
-                    _temp.Value = result.WeatherDayInfo.Temperature;
-                    _maxTemp.Value = result.WeatherDayInfo.MaximumTemperature;
-                    _minTemp.Value = result.WeatherDayInfo.MinimumTemperature;
-                    _pressure.Value = result.WeatherDayInfo.Pressure;
-                    _seaLevel.Value = result.WeatherDayInfo.SeaLevel;
-                    _groundLevel.Value = result.WeatherDayInfo.GroundLevel;
-                    _feelsLike.Value = result.WeatherDayInfo.FeelsLike;
-                    _humidity.Value = result.WeatherDayInfo.Humidity;
+                    if (result.Weather is { Length: > 0 })
+                    {
+                        _weather.Value = result.Weather[0].Main;
+                        _weatherDesc.Value = result.Weather[0].Description;
+                        _weatherIcon.Value = result.Weather[0].IconId;
+                        _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weather[0].IconId}@2x.png";
+                    }
 
-                    _windSpeed.Value = result.Wind.Speed;
-                    _windDeg.Value = result.Wind.Degree;
-                    _windGust.Value = result.Wind.Gust;
+                    _temp.Value = Convert.ToSingle(result.Temperature.DegreesCelsius);
+                    _maxTemp.Value = Convert.ToSingle(result.MaximumTemperature.DegreesCelsius);
+                    _minTemp.Value = Convert.ToSingle(result.MinimumTemperature.DegreesCelsius);
+                    _pressure.Value = Convert.ToSingle(result.Pressure.Hectopascals);
+                    _seaLevel.Value = Convert.ToSingle(result.SeaLevelPressure?.Hectopascals ?? 0);
+                    _groundLevel.Value = Convert.ToSingle(result.GroundLevelPressure?.Hectopascals ?? 0);
+                    _feelsLike.Value = Convert.ToSingle(result.FeelsLike.DegreesCelsius);
+                    _humidity.Value = Convert.ToSingle(result.Humidity.Percent);
 
-                    _clouds.Value = result.Clouds.All;
+                    _windSpeed.Value = Convert.ToSingle(result.WindSpeed.MetersPerSecond);
+                    _windDeg.Value = Convert.ToSingle(result.WindDirection.Value);
+                    _windGust.Value = Convert.ToSingle(result.WindGust?.MetersPerSecond ?? 0);
 
-                    _rain.Value = result.Rain.LastHour;
-                    _snow.Value = result.Snow.LastHour;
+                    _clouds.Value = Convert.ToSingle(result.Cloudiness.Percent);
+
+                    _rain.Value = Convert.ToSingle(result.RainfallLastHour?.Millimeters ?? 0);
+                    _snow.Value = Convert.ToSingle(result.SnowfallLastHour?.Millimeters ?? 0);
                 }
-            }catch(Exception e) { }
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 }

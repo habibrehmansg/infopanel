@@ -1,0 +1,269 @@
+<UserControl
+    x:Class="InfoPanel.Views.Components.PluginBrowserControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="clr-namespace:InfoPanel.Views.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:components="clr-namespace:InfoPanel.Views.Components"
+    xmlns:api="clr-namespace:InfoPanel.ApiClient"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:viewmodels="clr-namespace:InfoPanel.ViewModels"
+    d:DataContext="{d:DesignInstance Type=viewmodels:PluginBrowserViewModel}"
+    d:DesignHeight="650"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <converters:DownloadCountConverter x:Key="DownloadCountConverter" />
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+        <Grid Margin="0,10,0,0">
+            <!-- Login required notice -->
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Margin="0,40,0,0">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsLoggedIn}" Value="False">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="14"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    Text="Sign in to browse and install plugins." />
+                <ui:Button
+                    Margin="0,12,0,0"
+                    HorizontalAlignment="Center"
+                    Appearance="Primary"
+                    Content="Go to Account"
+                    Click="GoToAccount_Click" />
+            </StackPanel>
+
+            <!-- Browse content (only when logged in) -->
+            <StackPanel Visibility="{Binding IsLoggedIn, Converter={StaticResource BoolToVis}}">
+
+            <!-- Search / Filter Bar -->
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ui:TextBox
+                    Grid.Column="0"
+                    Margin="0,0,10,0"
+                    PlaceholderText="Search plugins..."
+                    Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+
+                <ComboBox
+                    Grid.Column="1"
+                    Width="140"
+                    Margin="0,0,10,0"
+                    SelectedIndex="0"
+                    SelectionChanged="Category_SelectionChanged">
+                    <ComboBoxItem Content="All Categories" Tag="{x:Null}" />
+                    <ComboBoxItem Content="Media" />
+                    <ComboBoxItem Content="Monitoring" />
+                    <ComboBoxItem Content="Utilities" />
+                    <ComboBoxItem Content="Other" />
+                </ComboBox>
+
+                <ComboBox
+                    Grid.Column="2"
+                    Width="160"
+                    SelectedIndex="0"
+                    SelectionChanged="Sort_SelectionChanged">
+                    <ComboBoxItem Content="Sort: Downloads" />
+                    <ComboBoxItem Content="Sort: Rating" />
+                    <ComboBoxItem Content="Sort: Name" />
+                    <ComboBoxItem Content="Sort: Newest" />
+                </ComboBox>
+            </Grid>
+
+            <!-- Loading indicator (when list is empty and loading) -->
+            <ui:ProgressRing
+                Width="40"
+                Height="40"
+                Margin="0,40,0,0"
+                HorizontalAlignment="Center"
+                IsIndeterminate="True">
+                <ui:ProgressRing.Style>
+                    <Style TargetType="ui:ProgressRing">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ui:ProgressRing.Style>
+            </ui:ProgressRing>
+
+            <!-- Plugin Grid -->
+            <ItemsControl ItemsSource="{Binding Plugins}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel HorizontalAlignment="Center" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type viewmodels:PluginBrowserItemViewModel}">
+                        <Border
+                            Width="280"
+                            MaxWidth="320"
+                            Margin="0,0,10,10"
+                            Padding="16"
+                            Background="{DynamicResource CardBackground}"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Cursor="Hand"
+                            MouseLeftButtonUp="PluginCard_Click">
+
+                            <StackPanel>
+                                <!-- Icon + Name + Version -->
+                                <DockPanel Margin="0,0,0,8">
+                                    <Image
+                                        Width="48"
+                                        Height="48"
+                                        Margin="0,0,12,0"
+                                        DockPanel.Dock="Left"
+                                        RenderOptions.BitmapScalingMode="HighQuality"
+                                        Source="{Binding Icon}" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock
+                                            FontSize="13"
+                                            FontWeight="Medium"
+                                            Text="{Binding Name}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                            Text="{Binding LatestVersion}" />
+                                    </StackPanel>
+                                </DockPanel>
+
+                                <!-- Author + Category -->
+                                <DockPanel Margin="0,0,0,4">
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding Author}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <Border
+                                        Margin="8,0,0,0"
+                                        Padding="6,1"
+                                        HorizontalAlignment="Right"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        CornerRadius="4">
+                                        <TextBlock
+                                            FontSize="10"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding Category}" />
+                                    </Border>
+                                </DockPanel>
+
+                                <!-- Description -->
+                                <TextBlock
+                                    Height="34"
+                                    Margin="0,0,0,8"
+                                    FontSize="12"
+                                    Text="{Binding Description}"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="Wrap" />
+
+                                <!-- Stats row -->
+                                <DockPanel Margin="0,0,0,0">
+                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                                        <ui:SymbolIcon
+                                            FontSize="14"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Symbol="ArrowDownload20" />
+                                        <TextBlock
+                                            Margin="4,0,12,0"
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding Downloads, Converter={StaticResource DownloadCountConverter}}" />
+                                        <components:StarRatingDisplay
+                                            VerticalAlignment="Center"
+                                            Rating="{Binding AverageRating}" />
+                                    </StackPanel>
+
+                                    <!-- Status badge -->
+                                    <TextBlock
+                                        HorizontalAlignment="Right"
+                                        DockPanel.Dock="Right"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        FontWeight="Medium">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Setter Property="Text" Value="" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUpdateAvailable}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Setter Property="Text" Value="Update Available" />
+                                                        <Setter Property="Foreground" Value="#FF9800" />
+                                                    </DataTrigger>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInstalled}" Value="True" />
+                                                            <Condition Binding="{Binding IsUpdateAvailable}" Value="False" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Setter Property="Text" Value="Installed" />
+                                                        <Setter Property="Foreground" Value="#4CAF50" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Load More -->
+            <ui:Button
+                Margin="0,8,0,0"
+                HorizontalAlignment="Center"
+                Appearance="Secondary"
+                Command="{Binding LoadMoreCommand}"
+                Content="Load More"
+                Visibility="{Binding HasMorePages, Converter={StaticResource BoolToVis}}" />
+
+            <!-- Error message + Retry -->
+            <StackPanel
+                Margin="0,16,0,0"
+                HorizontalAlignment="Center"
+                Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibilityConverter}}">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="13"
+                    Foreground="#F44336"
+                    Text="{Binding ErrorMessage}"
+                    TextWrapping="Wrap" />
+                <ui:Button
+                    Margin="0,8,0,0"
+                    HorizontalAlignment="Center"
+                    Appearance="Secondary"
+                    Command="{Binding RefreshCommand}"
+                    Content="Retry" />
+            </StackPanel>
+        </StackPanel>
+        </Grid>
+</UserControl>

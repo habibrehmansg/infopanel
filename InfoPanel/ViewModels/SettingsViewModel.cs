@@ -1,11 +1,13 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
-using Wpf.Ui.Controls;
+using System.Threading.Tasks;
+using Wpf.Ui.Abstractions.Controls;
+using Wpf.Ui.Appearance;
 
 namespace InfoPanel.ViewModels
 {
@@ -31,8 +33,26 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private string _pawnIOStatus = "Click to check";
 
+        [ObservableProperty]
+        private ApplicationTheme _currentApplicationTheme = ApplicationTheme.Unknown;
+
         public SettingsViewModel()
         {
+            _currentApplicationTheme = ApplicationThemeManager.GetAppTheme();
+        }
+
+        partial void OnCurrentApplicationThemeChanged(ApplicationTheme oldValue, ApplicationTheme newValue)
+        {
+            if (ApplicationThemeManager.GetAppTheme() != newValue)
+            {
+                ApplicationThemeManager.Apply(newValue);
+            }
+
+            ConfigModel.Instance.Settings.AppTheme = newValue switch
+            {
+                ApplicationTheme.Dark => 1,
+                _ => 0
+            };
         }
 
         /// <summary>
@@ -49,12 +69,23 @@ namespace InfoPanel.ViewModels
             get { return _comPorts; }
         }
 
-        public void OnNavigatedFrom()
+        public Task OnNavigatedFromAsync()
         {
+            ApplicationThemeManager.Changed -= OnThemeChanged;
+            return Task.CompletedTask;
         }
 
-        public void OnNavigatedTo()
+        public Task OnNavigatedToAsync()
         {
+            _currentApplicationTheme = ApplicationThemeManager.GetAppTheme();
+            OnPropertyChanged(nameof(CurrentApplicationTheme));
+            ApplicationThemeManager.Changed += OnThemeChanged;
+            return Task.CompletedTask;
+        }
+
+        private void OnThemeChanged(ApplicationTheme currentApplicationTheme, System.Windows.Media.Color systemAccent)
+        {
+            CurrentApplicationTheme = currentApplicationTheme;
         }
     }
 }

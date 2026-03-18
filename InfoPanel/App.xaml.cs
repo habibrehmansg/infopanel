@@ -1,4 +1,4 @@
-﻿using FlyleafLib;
+using FlyleafLib;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
@@ -18,6 +18,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Management;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -26,6 +27,7 @@ using System.Windows.Threading;
 using Wpf.Ui;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
+using Wpf.Ui.DependencyInjection;
 
 namespace InfoPanel
 {
@@ -35,6 +37,52 @@ namespace InfoPanel
     public partial class App : System.Windows.Application
     {
         private static readonly ILogger Logger = Log.ForContext<App>();
+
+        /// <summary>
+        /// Switches the MahApps.Metro theme resource dictionary and brush overrides
+        /// to match the current WPF-UI application theme.
+        /// </summary>
+        public static void SyncMahAppsTheme(ApplicationTheme theme)
+        {
+            var app = Application.Current;
+            var mahAppsThemeName = theme == ApplicationTheme.Light ? "Light.Blue" : "Dark.Blue";
+
+            var oldDict = app.Resources.MergedDictionaries
+                .FirstOrDefault(d => d.Source?.OriginalString.Contains("/Styles/Themes/") == true);
+
+            if (oldDict != null)
+            {
+                var newDict = new ResourceDictionary
+                {
+                    Source = new Uri($"pack://application:,,,/MahApps.Metro;component/Styles/Themes/{mahAppsThemeName}.xaml")
+                };
+
+                var index = app.Resources.MergedDictionaries.IndexOf(oldDict);
+                app.Resources.MergedDictionaries.RemoveAt(index);
+                app.Resources.MergedDictionaries.Insert(index, newDict);
+            }
+
+            UpdateMahAppsBrushOverrides(theme);
+        }
+
+        private static void UpdateMahAppsBrushOverrides(ApplicationTheme theme)
+        {
+            var resources = Application.Current.Resources;
+
+            if (theme == ApplicationTheme.Light)
+            {
+                resources["MahApps.Brushes.Text"] = new SolidColorBrush(Colors.Black);
+                resources["MahApps.Brushes.Selected.Foreground"] = new SolidColorBrush(Colors.Black);
+                resources["MahApps.Brushes.TextBox.Border"] = new SolidColorBrush(Colors.Gray);
+            }
+            else
+            {
+                resources["MahApps.Brushes.Text"] = new SolidColorBrush(Colors.LightGray);
+                resources["MahApps.Brushes.Selected.Foreground"] = new SolidColorBrush(Colors.LightGray);
+                resources["MahApps.Brushes.TextBox.Border"] = new SolidColorBrush(Colors.DarkGray);
+            }
+        }
+
         private static readonly IHost _host = Host
        .CreateDefaultBuilder()
        //.ConfigureAppConfiguration(c => { c.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly()!.Location)); })
@@ -75,11 +123,8 @@ namespace InfoPanel
            // Dialog service
            services.AddSingleton<IContentDialogService, ContentDialogService>();
 
-           //// Page resolver service
-           services.AddSingleton<IPageService, PageService>();
-
-           //// Page resolver service
-           //services.AddSingleton<ITestWindowService, TestWindowService>();
+           // Page resolver service (WPF-UI 4.x DI integration)
+           services.AddNavigationViewPageProvider();
 
            // Service containing navigation, same as INavigationWindow... but without window
            services.AddSingleton<INavigationService, NavigationService>();
@@ -97,6 +142,7 @@ namespace InfoPanel
            services.AddScoped<DesignViewModel>();
            services.AddScoped<Views.Pages.PluginsPage>();
            services.AddScoped<PluginsViewModel>();
+           services.AddScoped<PluginBrowserViewModel>();
            services.AddScoped<Views.Pages.AboutPage>();
            services.AddScoped<AboutViewModel>();
            services.AddScoped<Views.Pages.SettingsPage>();
@@ -105,6 +151,8 @@ namespace InfoPanel
            services.AddScoped<UpdatesViewModel>();
            services.AddScoped<Views.Pages.UsbPanelsPage>();
            services.AddScoped<UsbPanelsViewModel>();
+           services.AddScoped<Views.Pages.AccountPage>();
+           services.AddSingleton<AccountViewModel>();
 
            // Configuration
            //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
@@ -126,10 +174,6 @@ namespace InfoPanel
 
         public App()
         {
-            // IMPORTANT: Set Dark theme before any UI resources are loaded
-            // This prevents the ThemesDictionary constructor from defaulting to Light theme
-            ApplicationThemeManager.Apply(ApplicationTheme.Dark, WindowBackdropType.Mica, false);
-
             DispatcherUnhandledException += App_DispatcherUnhandledException;
 
             // 1. Handle exceptions from background threads and Task.Run
@@ -148,7 +192,7 @@ namespace InfoPanel
                 o.SendDefaultPii = true; // Include user info
                 o.AttachStacktrace = true; // Always attach stack traces
                 o.Environment = "production"; // or "development"
-                o.Release = Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+                o.Release = Utils.VersionHelper.AppVersion;
             });
         }
 
@@ -203,6 +247,7 @@ namespace InfoPanel
         protected override void OnExit(ExitEventArgs e)
         {
             Logger.Information("Application exiting");
+            ConfigModel.Instance.Cleanup();
             Log.CloseAndFlush();
             base.OnExit(e);
         }
@@ -213,8 +258,10 @@ namespace InfoPanel
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
 
             Process proc = Process.GetCurrentProcess();
+            var pluginHostIds = GetPluginHostProcessIds();
             var otherInstances = Process.GetProcesses()
                 .Where(p => p.ProcessName == proc.ProcessName && p.Id != proc.Id)
+                .Where(p => !pluginHostIds.Contains(p.Id))
                 .ToList();
 
             if (otherInstances.Count > 0)
@@ -277,10 +324,10 @@ namespace InfoPanel
                 catch { }
             }
 
-            _host.Start();
+            await _host.StartAsync();
             Logger.Debug("Application host started");
 
-            Engine.Start(new EngineConfig()
+            await Task.Run(() => Engine.Start(new EngineConfig()
             {
 #if DEBUG
                 LogOutput = ":debug",
@@ -289,7 +336,7 @@ namespace InfoPanel
 #endif
                 PluginsPath = ":FlyleafPlugins",
                 FFmpegPath = ":FFmpeg",
-            });
+            }));
             Logger.Debug("Flyleaf engine started");
 
             ConfigModel.Instance.Initialize();
@@ -324,7 +371,7 @@ namespace InfoPanel
                 SharedModel.Instance.SaveDisplayItems();
             }
 
-            HWHash.SetDelay(300);
+            HWHash.SetDelay(500);
             HWHash.Launch();
 
             // Check PawniO status before starting LibreHardwareMonitor
@@ -341,17 +388,18 @@ namespace InfoPanel
             await StartPanels();
             Services.GlobalHotkeyService.Instance.Start();
 
-            //var window = new SkiaDisplayWindow();
-            //window.Show();
+            _ = Task.Run(() => GetService<AccountViewModel>()?.TryRestoreSessionAsync());
+
+            _ = Task.Run(() => Services.UpdateChecker.Instance.CheckAsync(showNotification: true));
         }
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)
         {
-            Task.Run(async () =>
+            _ = Task.Run(async () =>
             {
                 await BeadaPanelTask.Instance.StopAsync(true);
                 await TuringPanelTask.Instance.StopAsync(true);
-            }).ConfigureAwait(false).GetAwaiter().GetResult();
+            });
         }
 
         private void OnPowerChange(object sender, PowerModeChangedEventArgs e)
@@ -359,18 +407,18 @@ namespace InfoPanel
             switch (e.Mode)
             {
                 case PowerModes.Resume:
-                    Task.Run(async () =>
+                    _ = Task.Run(async () =>
                     {
                         await Task.Delay(1000);
                         await StartPanels();
-                    }).ConfigureAwait(false).GetAwaiter().GetResult();
+                    });
                     break;
                 case PowerModes.Suspend:
-                    Task.Run(async () =>
+                    _ = Task.Run(async () =>
                     {
                         await BeadaPanelTask.Instance.StopAsync(true);
                         await TuringPanelTask.Instance.StopAsync(true);
-                    }).ConfigureAwait(false).GetAwaiter().GetResult();
+                    });
                     break;
             }
         }
@@ -471,6 +519,30 @@ namespace InfoPanel
             {
                 Logger.Error(ex, "Error checking or installing PawniO");
             }
+        }
+
+        private static HashSet<int> GetPluginHostProcessIds()
+        {
+            var ids = new HashSet<int>();
+            try
+            {
+                var currentName = Process.GetCurrentProcess().ProcessName;
+                using var searcher = new ManagementObjectSearcher(
+                    $"SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = '{currentName}.exe'");
+                foreach (var obj in searcher.Get())
+                {
+                    var cmd = obj["CommandLine"]?.ToString();
+                    if (cmd != null && cmd.Contains("--plugin-host"))
+                    {
+                        ids.Add(Convert.ToInt32(obj["ProcessId"]));
+                    }
+                }
+            }
+            catch
+            {
+                // If WMI fails, return empty set — no processes will be excluded
+            }
+            return ids;
         }
 
         public static async Task CleanShutDown()
