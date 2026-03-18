@@ -665,12 +665,6 @@ namespace InfoPanel
                                 Settings.ThermalrightPanelDevices.Add(device);
                             }
 
-                            // Load hotkey bindings
-                            Settings.HotkeyBindings.Clear();
-                            foreach (var binding in settings.HotkeyBindings)
-                            {
-                                Settings.HotkeyBindings.Add(binding);
-                            }
                         }
 
                         _ = Task.Run(ValidateStartupAsync);

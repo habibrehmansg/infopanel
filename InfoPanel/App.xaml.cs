@@ -1,5 +1,4 @@
 ﻿using FlyleafLib;
-using InfoPanel.Logging;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
@@ -99,7 +98,6 @@ namespace InfoPanel
            .Enrich.WithMachineName()
            .Enrich.FromLogContext()
            .WriteTo.Debug()
-           .WriteTo.Sink(InMemoryLogSink.Instance)
            .WriteTo.File(
                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "logs", "infopanel-.log"),
                rollingInterval: RollingInterval.Day,
@@ -153,8 +151,6 @@ namespace InfoPanel
            services.AddScoped<UpdatesViewModel>();
            services.AddScoped<Views.Pages.UsbPanelsPage>();
            services.AddScoped<UsbPanelsViewModel>();
-           services.AddScoped<Views.Pages.LogsPage>();
-           services.AddScoped<LogsViewModel>();
            services.AddScoped<Views.Pages.AccountPage>();
            services.AddSingleton<AccountViewModel>();
 
@@ -390,7 +386,6 @@ namespace InfoPanel
             Exit += App_Exit;
 
             await StartPanels();
-            Services.GlobalHotkeyService.Instance.Start();
 
             _ = Task.Run(() => GetService<AccountViewModel>()?.TryRestoreSessionAsync());
 
@@ -559,7 +554,6 @@ namespace InfoPanel
 
         public static async Task CleanShutDown()
         {
-            Services.GlobalHotkeyService.Instance.Stop();
             DisplayWindowManager.Instance.CloseAll();
             await StopPanels();
             await LibreMonitor.Instance.StopAsync();
