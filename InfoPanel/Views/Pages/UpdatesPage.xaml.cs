@@ -3,7 +3,6 @@ using InfoPanel.Services;
 using InfoPanel.ViewModels;
 using Serilog;
 using System;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -11,6 +10,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Text.RegularExpressions;
+using System.Windows.Documents;
 
 namespace InfoPanel.Views.Pages
 {
@@ -96,7 +97,7 @@ namespace InfoPanel.Views.Pages
                     Version = v.Version,
                     Title = v.Changelog,
                     Expanded = first,
-                    ChangelogItems = new ObservableCollection<string>(v.ChangelogItems)
+                    Changelog = v.Changelog
                 });
 
                 first = false;
@@ -114,6 +115,85 @@ namespace InfoPanel.Views.Pages
             ApplyChangelog(checker);
 
             ViewModel.UpdateCheckInProgress = false;
+        }
+
+        private void ChangelogTextBlock_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.DataContext is UpdateVersion version)
+            {
+                PopulateChangelogInlines(tb, version.Changelog);
+            }
+        }
+
+        private static void PopulateChangelogInlines(TextBlock textBlock, string markdown)
+        {
+            textBlock.Inlines.Clear();
+            if (string.IsNullOrWhiteSpace(markdown)) return;
+
+            var lines = markdown.Split('\n');
+            bool firstLine = true;
+
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+
+                if (trimmed.StartsWith("# ") && !trimmed.StartsWith("## "))
+                {
+                    // Top-level header (e.g. "# InfoPanel v1.3.1 Release Notes") — skip
+                    continue;
+                }
+
+                if (!firstLine)
+                    textBlock.Inlines.Add(new LineBreak());
+
+                if (trimmed.StartsWith("## "))
+                {
+                    // Category header — bold, slightly larger
+                    if (!firstLine)
+                        textBlock.Inlines.Add(new LineBreak()); // extra spacing before header
+
+                    var header = trimmed[3..];
+                    textBlock.Inlines.Add(new Run(header) { FontWeight = FontWeights.SemiBold, FontSize = 13 });
+                }
+                else if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
+                {
+                    // Bullet item
+                    var text = trimmed[2..];
+                    AddInlineText(textBlock, $"  \u2022 {text}");
+                }
+                else
+                {
+                    AddInlineText(textBlock, trimmed);
+                }
+
+                firstLine = false;
+            }
+        }
+
+        private static readonly Regex BoldPattern = new(@"\*\*(.+?)\*\*", RegexOptions.Compiled);
+
+        private static void AddInlineText(TextBlock textBlock, string text)
+        {
+            var matches = BoldPattern.Matches(text);
+            if (matches.Count == 0)
+            {
+                textBlock.Inlines.Add(new Run(text));
+                return;
+            }
+
+            int pos = 0;
+            foreach (Match match in matches)
+            {
+                if (match.Index > pos)
+                    textBlock.Inlines.Add(new Run(text[pos..match.Index]));
+
+                textBlock.Inlines.Add(new Run(match.Groups[1].Value) { FontWeight = FontWeights.SemiBold });
+                pos = match.Index + match.Length;
+            }
+
+            if (pos < text.Length)
+                textBlock.Inlines.Add(new Run(text[pos..]));
         }
 
         private async void ButtonUpdate_Click(object sender, RoutedEventArgs e)

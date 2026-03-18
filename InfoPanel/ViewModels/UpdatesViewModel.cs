@@ -61,7 +61,7 @@ namespace InfoPanel.ViewModels
         public required string Version { get; set; }
         public required string Title { get; set; }
         public bool Expanded { get; set; } = false;
-        public required ObservableCollection<string> ChangelogItems { get; set; }
+        public required string Changelog { get; set; }
     }
 
 }

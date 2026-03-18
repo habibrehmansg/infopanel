@@ -103,18 +103,12 @@
                                             FontWeight="Medium"
                                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                             Text="{Binding Version}" />
-                                        <ItemsControl Margin="0,5,0,0" ItemsSource="{Binding ChangelogItems}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock
-                                                        Margin="0,0,0,2"
-                                                        FontSize="12"
-                                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                                        Text="{Binding StringFormat='- {0}'}"
-                                                        TextWrapping="Wrap" />
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                        <TextBlock
+                                            Margin="0,5,0,0"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                            TextWrapping="Wrap"
+                                            Loaded="ChangelogTextBlock_Loaded" />
                                     </StackPanel>
                                 </ui:Card>
                             </DataTemplate>
