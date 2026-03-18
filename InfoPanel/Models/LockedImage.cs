@@ -10,12 +10,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Serilog;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace InfoPanel.Models
@@ -603,32 +603,20 @@ namespace InfoPanel.Models
             }
         }
 
-        public static SKImage ConvertToSKImage(Bitmap bitmap)
+        public static SKImage ConvertBitmapSourceToSKImage(BitmapSource bitmapSource)
         {
-            var bitmapData = bitmap.LockBits(
-                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                ImageLockMode.ReadOnly,
-                bitmap.PixelFormat);
+            var info = new SKImageInfo(bitmapSource.PixelWidth, bitmapSource.PixelHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
+            var pixels = new byte[info.RowBytes * info.Height];
+            bitmapSource.CopyPixels(pixels, info.RowBytes, 0);
 
+            var pinnedArray = GCHandle.Alloc(pixels, GCHandleType.Pinned);
             try
             {
-                var colorType = bitmap.PixelFormat switch
-                {
-                    PixelFormat.Format32bppArgb => SKColorType.Bgra8888,
-                    PixelFormat.Format32bppRgb => SKColorType.Bgra8888,
-                    PixelFormat.Format24bppRgb => SKColorType.Rgb888x,
-                    PixelFormat.Format8bppIndexed => SKColorType.Gray8,
-                    _ => SKColorType.Bgra8888
-                };
-
-                var info = new SKImageInfo(bitmap.Width, bitmap.Height, colorType);
-
-                // Create SKImage directly from pixels
-                return SKImage.FromPixelCopy(info, bitmapData.Scan0, bitmapData.Stride);
+                return SKImage.FromPixelCopy(info, pinnedArray.AddrOfPinnedObject(), info.RowBytes);
             }
             finally
             {
-                bitmap.UnlockBits(bitmapData);
+                pinnedArray.Free();
             }
         }
 
@@ -672,10 +660,10 @@ namespace InfoPanel.Models
                 {
                     if (_backgroundVideoPlayer != null)
                     {
-                        using var bitmap = _backgroundVideoPlayer.Renderer.TakeSnapshot((uint)targetWidth, (uint)targetHeight);
-                        if (bitmap != null)
+                        var bitmapSource = _backgroundVideoPlayer.TakeSnapshotToBitmapSource((uint)targetWidth, (uint)targetHeight);
+                        if (bitmapSource != null)
                         {
-                            using var image = ConvertToSKImage(bitmap);
+                            using var image = ConvertBitmapSourceToSKImage(bitmapSource);
                             access(image);
                         }
                     }

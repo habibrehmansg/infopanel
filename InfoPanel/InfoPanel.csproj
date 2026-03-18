@@ -204,9 +204,10 @@
 		<PackageReference Include="StreamJsonRpc" Version="2.19.27" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
-		<!-- FlyleafLib 3.10.2 with headless renderer fix (https://github.com/habibrehmansg/Flyleaf/tree/fix/headless-renderer-frame) -->
+		<!--<PackageReference Include="FlyleafLib" Version="3.10.3" />-->
+		<!-- FlyleafLib 3.10.3 with headless renderer fix (https://github.com/habibrehmansg/Flyleaf/tree/fix/headless-renderer-frame) -->
 		<Reference Include="FlyleafLib">
-			<HintPath>..\libs\FlyleafLib.dll</HintPath>
+			<HintPath>Lib\FlyleafLib.dll</HintPath>
 		</Reference>
 		<PackageReference Include="Flyleaf.FFmpeg.Bindings" Version="7.1.1" />
 		<PackageReference Include="Vortice.D3DCompiler" Version="3.7.6-beta" />
