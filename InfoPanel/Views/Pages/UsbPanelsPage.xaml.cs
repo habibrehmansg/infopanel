@@ -32,6 +32,7 @@ public partial class UsbPanelsPage : Page
 
     private ModifierKeys _capturedModifiers = ModifierKeys.None;
     private Key _capturedKey = Key.None;
+    private HotkeyBinding? _editingBinding = null;
 
     public UsbPanelsPage(UsbPanelsViewModel viewModel, ISnackbarService snackbarService)
     {
@@ -288,6 +289,15 @@ public partial class UsbPanelsPage : Page
             return;
         }
 
+        // Check for duplicate hotkey combo (skip the binding being edited)
+        var duplicate = ConfigModel.Instance.Settings.HotkeyBindings
+            .FirstOrDefault(b => b != _editingBinding && b.ModifierKeys == _capturedModifiers && b.Key == _capturedKey);
+        if (duplicate != null)
+        {
+            _snackbarService.Show("Error", "This key combo is already assigned to another hotkey.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
         var parts = deviceKey.Split('|');
         if (parts.Length < 3) return;
 
@@ -300,6 +310,13 @@ public partial class UsbPanelsPage : Page
             DeviceLocation = parts[2],
             ProfileGuid = profileGuid
         };
+
+        // Remove the old binding if editing
+        if (_editingBinding != null)
+        {
+            ConfigModel.Instance.Settings.HotkeyBindings.Remove(_editingBinding);
+            _editingBinding = null;
+        }
 
         ConfigModel.Instance.Settings.HotkeyBindings.Add(binding);
         _ = ConfigModel.Instance.SaveSettingsAsync();
@@ -319,6 +336,9 @@ public partial class UsbPanelsPage : Page
     {
         if (sender is Button button && button.Tag is HotkeyBinding binding)
         {
+            // Store reference to the binding being edited (removed on Add, not now)
+            _editingBinding = binding;
+
             // Populate the add form with the existing binding's values
             _capturedModifiers = binding.ModifierKeys;
             _capturedKey = binding.Key;
@@ -337,10 +357,6 @@ public partial class UsbPanelsPage : Page
                     break;
                 }
             }
-
-            // Remove the old binding so the user can re-add with changes
-            ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
-            _ = ConfigModel.Instance.SaveSettingsAsync();
         }
     }
 
