@@ -9,15 +9,21 @@
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<ApplicationIcon>Resources\Images\favicon.ico</ApplicationIcon>
 		<Platforms>x64</Platforms>
-		<FileVersion>$(AssemblyVersion)</FileVersion>
-		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
-		<Version>1.3.1.0</Version>
 		<UseWindowsForms>True</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
 		<DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
 		<StartupObject>InfoPanel.Program</StartupObject>
+		<MinVerMinimumMajorMinor>1.4</MinVerMinimumMajorMinor>
 	</PropertyGroup>
+
+	<!-- Set AssemblyVersion/FileVersion from MinVer (must run after MinVer target) -->
+	<Target Name="SetVersionFromMinVer" AfterTargets="MinVer">
+		<PropertyGroup>
+			<AssemblyVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch).0</AssemblyVersion>
+			<FileVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch).0</FileVersion>
+		</PropertyGroup>
+	</Target>
 
 	<!-- Build InfoPanel.Extras and get its output path -->
 	<Target Name="BuildExtras" BeforeTargets="Build">
@@ -197,6 +203,7 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<PackageReference Include="MinVer" Version="6.0.0" PrivateAssets="all" />
 		<PackageReference Include="AsyncKeyedLock" Version="8.0.2" />
 		<PackageReference Include="AutoMapper" Version="14.0.0" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />

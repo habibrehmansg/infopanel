@@ -88,4 +88,4 @@ jobs:
         generateReleaseNotes: false
         allowUpdates: true
         draft: false
-        prerelease: false
+        prerelease: ${{ contains(github.ref, '-') }}

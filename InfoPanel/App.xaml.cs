@@ -192,7 +192,7 @@ namespace InfoPanel
                 o.SendDefaultPii = true; // Include user info
                 o.AttachStacktrace = true; // Always attach stack traces
                 o.Environment = "production"; // or "development"
-                o.Release = Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+                o.Release = Utils.VersionHelper.AppVersion;
             });
         }
 

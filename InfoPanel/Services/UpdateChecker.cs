@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using Microsoft.Toolkit.Uwp.Notifications;
 using Serilog;
 
@@ -74,8 +74,8 @@ public sealed class UpdateChecker
                     ChangelogItems = latest.ChangelogItems
                 };
 
-                var currentVersion = Assembly.GetExecutingAssembly().GetName().Version!.ToString(3);
-                UpdateAvailable = Version.Parse(latest.Version) > Version.Parse(currentVersion);
+                var currentVersion = VersionHelper.AppVersion;
+                UpdateAvailable = IsNewerVersion(latest.Version, currentVersion);
 
                 if (UpdateAvailable)
                 {
@@ -131,6 +131,27 @@ public sealed class UpdateChecker
         {
             Logger.Error(ex, "Failed to clear update notification");
         }
+    }
+
+    private static bool IsNewerVersion(string latest, string current)
+    {
+        var (latestBase, latestPre) = SplitVersion(latest);
+        var (currentBase, currentPre) = SplitVersion(current);
+
+        var cmp = Version.Parse(latestBase).CompareTo(Version.Parse(currentBase));
+        if (cmp != 0) return cmp > 0;
+
+        // Same base version: stable > prerelease
+        if (currentPre != null && latestPre == null) return true;
+        if (currentPre == null && latestPre != null) return false;
+        return false;
+    }
+
+    private static (string baseVersion, string? prerelease) SplitVersion(string version)
+    {
+        version = version.TrimStart('v');
+        var idx = version.IndexOf('-');
+        return idx >= 0 ? (version[..idx], version[(idx + 1)..]) : (version, null);
     }
 
     public class VersionEntry
