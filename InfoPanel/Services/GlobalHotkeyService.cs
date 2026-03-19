@@ -213,6 +213,17 @@ namespace InfoPanel.Services
                     }
                     break;
 
+                case "Thermalright":
+                    foreach (var device in ConfigModel.Instance.Settings.ThermalrightPanelDevices)
+                    {
+                        if (device.DeviceId == binding.DeviceId)
+                        {
+                            device.ProfileGuid = binding.ProfileGuid;
+                            Logger.Information("Switched Thermalright device {Device} to profile {Profile}", device.DeviceId, profile.Name);
+                            return;
+                        }
+                    }
+                    break;
             }
 
             Logger.Warning("Hotkey target device {DeviceType} {DeviceId} not found", binding.DeviceType, binding.DeviceId);

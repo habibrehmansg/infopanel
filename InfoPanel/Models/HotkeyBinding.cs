@@ -89,6 +89,10 @@ namespace InfoPanel.Models
                         .Where(d => d.DeviceId == DeviceId)
                         .Select(d => d.Name ?? d.DeviceId)
                         .FirstOrDefault() ?? DeviceId,
+                    "Thermalright" => ConfigModel.Instance.Settings.ThermalrightPanelDevices
+                        .Where(d => d.DeviceId == DeviceId)
+                        .Select(d => d.RuntimeProperties?.Name ?? d.DeviceId)
+                        .FirstOrDefault() ?? DeviceId,
                     _ => DeviceId
                 };
             }
