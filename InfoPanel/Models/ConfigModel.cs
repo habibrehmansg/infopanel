@@ -274,6 +274,8 @@ namespace InfoPanel
                 _currentSaveStateProfileGuid = p.Guid;
             if (Settings.AutosaveEnabled)
                 StartAutosaveTimer();
+            if (Settings.ProgramSpecificPanelsEnabled)
+                _ = ForegroundAppMonitor.Instance.StartAsync();
         }
 
         public void AccessSettings(Action<Settings> action)
@@ -298,13 +300,18 @@ namespace InfoPanel
         {
             if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null)
             {
+                bool programSpecificOn = Settings.ProgramSpecificPanelsEnabled;
                 foreach (Profile profile in e.NewItems)
                 {
                     if (profile.Active)
                     {
-                        if (System.Windows.Application.Current is App app)
+                        bool isTriggerProfile = !string.IsNullOrWhiteSpace(profile.TriggerProcessNames);
+                        if (!programSpecificOn || !isTriggerProfile)
                         {
-                            app.ShowDisplayWindow(profile);
+                            if (System.Windows.Application.Current is App app)
+                            {
+                                app.ShowDisplayWindow(profile);
+                            }
                         }
                     }
 
@@ -332,6 +339,13 @@ namespace InfoPanel
             {
                 if (e.PropertyName == nameof(Profile.Active) || e.PropertyName == nameof(Profile.OpenGL))
                 {
+                    bool programSpecificOn = Settings.ProgramSpecificPanelsEnabled;
+                    bool isTriggerProfile = !string.IsNullOrWhiteSpace(profile.TriggerProcessNames);
+                    if (programSpecificOn && isTriggerProfile)
+                    {
+                        // Let ForegroundAppMonitor drive visibility for trigger profiles (Option B)
+                        return;
+                    }
                     if (profile.Active)
                     {
                         if (System.Windows.Application.Current is App app)
@@ -450,6 +464,18 @@ namespace InfoPanel
                 else
                 {
                     await BeadaPanelTask.Instance.StopAsync();
+                }
+            }
+            else if (e.PropertyName == nameof(Settings.ProgramSpecificPanelsEnabled))
+            {
+                if (Settings.ProgramSpecificPanelsEnabled)
+                {
+                    await ForegroundAppMonitor.Instance.StartAsync();
+                }
+                else
+                {
+                    await ForegroundAppMonitor.Instance.StopAsync();
+                    ForegroundAppMonitor.ReconcileVisibilityToActiveOnly();
                 }
             }
 

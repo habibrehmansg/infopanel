@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     x:Class="InfoPanel.Views.Pages.ProfilesPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -283,6 +283,40 @@
                                                             </ToggleButton>
                                                         </StackPanel>
                                                     </Grid>
+
+                                                    <StackPanel
+                                                        Margin="0,16,0,0"
+                                                        Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                            Text="Trigger app(s) — show this panel only when this process is in foreground (e.g. game.exe). Comma-separated."
+                                                            TextWrapping="Wrap" />
+                                                        <Grid Margin="0,4,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBox
+                                                                Grid.Column="0"
+                                                                Margin="0,0,8,0"
+                                                                ToolTip="Process name(s), e.g. Cyberpunk2077, chrome"
+                                                                Text="{Binding TriggerProcessNames, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                                <ui:Button
+                                                                    x:Name="ButtonUseForegroundApp"
+                                                                    Click="ButtonUseForegroundApp_Click"
+                                                                    Content="Use foreground app"
+                                                                    ToolTip="Set to the currently focused window's process name. Or press Ctrl+Alt+G while the app is in focus." />
+                                                                <ui:Button
+                                                                    Margin="8,0,0,0"
+                                                                    x:Name="ButtonSelectFromList"
+                                                                    Click="ButtonSelectFromList_Click"
+                                                                    Content="Select from list..."
+                                                                    ToolTip="Browse running processes and pick one" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </StackPanel>
                                                 </StackPanel>
 
                                                 <!--  Right: Size + Position  -->

@@ -145,8 +145,8 @@ namespace InfoPanel
            services.AddScoped<PluginBrowserViewModel>();
            services.AddScoped<Views.Pages.AboutPage>();
            services.AddScoped<AboutViewModel>();
-           services.AddScoped<Views.Pages.SettingsPage>();
-           services.AddScoped<SettingsViewModel>();
+           services.AddTransient<Views.Pages.SettingsPage>();
+           services.AddTransient<SettingsViewModel>();
            services.AddScoped<Views.Pages.UpdatesPage>();
            services.AddScoped<UpdatesViewModel>();
            services.AddScoped<Views.Pages.UsbPanelsPage>();

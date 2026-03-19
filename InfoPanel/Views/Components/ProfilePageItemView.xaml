@@ -1,9 +1,10 @@
-﻿<UserControl
+<UserControl
     x:Class="InfoPanel.Views.Components.ProfilePageItemView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:InfoPanel.Views.Components"
+    xmlns:core="clr-namespace:InfoPanel"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
@@ -35,9 +36,18 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="auto" />
                             </Grid.ColumnDefinitions>
-                            <Label Margin="10,10,10,10">
+                            <StackPanel Margin="10,10,10,10">
                                 <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                            </Label>
+                                <Grid Visibility="{Binding Source={x:Static core:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <TextBlock
+                                        Margin="0,2,0,0"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding TriggerProcessNames, StringFormat='App: {0}'}"
+                                        TextTrimming="CharacterEllipsis"
+                                        Visibility="{Binding TriggerProcessNames, Converter={StaticResource StringNotEmptyToVisibilityConverter}, FallbackValue=Collapsed}" />
+                                </Grid>
+                            </StackPanel>
                             <ui:ToggleSwitch
                                 Grid.Column="1"
                                 Checked="ToggleSwitch_Checked"
