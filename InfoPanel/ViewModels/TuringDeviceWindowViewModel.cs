@@ -193,11 +193,11 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
                 var storageInfo = _turingDevice.GetStorageInfo();
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    TotalStorageDisplay = FormatBytes(storageInfo.TotalBytes);
-                    UsedStorageDisplay = FormatBytes(storageInfo.UsedBytes);
-                    FreeStorageDisplay = FormatBytes(storageInfo.TotalBytes - storageInfo.UsedBytes);
-                    StorageUsagePercentage = storageInfo.TotalBytes > 0
-                        ? (double)storageInfo.UsedBytes / storageInfo.TotalBytes * 100
+                    TotalStorageDisplay = storageInfo.FormattedTotal;
+                    UsedStorageDisplay = storageInfo.FormattedUsed;
+                    FreeStorageDisplay = StorageInfo.FormatKB(storageInfo.TotalKB - storageInfo.UsedKB);
+                    StorageUsagePercentage = storageInfo.TotalKB > 0
+                        ? (double)storageInfo.UsedKB / storageInfo.TotalKB * 100
                         : 0;
                 });
             }

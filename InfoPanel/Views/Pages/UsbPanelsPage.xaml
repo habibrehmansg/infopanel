@@ -405,8 +405,8 @@
                                             Content="Advanced"
                                             Icon="{ui:SymbolIcon Settings20}"
                                             Click="ButtonAdvancedPopup_Click" />
-                                        <!--  Manage Storage button  -->
-                                        <ui:Button
+                                        <!--  Manage Storage button (disabled — no longer supported)  -->
+                                        <!--<ui:Button
                                             Width="160"
                                             Click="ButtonManageTuringDevice_Click"
                                             Content="Manage Storage"
@@ -414,7 +414,7 @@
                                             IsEnabled="{Binding Enabled, Converter={StaticResource InverseBooleanConverter}}"
                                             Tag="{Binding}"
                                             ToolTip="Manage device storage, videos, and settings"
-                                            Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}" />-->
                                         <Popup
                                             AllowsTransparency="True"
                                             Placement="Bottom"
@@ -450,6 +450,60 @@
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
                                                                 Text="{Binding Brightness}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                    <!--  Target FPS (USB devices only)  -->
+                                                    <StackPanel Margin="0,10,0,0"
+                                                                Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Slider
+                                                            IsSnapToTickEnabled="True"
+                                                            Maximum="30"
+                                                            Minimum="1"
+                                                            TickFrequency="1"
+                                                            Value="{Binding TargetFrameRate}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="Target FPS" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="{Binding TargetFrameRate}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                    <!--  JPEG Quality (USB devices only)  -->
+                                                    <StackPanel Margin="0,10,0,0"
+                                                                Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Slider
+                                                            IsSnapToTickEnabled="True"
+                                                            Maximum="100"
+                                                            Minimum="50"
+                                                            TickFrequency="5"
+                                                            Value="{Binding JpegQuality}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="JPEG Quality" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="{Binding JpegQuality}" />
                                                         </Grid>
                                                     </StackPanel>
                                                 </StackPanel>

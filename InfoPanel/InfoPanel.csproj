@@ -92,6 +92,12 @@
 		<Reference Include="TuringSmartScreenLib.Helpers.SkiaSharp">
 		  <HintPath>Lib\TuringSmartScreenLib.Helpers.SkiaSharp.dll</HintPath>
 		</Reference>
+		<Reference Include="LcdDriver.TuringSmartScreen">
+			<HintPath>Lib\LcdDriver.TuringSmartScreen.dll</HintPath>
+		</Reference>
+		<Reference Include="LcdDriver.TrofeoVision">
+			<HintPath>Lib\LcdDriver.TrofeoVision.dll</HintPath>
+		</Reference>
 	</ItemGroup>
 
 	<ItemGroup>

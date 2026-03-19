@@ -26,20 +26,23 @@ namespace InfoPanel.TuringPanel
 
     public class StorageInfo
     {
-        public uint TotalBytes { get; set; }
-        public uint UsedBytes { get; set; }
-        public uint ValidBytes { get; set; }
+        /// <summary>Values are in KB as returned by the device.</summary>
+        public uint TotalKB { get; set; }
+        public uint UsedKB { get; set; }
+        public uint ValidKB { get; set; }
 
-        public string FormattedTotal => FormatBytes(TotalBytes);
-        public string FormattedUsed => FormatBytes(UsedBytes);
-        public string FormattedValid => FormatBytes(ValidBytes);
+        public string FormattedTotal => FormatKB(TotalKB);
+        public string FormattedUsed => FormatKB(UsedKB);
+        public string FormattedValid => FormatKB(ValidKB);
 
-        private static string FormatBytes(uint bytes)
+        public static string FormatKB(uint kb)
         {
-            if (bytes > 1024 * 1024)
-                return $"{bytes / (1024.0 * 1024.0):F2} GB";
+            if (kb >= 1024 * 1024)
+                return $"{kb / (1024.0 * 1024.0):F2} GB";
+            else if (kb >= 1024)
+                return $"{kb / 1024.0:F2} MB";
             else
-                return $"{bytes / 1024.0:F2} MB";
+                return $"{kb} KB";
         }
     }
 
@@ -62,7 +65,7 @@ namespace InfoPanel.TuringPanel
         private UsbEndpointWriter? _writer;
         private bool _disposed = false;
 
-        public bool IsConnected => _device != null && !_device.IsOpen == false;
+        public bool IsConnected => _device != null && _device.IsOpen;
 
         public TuringDevice(string? ffmpegPath = null)
         {
@@ -315,10 +318,14 @@ namespace InfoPanel.TuringPanel
                     return false;
                 }
 
-                // Logger.Debug($"Wrote {transferLength} bytes to device.");
+                if (transferLength != data.Length)
+                {
+                    Logger.Warning("Partial write: expected {Expected} bytes, wrote {Actual} bytes", data.Length, transferLength);
+                    return false;
+                }
 
-                // Read the response with improved error handling
-                byte[] readBuffer = new byte[512];
+                // Read the response
+                byte[] readBuffer = new byte[FULL_PACKET_SIZE];
                 ec = _reader.Read(readBuffer, timeout, out transferLength);
 
                 // Handle different error conditions
@@ -333,31 +340,22 @@ namespace InfoPanel.TuringPanel
                     return false;
                 }
 
-                if (transferLength > 0)
-                {
-                    // Logger.Debug($"Read {transferLength} bytes from device");
+                // Flush after read, matching TURZX method_17: Read → ReadFlush
+                _reader.ReadFlush();
 
-                    // Copy only the actual data received
-                    response = new byte[transferLength];
-                    Array.Copy(readBuffer, response, transferLength);
+                if (transferLength == FULL_PACKET_SIZE)
+                {
+                    // Copy response data
+                    response = new byte[FULL_PACKET_SIZE];
+                    Array.Copy(readBuffer, response, FULL_PACKET_SIZE);
 
                     // Log the raw response for debugging purposes if length is small
-                    if (transferLength <= 32)
-                    {
-                        Logger.Verbose("Response bytes: {ResponseBytes}", BitConverter.ToString(response));
-                    }
+                    Logger.Verbose("Response bytes: {ResponseBytes}", BitConverter.ToString(response, 0, Math.Min(32, FULL_PACKET_SIZE)));
                 }
                 else
                 {
-                    Logger.Warning("No data received from device");
-                    return false;  // Changed: Treat zero-length responses as failures
-                }
-
-                // Flush any remaining data from the buffer using native ReadFlush
-                // This matches the original implementation (GClass14.cs:148)
-                if (_reader != null)
-                {
-                    _reader.ReadFlush();
+                    Logger.Warning("Unexpected response length: expected {Expected} bytes, got {Actual} bytes", FULL_PACKET_SIZE, transferLength);
+                    return false;
                 }
 
                 return true;
@@ -368,6 +366,76 @@ namespace InfoPanel.TuringPanel
                 return false;
             }
         }
+        /// <summary>
+        /// Sends an encrypted command packet followed by data as two separate USB writes,
+        /// then reads the device response. This avoids allocating a large combined buffer
+        /// and matches the reference implementation's two-write pattern.
+        /// </summary>
+        private bool WriteCommandAndData(byte[] encryptedCommand, byte[] data, int timeout = 2000)
+        {
+            return WriteCommandAndData(encryptedCommand, data, timeout, out _);
+        }
+
+        private bool WriteCommandAndData(byte[] encryptedCommand, byte[] data, int timeout, out byte[] response)
+        {
+            response = Array.Empty<byte>();
+            if (_writer == null || _reader == null)
+                return false;
+
+            try
+            {
+                // Write the encrypted command packet
+                int transferLength;
+                ErrorCode ec = _writer.Write(encryptedCommand, timeout, out transferLength);
+                if (ec != ErrorCode.None || transferLength != encryptedCommand.Length)
+                {
+                    Logger.Warning("Command write failed: {ErrorCode}, transferred {Length}/{Expected}", ec, transferLength, encryptedCommand.Length);
+                    return false;
+                }
+
+                // Write the data payload
+                ec = _writer.Write(data, timeout, out transferLength);
+                if (ec != ErrorCode.None || transferLength != data.Length)
+                {
+                    Logger.Warning("Data write failed: {ErrorCode}, transferred {Length}/{Expected}", ec, transferLength, data.Length);
+                    return false;
+                }
+
+                // Read the response (matching TURZX: write → read → flush)
+                byte[] readBuffer = new byte[FULL_PACKET_SIZE];
+                ec = _reader.Read(readBuffer, timeout, out transferLength);
+
+                if (ec == ErrorCode.IoTimedOut)
+                {
+                    Logger.Warning("USB read operation timed out after command+data write");
+                    return false;
+                }
+                else if (ec != ErrorCode.None)
+                {
+                    Logger.Warning("Read Error after command+data write: {ErrorCode}", ec);
+                    return false;
+                }
+
+                _reader.ReadFlush();
+
+                if (transferLength != FULL_PACKET_SIZE)
+                {
+                    Logger.Warning("Unexpected response length: expected {Expected} bytes, got {Actual} bytes", FULL_PACKET_SIZE, transferLength);
+                    return false;
+                }
+
+                response = new byte[FULL_PACKET_SIZE];
+                Array.Copy(readBuffer, response, FULL_PACKET_SIZE);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error in WriteCommandAndData");
+                return false;
+            }
+        }
+
         public void ReadFlush(int maxAttempts = 5)
         {
             if (_reader == null)
@@ -625,6 +693,7 @@ namespace InfoPanel.TuringPanel
                         BitConverter.ToString([.. response.Take(20)]));
                 }
 
+                // Device returns values in KB, little-endian
                 uint total = BitConverter.ToUInt32(response, 8);
                 uint used = BitConverter.ToUInt32(response, 12);
                 uint valid = BitConverter.ToUInt32(response, 16);
@@ -639,9 +708,9 @@ namespace InfoPanel.TuringPanel
 
                 var storageInfo = new StorageInfo
                 {
-                    TotalBytes = total,
-                    UsedBytes = used,
-                    ValidBytes = valid
+                    TotalKB = total,
+                    UsedKB = used,
+                    ValidKB = valid
                 };
 
                 Logger.Information("Storage info: Total={Total}, Used={Used}, Valid={Valid}", 
@@ -789,7 +858,18 @@ namespace InfoPanel.TuringPanel
             // Copy the path bytes to the packet starting at position 16
             Buffer.BlockCopy(pathBytes, 0, packet, 16, length);
 
-            return WriteToDevice(EncryptCommandPacket(packet));
+            byte[] response;
+            if (!WriteToDevice(EncryptCommandPacket(packet), COMMAND_TIMEOUT, out response))
+                return false;
+
+            // TURZX method_39: checks response[8] == 200
+            if (response == null || response.Length < 9 || response[8] != 200)
+            {
+                Logger.Warning("OpenFileForWriting failed: device returned non-success response");
+                return false;
+            }
+
+            return true;
         }
         private bool WriteFileContents(string filePath)
         {
@@ -839,13 +919,8 @@ namespace InfoPanel.TuringPanel
                         // Encrypt the command packet
                         byte[] encryptedPacket = EncryptCommandPacket(cmdPacket);
 
-                        // Combine encrypted packet with buffer data
-                        byte[] fullPayload = new byte[encryptedPacket.Length + buffer.Length];
-                        Buffer.BlockCopy(encryptedPacket, 0, fullPayload, 0, encryptedPacket.Length);
-                        Buffer.BlockCopy(buffer, 0, fullPayload, encryptedPacket.Length, buffer.Length);
-
-                        // Send the chunk
-                        if (!WriteToDevice(fullPayload))
+                        // Send command and data as separate writes
+                        if (!WriteCommandAndData(encryptedPacket, buffer))
                         {
                             Logger.Error("Failed to write chunk to device.");
                             return false;
@@ -883,53 +958,11 @@ namespace InfoPanel.TuringPanel
             {
                 Logger.Debug("Playing file from device storage: {FilePath}", filePath);
 
-                // 1. Clear screen to remove old content
-                try
-                {
-                    SendClearImageCommand();
-                    Logger.Debug("Screen cleared");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning(ex, "Failed to clear screen, continuing anyway");
-                }
+                // Stop any current playback first — command 110 toggles play/pause,
+                // so sending play while already playing would pause instead.
+                StopPlay();
 
-                // Small delay for clear command to process
-                Thread.Sleep(100);
-
-                // 2. Set brightness to ensure screen is visible (not brightness 0)
-                try
-                {
-                    SendBrightnessCommand(100); // Full brightness for playback
-                    Logger.Debug("Brightness set to 100");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning(ex, "Failed to set brightness, continuing anyway");
-                }
-
-                // Small delay for brightness command to process
-                Thread.Sleep(100);
-
-                // 3. Send commands 111 and 112 to prepare device for playback
-                // These commands may be needed to switch the device into playback mode
-                try
-                {
-                    Logger.Debug("Sending preparation commands (111, 112)");
-                    byte[] cmdPacket111 = BuildCommandPacketHeader(111);
-                    WriteToDevice(EncryptCommandPacket(cmdPacket111));
-                    Thread.Sleep(50);
-
-                    byte[] cmdPacket112 = BuildCommandPacketHeader(112);
-                    WriteToDevice(EncryptCommandPacket(cmdPacket112));
-                    Thread.Sleep(50);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning(ex, "Failed to send preparation commands, continuing anyway");
-                }
-
-                // 4. Send play command based on file type
+                // Send play command based on file type
                 bool success;
                 if (extension == ".h264")
                 {
@@ -969,28 +1002,26 @@ namespace InfoPanel.TuringPanel
             }
         }
 
-        // Play images specifically
+        // Play images specifically (command 113 = PlayLocalJpg in TURZX)
         public bool PlayImage(string filePath)
         {
-            return PlayImageWithCommand(filePath, 98); // Command ID 98 for images
+            return PlayImageWithCommand(filePath, 113);
         }
 
-        // Play videos specifically
+        // Play videos specifically (command 110 = PlayVideo in TURZX)
         public bool PlayVideo(string filePath)
         {
-            // Python implementation uses play_file3 with ID 113 for specific video playback
-            return PlayVideoWithCommand(filePath, 113);
+            return PlayVideoWithCommand(filePath, 110);
         }
 
         // Alternative play method for compatibility issues
         public bool PlayFileAlternative(string filePath)
         {
-            // Alternative play method (ID 110) if other methods don't work
             string extension = Path.GetExtension(filePath).ToLower();
 
             if (extension == ".png")
             {
-                return PlayImageWithCommand(filePath, 110);
+                return PlayImageWithCommand(filePath, 113);
             }
             else if (extension == ".h264")
             {
@@ -1038,28 +1069,21 @@ namespace InfoPanel.TuringPanel
             // Copy the path bytes to the packet starting at position 16
             Buffer.BlockCopy(pathBytes, 0, packet, 16, length);
 
-            // Send command and get response
-            // Note: Play commands for device storage may not return standard status codes
             byte[] response;
             if (!WriteToDevice(EncryptCommandPacket(packet), COMMAND_TIMEOUT, out response))
             {
-                Logger.Warning("Play command {CommandId} failed - no response from device", commandId);
+                Logger.Warning("Play command {CommandId} failed - write/read error", commandId);
                 return false;
             }
 
-            // Log response for debugging, but don't enforce strict validation
-            // Play commands may work even without standard success codes
-            if (response != null && response.Length > 8)
+            // TURZX checks response[1]==200 for cmd 113 and response[8]==200 for cmd 110,
+            // but the device plays successfully regardless. Log for diagnostics only.
+            if (response != null && response.Length >= 9)
             {
-                Logger.Debug("Play command {CommandId} response: byte[0]={B0}, byte[1]={B1}, byte[8]={B8}",
-                    commandId, response[0], response[1], response[8]);
-            }
-            else if (response != null)
-            {
-                Logger.Debug("Play command {CommandId} response: length={Length}", commandId, response.Length);
+                Logger.Debug("Play command {CommandId} response: byte[1]={B1}, byte[8]={B8}",
+                    commandId, response[1], response[8]);
             }
 
-            // Accept any response as success - actual playback errors will show as exceptions
             Logger.Information("Play command {CommandId} sent successfully", commandId);
             return true;
         }
@@ -1067,19 +1091,13 @@ namespace InfoPanel.TuringPanel
         {
             try
             {
-                Logger.Debug("Sending Stop Play Commands (ID 111 and 114)");
+                Logger.Debug("Sending Stop Play Command (ID 111)");
 
-                // Send first stop command (ID 111)
-                byte[] cmdPacket1 = BuildCommandPacketHeader(111);
-                bool success1 = WriteToDevice(EncryptCommandPacket(cmdPacket1));
+                byte[] cmdPacket = BuildCommandPacketHeader(111);
+                bool success = WriteToDevice(EncryptCommandPacket(cmdPacket));
 
-                // Send second stop command (ID 114)
-                byte[] cmdPacket2 = BuildCommandPacketHeader(114);
-                bool success2 = WriteToDevice(EncryptCommandPacket(cmdPacket2));
-
-                bool success = success1 && success2;
                 if (!success)
-                    throw new TuringDeviceException("Failed to send stop play commands");
+                    throw new TuringDeviceException("Failed to send stop play command");
 
                 return true;
             }
@@ -1134,9 +1152,15 @@ namespace InfoPanel.TuringPanel
                 // Copy the path bytes to the packet starting at position 16
                 Buffer.BlockCopy(pathBytes, 0, packet, 16, length);
 
-                bool success = WriteToDevice(EncryptCommandPacket(packet));
-                if (!success)
-                    throw new TuringDeviceException("Failed to delete file");
+                byte[] response;
+                if (!WriteToDevice(EncryptCommandPacket(packet), COMMAND_TIMEOUT, out response))
+                    throw new TuringDeviceException("Failed to delete file - no response from device");
+
+                if (response == null || response.Length < 9)
+                {
+                    Logger.Warning("DeleteFile: empty or short response from device");
+                    throw new TuringDeviceException("Failed to delete file - invalid response");
+                }
 
                 return true;
             }
@@ -1151,26 +1175,30 @@ namespace InfoPanel.TuringPanel
             }
         }
 
+        public bool SendJpegBytes(byte[] jpegData)
+        {
+            int imgSize = jpegData.Length;
+            byte[] cmdPacket = BuildCommandPacketHeader(101);
+
+            // Set image size in the packet (big-endian)
+            BinaryPrimitives.WriteInt32BigEndian(cmdPacket.AsSpan(8, 4), imgSize);
+
+            byte[] encryptedPacket = EncryptCommandPacket(cmdPacket);
+
+            return WriteCommandAndData(encryptedPacket, jpegData);
+        }
+
         public bool SendPngBytes(byte[] pngData)
         {
             int imgSize = pngData.Length;
             byte[] cmdPacket = BuildCommandPacketHeader(102);
 
             // Set image size in the packet (big-endian)
-            cmdPacket[8] = (byte)((imgSize >> 24) & 0xFF);
-            cmdPacket[9] = (byte)((imgSize >> 16) & 0xFF);
-            cmdPacket[10] = (byte)((imgSize >> 8) & 0xFF);
-            cmdPacket[11] = (byte)(imgSize & 0xFF);
+            BinaryPrimitives.WriteInt32BigEndian(cmdPacket.AsSpan(8, 4), imgSize);
 
-            // Encrypt the command packet
             byte[] encryptedPacket = EncryptCommandPacket(cmdPacket);
 
-            // Combine the encrypted packet with the image data
-            byte[] fullPayload = new byte[encryptedPacket.Length + pngData.Length];
-            Buffer.BlockCopy(encryptedPacket, 0, fullPayload, 0, encryptedPacket.Length);
-            Buffer.BlockCopy(pngData, 0, fullPayload, encryptedPacket.Length, pngData.Length);
-            // Write the payload to the device
-            return WriteToDevice(fullPayload);
+            return WriteCommandAndData(encryptedPacket, pngData);
         }
 
         public bool SendImage(string imagePath)
@@ -1197,8 +1225,8 @@ namespace InfoPanel.TuringPanel
 
                     Logger.Debug("Image loaded: {Width}x{Height}", bitmap.Width, bitmap.Height);
 
-                    byte[] pngData = EncodePng(bitmap);
-                    if (!SendPngBytes(pngData))
+                    byte[] jpegData = EncodeJpeg(bitmap);
+                    if (!SendJpegBytes(jpegData))
                     {
                         var error = "Failed to send image data to device.";
                         Logger.Debug("Error: {Error}", error);
@@ -1252,17 +1280,11 @@ namespace InfoPanel.TuringPanel
             Logger.Debug("Sending Clear Image Command (ID 102) - {ImageSize} bytes", imgSize);
 
             byte[] cmdPacket = BuildCommandPacketHeader(102);
-            cmdPacket[8] = (byte)((imgSize >> 24) & 0xFF);
-            cmdPacket[9] = (byte)((imgSize >> 16) & 0xFF);
-            cmdPacket[10] = (byte)((imgSize >> 8) & 0xFF);
-            cmdPacket[11] = (byte)(imgSize & 0xFF);
+            BinaryPrimitives.WriteInt32BigEndian(cmdPacket.AsSpan(8, 4), imgSize);
 
             byte[] encryptedPacket = EncryptCommandPacket(cmdPacket);
-            byte[] fullPayload = new byte[encryptedPacket.Length + fullImgData.Length];
-            Buffer.BlockCopy(encryptedPacket, 0, fullPayload, 0, encryptedPacket.Length);
-            Buffer.BlockCopy(fullImgData, 0, fullPayload, encryptedPacket.Length, fullImgData.Length);
 
-            bool success = WriteToDevice(fullPayload);
+            bool success = WriteCommandAndData(encryptedPacket, fullImgData);
             if (!success)
                 throw new TuringDeviceException("Failed to send clear image command to device");
 
@@ -1274,6 +1296,15 @@ namespace InfoPanel.TuringPanel
             using (MemoryStream memStream = new MemoryStream())
             {
                 bitmap.Encode(SKEncodedImageFormat.Png, 100).SaveTo(memStream);
+                return memStream.ToArray();
+            }
+        }
+
+        private byte[] EncodeJpeg(SKBitmap bitmap, int quality = 90)
+        {
+            using (MemoryStream memStream = new MemoryStream())
+            {
+                bitmap.Encode(SKEncodedImageFormat.Jpeg, quality).SaveTo(memStream);
                 return memStream.ToArray();
             }
         }
