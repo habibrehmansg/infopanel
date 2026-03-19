@@ -1,4 +1,4 @@
-using FlyleafLib;
+﻿using FlyleafLib;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
@@ -98,6 +98,7 @@ namespace InfoPanel
            .Enrich.WithMachineName()
            .Enrich.FromLogContext()
            .WriteTo.Debug()
+           .WriteTo.Sink(Logging.InMemoryLogSink.Instance)
            .WriteTo.File(
                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "logs", "infopanel-.log"),
                rollingInterval: RollingInterval.Day,
@@ -151,6 +152,8 @@ namespace InfoPanel
            services.AddScoped<UpdatesViewModel>();
            services.AddScoped<Views.Pages.UsbPanelsPage>();
            services.AddScoped<UsbPanelsViewModel>();
+           services.AddScoped<Views.Pages.LogsPage>();
+           services.AddScoped<LogsViewModel>();
            services.AddScoped<Views.Pages.AccountPage>();
            services.AddSingleton<AccountViewModel>();
 
@@ -399,6 +402,7 @@ namespace InfoPanel
             {
                 await BeadaPanelTask.Instance.StopAsync(true);
                 await TuringPanelTask.Instance.StopAsync(true);
+                await ThermalrightPanelTask.Instance.StopAsync(true);
             });
         }
 
@@ -418,6 +422,7 @@ namespace InfoPanel
                     {
                         await BeadaPanelTask.Instance.StopAsync(true);
                         await TuringPanelTask.Instance.StopAsync(true);
+                        await ThermalrightPanelTask.Instance.StopAsync(true);
                     });
                     break;
             }
@@ -435,6 +440,11 @@ namespace InfoPanel
                 await TuringPanelTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.ThermalrightPanelMultiDeviceMode)
+            {
+                await ThermalrightPanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.WebServer)
             {
                 await WebServerTask.Instance.StartAsync();
@@ -446,6 +456,7 @@ namespace InfoPanel
         {
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelTask.Instance.StopAsync();
+            await ThermalrightPanelTask.Instance.StopAsync();
         }
 
         private void App_Exit(object sender, ExitEventArgs e)

@@ -2,6 +2,7 @@ using InfoPanel.BeadaPanel;
 using InfoPanel.Models;
 using InfoPanel.Services;
 using InfoPanel.TuringPanel;
+using InfoPanel.ThermalrightPanel;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
 using LibUsbDotNet;
@@ -45,6 +46,7 @@ public partial class UsbPanelsPage : Page
         // Refresh device combo when device lists change
         ConfigModel.Instance.Settings.BeadaPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
         ConfigModel.Instance.Settings.TuringPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
+        ConfigModel.Instance.Settings.ThermalrightPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
     }
 
     private async Task UpdateBeadaPanelDeviceList()
@@ -244,6 +246,12 @@ public partial class UsbPanelsPage : Page
             items.Add(Tuple.Create($"Turing|{d.DeviceId}|", name));
         }
 
+        foreach (var d in ConfigModel.Instance.Settings.ThermalrightPanelDevices)
+        {
+            var name = d.RuntimeProperties?.Name ?? d.DeviceId;
+            items.Add(Tuple.Create($"Thermalright|{d.DeviceId}|{d.DeviceLocation}", name));
+        }
+
         HotkeyDeviceCombo.ItemsSource = items;
     }
 
@@ -407,6 +415,139 @@ public partial class UsbPanelsPage : Page
 
             ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
             _ = ConfigModel.Instance.SaveSettingsAsync();
+        }
+    }
+
+    // --- Thermalright Panel ---
+
+    private Task UpdateThermalrightPanelDeviceList()
+    {
+        var discoveredDevices = ThermalrightPanelHelper.ScanDevices();
+
+        Logger.Information("ThermalrightPanel Discovery: Found {Count} devices", discoveredDevices.Count);
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.ThermalrightPanelDevices.FirstOrDefault(d =>
+                    d.IsMatching(discoveredDevice.DeviceId, discoveredDevice.DeviceLocation, discoveredDevice.Model));
+
+                if (device == null)
+                {
+                    var newDevice = new ThermalrightPanelDevice()
+                    {
+                        DeviceId = discoveredDevice.DeviceId,
+                        DeviceLocation = discoveredDevice.DeviceLocation,
+                        Model = discoveredDevice.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty
+                    };
+
+                    if (discoveredDevice.ModelInfo != null)
+                    {
+                        newDevice.RuntimeProperties.Name = $"Thermalright {discoveredDevice.ModelInfo.Name}";
+                    }
+
+                    settings.ThermalrightPanelDevices.Add(newDevice);
+                    Logger.Information("ThermalrightPanel Discovery: Added new device with DeviceId '{DeviceId}'", discoveredDevice.DeviceId);
+                }
+                else
+                {
+                    // Update location
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+
+                    // Set name from saved model info (determined during previous init)
+                    if (device.ModelInfo != null)
+                    {
+                        device.RuntimeProperties.Name = $"Thermalright {device.ModelInfo.Name}";
+                    }
+
+                    Logger.Information("ThermalrightPanel Discovery: Device with DeviceId '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+
+        // Show snackbar warning for devices with wrong USB driver
+        var driverIssueDevices = discoveredDevices.Where(d => d.DriverIssue != null).ToList();
+        foreach (var d in driverIssueDevices)
+        {
+            _snackbarService.Show(
+                "Wrong USB Driver",
+                $"Thermalright panel has wrong USB driver ({d.DriverIssue}). Use Zadig to install WinUSB driver.",
+                Wpf.Ui.Controls.ControlAppearance.Caution,
+                null,
+                TimeSpan.FromSeconds(10));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async void ButtonDiscoverThermalrightPanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateThermalrightPanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private void Page_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        CloseAllPopups(this);
+    }
+
+    private static void CloseAllPopups(DependencyObject parent)
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is System.Windows.Controls.Primitives.Popup popup && popup.IsOpen)
+            {
+                popup.IsOpen = false;
+            }
+            CloseAllPopups(child);
+        }
+    }
+
+    private void ButtonAdvancedPopup_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement button)
+        {
+            var parent = button.Parent as Panel;
+            if (parent != null)
+            {
+                foreach (var child in parent.Children)
+                {
+                    if (child is System.Windows.Controls.Primitives.Popup popup)
+                    {
+                        popup.PlacementTarget = button;
+                        popup.IsOpen = !popup.IsOpen;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private void ButtonRemoveThermalrightPanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is ThermalrightPanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.ThermalrightPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (ThermalrightPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = ThermalrightPanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.ThermalrightPanelDevices.Remove(deviceConfig);
+                }
+            });
         }
     }
 }
