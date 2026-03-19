@@ -285,6 +285,44 @@ public partial class UsbPanelsPage : Page
         }
     }
 
+    private void Page_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        CloseAllPopups(this);
+    }
+
+    private static void CloseAllPopups(DependencyObject parent)
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is System.Windows.Controls.Primitives.Popup popup && popup.IsOpen)
+            {
+                popup.IsOpen = false;
+            }
+            CloseAllPopups(child);
+        }
+    }
+
+    private void ButtonAdvancedPopup_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement button)
+        {
+            var parent = button.Parent as Panel;
+            if (parent != null)
+            {
+                foreach (var child in parent.Children)
+                {
+                    if (child is System.Windows.Controls.Primitives.Popup popup)
+                    {
+                        popup.PlacementTarget = button;
+                        popup.IsOpen = !popup.IsOpen;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     private void ButtonRemoveThermalrightPanelDevice_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button button && button.Tag is ThermalrightPanelDevice runtimeDevice)
