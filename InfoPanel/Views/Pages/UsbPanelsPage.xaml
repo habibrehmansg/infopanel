@@ -17,9 +17,7 @@
 
     <StackPanel Margin="20,20,20,20">
         <!--  start BeadaPanel Multi-Device settings  -->
-        <ui:CardExpander
-            Margin="0,0,0,0"
-            IsExpanded="True">
+        <ui:CardExpander Margin="0,0,0,0" IsExpanded="True">
             <ui:CardExpander.Icon>
                 <ui:SymbolIcon Symbol="Whiteboard24" />
             </ui:CardExpander.Icon>
@@ -232,7 +230,6 @@
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Bottom"
                                             Appearance="Danger"
-                                            BorderThickness="0"
                                             Click="ButtonRemoveBeadaPanelDevice_Click"
                                             Icon="{ui:SymbolIcon Delete20}"
                                             Tag="{Binding}"
@@ -248,9 +245,7 @@
         </ui:CardExpander>
 
         <!--  start TuringPanel Multi-Device settings  -->
-        <ui:CardExpander
-            Margin="0,10,0,0"
-            IsExpanded="True">
+        <ui:CardExpander Margin="0,10,0,0" IsExpanded="True">
             <ui:CardExpander.Icon>
                 <ui:SymbolIcon Symbol="Whiteboard24" />
             </ui:CardExpander.Icon>
@@ -466,7 +461,6 @@
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Bottom"
                                             Appearance="Danger"
-                                            BorderThickness="0"
                                             Click="ButtonRemoveTuringPanelDevice_Click"
                                             Icon="{ui:SymbolIcon Delete20}"
                                             Tag="{Binding}"
@@ -483,9 +477,7 @@
         <!--  end TuringPanel Multi-Device settings  -->
 
         <!--  Global Hotkeys  -->
-        <ui:CardExpander
-            Margin="0,20,0,0"
-            IsExpanded="True">
+        <ui:CardExpander Margin="0,20,0,0" IsExpanded="False">
             <ui:CardExpander.Icon>
                 <ui:SymbolIcon Symbol="Keyboard24" />
             </ui:CardExpander.Icon>
@@ -496,71 +488,69 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <TextBlock FontSize="13" FontWeight="Medium" Text="Global Hotkeys" />
                         <TextBlock
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="Global Hotkeys" />
+                        <TextBlock
+                            Margin="0,5,0,0"
                             FontSize="12"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="Switch panel profiles with keyboard shortcuts" />
                     </StackPanel>
                 </Grid>
             </ui:CardExpander.Header>
             <StackPanel>
+                <ui:InfoBar
+                    Margin="0,0,0,5"
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="Global hotkeys are system-wide and will override the same shortcut in other applications. Use multi-modifier combos to avoid conflicts (e.g. Ctrl+Alt+1)."
+                    Severity="Warning" />
                 <!--  Existing hotkey bindings  -->
                 <ItemsControl ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.HotkeyBindings}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:HotkeyBinding}">
-                            <ui:CardControl Margin="0,5,0,0" Padding="15">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="20" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="10" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="5" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        Grid.Column="0"
-                                        MinWidth="120"
-                                        VerticalAlignment="Center"
-                                        FontSize="14"
-                                        FontWeight="SemiBold"
-                                        Text="{Binding HotkeyDisplayText, Mode=OneWay}" />
-                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                        <TextBlock FontSize="12">
-                                            <TextBlock.Text>
-                                                <MultiBinding StringFormat="{}Switch {0} to profile {1}">
-                                                    <Binding Path="DeviceDisplayName" Mode="OneWay" />
-                                                    <Binding Path="ProfileDisplayName" Mode="OneWay" />
-                                                </MultiBinding>
-                                            </TextBlock.Text>
-                                        </TextBlock>
-                                        <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}">
-                                            <TextBlock.Text>
-                                                <MultiBinding StringFormat="{}{0}: {1}">
-                                                    <Binding Path="DeviceType" />
-                                                    <Binding Path="DeviceId" />
-                                                </MultiBinding>
-                                            </TextBlock.Text>
-                                        </TextBlock>
+                            <ui:CardControl Margin="0,5,0,0">
+                                <ui:CardControl.Header>
+                                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                                        <TextBlock
+                                            MinWidth="120"
+                                            Margin="0,0,15,0"
+                                            VerticalAlignment="Center"
+                                            FontSize="13"
+                                            FontWeight="Medium"
+                                            Text="{Binding HotkeyDisplayText, Mode=OneWay}" />
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock FontSize="12">
+                                                <TextBlock.Text>
+                                                    <MultiBinding StringFormat="{}Switch {0} to profile {1}">
+                                                        <Binding Mode="OneWay" Path="DeviceDisplayName" />
+                                                        <Binding Mode="OneWay" Path="ProfileDisplayName" />
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
+                                            <TextBlock
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding DeviceId}" />
+                                        </StackPanel>
                                     </StackPanel>
+                                </ui:CardControl.Header>
+                                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                                     <ui:Button
-                                        Grid.Column="4"
-                                        BorderThickness="0"
                                         Click="ButtonEditHotkey_Click"
                                         Icon="{ui:SymbolIcon Edit20}"
                                         Tag="{Binding}"
                                         ToolTip="Edit Hotkey" />
                                     <ui:Button
-                                        Grid.Column="6"
+                                        Margin="5,0,0,0"
                                         Appearance="Danger"
-                                        BorderThickness="0"
                                         Click="ButtonRemoveHotkey_Click"
                                         Icon="{ui:SymbolIcon Delete20}"
                                         Tag="{Binding}"
                                         ToolTip="Remove Hotkey" />
-                                </Grid>
+                                </StackPanel>
                             </ui:CardControl>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -568,54 +558,68 @@
 
                 <!--  Add new hotkey  -->
                 <ui:CardControl Margin="0,10,0,0" Padding="15">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="10" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="10" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="10" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="5" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Grid.Row="0" Grid.Column="0" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Hotkey" />
-                        <TextBox
-                            x:Name="HotkeyCapture"
-                            Grid.Row="2" Grid.Column="0"
-                            IsReadOnly="True"
-                            PreviewKeyDown="HotkeyCapture_PreviewKeyDown"
-                            Text="Click and press a key combo"
-                            GotFocus="HotkeyCapture_GotFocus" />
-
-                        <TextBlock Grid.Row="0" Grid.Column="2" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Panel" />
-                        <ComboBox
-                            x:Name="HotkeyDeviceCombo"
-                            Grid.Row="2" Grid.Column="2"
-                            DisplayMemberPath="Item2"
-                            SelectedValuePath="Item1" />
-
-                        <TextBlock Grid.Row="0" Grid.Column="4" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Profile" />
-                        <ComboBox
-                            x:Name="HotkeyProfileCombo"
-                            Grid.Row="2" Grid.Column="4"
-                            DisplayMemberPath="Name"
-                            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
-                            SelectedValuePath="Guid" />
-
-                        <ui:Button
-                            Grid.Row="2" Grid.Column="6"
-                            Appearance="Primary"
-                            BorderThickness="0"
-                            Click="ButtonAddHotkey_Click"
-                            Content="Add"
-                            Icon="{ui:SymbolIcon Add20}" />
-                    </Grid>
+                    <StackPanel>
+                        <WrapPanel Orientation="Horizontal">
+                            <StackPanel Margin="0,0,10,5">
+                                <TextBlock
+                                    Margin="0,0,0,5"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="Hotkey" />
+                                <TextBox
+                                    x:Name="HotkeyCapture"
+                                    Width="200"
+                                    GotFocus="HotkeyCapture_GotFocus"
+                                    IsReadOnly="True"
+                                    PreviewKeyDown="HotkeyCapture_PreviewKeyDown"
+                                    Text="Click and press a key combo" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,10,5">
+                                <TextBlock
+                                    Margin="0,0,0,5"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="Panel" />
+                                <ComboBox
+                                    x:Name="HotkeyDeviceCombo"
+                                    Width="200"
+                                    DisplayMemberPath="Item2"
+                                    SelectedValuePath="Item1" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,0,5">
+                                <TextBlock
+                                    Margin="0,0,0,5"
+                                    FontSize="12"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="Profile" />
+                                <ComboBox
+                                    x:Name="HotkeyProfileCombo"
+                                    Width="200"
+                                    DisplayMemberPath="Name"
+                                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                    SelectedValuePath="Guid" />
+                            </StackPanel>
+                        </WrapPanel>
+                        <StackPanel
+                            Margin="0,5,0,0"
+                            HorizontalAlignment="Right"
+                            Orientation="Horizontal">
+                            <ui:Button
+                                x:Name="HotkeyCancelButton"
+                                Margin="0,0,5,0"
+                                BorderThickness="0"
+                                Click="ButtonCancelHotkey_Click"
+                                Content="Cancel"
+                                Visibility="Collapsed" />
+                            <ui:Button
+                                x:Name="HotkeyAddButton"
+                                Appearance="Primary"
+                                BorderThickness="0"
+                                Click="ButtonAddHotkey_Click"
+                                Content="Add"
+                                Icon="{ui:SymbolIcon Add20}" />
+                        </StackPanel>
+                    </StackPanel>
                 </ui:CardControl>
             </StackPanel>
         </ui:CardExpander>

@@ -41,6 +41,10 @@ public partial class UsbPanelsPage : Page
         DataContext = this;
         InitializeComponent();
         PopulateDeviceCombo();
+
+        // Refresh device combo when device lists change
+        ConfigModel.Instance.Settings.BeadaPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
+        ConfigModel.Instance.Settings.TuringPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
     }
 
     private async Task UpdateBeadaPanelDeviceList()
@@ -225,14 +229,19 @@ public partial class UsbPanelsPage : Page
 
         foreach (var d in ConfigModel.Instance.Settings.BeadaPanelDevices)
         {
-            var name = d.RuntimeProperties?.PanelInfo?.ModelInfo?.Name ?? d.Model;
-            items.Add(Tuple.Create($"Beada|{d.DeviceId}|{d.DeviceLocation}", $"Beada: {name}"));
+            var name = d.RuntimeProperties?.PanelInfo?.ModelInfo?.Name;
+            if (name == null && Enum.TryParse<BeadaPanel.BeadaPanelModel>(d.Model, out var model)
+                && BeadaPanel.BeadaPanelModelDatabase.Models.TryGetValue(model, out var info))
+            {
+                name = info.Name;
+            }
+            items.Add(Tuple.Create($"Beada|{d.DeviceId}|{d.DeviceLocation}", $"BeadaPanel {name ?? d.Model}"));
         }
 
         foreach (var d in ConfigModel.Instance.Settings.TuringPanelDevices)
         {
             var name = d.Name ?? d.DeviceId;
-            items.Add(Tuple.Create($"Turing|{d.DeviceId}|", $"Turing: {name}"));
+            items.Add(Tuple.Create($"Turing|{d.DeviceId}|", name));
         }
 
         HotkeyDeviceCombo.ItemsSource = items;
@@ -274,6 +283,12 @@ public partial class UsbPanelsPage : Page
         if (_capturedKey == Key.None)
         {
             _snackbarService.Show("Error", "Please capture a hotkey first.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        if (_capturedModifiers == ModifierKeys.None)
+        {
+            _snackbarService.Show("Error", "At least one modifier key (Ctrl, Alt, Shift, Win) is required.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
             return;
         }
 
@@ -321,15 +336,25 @@ public partial class UsbPanelsPage : Page
         ConfigModel.Instance.Settings.HotkeyBindings.Add(binding);
         _ = ConfigModel.Instance.SaveSettingsAsync();
 
-        // Reset capture
+        // Check if the hotkey was actually registered with the OS
+        if (!GlobalHotkeyService.Instance.IsBindingRegistered(binding))
+        {
+            _snackbarService.Show("Warning", $"Hotkey {binding.HotkeyDisplayText} was saved but could not be registered. It may be in use by another application.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(5));
+        }
+
+        ResetHotkeyForm();
+    }
+
+    private void ResetHotkeyForm()
+    {
         _capturedModifiers = ModifierKeys.None;
         _capturedKey = Key.None;
+        _editingBinding = null;
         HotkeyCapture.Text = "Click and press a key combo";
         HotkeyDeviceCombo.SelectedIndex = -1;
         HotkeyProfileCombo.SelectedIndex = -1;
-
-        // Refresh device combo in case devices changed
-        PopulateDeviceCombo();
+        HotkeyCancelButton.Visibility = Visibility.Collapsed;
+        HotkeyAddButton.Content = "Add";
     }
 
     private void ButtonEditHotkey_Click(object sender, RoutedEventArgs e)
@@ -357,13 +382,29 @@ public partial class UsbPanelsPage : Page
                     break;
                 }
             }
+
+            // Show cancel button and change Add to Save while editing
+            HotkeyCancelButton.Visibility = Visibility.Visible;
+            HotkeyAddButton.Content = "Save";
         }
+    }
+
+    private void ButtonCancelHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        ResetHotkeyForm();
+        HotkeyCancelButton.Visibility = Visibility.Collapsed;
     }
 
     private void ButtonRemoveHotkey_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button button && button.Tag is HotkeyBinding binding)
         {
+            // If we were editing this binding, clear the edit state
+            if (_editingBinding == binding)
+            {
+                ResetHotkeyForm();
+            }
+
             ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
             _ = ConfigModel.Instance.SaveSettingsAsync();
         }

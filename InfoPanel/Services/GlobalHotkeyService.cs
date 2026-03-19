@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -33,6 +34,7 @@ namespace InfoPanel.Services
 
         private HwndSource? _hwndSource;
         private readonly Dictionary<int, HotkeyBinding> _registeredHotkeys = new();
+        private readonly HashSet<int> _failedHotkeyIds = new();
         private int _nextId = 1;
         private bool _started;
 
@@ -72,14 +74,21 @@ namespace InfoPanel.Services
             if (!_started) return;
             _started = false;
 
-            Application.Current.Dispatcher.Invoke(() =>
+            try
             {
-                ConfigModel.Instance.Settings.HotkeyBindings.CollectionChanged -= OnBindingsCollectionChanged;
-                UnregisterAll();
-                _hwndSource?.RemoveHook(WndProc);
-                _hwndSource?.Dispose();
-                _hwndSource = null;
-            });
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    ConfigModel.Instance.Settings.HotkeyBindings.CollectionChanged -= OnBindingsCollectionChanged;
+                    UnregisterAll();
+                    _hwndSource?.RemoveHook(WndProc);
+                    _hwndSource?.Dispose();
+                    _hwndSource = null;
+                });
+            }
+            catch (Exception ex) when (ex is TaskCanceledException or OperationCanceledException)
+            {
+                Logger.Debug("Dispatcher shutdown during GlobalHotkeyService stop: {Message}", ex.Message);
+            }
 
             Logger.Information("GlobalHotkeyService stopped");
         }
@@ -107,6 +116,14 @@ namespace InfoPanel.Services
         {
             if (_hwndSource == null || binding.Key == Key.None) return;
 
+            // Require at least one modifier to avoid intercepting bare keys system-wide
+            if (binding.ModifierKeys == ModifierKeys.None)
+            {
+                Logger.Warning("Skipping hotkey {Hotkey}: at least one modifier key (Ctrl, Alt, Shift, Win) is required",
+                    binding.HotkeyDisplayText);
+                return;
+            }
+
             int id = _nextId++;
             uint modifiers = ToWin32Modifiers(binding.ModifierKeys) | MOD_NOREPEAT;
             uint vk = (uint)KeyInterop.VirtualKeyFromKey(binding.Key);
@@ -120,9 +137,15 @@ namespace InfoPanel.Services
             else
             {
                 int error = Marshal.GetLastWin32Error();
+                _failedHotkeyIds.Add(id);
                 Logger.Warning("Failed to register hotkey {Hotkey} (error {Error}). Key combination may be in use by another application.",
                     binding.HotkeyDisplayText, error);
             }
+        }
+
+        public bool IsBindingRegistered(HotkeyBinding binding)
+        {
+            return _registeredHotkeys.ContainsValue(binding);
         }
 
         private void UnregisterAll()
@@ -134,6 +157,8 @@ namespace InfoPanel.Services
                 UnregisterHotKey(_hwndSource.Handle, id);
             }
             _registeredHotkeys.Clear();
+            _failedHotkeyIds.Clear();
+            _nextId = 1;
         }
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

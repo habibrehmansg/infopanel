@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.BeadaPanel;
 using System;
 using System.Linq;
 using System.Windows.Input;
@@ -73,7 +74,16 @@ namespace InfoPanel.Models
                 {
                     "Beada" => ConfigModel.Instance.Settings.BeadaPanelDevices
                         .Where(d => d.DeviceId == DeviceId)
-                        .Select(d => d.RuntimeProperties?.PanelInfo?.ModelInfo?.Name ?? d.Model)
+                        .Select(d =>
+                        {
+                            var name = d.RuntimeProperties?.PanelInfo?.ModelInfo?.Name;
+                            if (name == null && Enum.TryParse<BeadaPanelModel>(d.Model, out var model)
+                                && BeadaPanelModelDatabase.Models.TryGetValue(model, out var info))
+                            {
+                                name = info.Name;
+                            }
+                            return $"BeadaPanel {name ?? d.Model}";
+                        })
                         .FirstOrDefault() ?? DeviceId,
                     "Turing" => ConfigModel.Instance.Settings.TuringPanelDevices
                         .Where(d => d.DeviceId == DeviceId)
