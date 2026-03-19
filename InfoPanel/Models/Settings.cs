@@ -101,6 +101,12 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _autosaveIdleSeconds = 3;
 
+        [ObservableProperty]
+        private bool _programSpecificPanelsEnabled = false;
+
+        [ObservableProperty]
+        private bool _hideOtherProfilesWhenProgramSpecificShown = true;
+
         public Settings()
         {
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;

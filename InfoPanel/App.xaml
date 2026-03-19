@@ -63,6 +63,7 @@
             <converters:LockSymbolConverter x:Key="LockSymbolConverter" />
             <converters:LockColorConverter x:Key="LockColorConverter" />
             <converters:ThemeToIndexConverter x:Key="ThemeToIndexConverter" />
+            <converters:StringNotEmptyToVisibilityConverter x:Key="StringNotEmptyToVisibilityConverter" />
 
             <BitmapImage x:Key="HwinfoIcon" UriSource="Resources/Images/hwinfo_icon.ico" />
             <BitmapImage x:Key="LibreIcon" UriSource="Resources/Images/libre_icon.ico" />
