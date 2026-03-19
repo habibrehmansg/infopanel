@@ -112,7 +112,7 @@ namespace InfoPanel.Services
 
         protected override async Task DoWorkAsync(CancellationToken token)
         {
-            await Task.Delay(300, token);
+            await Task.Delay(1000, token);
 
             try
             {

@@ -123,10 +123,21 @@ namespace InfoPanel.Services
 
                 try
                 {
-                    // Sync
-                    screenDevice.Sync();
+                    // Sync — bail if device firmware isn't ready
+                    if (!screenDevice.Sync())
+                    {
+                        Logger.Warning("TuringPanelDevice {Device}: Sync failed (1st attempt), device not ready", _device);
+                        _device.UpdateRuntimeProperties(errorMessage: "Device not ready (sync failed)");
+                        return;
+                    }
                     Thread.Sleep(200);
-                    screenDevice.Sync();
+
+                    if (!screenDevice.Sync())
+                    {
+                        Logger.Warning("TuringPanelDevice {Device}: Sync failed (2nd attempt), device not ready", _device);
+                        _device.UpdateRuntimeProperties(errorMessage: "Device not ready (sync failed)");
+                        return;
+                    }
                     Thread.Sleep(200);
 
                     // Stop any video playback to prevent flickering
@@ -137,7 +148,12 @@ namespace InfoPanel.Services
                     var brightness = _device.Brightness;
                     screenDevice.SetBrightness((byte)brightness);
 
-                    screenDevice.Sync();
+                    if (!screenDevice.Sync())
+                    {
+                        Logger.Warning("TuringPanelDevice {Device}: Sync failed after brightness set, device not ready", _device);
+                        _device.UpdateRuntimeProperties(errorMessage: "Device not ready (sync failed)");
+                        return;
+                    }
                     Thread.Sleep(200);
 
                     FpsCounter fpsCounter = new(60);
@@ -194,7 +210,12 @@ namespace InfoPanel.Services
                                 {
                                     brightness = _device.Brightness;
                                     screenDevice.SetBrightness((byte)brightness);
-                                    screenDevice.Sync();
+                                    if (!screenDevice.Sync())
+                                    {
+                                        Logger.Warning("TuringPanelDevice {Device}: Sync failed during brightness update", _device);
+                                        _device.UpdateRuntimeProperties(errorMessage: "Sync failed");
+                                        break;
+                                    }
                                     Thread.Sleep(200);
                                 }
 
@@ -204,7 +225,12 @@ namespace InfoPanel.Services
                                     if (frame != null)
                                     {
                                         stopwatch2.Restart();
-                                        screenDevice.DrawJpeg(frame);
+                                        if (!screenDevice.DrawJpeg(frame))
+                                        {
+                                            Logger.Warning("TuringPanelDevice {Device}: DrawJpeg failed", _device);
+                                            _device.UpdateRuntimeProperties(errorMessage: "Draw failed");
+                                            break;
+                                        }
 
                                         fpsCounter.Update(stopwatch2.ElapsedMilliseconds);
                                         _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
