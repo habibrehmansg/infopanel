@@ -60,7 +60,7 @@ namespace InfoPanel.Services
                 if (_deviceTasks.TryAdd(device.Id, deviceTask))
                 {
                     await deviceTask.StartAsync(CancellationToken);
-                    Logger.Information("Started TuringPanel device {Device}", device);
+                    Logger.Debug("Started TuringPanel device {Device}", device);
                 }
             }
             else

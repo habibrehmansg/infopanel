@@ -273,7 +273,7 @@ namespace InfoPanel.Services
             }
             catch (Exception e)
             {
-                Logger.Error(e, "TuringPanelDevice {Device}: Init error", _device);
+                Logger.Warning(e, "TuringPanelDevice {Device}: Init error", _device);
                 _device.UpdateRuntimeProperties(errorMessage: e.Message);
             }
             finally

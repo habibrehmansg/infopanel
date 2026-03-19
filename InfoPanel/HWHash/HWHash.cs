@@ -252,7 +252,7 @@ using System.Timers;
 
         private static bool ReadMem(ShmConnection conn)
         {
-            Logger.Debug("Reading HWiNFO shared memory: {Path}", conn.ShmPath);
+            Logger.Verbose("Reading HWiNFO shared memory: {Path}", conn.ShmPath);
             conn.MemRegion = new HWINFO_MEM();
             try
             {

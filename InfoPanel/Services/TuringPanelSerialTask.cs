@@ -212,7 +212,7 @@ namespace InfoPanel
             }
             catch (Exception e)
             {
-                Log.Error(e, "Initialization error");
+                Log.Warning(e, "Initialization error");
             }
             finally
             {
