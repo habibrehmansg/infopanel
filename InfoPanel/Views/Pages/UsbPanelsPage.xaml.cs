@@ -334,14 +334,21 @@ public partial class UsbPanelsPage : Page
             ProfileGuid = profileGuid
         };
 
-        // Remove the old binding if editing
+        // Replace or add the binding (replace triggers a single CollectionChanged instead of Remove+Add)
+        var bindings = ConfigModel.Instance.Settings.HotkeyBindings;
         if (_editingBinding != null)
         {
-            ConfigModel.Instance.Settings.HotkeyBindings.Remove(_editingBinding);
+            var index = bindings.IndexOf(_editingBinding);
+            if (index >= 0)
+                bindings[index] = binding;
+            else
+                bindings.Add(binding);
             _editingBinding = null;
         }
-
-        ConfigModel.Instance.Settings.HotkeyBindings.Add(binding);
+        else
+        {
+            bindings.Add(binding);
+        }
         _ = ConfigModel.Instance.SaveSettingsAsync();
 
         // Check if the hotkey was actually registered with the OS
