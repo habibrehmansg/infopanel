@@ -62,6 +62,8 @@ namespace InfoPanel.ViewModels
         public required string Title { get; set; }
         public bool Expanded { get; set; } = false;
         public required string Changelog { get; set; }
+        public string? Summary { get; set; }
+        public bool HasSummary => Summary != null;
     }
 
 }

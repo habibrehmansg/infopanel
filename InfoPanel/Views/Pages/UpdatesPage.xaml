@@ -96,21 +96,70 @@
                     <ItemsControl ItemsSource="{Binding UpdateVersions}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <ui:Card Margin="0,10,0,0" Padding="16">
-                                    <StackPanel>
+                                <Grid>
+                                    <!-- Layout with CardExpander (when Summary exists) -->
+                                    <ui:CardExpander
+                                        Margin="0,10,0,0"
+                                        HorizontalContentAlignment="Left"
+                                        IsExpanded="{Binding Expanded}">
+                                        <ui:CardExpander.Style>
+                                            <Style TargetType="ui:CardExpander" BasedOn="{StaticResource {x:Type ui:CardExpander}}">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasSummary}" Value="False">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ui:CardExpander.Style>
+                                        <ui:CardExpander.Header>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock
+                                                    FontSize="13"
+                                                    FontWeight="Medium"
+                                                    Text="{Binding Version}" />
+                                                <TextBlock
+                                                    Margin="0,5,0,0"
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                    TextWrapping="Wrap"
+                                                    Loaded="SummaryTextBlock_Loaded" />
+                                            </StackPanel>
+                                        </ui:CardExpander.Header>
                                         <TextBlock
-                                            FontSize="13"
-                                            FontWeight="Medium"
-                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                            Text="{Binding Version}" />
-                                        <TextBlock
-                                            Margin="0,5,0,0"
                                             FontSize="12"
-                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             TextWrapping="Wrap"
-                                            Loaded="ChangelogTextBlock_Loaded" />
-                                    </StackPanel>
-                                </ui:Card>
+                                            Loaded="DetailsTextBlock_Loaded" />
+                                    </ui:CardExpander>
+
+                                    <!-- Layout without CardExpander (when no Summary) -->
+                                    <ui:Card Margin="0,10,0,0" Padding="16">
+                                        <ui:Card.Style>
+                                            <Style TargetType="ui:Card" BasedOn="{StaticResource {x:Type ui:Card}}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasSummary}" Value="False">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ui:Card.Style>
+                                        <StackPanel>
+                                            <TextBlock
+                                                FontSize="13"
+                                                FontWeight="Medium"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                Text="{Binding Version}" />
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                TextWrapping="Wrap"
+                                                Loaded="ChangelogTextBlock_Loaded" />
+                                        </StackPanel>
+                                    </ui:Card>
+                                </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

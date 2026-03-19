@@ -92,16 +92,46 @@ namespace InfoPanel.Views.Pages
             bool first = true;
             foreach (var v in checker.Versions)
             {
+                var (summary, details) = ParseSummary(v.Changelog);
+
                 ViewModel.UpdateVersions.Add(new UpdateVersion
                 {
                     Version = v.Version,
                     Title = v.Changelog,
                     Expanded = first,
-                    Changelog = v.Changelog
+                    Changelog = details,
+                    Summary = summary
                 });
 
                 first = false;
             }
+        }
+
+        private static (string? summary, string details) ParseSummary(string changelog)
+        {
+            const string summaryHeader = "## Summary";
+
+            // Normalize line endings to \n for reliable parsing
+            var normalized = changelog.Replace("\r\n", "\n");
+
+            var summaryIndex = normalized.IndexOf(summaryHeader, StringComparison.Ordinal);
+            if (summaryIndex < 0)
+                return (null, changelog);
+
+            var afterHeader = normalized[(summaryIndex + summaryHeader.Length)..];
+
+            // Look for a line that is just "---"
+            var separatorIndex = afterHeader.IndexOf("\n---\n", StringComparison.Ordinal);
+            if (separatorIndex < 0)
+                return (null, changelog);
+
+            var summary = afterHeader[..separatorIndex].Trim();
+            var details = afterHeader[(separatorIndex + 5)..].Trim(); // 5 = "\n---\n".Length
+
+            if (string.IsNullOrEmpty(summary))
+                return (null, changelog);
+
+            return (summary, details);
         }
 
         private async void CheckUpdates()
@@ -118,6 +148,22 @@ namespace InfoPanel.Views.Pages
         }
 
         private void ChangelogTextBlock_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.DataContext is UpdateVersion version)
+            {
+                PopulateChangelogInlines(tb, version.Changelog);
+            }
+        }
+
+        private void SummaryTextBlock_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.DataContext is UpdateVersion version && version.Summary != null)
+            {
+                PopulateChangelogInlines(tb, version.Summary);
+            }
+        }
+
+        private void DetailsTextBlock_Loaded(object sender, RoutedEventArgs e)
         {
             if (sender is TextBlock tb && tb.DataContext is UpdateVersion version)
             {
