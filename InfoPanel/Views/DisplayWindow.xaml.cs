@@ -423,52 +423,89 @@ namespace InfoPanel.Views.Common
 
         private void RecreateGLElement()
         {
-            if (!OpenGL || _skGlElement == null) return;
+            if (!OpenGL) return;
 
             Logger.Information("Recreating SKGLElement due to display change");
 
-            // Dispose GL assets for display items
-            foreach (var item in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile))
+            // Clean up existing element if present
+            if (_skGlElement != null)
             {
-                Clear(item);
-            }
-
-            // Clean up old GL context
-            if (_skGlElement.GRContext is GRContext grContext)
-            {
-                try
+                // Dispose GL assets for display items
+                foreach (var item in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile))
                 {
-                    grContext.PurgeResources();
-                    grContext.Flush();
-                    grContext.Submit(true);
+                    Clear(item);
                 }
-                catch (Exception ex)
-                {
-                    Logger.Warning(ex, "Error purging GL context during recreation");
-                }
-            }
 
-            _skGlElement.PaintSurface -= SkGlElement_PaintSurface;
-            BindingOperations.ClearBinding(_skGlElement, WidthProperty);
-            BindingOperations.ClearBinding(_skGlElement, HeightProperty);
+                // Clean up old GL context
+                if (_skGlElement.GRContext is GRContext grContext)
+                {
+                    try
+                    {
+                        grContext.PurgeResources();
+                        grContext.Flush();
+                        grContext.Submit(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning(ex, "Error purging GL context during recreation");
+                    }
+                }
+
+                _skGlElement.PaintSurface -= SkGlElement_PaintSurface;
+                BindingOperations.ClearBinding(_skGlElement, WidthProperty);
+                BindingOperations.ClearBinding(_skGlElement, HeightProperty);
+                _skGlElement = null;
+            }
 
             // Remove old element from container
             var container = FindName("SkiaContainer") as Panel;
             container?.Children.Clear();
-            _skGlElement = null;
 
             // Create fresh GL element with new context (can't use InjectSkiaElement — AllowsTransparency can't change after show)
-            var newElement = new SKGLElement
+            try
             {
-                Name = "skGlElement",
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Top
+                var newElement = new SKGLElement
+                {
+                    Name = "skGlElement",
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Top
+                };
+                newElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
+                newElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
+                newElement.PaintSurface += SkGlElement_PaintSurface;
+                container?.Children.Add(newElement);
+                _skGlElement = newElement;
+
+                // Restore visibility if we were hidden during retry
+                if (!IsVisible) Show();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to recreate GL element, scheduling retry");
+
+                // Hide the window while retrying so it doesn't block input to other windows
+                if (IsVisible) Hide();
+
+                ScheduleGLRecreateRetry();
+            }
+        }
+
+        private System.Windows.Threading.DispatcherTimer? _glRecreateTimer;
+
+        private void ScheduleGLRecreateRetry()
+        {
+            _glRecreateTimer?.Stop();
+            _glRecreateTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
             };
-            newElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
-            newElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
-            newElement.PaintSurface += SkGlElement_PaintSurface;
-            container?.Children.Add(newElement);
-            _skGlElement = newElement;
+            _glRecreateTimer.Tick += (s, e) =>
+            {
+                _glRecreateTimer.Stop();
+                _glRecreateTimer = null;
+                RecreateGLElement();
+            };
+            _glRecreateTimer.Start();
         }
 
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
