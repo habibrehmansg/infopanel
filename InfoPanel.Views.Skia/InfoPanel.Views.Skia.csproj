@@ -1,19 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Platforms>x64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="OpenTK.GLWpfControl" Version="4.3.6" />
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
+    <PackageReference Include="SkiaSharp.Views.Desktop.Common" Version="3.119.2" />
   </ItemGroup>
 
 </Project>

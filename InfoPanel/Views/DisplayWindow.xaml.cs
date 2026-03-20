@@ -279,15 +279,27 @@ namespace InfoPanel.Views.Common
         private void DisplayWindow_DpiChanged(object sender, DpiChangedEventArgs e)
         {
             _isDpiChanging = true;
-            MaintainPixelSize();
-            _isDpiChanging = false;
+            try
+            {
+                MaintainPixelSize();
+            }
+            finally
+            {
+                _isDpiChanging = false;
+            }
         }
 
         private void DisplayWindow_LocationChanged(object? sender, EventArgs e)
         {
             _isDpiChanging = true;
-            MaintainPixelSize();
-            _isDpiChanging = false;
+            try
+            {
+                MaintainPixelSize();
+            }
+            finally
+            {
+                _isDpiChanging = false;
+            }
         }
 
         private void OnResizeCompleted(object? sender, EventArgs e)
@@ -306,16 +318,23 @@ namespace InfoPanel.Views.Common
 
         private void MaintainPixelSize()
         {
-            _targetPixelWidth = Profile.Width;
-            _targetPixelHeight = Profile.Height;
-
-            var source = PresentationSource.FromVisual(this);
-            if (source?.CompositionTarget != null)
+            try
             {
-                var dpiX = source.CompositionTarget.TransformToDevice.M11;
-                var dpiY = source.CompositionTarget.TransformToDevice.M22;
-                this.Width = _targetPixelWidth / dpiX;
-                this.Height = _targetPixelHeight / dpiY;
+                _targetPixelWidth = Profile.Width;
+                _targetPixelHeight = Profile.Height;
+
+                var source = PresentationSource.FromVisual(this);
+                if (source?.CompositionTarget != null)
+                {
+                    var dpiX = source.CompositionTarget.TransformToDevice.M11;
+                    var dpiY = source.CompositionTarget.TransformToDevice.M22;
+                    this.Width = _targetPixelWidth / dpiX;
+                    this.Height = _targetPixelHeight / dpiY;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error in MaintainPixelSize");
             }
         }
 
@@ -356,11 +375,19 @@ namespace InfoPanel.Views.Common
 
             if (!OpenGL)
             {
-                _dispatcher.BeginInvoke(() => _sKElement?.InvalidateVisual(), DispatcherPriority.Render);
+                _dispatcher.BeginInvoke(() =>
+                {
+                    _renderInvalidationPending = false;
+                    _sKElement?.InvalidateVisual();
+                }, DispatcherPriority.Render);
             }
             else
             {
-                _dispatcher.BeginInvoke(() => _skGlElement?.InvalidateVisual(), DispatcherPriority.Render);
+                _dispatcher.BeginInvoke(() =>
+                {
+                    _renderInvalidationPending = false;
+                    _skGlElement?.InvalidateVisual();
+                }, DispatcherPriority.Render);
             }
         }
 
@@ -376,17 +403,72 @@ namespace InfoPanel.Views.Common
 
         private void PaintSurface(SKCanvas canvas)
         {
-            _renderInvalidationPending = false;
-
             if (_renderTimer == null || !_renderTimer.Enabled)
             {
                 return;
             }
 
-            canvas.Clear();
+            try
+            {
+                canvas.Clear();
 
-            SkiaGraphics skiaGraphics = new(canvas, Profile.FontScale);
-            PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
+                SkiaGraphics skiaGraphics = new(canvas, Profile.FontScale);
+                PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during PaintSurface rendering");
+            }
+        }
+
+        private void RecreateGLElement()
+        {
+            if (!OpenGL || _skGlElement == null) return;
+
+            Logger.Information("Recreating SKGLElement due to display change");
+
+            // Dispose GL assets for display items
+            foreach (var item in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile))
+            {
+                Clear(item);
+            }
+
+            // Clean up old GL context
+            if (_skGlElement.GRContext is GRContext grContext)
+            {
+                try
+                {
+                    grContext.PurgeResources();
+                    grContext.Flush();
+                    grContext.Submit(true);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Error purging GL context during recreation");
+                }
+            }
+
+            _skGlElement.PaintSurface -= SkGlElement_PaintSurface;
+            BindingOperations.ClearBinding(_skGlElement, WidthProperty);
+            BindingOperations.ClearBinding(_skGlElement, HeightProperty);
+
+            // Remove old element from container
+            var container = FindName("SkiaContainer") as Panel;
+            container?.Children.Clear();
+            _skGlElement = null;
+
+            // Create fresh GL element with new context (can't use InjectSkiaElement — AllowsTransparency can't change after show)
+            var newElement = new SKGLElement
+            {
+                Name = "skGlElement",
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top
+            };
+            newElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
+            newElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
+            newElement.PaintSurface += SkGlElement_PaintSurface;
+            container?.Children.Add(newElement);
+            _skGlElement = newElement;
         }
 
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
@@ -394,6 +476,10 @@ namespace InfoPanel.Views.Common
             Logger.Information("SystemEvents_DisplaySettingsChanged");
             _dispatcher.BeginInvoke(() =>
             {
+                if (OpenGL)
+                {
+                    RecreateGLElement();
+                }
                 SetWindowPositionRelativeToScreen();
             });
         }
@@ -498,6 +584,18 @@ namespace InfoPanel.Views.Common
         }
 
         private void SetWindowPositionRelativeToScreen()
+        {
+            try
+            {
+                SetWindowPositionRelativeToScreenCore();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error in SetWindowPositionRelativeToScreen");
+            }
+        }
+
+        private void SetWindowPositionRelativeToScreenCore()
         {
             var screens = ScreenHelper.GetAllMonitors();
             MonitorInfo? targetScreen = null;

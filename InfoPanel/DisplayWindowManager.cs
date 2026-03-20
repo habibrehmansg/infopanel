@@ -1,5 +1,6 @@
 ﻿using InfoPanel.Models;
 using InfoPanel.Views.Common;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +11,7 @@ namespace InfoPanel
 {
     public class DisplayWindowManager
     {
+        private static readonly ILogger Logger = Log.ForContext<DisplayWindowManager>();
         private static readonly Lazy<DisplayWindowManager> _instance = new(() => new DisplayWindowManager());
         public static DisplayWindowManager Instance => _instance.Value;
 
@@ -30,6 +32,13 @@ namespace InfoPanel
             {
                 // Create dispatcher for this thread
                 Dispatcher = Dispatcher.CurrentDispatcher;
+
+                Dispatcher.UnhandledException += (s, e) =>
+                {
+                    Logger.Error(e.Exception, "Unhandled exception on DisplayWindowThread");
+                    e.Handled = true;
+                };
+
                 _threadReady.Set();
 
                 // Run the dispatcher
