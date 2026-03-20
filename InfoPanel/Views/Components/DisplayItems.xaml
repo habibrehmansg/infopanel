@@ -10,6 +10,7 @@
     xmlns:local="clr-namespace:InfoPanel.Views.Components"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="clr-namespace:InfoPanel.Models"
+    xmlns:utils="clr-namespace:InfoPanel.Utils"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
@@ -171,7 +172,8 @@
                     <ToggleButton
                         Margin="10,0,0,0"
                         IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.OpenGL}"
-                        ToolTip="OpenGL">
+                        IsEnabled="{x:Static utils:GpuHelper.IsOpenGLSupported}"
+                        ToolTip="OpenGL (NVIDIA GPU required)">
                         <ui:SymbolIcon Symbol="FastAcceleration20" />
                     </ToggleButton>
 

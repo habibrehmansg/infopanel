@@ -9,6 +9,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
     xmlns:models="clr-namespace:InfoPanel.Models"
+    xmlns:utils="clr-namespace:InfoPanel.Utils"
     xmlns:pages="clr-namespace:InfoPanel.Views.Pages"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="DesignPage"
@@ -512,15 +513,24 @@
                                                 </Grid.ColumnDefinitions>
 
                                                 <Grid Grid.Column="0" IsEnabled="{Binding Active}">
-                                                    <ui:CardControl>
-                                                        <ui:CardControl.Header>
-                                                            <TextBlock
-                                                                FontSize="12"
-                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="Use OpenGL (GPU) rendering" />
-                                                        </ui:CardControl.Header>
-                                                        <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding OpenGL}" />
-                                                    </ui:CardControl>
+                                                    <StackPanel>
+                                                        <ui:CardControl IsEnabled="{x:Static utils:GpuHelper.IsOpenGLSupported}">
+                                                            <ui:CardControl.Header>
+                                                                <StackPanel>
+                                                                    <TextBlock
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                        Text="Use OpenGL (GPU) rendering" />
+                                                                    <TextBlock
+                                                                        FontSize="11"
+                                                                        Foreground="Orange"
+                                                                        Text="Requires NVIDIA GPU"
+                                                                        Visibility="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=ui:CardControl}, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                                                </StackPanel>
+                                                            </ui:CardControl.Header>
+                                                            <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding OpenGL}" />
+                                                        </ui:CardControl>
+                                                    </StackPanel>
                                                 </Grid>
 
                                                 <Grid Grid.Column="1" Margin="10,0,0,0">
