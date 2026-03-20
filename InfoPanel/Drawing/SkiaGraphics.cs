@@ -168,26 +168,61 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, bool wrap = false, bool ellipsis = true, int width = 0, int height = 0)
+        public void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, bool wrap = false, bool ellipsis = true, int width = 0, int height = 0, int glowRadius = 0, string? glowColor = null, string? glowBlendMode = null)
         {
             if (string.IsNullOrEmpty(text))
                 return;
 
+            if (glowRadius > 0)
+            {
+                string effectiveGlowColor = !string.IsNullOrEmpty(glowColor) ? glowColor! : WithAlpha(color, 0.6f);
+                var blendMode = TryParseBlendMode(glowBlendMode, out var skBlendMode) ? skBlendMode : SKBlendMode.SrcOver;
+                using var blurFilter = SKImageFilter.CreateBlur(glowRadius, glowRadius);
+                using var layerPaint = new SKPaint { ImageFilter = blurFilter, BlendMode = blendMode };
+                Canvas.SaveLayer(layerPaint);
+                DrawStringCore(text, fontName, fontStyle, fontSize, effectiveGlowColor, x, y, rightAlign, centerAlign, bold, italic, underline, strikeout, wrap, ellipsis, width);
+                Canvas.Restore();
+            }
+
+            DrawStringCore(text, fontName, fontStyle, fontSize, color, x, y, rightAlign, centerAlign, bold, italic, underline, strikeout, wrap, ellipsis, width);
+        }
+
+        private static bool TryParseBlendMode(string? value, out SKBlendMode mode)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                mode = SKBlendMode.SrcOver;
+                return true;
+            }
+            return Enum.TryParse(value, ignoreCase: true, out mode);
+        }
+
+        private static string WithAlpha(string hexColor, float alpha)
+        {
+            if (string.IsNullOrEmpty(hexColor)) return "#000000";
+            if (!hexColor.StartsWith("#")) hexColor = "#" + hexColor;
+            var skColor = SKColor.Parse(hexColor);
+            var withAlpha = new SKColor(skColor.Red, skColor.Green, skColor.Blue, (byte)(255 * alpha));
+            return $"#{withAlpha.Alpha:X2}{withAlpha.Red:X2}{withAlpha.Green:X2}{withAlpha.Blue:X2}";
+        }
+
+        private void DrawStringCore(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign, bool centerAlign, bool bold, bool italic, bool underline, bool strikeout, bool wrap, bool ellipsis, int width)
+        {
             var tb = new TextBlock
             {
                 EllipsisEnabled = ellipsis,
                 MaxLines = wrap ? 1 : null,
                 MaxWidth = width > 0 ? width : null
             };
-            
+
             if (rightAlign)
                 tb.Alignment = TextAlignment.Right;
-            
-            if (centerAlign && width > 0) 
+
+            if (centerAlign && width > 0)
                 tb.Alignment = TextAlignment.Center;
-            
+
             SKTypeface typeface = CreateTypeface(fontName, fontStyle, bold, italic);
-           
+
             var style = new Style
             {
                 FontFamily = typeface.FamilyName,
@@ -202,7 +237,6 @@ namespace InfoPanel.Drawing
 
             tb.AddText(text, style);
 
-            // Adjust X position based on alignment and width
             float adjustedX = x;
             if (width == 0 && rightAlign)
                 adjustedX = x - tb.MeasuredWidth;
