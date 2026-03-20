@@ -156,6 +156,24 @@
                             Text="Resource links, donations and acknowledgments." />
                     </StackPanel>
                 </ui:CardAction>
+                <ui:HyperlinkButton
+                    Margin="0,10,0,0"
+                    Padding="12"
+                    HorizontalAlignment="Stretch"
+                    NavigateUri="https://github.com/emaspa/infopanel-guide"
+                    Icon="{ui:SymbolIcon BookOpen20}">
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="User Guide" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="Learn how to use InfoPanel, create profiles, map sensors and more." />
+                    </StackPanel>
+                </ui:HyperlinkButton>
 
             </StackPanel>
 
