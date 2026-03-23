@@ -246,9 +246,8 @@
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 		<PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
 		<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
-		<PackageReference Include="SkiaSharp" Version="3.119.1" />
-		<PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.1" />
-		<PackageReference Include="Svg.Skia" Version="3.2.1" />
+		<PackageReference Include="SkiaSharp" Version="3.119.2" />
+		<PackageReference Include="Svg.Skia" Version="3.6.0" />
 		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.3" />
 		<PackageReference Include="System.Management" Version="10.0.3" />
 		<PackageReference Include="System.IO.Ports" Version="10.0.3" />
@@ -262,6 +261,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\InfoPanel.Views.Skia\InfoPanel.Views.Skia.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Ipc\InfoPanel.Plugins.Ipc.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
