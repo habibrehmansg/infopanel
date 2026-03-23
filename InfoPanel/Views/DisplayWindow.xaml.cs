@@ -166,6 +166,9 @@ namespace InfoPanel.Views.Common
             _resizeTimer.Stop();
             _resizeTimer.Tick -= OnResizeCompleted;
 
+            _glRecreateTimer?.Stop();
+            _glRecreateTimer = null;
+
             ConfigModel.Instance.Settings.PropertyChanged -= Config_PropertyChanged;
 
             if (_renderTimer != null)
@@ -247,9 +250,9 @@ namespace InfoPanel.Views.Common
 
                     _skGlElement = skGlElement;
                 }
-                catch (Exception ex) when (ex is PlatformNotSupportedException || ex.InnerException is PlatformNotSupportedException)
+                catch (Exception ex)
                 {
-                    Logger.Warning(ex, "OpenGL not supported on this GPU (WGL_NV_DX_interop missing), disabling OpenGL for profile");
+                    Logger.Warning(ex, "Failed to initialize OpenGL, disabling OpenGL for profile");
                     Profile.OpenGL = false;
                 }
             }
@@ -487,19 +490,21 @@ namespace InfoPanel.Views.Common
                 // Restore visibility if we were hidden during retry
                 if (!IsVisible) Show();
             }
-            catch (Exception ex) when (ex is PlatformNotSupportedException || ex.InnerException is PlatformNotSupportedException)
+            catch (OpenTK.Windowing.GraphicsLibraryFramework.GLFWException ex)
             {
-                Logger.Warning(ex, "OpenGL not supported on this GPU, disabling OpenGL for profile");
-                Profile.OpenGL = false;
-            }
-            catch (Exception ex)
-            {
+                // Transient GLFW error (e.g. monitor unplug) — retry
                 Logger.Warning(ex, "Failed to recreate GL element, scheduling retry");
 
                 // Hide the window while retrying so it doesn't block input to other windows
                 if (IsVisible) Hide();
 
                 ScheduleGLRecreateRetry();
+            }
+            catch (Exception ex)
+            {
+                // Permanent failure (driver/GPU incompatibility) — disable OpenGL
+                Logger.Warning(ex, "Failed to initialize OpenGL during recreation, disabling OpenGL for profile");
+                Profile.OpenGL = false;
             }
         }
 
