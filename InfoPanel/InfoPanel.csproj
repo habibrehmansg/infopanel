@@ -3,12 +3,10 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<Nullable>enable</Nullable>
 		<UseWPF>true</UseWPF>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<ApplicationIcon>Resources\Images\favicon.ico</ApplicationIcon>
-		<Platforms>x64</Platforms>
 		<UseWindowsForms>True</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>

@@ -38,6 +38,7 @@
           "ini-parser-netstandard": "[2.5.3, )"
         }
       }
-    }
+    },
+    "net8.0/win-x64": {}
   }
 }
