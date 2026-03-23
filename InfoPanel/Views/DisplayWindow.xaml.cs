@@ -232,18 +232,26 @@ namespace InfoPanel.Views.Common
             if (OpenGL)
             {
                 AllowsTransparency = false;
-                var skGlElement = new SKGLElement
+                try
                 {
-                    Name = "skGlElement",
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    VerticalAlignment = VerticalAlignment.Top
-                };
-                skGlElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
-                skGlElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
-                skGlElement.PaintSurface += SkGlElement_PaintSurface;
-                container.Children.Add(skGlElement);
+                    var skGlElement = new SKGLElement
+                    {
+                        Name = "skGlElement",
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        VerticalAlignment = VerticalAlignment.Top
+                    };
+                    skGlElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
+                    skGlElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
+                    skGlElement.PaintSurface += SkGlElement_PaintSurface;
+                    container.Children.Add(skGlElement);
 
-                _skGlElement = skGlElement;
+                    _skGlElement = skGlElement;
+                }
+                catch (Exception ex) when (ex is PlatformNotSupportedException || ex.InnerException is PlatformNotSupportedException)
+                {
+                    Logger.Warning(ex, "OpenGL not supported on this GPU (WGL_NV_DX_interop missing), disabling OpenGL for profile");
+                    Profile.OpenGL = false;
+                }
             }
             else
             {
@@ -478,6 +486,11 @@ namespace InfoPanel.Views.Common
 
                 // Restore visibility if we were hidden during retry
                 if (!IsVisible) Show();
+            }
+            catch (Exception ex) when (ex is PlatformNotSupportedException || ex.InnerException is PlatformNotSupportedException)
+            {
+                Logger.Warning(ex, "OpenGL not supported on this GPU, disabling OpenGL for profile");
+                Profile.OpenGL = false;
             }
             catch (Exception ex)
             {
