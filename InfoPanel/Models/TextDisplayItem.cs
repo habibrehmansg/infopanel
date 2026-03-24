@@ -142,6 +142,23 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _marqueeSpacing = 40;
 
+        [ObservableProperty]
+        private bool _glowEnabled = false;
+
+        private int _glowRadius = 8;
+        public int GlowRadius
+        {
+            get => _glowRadius;
+            set => SetProperty(ref _glowRadius, Math.Clamp(value, 2, 20));
+        }
+
+        [ObservableProperty]
+        private string _glowColor = "#000000";
+
+        /// <summary>Skia blend mode when compositing the glow layer (e.g. SrcOver, Screen, Plus). Default SrcOver = normal.</summary>
+        [ObservableProperty]
+        private string _glowBlendMode = "SrcOver";
+
         public TextDisplayItem()
         {
         }
@@ -176,8 +193,12 @@ namespace InfoPanel.Models
         {
             var size = EvaluateSize();
             int rectX = Width == 0 && RightAlign ? (int)(X - size.Width) : X;
-
-            return new SKRect(rectX, Y, rectX + size.Width, Y + size.Height);
+            var rect = new SKRect(rectX, Y, rectX + size.Width, Y + size.Height);
+            if (GlowEnabled && GlowRadius > 0)
+            {
+                rect.Inflate(GlowRadius, GlowRadius);
+            }
+            return rect;
         }
         public override object Clone()
         {

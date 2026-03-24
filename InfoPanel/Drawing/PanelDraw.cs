@@ -803,6 +803,9 @@ namespace InfoPanel.Drawing
             var format = tableSensorDisplayItem.TableFormat;
             var maxRows = tableSensorDisplayItem.MaxRows;
             var formatParts = format.Split('|');
+            var glowRadius = tableSensorDisplayItem.GlowEnabled ? tableSensorDisplayItem.GlowRadius : 0;
+            var glowColor = tableSensorDisplayItem.GlowEnabled && !string.IsNullOrEmpty(tableSensorDisplayItem.GlowColor) ? tableSensorDisplayItem.GlowColor : null;
+            var glowBlendMode = tableSensorDisplayItem.GlowEnabled ? tableSensorDisplayItem.GlowBlendMode : null;
 
             if (formatParts.Length == 0) return;
 
@@ -828,7 +831,7 @@ namespace InfoPanel.Drawing
                             i != 0 && tableSensorDisplayItem.RightAlign, tableSensorDisplayItem.CenterAlign, 
                             tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic, 
                             tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout, 
-                            tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, length, 0);
+                            tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, length, 0, glowRadius, glowColor, glowBlendMode);
                     }
 
                     // Draw rows
@@ -843,7 +846,7 @@ namespace InfoPanel.Drawing
                                 i != 0 && tableSensorDisplayItem.RightAlign, tableSensorDisplayItem.CenterAlign, 
                                 tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic, 
                                 tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout, 
-                                tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, length, 0);
+                                tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, length, 0, glowRadius, glowColor, glowBlendMode);
                         }
                     }
 
@@ -892,15 +895,19 @@ namespace InfoPanel.Drawing
 
             // Draw text twice for infinite scroll
             // Note: Disable alignment for marquee as position is controlled by offset
+            var glowRadius = textDisplayItem.GlowEnabled ? textDisplayItem.GlowRadius : 0;
+            var glowColor = textDisplayItem.GlowEnabled && !string.IsNullOrEmpty(textDisplayItem.GlowColor) ? textDisplayItem.GlowColor : null;
+            var glowBlendMode = textDisplayItem.GlowEnabled ? textDisplayItem.GlowBlendMode : null;
+
             g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, 
                 x - offset, y, false, false, // Disable alignment for marquee
                 textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, 
-                textDisplayItem.Strikeout, false, false, 0);
+                textDisplayItem.Strikeout, false, false, 0, 0, glowRadius, glowColor, glowBlendMode);
 
             g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, 
                 x - offset + (int)textWidth + padding, y, false, false, // Disable alignment for marquee
                 textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, 
-                textDisplayItem.Strikeout, false, false, 0);
+                textDisplayItem.Strikeout, false, false, 0, 0, glowRadius, glowColor, glowBlendMode);
 
             g.Canvas.Restore();
         }
@@ -910,11 +917,14 @@ namespace InfoPanel.Drawing
         {
             var fontSize = (int)Math.Floor(textDisplayItem.FontSize * scale);
             var drawWidth = (int)(textDisplayItem.Width * scale);
-            
+            var glowRadius = textDisplayItem.GlowEnabled ? textDisplayItem.GlowRadius : 0;
+            var glowColor = textDisplayItem.GlowEnabled && !string.IsNullOrEmpty(textDisplayItem.GlowColor) ? textDisplayItem.GlowColor : null;
+            var glowBlendMode = textDisplayItem.GlowEnabled ? textDisplayItem.GlowBlendMode : null;
+
             g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, 
                 x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
                 textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, 
-                textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, drawWidth);
+                textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, drawWidth, 0, glowRadius, glowColor, glowBlendMode);
         }
 
     }

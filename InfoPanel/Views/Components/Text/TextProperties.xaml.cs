@@ -5,10 +5,13 @@ using SkiaSharp;
 using System.Collections.ObjectModel;
 using Serilog;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using Wpf.Ui.Controls;
+using Wpf.Ui;
 
 namespace InfoPanel.Views.Components
 {
@@ -21,6 +24,7 @@ namespace InfoPanel.Views.Components
     public partial class TextProperties : UserControl
     {
         private static readonly ILogger Logger = Log.ForContext<TextProperties>();
+        private static bool _glowDisclaimerDontRemindThisSession;
         public static readonly DependencyProperty ItemProperty =
         DependencyProperty.Register("TextDisplayItem", typeof(TextDisplayItem), typeof(TextProperties));
 
@@ -35,6 +39,17 @@ namespace InfoPanel.Views.Components
         public ObservableCollection<string> InstalledFonts { get; } = [];
 
         public ObservableCollection<string> FontStyles { get; } = [];
+
+        /// <summary>Blend modes for glow layer compositing (Skia enum names).</summary>
+        public static ObservableCollection<string> GlowBlendModes { get; } =
+        [
+            "SrcOver",
+            "Screen",
+            "Plus",
+            "Overlay",
+            "SoftLight",
+            "HardLight"
+        ];
 
         public TextDisplayItem TextDisplayItem
         {
@@ -223,6 +238,48 @@ namespace InfoPanel.Views.Components
                 numBox.Value = newValue;
                 TextDisplayItem.FontSize = (int)newValue;
             }
+        }
+
+        private async void GlowToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ToggleButton toggle || toggle.IsChecked != true)
+                return;
+
+            if (_glowDisclaimerDontRemindThisSession)
+                return;
+
+            var checkBox = new CheckBox
+            {
+                Content = "Don't remind me again during this session",
+                IsChecked = false,
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+
+            var content = new StackPanel();
+            content.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "Using many glow effects in a panel may impact performance.",
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 320
+            });
+            content.Children.Add(checkBox);
+
+            var dialogService = App.GetService<IContentDialogService>();
+            if (dialogService == null)
+                return;
+
+            var dialog = new ContentDialog
+            {
+                Title = "Glow effect",
+                Content = content,
+                PrimaryButtonText = "OK",
+                PrimaryButtonAppearance = ControlAppearance.Primary
+            };
+
+            _ = await dialogService.ShowAsync(dialog, CancellationToken.None);
+
+            if (checkBox.IsChecked == true)
+                _glowDisclaimerDontRemindThisSession = true;
         }
     }
 }
