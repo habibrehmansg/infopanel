@@ -3,6 +3,7 @@ using InfoPanel.Models;
 using InfoPanel.Services;
 using InfoPanel.TuringPanel;
 using InfoPanel.ThermalrightPanel;
+using InfoPanel.ThermaltakePanel;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
 using LibUsbDotNet;
@@ -553,6 +554,87 @@ public partial class UsbPanelsPage : Page
                     }
 
                     settings.ThermalrightPanelDevices.Remove(deviceConfig);
+                }
+            });
+        }
+    }
+
+    // === Thermaltake Panel ===
+
+    private async void ButtonDiscoverThermaltakePanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateThermaltakePanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private Task UpdateThermaltakePanelDeviceList()
+    {
+        var discoveredDevices = ThermaltakePanelHelper.ScanDevices();
+
+        Logger.Information("ThermaltakePanel Discovery: Found {Count} devices", discoveredDevices.Count);
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.ThermaltakePanelDevices.FirstOrDefault(d =>
+                    d.IsMatching(discoveredDevice.DeviceId, discoveredDevice.DeviceLocation, discoveredDevice.Model));
+
+                if (device == null)
+                {
+                    var newDevice = new ThermaltakePanelDevice()
+                    {
+                        DeviceId = discoveredDevice.DeviceId,
+                        DeviceLocation = discoveredDevice.DeviceLocation,
+                        Model = discoveredDevice.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty
+                    };
+
+                    if (discoveredDevice.ModelInfo != null)
+                    {
+                        newDevice.RuntimeProperties.Name = $"Thermaltake {discoveredDevice.ModelInfo.Name}";
+                    }
+
+                    settings.ThermaltakePanelDevices.Add(newDevice);
+                    Logger.Information("ThermaltakePanel Discovery: Added new device '{DeviceId}'", discoveredDevice.DeviceId);
+                }
+                else
+                {
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+
+                    if (device.ModelInfo != null)
+                    {
+                        device.RuntimeProperties.Name = $"Thermaltake {device.ModelInfo.Name}";
+                    }
+
+                    Logger.Information("ThermaltakePanel Discovery: Device '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ButtonRemoveThermaltakePanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is ThermaltakePanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.ThermaltakePanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (ThermaltakePanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = ThermaltakePanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.ThermaltakePanelDevices.Remove(deviceConfig);
                 }
             });
         }
