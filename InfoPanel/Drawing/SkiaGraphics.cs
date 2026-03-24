@@ -176,12 +176,24 @@ namespace InfoPanel.Drawing
             if (glowRadius > 0)
             {
                 string effectiveGlowColor = !string.IsNullOrEmpty(glowColor) ? glowColor! : WithAlpha(color, 0.6f);
-                var blendMode = TryParseBlendMode(glowBlendMode, out var skBlendMode) ? skBlendMode : SKBlendMode.SrcOver;
+                TryParseBlendMode(glowBlendMode, out var blendMode);
+
+                // Outer layer: composites the combined glow+text against the background using the chosen blend mode
+                using var outerPaint = new SKPaint { BlendMode = blendMode };
+                Canvas.SaveLayer(outerPaint);
+
+                // Inner layer: draw blurred glow with normal compositing
                 using var blurFilter = SKImageFilter.CreateBlur(glowRadius, glowRadius);
-                using var layerPaint = new SKPaint { ImageFilter = blurFilter, BlendMode = blendMode };
-                Canvas.SaveLayer(layerPaint);
+                using var glowPaint = new SKPaint { ImageFilter = blurFilter };
+                Canvas.SaveLayer(glowPaint);
                 DrawStringCore(text, fontName, fontStyle, fontSize, effectiveGlowColor, x, y, rightAlign, centerAlign, bold, italic, underline, strikeout, wrap, ellipsis, width);
                 Canvas.Restore();
+
+                // Sharp text on top within the same blend group
+                DrawStringCore(text, fontName, fontStyle, fontSize, color, x, y, rightAlign, centerAlign, bold, italic, underline, strikeout, wrap, ellipsis, width);
+
+                Canvas.Restore();
+                return;
             }
 
             DrawStringCore(text, fontName, fontStyle, fontSize, color, x, y, rightAlign, centerAlign, bold, italic, underline, strikeout, wrap, ellipsis, width);

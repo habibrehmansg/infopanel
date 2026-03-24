@@ -14,7 +14,7 @@
     Width="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.UiWidth, Mode=OneWay}"
     Height="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.UiHeight, Mode=OneWay}"
     MinWidth="900"
-    MinHeight="600"
+    MinHeight="800"
     d:DesignHeight="900"
     d:DesignWidth="1300"
     ui:Design.Background="{DynamicResource ApplicationBackgroundBrush}"

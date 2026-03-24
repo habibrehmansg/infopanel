@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Drawing;
 using SkiaSharp;
 using System;
@@ -153,7 +153,7 @@ namespace InfoPanel.Models
         }
 
         [ObservableProperty]
-        private string _glowColor = "";
+        private string _glowColor = "#000000";
 
         /// <summary>Skia blend mode when compositing the glow layer (e.g. SrcOver, Screen, Plus). Default SrcOver = normal.</summary>
         [ObservableProperty]

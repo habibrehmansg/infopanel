@@ -1,4 +1,4 @@
-using InfoPanel.Drawing;
+﻿using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using SkiaSharp;
@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using Wpf.Ui.Controls;
 using Wpf.Ui;
@@ -239,8 +240,11 @@ namespace InfoPanel.Views.Components
             }
         }
 
-        private async void GlowToggle_Checked(object sender, RoutedEventArgs e)
+        private async void GlowToggle_Click(object sender, RoutedEventArgs e)
         {
+            if (sender is not ToggleButton toggle || toggle.IsChecked != true)
+                return;
+
             if (_glowDisclaimerDontRemindThisSession)
                 return;
 
