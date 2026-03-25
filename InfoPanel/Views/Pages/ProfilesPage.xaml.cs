@@ -1,5 +1,4 @@
 using InfoPanel.Models;
-using InfoPanel.Services;
 using InfoPanel.Utils;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
@@ -37,12 +36,6 @@ namespace InfoPanel.Views.Pages
             InitializeComponent();
 
             Loaded += ProfilesPage_Loaded;
-            Unloaded += ProfilesPage_Unloaded;
-        }
-
-        private void ProfilesPage_Unloaded(object sender, RoutedEventArgs e)
-        {
-            ProgramSpecificPanelsCaptureService.TargetProfile = null;
         }
 
         private async void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
@@ -55,8 +48,6 @@ namespace InfoPanel.Views.Pages
                     InstalledFonts.Add(font);
                 }
             }
-            if (ViewModel.Profile != null)
-                ProgramSpecificPanelsCaptureService.TargetProfile = ViewModel.Profile;
         }
 
         private void ButtonAdd_Click(object sender, RoutedEventArgs e)
@@ -137,7 +128,6 @@ namespace InfoPanel.Views.Pages
             if (ListViewProfiles.SelectedItem != null)
             {
                 ProfileDetailOverlay.Visibility = Visibility.Visible;
-                ProgramSpecificPanelsCaptureService.TargetProfile = ViewModel.Profile;
             }
         }
 
@@ -145,16 +135,6 @@ namespace InfoPanel.Views.Pages
         {
             ViewModel.Profile = null;
             ProfileDetailOverlay.Visibility = Visibility.Collapsed;
-        }
-
-        private void ButtonUseForegroundApp_Click(object sender, RoutedEventArgs e)
-        {
-            if (ViewModel.Profile is not Profile profile)
-                return;
-            string? name = ForegroundWindowHelper.GetForegroundProcessName();
-            if (string.IsNullOrWhiteSpace(name))
-                return;
-            AppendTriggerProcessName(profile, name);
         }
 
         private void ButtonSelectFromList_Click(object sender, RoutedEventArgs e)

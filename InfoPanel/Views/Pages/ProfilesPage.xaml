@@ -302,19 +302,12 @@
                                                                 Margin="0,0,8,0"
                                                                 ToolTip="Process name(s), e.g. Cyberpunk2077, chrome"
                                                                 Text="{Binding TriggerProcessNames, UpdateSourceTrigger=PropertyChanged}" />
-                                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                                                <ui:Button
-                                                                    x:Name="ButtonUseForegroundApp"
-                                                                    Click="ButtonUseForegroundApp_Click"
-                                                                    Content="Use foreground app"
-                                                                    ToolTip="Set to the currently focused window's process name. Or press Ctrl+Alt+G while the app is in focus." />
-                                                                <ui:Button
-                                                                    Margin="8,0,0,0"
-                                                                    x:Name="ButtonSelectFromList"
-                                                                    Click="ButtonSelectFromList_Click"
-                                                                    Content="Select from list..."
-                                                                    ToolTip="Browse running processes and pick one" />
-                                                            </StackPanel>
+                                                            <ui:Button
+                                                                Grid.Column="1"
+                                                                x:Name="ButtonSelectFromList"
+                                                                Click="ButtonSelectFromList_Click"
+                                                                Content="Select from list..."
+                                                                ToolTip="Browse running processes and pick one" />
                                                         </Grid>
                                                     </StackPanel>
                                                 </StackPanel>

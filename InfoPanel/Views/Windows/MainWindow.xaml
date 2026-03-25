@@ -54,7 +54,6 @@
             IsBackButtonVisible="Collapsed"
             IsPaneOpen="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.IsPaneOpen, Mode=TwoWay}"
             IsPaneToggleVisible="True"
-            ItemInvoked="RootNavigation_ItemInvoked"
             OpenPaneLength="150"
             PaneDisplayMode="Left"
             TitleBar="{Binding ElementName=TitleBar, Mode=OneWay}"

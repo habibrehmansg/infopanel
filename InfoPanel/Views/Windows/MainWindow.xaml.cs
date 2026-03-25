@@ -8,7 +8,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using Serilog;
@@ -43,18 +42,6 @@ namespace InfoPanel.Views.Windows
         private bool _isExiting;
         private readonly IContentDialogService _contentDialogService;
         private readonly ISnackbarService _snackbarService;
-
-        // Capture-foreground-app hotkey (Ctrl+Alt+G)
-        private const int WM_HOTKEY = 0x0312;
-        private const int MOD_ALT = 0x0001;
-        private const int MOD_CONTROL = 0x0002;
-        private const int HOTKEY_ID_CAPTURE_FOREGROUND = 1;
-
-        [DllImport("user32.dll")]
-        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-        [DllImport("user32.dll")]
-        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
         public MainWindow(INavigationService navigationService, INavigationViewPageProvider pageProvider, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
@@ -175,16 +162,6 @@ namespace InfoPanel.Views.Windows
             _hwndSource = HwndSource.FromHwnd(hwnd);
             _hwndSource?.AddHook(WndProc);
 
-            // Register Ctrl+Alt+G to capture foreground app for program-specific panels (always register so it works as soon as feature is enabled)
-            try
-            {
-                RegisterHotKey(hwnd, HOTKEY_ID_CAPTURE_FOREGROUND, MOD_CONTROL | MOD_ALT, 0x47); // VK_G
-            }
-            catch (Exception ex)
-            {
-                Logger.Debug(ex, "Could not register capture-foreground-app hotkey");
-            }
-
             // Allow the TaskbarCreated message through UIPI since we run elevated
             if (_taskbarCreatedMessageId != 0)
             {
@@ -216,32 +193,8 @@ namespace InfoPanel.Views.Windows
 
                 handled = false;
             }
-            else if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID_CAPTURE_FOREGROUND)
-            {
-                Dispatcher.BeginInvoke(() => CaptureForegroundAppToTargetProfile());
-                handled = true;
-            }
 
             return IntPtr.Zero;
-        }
-
-        private void CaptureForegroundAppToTargetProfile()
-        {
-            var profile = Services.ProgramSpecificPanelsCaptureService.TargetProfile;
-            if (profile == null)
-            {
-                _snackbarService.Show("Trigger app", "Select a profile on the Profiles page first, then press Ctrl+Alt+G while the app is in focus.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(4));
-                return;
-            }
-            var name = Utils.ForegroundWindowHelper.GetForegroundProcessName();
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                _snackbarService.Show("Trigger app", "Could not get foreground process.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(2));
-                return;
-            }
-            var existing = profile.TriggerProcessNames?.Trim();
-            profile.TriggerProcessNames = string.IsNullOrEmpty(existing) ? name : existing + ", " + name;
-            _snackbarService.Show("Trigger app", $"Added '{name}' to {profile.Name}.", Wpf.Ui.Controls.ControlAppearance.Success, null, TimeSpan.FromSeconds(2));
         }
 
         private void Window_ContentRendered(object sender, EventArgs e)
@@ -257,38 +210,6 @@ namespace InfoPanel.Views.Windows
             }
         }
 
-
-        private void RootNavigation_ItemInvoked(object sender, RoutedEventArgs e)
-        {
-            // Explicit navigation for Settings when the sidebar item is clicked (fallback if default navigation fails).
-            var item = (e.OriginalSource as DependencyObject) != null ? FindNavigationViewItemAncestor(e.OriginalSource as DependencyObject) : null
-                ?? RootNavigation.SelectedItem as Wpf.Ui.Controls.NavigationViewItem;
-            if (item?.Tag is string tag && tag == "settings")
-            {
-                Dispatcher.BeginInvoke(() =>
-                {
-                    try
-                    {
-                        Navigate(typeof(Pages.SettingsPage));
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error(ex, "Failed to navigate to Settings page");
-                    }
-                }, System.Windows.Threading.DispatcherPriority.Normal);
-            }
-        }
-
-        private static Wpf.Ui.Controls.NavigationViewItem? FindNavigationViewItemAncestor(DependencyObject? current)
-        {
-            while (current != null)
-            {
-                if (current is Wpf.Ui.Controls.NavigationViewItem item)
-                    return item;
-                current = VisualTreeHelper.GetParent(current);
-            }
-            return null;
-        }
 
         private void TrayMenuItem_OnClick(object sender, RoutedEventArgs e)
         {
@@ -389,11 +310,6 @@ namespace InfoPanel.Views.Windows
             }
 
             _hwndSource?.RemoveHook(WndProc);
-            try
-            {
-                UnregisterHotKey(new WindowInteropHelper(this).Handle, HOTKEY_ID_CAPTURE_FOREGROUND);
-            }
-            catch { /* ignore */ }
 
             e.Cancel = true;
 
