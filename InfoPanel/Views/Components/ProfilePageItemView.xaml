@@ -6,7 +6,7 @@
     xmlns:local="clr-namespace:InfoPanel.Views.Components"
     xmlns:core="clr-namespace:InfoPanel"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
+    xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=InfoPanel.Views.Skia"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     d:DesignHeight="450"
     d:DesignWidth="800"

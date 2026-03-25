@@ -2,6 +2,8 @@ using InfoPanel.BeadaPanel;
 using InfoPanel.Models;
 using InfoPanel.Services;
 using InfoPanel.TuringPanel;
+using InfoPanel.ThermalrightPanel;
+using InfoPanel.ThermaltakePanel;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
 using LibUsbDotNet;
@@ -13,6 +15,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using Wpf.Ui;
 
 namespace InfoPanel.Views.Pages;
 
@@ -22,16 +26,28 @@ namespace InfoPanel.Views.Pages;
 public partial class UsbPanelsPage : Page
 {
     private static readonly ILogger Logger = Log.ForContext<UsbPanelsPage>();
+    private readonly ISnackbarService _snackbarService;
     public UsbPanelsViewModel ViewModel { get; }
 
     private static bool deviceInserted = false;
     private static bool deviceRemoved = false;
 
-    public UsbPanelsPage(UsbPanelsViewModel viewModel)
+    private ModifierKeys _capturedModifiers = ModifierKeys.None;
+    private Key _capturedKey = Key.None;
+    private HotkeyBinding? _editingBinding = null;
+
+    public UsbPanelsPage(UsbPanelsViewModel viewModel, ISnackbarService snackbarService)
     {
         ViewModel = viewModel;
+        _snackbarService = snackbarService;
         DataContext = this;
         InitializeComponent();
+        PopulateDeviceCombo();
+
+        // Refresh device combo when device lists change
+        ConfigModel.Instance.Settings.BeadaPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
+        ConfigModel.Instance.Settings.TuringPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
+        ConfigModel.Instance.Settings.ThermalrightPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
     }
 
     private async Task UpdateBeadaPanelDeviceList()
@@ -205,6 +221,422 @@ public partial class UsbPanelsPage : Page
         {
             var window = new TuringDeviceWindow(device);
             window.ShowDialog();
+        }
+    }
+
+    // --- Global Hotkeys ---
+
+    private void PopulateDeviceCombo()
+    {
+        var items = new List<Tuple<string, string>>();
+
+        foreach (var d in ConfigModel.Instance.Settings.BeadaPanelDevices)
+        {
+            var name = d.RuntimeProperties?.PanelInfo?.ModelInfo?.Name;
+            if (name == null && Enum.TryParse<BeadaPanel.BeadaPanelModel>(d.Model, out var model)
+                && BeadaPanel.BeadaPanelModelDatabase.Models.TryGetValue(model, out var info))
+            {
+                name = info.Name;
+            }
+            items.Add(Tuple.Create($"Beada|{d.DeviceId}|{d.DeviceLocation}", $"BeadaPanel {name ?? d.Model}"));
+        }
+
+        foreach (var d in ConfigModel.Instance.Settings.TuringPanelDevices)
+        {
+            var name = d.Name ?? d.DeviceId;
+            items.Add(Tuple.Create($"Turing|{d.DeviceId}|", name));
+        }
+
+        foreach (var d in ConfigModel.Instance.Settings.ThermalrightPanelDevices)
+        {
+            var name = d.RuntimeProperties?.Name ?? d.DeviceId;
+            items.Add(Tuple.Create($"Thermalright|{d.DeviceId}|{d.DeviceLocation}", name));
+        }
+
+        HotkeyDeviceCombo.ItemsSource = items;
+    }
+
+    private void HotkeyCapture_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox tb)
+        {
+            tb.Text = "Press a key combo...";
+            _capturedModifiers = ModifierKeys.None;
+            _capturedKey = Key.None;
+        }
+    }
+
+    private void HotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        // Ignore pure modifier keys
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+            or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+            return;
+
+        _capturedModifiers = Keyboard.Modifiers;
+        _capturedKey = key;
+
+        var binding = new HotkeyBinding { ModifierKeys = _capturedModifiers, Key = _capturedKey };
+        if (sender is TextBox tb)
+        {
+            tb.Text = binding.HotkeyDisplayText;
+        }
+    }
+
+    private void ButtonAddHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        if (_capturedKey == Key.None)
+        {
+            _snackbarService.Show("Error", "Please capture a hotkey first.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        if (_capturedModifiers == ModifierKeys.None)
+        {
+            _snackbarService.Show("Error", "At least one modifier key (Ctrl, Alt, Shift, Win) is required.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        if (HotkeyDeviceCombo.SelectedValue is not string deviceKey)
+        {
+            _snackbarService.Show("Error", "Please select a panel.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        if (HotkeyProfileCombo.SelectedValue is not Guid profileGuid)
+        {
+            _snackbarService.Show("Error", "Please select a profile.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        // Check for duplicate hotkey combo (skip the binding being edited)
+        var duplicate = ConfigModel.Instance.Settings.HotkeyBindings
+            .FirstOrDefault(b => b != _editingBinding && b.ModifierKeys == _capturedModifiers && b.Key == _capturedKey);
+        if (duplicate != null)
+        {
+            _snackbarService.Show("Error", "This key combo is already assigned to another hotkey.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        var parts = deviceKey.Split('|');
+        if (parts.Length < 3) return;
+
+        var binding = new HotkeyBinding
+        {
+            ModifierKeys = _capturedModifiers,
+            Key = _capturedKey,
+            DeviceType = parts[0],
+            DeviceId = parts[1],
+            DeviceLocation = parts[2],
+            ProfileGuid = profileGuid
+        };
+
+        // Replace or add the binding (replace triggers a single CollectionChanged instead of Remove+Add)
+        var bindings = ConfigModel.Instance.Settings.HotkeyBindings;
+        if (_editingBinding != null)
+        {
+            var index = bindings.IndexOf(_editingBinding);
+            if (index >= 0)
+                bindings[index] = binding;
+            else
+                bindings.Add(binding);
+            _editingBinding = null;
+        }
+        else
+        {
+            bindings.Add(binding);
+        }
+        _ = ConfigModel.Instance.SaveSettingsAsync();
+
+        // Check if the hotkey was actually registered with the OS
+        if (!GlobalHotkeyService.Instance.IsBindingRegistered(binding))
+        {
+            _snackbarService.Show("Warning", $"Hotkey {binding.HotkeyDisplayText} was saved but could not be registered. It may be in use by another application.", Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(5));
+        }
+
+        ResetHotkeyForm();
+    }
+
+    private void ResetHotkeyForm()
+    {
+        _capturedModifiers = ModifierKeys.None;
+        _capturedKey = Key.None;
+        _editingBinding = null;
+        HotkeyCapture.Text = "Click and press a key combo";
+        HotkeyDeviceCombo.SelectedIndex = -1;
+        HotkeyProfileCombo.SelectedIndex = -1;
+        HotkeyCancelButton.Visibility = Visibility.Collapsed;
+        HotkeyAddButton.Content = "Add";
+    }
+
+    private void ButtonEditHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is HotkeyBinding binding)
+        {
+            // Store reference to the binding being edited (removed on Add, not now)
+            _editingBinding = binding;
+
+            // Populate the add form with the existing binding's values
+            _capturedModifiers = binding.ModifierKeys;
+            _capturedKey = binding.Key;
+            HotkeyCapture.Text = binding.HotkeyDisplayText;
+
+            // Select the matching device in the combo
+            var deviceKey = $"{binding.DeviceType}|{binding.DeviceId}|{binding.DeviceLocation}";
+            HotkeyDeviceCombo.SelectedValue = deviceKey;
+
+            // Select the matching profile in the combo
+            foreach (var profile in ConfigModel.Instance.Profiles)
+            {
+                if (profile.Guid == binding.ProfileGuid)
+                {
+                    HotkeyProfileCombo.SelectedItem = profile;
+                    break;
+                }
+            }
+
+            // Show cancel button and change Add to Save while editing
+            HotkeyCancelButton.Visibility = Visibility.Visible;
+            HotkeyAddButton.Content = "Save";
+        }
+    }
+
+    private void ButtonCancelHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        ResetHotkeyForm();
+        HotkeyCancelButton.Visibility = Visibility.Collapsed;
+    }
+
+    private void ButtonRemoveHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is HotkeyBinding binding)
+        {
+            // If we were editing this binding, clear the edit state
+            if (_editingBinding == binding)
+            {
+                ResetHotkeyForm();
+            }
+
+            ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
+            _ = ConfigModel.Instance.SaveSettingsAsync();
+        }
+    }
+
+    // --- Thermalright Panel ---
+
+    private Task UpdateThermalrightPanelDeviceList()
+    {
+        var discoveredDevices = ThermalrightPanelHelper.ScanDevices();
+
+        Logger.Information("ThermalrightPanel Discovery: Found {Count} devices", discoveredDevices.Count);
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.ThermalrightPanelDevices.FirstOrDefault(d =>
+                    d.IsMatching(discoveredDevice.DeviceId, discoveredDevice.DeviceLocation, discoveredDevice.Model));
+
+                if (device == null)
+                {
+                    var newDevice = new ThermalrightPanelDevice()
+                    {
+                        DeviceId = discoveredDevice.DeviceId,
+                        DeviceLocation = discoveredDevice.DeviceLocation,
+                        Model = discoveredDevice.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty
+                    };
+
+                    if (discoveredDevice.ModelInfo != null)
+                    {
+                        newDevice.RuntimeProperties.Name = $"Thermalright {discoveredDevice.ModelInfo.Name}";
+                    }
+
+                    settings.ThermalrightPanelDevices.Add(newDevice);
+                    Logger.Information("ThermalrightPanel Discovery: Added new device with DeviceId '{DeviceId}'", discoveredDevice.DeviceId);
+                }
+                else
+                {
+                    // Update location
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+
+                    // Set name from saved model info (determined during previous init)
+                    if (device.ModelInfo != null)
+                    {
+                        device.RuntimeProperties.Name = $"Thermalright {device.ModelInfo.Name}";
+                    }
+
+                    Logger.Information("ThermalrightPanel Discovery: Device with DeviceId '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+
+        // Show snackbar warning for devices with wrong USB driver
+        var driverIssueDevices = discoveredDevices.Where(d => d.DriverIssue != null).ToList();
+        foreach (var d in driverIssueDevices)
+        {
+            _snackbarService.Show(
+                "Wrong USB Driver",
+                $"Thermalright panel has wrong USB driver ({d.DriverIssue}). Use Zadig to install WinUSB driver.",
+                Wpf.Ui.Controls.ControlAppearance.Caution,
+                null,
+                TimeSpan.FromSeconds(10));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async void ButtonDiscoverThermalrightPanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateThermalrightPanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private void Page_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        CloseAllPopups(this);
+    }
+
+    private static void CloseAllPopups(DependencyObject parent)
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is System.Windows.Controls.Primitives.Popup popup && popup.IsOpen)
+            {
+                popup.IsOpen = false;
+            }
+            CloseAllPopups(child);
+        }
+    }
+
+    private void ButtonAdvancedPopup_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement button)
+        {
+            var parent = button.Parent as Panel;
+            if (parent != null)
+            {
+                foreach (var child in parent.Children)
+                {
+                    if (child is System.Windows.Controls.Primitives.Popup popup)
+                    {
+                        popup.PlacementTarget = button;
+                        popup.IsOpen = !popup.IsOpen;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private void ButtonRemoveThermalrightPanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is ThermalrightPanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.ThermalrightPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (ThermalrightPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = ThermalrightPanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.ThermalrightPanelDevices.Remove(deviceConfig);
+                }
+            });
+        }
+    }
+
+    // === Thermaltake Panel ===
+
+    private async void ButtonDiscoverThermaltakePanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateThermaltakePanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private Task UpdateThermaltakePanelDeviceList()
+    {
+        var discoveredDevices = ThermaltakePanelHelper.ScanDevices();
+
+        Logger.Information("ThermaltakePanel Discovery: Found {Count} devices", discoveredDevices.Count);
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.ThermaltakePanelDevices.FirstOrDefault(d =>
+                    d.IsMatching(discoveredDevice.DeviceId, discoveredDevice.DeviceLocation, discoveredDevice.Model));
+
+                if (device == null)
+                {
+                    var newDevice = new ThermaltakePanelDevice()
+                    {
+                        DeviceId = discoveredDevice.DeviceId,
+                        DeviceLocation = discoveredDevice.DeviceLocation,
+                        Model = discoveredDevice.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty
+                    };
+
+                    if (discoveredDevice.ModelInfo != null)
+                    {
+                        newDevice.RuntimeProperties.Name = $"Thermaltake {discoveredDevice.ModelInfo.Name}";
+                    }
+
+                    settings.ThermaltakePanelDevices.Add(newDevice);
+                    Logger.Information("ThermaltakePanel Discovery: Added new device '{DeviceId}'", discoveredDevice.DeviceId);
+                }
+                else
+                {
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+
+                    if (device.ModelInfo != null)
+                    {
+                        device.RuntimeProperties.Name = $"Thermaltake {device.ModelInfo.Name}";
+                    }
+
+                    Logger.Information("ThermaltakePanel Discovery: Device '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ButtonRemoveThermaltakePanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is ThermaltakePanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.ThermaltakePanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (ThermaltakePanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = ThermaltakePanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.ThermaltakePanelDevices.Remove(deviceConfig);
+                }
+            });
         }
     }
 }

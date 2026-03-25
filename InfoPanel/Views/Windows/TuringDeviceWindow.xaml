@@ -9,7 +9,7 @@
     Width="900"
     Height="600"
     ExtendsContentIntoTitleBar="True"
-    ResizeMode="CanResize"
+    ResizeMode="NoResize"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d">
     <Grid>
@@ -21,9 +21,10 @@
         <ui:TitleBar
             Title="{Binding DeviceName, FallbackValue='Turing Device Manager'}"
             Grid.Row="0"
-            ShowMaximize="False" />
+            ShowMaximize="False"
+            ShowMinimize="False" />
 
-        <TabControl Grid.Row="1" Margin="10">
+        <TabControl Grid.Row="1" Margin="20,20,20,20">
             <!--  Video Management Tab  -->
             <TabItem Header="Video Management">
                 <Grid Margin="10">
@@ -39,8 +40,8 @@
                         <StackPanel>
                             <TextBlock
                                 Margin="0,0,0,10"
-                                FontSize="16"
-                                FontWeight="Bold"
+                                FontSize="13"
+                                FontWeight="Medium"
                                 Text="Storage Information" />
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -101,11 +102,13 @@
                         Orientation="Horizontal">
                         <ui:Button
                             Margin="0,0,10,0"
+                            Appearance="Secondary"
                             Command="{Binding RefreshStorageCommand}"
                             Content="Refresh"
                             Icon="{ui:SymbolIcon ArrowSync24}" />
                         <ui:Button
                             Margin="0,0,10,0"
+                            Appearance="Primary"
                             Command="{Binding UploadVideoCommand}"
                             Content="Upload Video"
                             Icon="{ui:SymbolIcon VideoClip24}" />
@@ -127,8 +130,8 @@
                             <TextBlock
                                 Grid.Row="0"
                                 Margin="0,0,0,10"
-                                FontSize="14"
-                                FontWeight="Bold"
+                                FontSize="13"
+                                FontWeight="Medium"
                                 Text="Video Files" />
 
                             <DataGrid
@@ -159,13 +162,12 @@
                                                 <StackPanel Orientation="Horizontal">
                                                     <ui:Button
                                                         Margin="0,0,5,0"
-                                                        Padding="5,2"
+                                                        Appearance="Secondary"
                                                         Command="{Binding DataContext.PlayFileCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                         CommandParameter="{Binding}"
                                                         Content="Play"
                                                         FontSize="12" />
                                                     <ui:Button
-                                                        Padding="5,2"
                                                         Appearance="Danger"
                                                         Command="{Binding DataContext.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                         CommandParameter="{Binding}"
@@ -205,8 +207,8 @@
                                 <StackPanel>
                                     <TextBlock
                                         Margin="0,0,0,10"
-                                        FontSize="16"
-                                        FontWeight="Bold"
+                                        FontSize="13"
+                                        FontWeight="Medium"
                                         Text="Device Settings" />
 
                                     <TextBlock Margin="0,0,0,5" Text="Default Brightness:" />
@@ -231,7 +233,7 @@
 
                                     <TextBlock Margin="0,0,0,5" Text="Default Orientation:" />
                                     <ComboBox
-                                        Width="200"
+                                        MinWidth="200"
                                         Margin="0,0,0,15"
                                         HorizontalAlignment="Left"
                                         ItemsSource="{Binding OrientationOptions}"
@@ -239,7 +241,7 @@
 
                                     <TextBlock Margin="0,0,0,5" Text="Startup Mode:" />
                                     <ComboBox
-                                        Width="200"
+                                        MinWidth="200"
                                         Margin="0,0,0,10"
                                         HorizontalAlignment="Left"
                                         ItemsSource="{Binding StartupModeOptions}"
@@ -259,18 +261,20 @@
                                 <StackPanel>
                                     <TextBlock
                                         Margin="0,0,0,10"
-                                        FontSize="16"
-                                        FontWeight="Bold"
+                                        FontSize="13"
+                                        FontWeight="Medium"
                                         Text="Device Actions" />
 
                                     <WrapPanel>
                                         <ui:Button
                                             Margin="0,0,10,10"
+                                            Appearance="Primary"
                                             Command="{Binding SaveSettingsCommand}"
                                             Content="Save Settings"
                                             Icon="{ui:SymbolIcon Save24}" />
                                         <ui:Button
                                             Margin="0,0,10,10"
+                                            Appearance="Secondary"
                                             Command="{Binding RestartDeviceCommand}"
                                             Content="Restart Device"
                                             Icon="{ui:SymbolIcon ArrowReset24}" />
@@ -296,7 +300,7 @@
                 <TextBlock
                     Margin="0,10,0,0"
                     HorizontalAlignment="Center"
-                    Foreground="White"
+                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                     Text="{Binding LoadingText}" />
             </StackPanel>
         </Grid>

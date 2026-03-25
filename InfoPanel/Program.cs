@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using InfoPanel.Plugins.Host;
+using OpenTK.Windowing.Desktop;
 using Serilog;
 using StreamJsonRpc;
 
@@ -19,6 +20,11 @@ namespace InfoPanel
             }
             else
             {
+                // Allow GLFW initialization from the DisplayWindowThread (secondary STA thread).
+                // By default OpenTK checks that GLFW is called from the main thread, but
+                // our overlay windows are created on a dedicated STA dispatcher thread.
+                GLFWProvider.CheckForMainThread = false;
+
                 var app = new App();
                 app.InitializeComponent();
                 app.Run();

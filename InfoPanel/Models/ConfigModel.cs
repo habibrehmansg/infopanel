@@ -23,6 +23,8 @@ using System.Xml;
 using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
 using Timer = System.Threading.Timer;
+using InfoPanel.ThermalrightPanel;
+using HidSharp;
 
 namespace InfoPanel
 {
@@ -478,6 +480,28 @@ namespace InfoPanel
                     ForegroundAppMonitor.ReconcileVisibilityToActiveOnly();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.ThermalrightPanelMultiDeviceMode))
+            {
+                if (Settings.ThermalrightPanelMultiDeviceMode)
+                {
+                    await ThermalrightPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await ThermalrightPanelTask.Instance.StopAsync();
+                }
+            }
+            else if (e.PropertyName == nameof(Settings.ThermaltakePanelMultiDeviceMode))
+            {
+                if (Settings.ThermaltakePanelMultiDeviceMode)
+                {
+                    await ThermaltakePanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await ThermaltakePanelTask.Instance.StopAsync();
+                }
+            }
 
             await SaveSettingsAsync();
         }
@@ -668,6 +692,32 @@ namespace InfoPanel
                             {
                                 Settings.TuringPanelDevices.Add(device);
                             }
+
+                            // Load Thermalright panel settings
+                            Settings.ThermalrightPanelMultiDeviceMode = settings.ThermalrightPanelMultiDeviceMode;
+
+                            Settings.ThermalrightPanelDevices.Clear();
+                            foreach (var device in settings.ThermalrightPanelDevices)
+                            {
+                                Settings.ThermalrightPanelDevices.Add(device);
+                            }
+
+                            // Load Thermaltake panel settings
+                            Settings.ThermaltakePanelMultiDeviceMode = settings.ThermaltakePanelMultiDeviceMode;
+
+                            Settings.ThermaltakePanelDevices.Clear();
+                            foreach (var device in settings.ThermaltakePanelDevices)
+                            {
+                                Settings.ThermaltakePanelDevices.Add(device);
+                            }
+
+                            // Load hotkey bindings
+                            Settings.HotkeyBindings.Clear();
+                            foreach (var binding in settings.HotkeyBindings)
+                            {
+                                Settings.HotkeyBindings.Add(binding);
+                            }
+
                         }
 
                         _ = Task.Run(ValidateStartupAsync);

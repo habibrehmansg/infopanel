@@ -166,6 +166,9 @@ namespace InfoPanel.Views.Common
             _resizeTimer.Stop();
             _resizeTimer.Tick -= OnResizeCompleted;
 
+            _glRecreateTimer?.Stop();
+            _glRecreateTimer = null;
+
             ConfigModel.Instance.Settings.PropertyChanged -= Config_PropertyChanged;
 
             if (_renderTimer != null)
@@ -232,18 +235,26 @@ namespace InfoPanel.Views.Common
             if (OpenGL)
             {
                 AllowsTransparency = false;
-                var skGlElement = new SKGLElement
+                try
                 {
-                    Name = "skGlElement",
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    VerticalAlignment = VerticalAlignment.Top
-                };
-                skGlElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
-                skGlElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
-                skGlElement.PaintSurface += SkGlElement_PaintSurface;
-                container.Children.Add(skGlElement);
+                    var skGlElement = new SKGLElement
+                    {
+                        Name = "skGlElement",
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        VerticalAlignment = VerticalAlignment.Top
+                    };
+                    skGlElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
+                    skGlElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
+                    skGlElement.PaintSurface += SkGlElement_PaintSurface;
+                    container.Children.Add(skGlElement);
 
-                _skGlElement = skGlElement;
+                    _skGlElement = skGlElement;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Failed to initialize OpenGL, disabling OpenGL for profile");
+                    Profile.OpenGL = false;
+                }
             }
             else
             {
@@ -279,15 +290,27 @@ namespace InfoPanel.Views.Common
         private void DisplayWindow_DpiChanged(object sender, DpiChangedEventArgs e)
         {
             _isDpiChanging = true;
-            MaintainPixelSize();
-            _isDpiChanging = false;
+            try
+            {
+                MaintainPixelSize();
+            }
+            finally
+            {
+                _isDpiChanging = false;
+            }
         }
 
         private void DisplayWindow_LocationChanged(object? sender, EventArgs e)
         {
             _isDpiChanging = true;
-            MaintainPixelSize();
-            _isDpiChanging = false;
+            try
+            {
+                MaintainPixelSize();
+            }
+            finally
+            {
+                _isDpiChanging = false;
+            }
         }
 
         private void OnResizeCompleted(object? sender, EventArgs e)
@@ -306,16 +329,23 @@ namespace InfoPanel.Views.Common
 
         private void MaintainPixelSize()
         {
-            _targetPixelWidth = Profile.Width;
-            _targetPixelHeight = Profile.Height;
-
-            var source = PresentationSource.FromVisual(this);
-            if (source?.CompositionTarget != null)
+            try
             {
-                var dpiX = source.CompositionTarget.TransformToDevice.M11;
-                var dpiY = source.CompositionTarget.TransformToDevice.M22;
-                this.Width = _targetPixelWidth / dpiX;
-                this.Height = _targetPixelHeight / dpiY;
+                _targetPixelWidth = Profile.Width;
+                _targetPixelHeight = Profile.Height;
+
+                var source = PresentationSource.FromVisual(this);
+                if (source?.CompositionTarget != null)
+                {
+                    var dpiX = source.CompositionTarget.TransformToDevice.M11;
+                    var dpiY = source.CompositionTarget.TransformToDevice.M22;
+                    this.Width = _targetPixelWidth / dpiX;
+                    this.Height = _targetPixelHeight / dpiY;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error in MaintainPixelSize");
             }
         }
 
@@ -336,6 +366,19 @@ namespace InfoPanel.Views.Common
             }
         }
 
+        private System.Windows.Point GetProfilePoint(MouseEventArgs e)
+        {
+            var point = e.GetPosition(this);
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget != null)
+            {
+                var dpiX = source.CompositionTarget.TransformToDevice.M11;
+                var dpiY = source.CompositionTarget.TransformToDevice.M22;
+                return new System.Windows.Point(point.X * dpiX, point.Y * dpiY);
+            }
+            return point;
+        }
+
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
             if (_renderInvalidationPending) return;
@@ -343,11 +386,19 @@ namespace InfoPanel.Views.Common
 
             if (!OpenGL)
             {
-                _dispatcher.BeginInvoke(() => _sKElement?.InvalidateVisual(), DispatcherPriority.Render);
+                _dispatcher.BeginInvoke(() =>
+                {
+                    _renderInvalidationPending = false;
+                    _sKElement?.InvalidateVisual();
+                }, DispatcherPriority.Render);
             }
             else
             {
-                _dispatcher.BeginInvoke(() => _skGlElement?.InvalidateVisual(), DispatcherPriority.Render);
+                _dispatcher.BeginInvoke(() =>
+                {
+                    _renderInvalidationPending = false;
+                    _skGlElement?.InvalidateVisual();
+                }, DispatcherPriority.Render);
             }
         }
 
@@ -363,17 +414,116 @@ namespace InfoPanel.Views.Common
 
         private void PaintSurface(SKCanvas canvas)
         {
-            _renderInvalidationPending = false;
-
             if (_renderTimer == null || !_renderTimer.Enabled)
             {
                 return;
             }
 
-            canvas.Clear();
+            try
+            {
+                canvas.Clear();
 
-            SkiaGraphics skiaGraphics = new(canvas, Profile.FontScale);
-            PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
+                SkiaGraphics skiaGraphics = new(canvas, Profile.FontScale);
+                PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during PaintSurface rendering");
+            }
+        }
+
+        private void RecreateGLElement()
+        {
+            if (!OpenGL) return;
+
+            Logger.Information("Recreating SKGLElement due to display change");
+
+            // Clean up existing element if present
+            if (_skGlElement != null)
+            {
+                // Dispose GL assets for display items
+                foreach (var item in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile))
+                {
+                    Clear(item);
+                }
+
+                // Clean up old GL context
+                if (_skGlElement.GRContext is GRContext grContext)
+                {
+                    try
+                    {
+                        grContext.PurgeResources();
+                        grContext.Flush();
+                        grContext.Submit(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning(ex, "Error purging GL context during recreation");
+                    }
+                }
+
+                _skGlElement.PaintSurface -= SkGlElement_PaintSurface;
+                BindingOperations.ClearBinding(_skGlElement, WidthProperty);
+                BindingOperations.ClearBinding(_skGlElement, HeightProperty);
+                _skGlElement = null;
+            }
+
+            // Remove old element from container
+            var container = FindName("SkiaContainer") as Panel;
+            container?.Children.Clear();
+
+            // Create fresh GL element with new context (can't use InjectSkiaElement — AllowsTransparency can't change after show)
+            try
+            {
+                var newElement = new SKGLElement
+                {
+                    Name = "skGlElement",
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Top
+                };
+                newElement.SetBinding(WidthProperty, new Binding("Profile.Width") { Mode = BindingMode.OneWay });
+                newElement.SetBinding(HeightProperty, new Binding("Profile.Height") { Mode = BindingMode.OneWay });
+                newElement.PaintSurface += SkGlElement_PaintSurface;
+                container?.Children.Add(newElement);
+                _skGlElement = newElement;
+
+                // Restore visibility if we were hidden during retry
+                if (!IsVisible) Show();
+            }
+            catch (OpenTK.Windowing.GraphicsLibraryFramework.GLFWException ex)
+            {
+                // Transient GLFW error (e.g. monitor unplug) — retry
+                Logger.Warning(ex, "Failed to recreate GL element, scheduling retry");
+
+                // Hide the window while retrying so it doesn't block input to other windows
+                if (IsVisible) Hide();
+
+                ScheduleGLRecreateRetry();
+            }
+            catch (Exception ex)
+            {
+                // Permanent failure (driver/GPU incompatibility) — disable OpenGL
+                Logger.Warning(ex, "Failed to initialize OpenGL during recreation, disabling OpenGL for profile");
+                Profile.OpenGL = false;
+            }
+        }
+
+        private System.Windows.Threading.DispatcherTimer? _glRecreateTimer;
+
+        private void ScheduleGLRecreateRetry()
+        {
+            _glRecreateTimer?.Stop();
+            _glRecreateTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _glRecreateTimer.Tick += (s, e) =>
+            {
+                _glRecreateTimer.Stop();
+                _glRecreateTimer = null;
+                RecreateGLElement();
+            };
+            _glRecreateTimer.Start();
         }
 
         private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
@@ -381,6 +531,10 @@ namespace InfoPanel.Views.Common
             Logger.Information("SystemEvents_DisplaySettingsChanged");
             _dispatcher.BeginInvoke(() =>
             {
+                if (OpenGL)
+                {
+                    RecreateGLElement();
+                }
                 SetWindowPositionRelativeToScreen();
             });
         }
@@ -486,6 +640,18 @@ namespace InfoPanel.Views.Common
 
         private void SetWindowPositionRelativeToScreen()
         {
+            try
+            {
+                SetWindowPositionRelativeToScreenCore();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error in SetWindowPositionRelativeToScreen");
+            }
+        }
+
+        private void SetWindowPositionRelativeToScreenCore()
+        {
             var screens = ScreenHelper.GetAllMonitors();
             MonitorInfo? targetScreen = null;
 
@@ -529,7 +695,7 @@ namespace InfoPanel.Views.Common
                     var inSelectionBounds = false;
                     foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                     {
-                        if (displayItem.ContainsPoint(e.GetPosition(this)))
+                        if (displayItem.ContainsPoint(GetProfilePoint(e)))
                         {
                             inSelectionBounds = true;
                             break;
@@ -589,7 +755,7 @@ namespace InfoPanel.Views.Common
                 }
                 else
                 {
-                    startPosition = e.GetPosition((UIElement)sender);
+                    startPosition = GetProfilePoint(e);
 
                     foreach (var item in SharedModel.Instance.SelectedVisibleItems)
                     {
@@ -629,7 +795,7 @@ namespace InfoPanel.Views.Common
                                 continue;
                             }
 
-                            if (groupItem.ContainsPoint(e.GetPosition(this)))
+                            if (groupItem.ContainsPoint(GetProfilePoint(e)))
                             {
                                 clickedItem = groupItem;
                                 break;
@@ -647,7 +813,7 @@ namespace InfoPanel.Views.Common
                         break;
                     }
 
-                    if (item.ContainsPoint(e.GetPosition(this)))
+                    if (item.ContainsPoint(GetProfilePoint(e)))
                     {
                         clickedItem = item;
                         break;
@@ -693,7 +859,7 @@ namespace InfoPanel.Views.Common
 
                 var gridSize = SharedModel.Instance.MoveValue;
 
-                var currentPosition = e.GetPosition((UIElement)sender);
+                var currentPosition = GetProfilePoint(e);
 
                 foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                 {

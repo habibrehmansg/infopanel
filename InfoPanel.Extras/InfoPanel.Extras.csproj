@@ -5,8 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	<EnableDynamicLoading>true</EnableDynamicLoading>
-	<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-	<Platforms>x64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>

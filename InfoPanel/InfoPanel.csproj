@@ -3,21 +3,25 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<Nullable>enable</Nullable>
 		<UseWPF>true</UseWPF>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<ApplicationIcon>Resources\Images\favicon.ico</ApplicationIcon>
-		<Platforms>x64</Platforms>
-		<FileVersion>$(AssemblyVersion)</FileVersion>
-		<AssemblyVersion>$(AssemblyVersion)</AssemblyVersion>
-		<Version>1.3.1.0</Version>
 		<UseWindowsForms>True</UseWindowsForms>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<ApplicationManifest>Resources\app.manifest</ApplicationManifest>
 		<DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
 		<StartupObject>InfoPanel.Program</StartupObject>
+		<MinVerMinimumMajorMinor>1.4</MinVerMinimumMajorMinor>
 	</PropertyGroup>
+
+	<!-- Set AssemblyVersion/FileVersion from MinVer (must run after MinVer target) -->
+	<Target Name="SetVersionFromMinVer" AfterTargets="MinVer">
+		<PropertyGroup>
+			<AssemblyVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch).0</AssemblyVersion>
+			<FileVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch).0</FileVersion>
+		</PropertyGroup>
+	</Target>
 
 	<!-- Build InfoPanel.Extras and get its output path -->
 	<Target Name="BuildExtras" BeforeTargets="Build">
@@ -85,6 +89,12 @@
 		</Reference>
 		<Reference Include="TuringSmartScreenLib.Helpers.SkiaSharp">
 		  <HintPath>Lib\TuringSmartScreenLib.Helpers.SkiaSharp.dll</HintPath>
+		</Reference>
+		<Reference Include="LcdDriver.TuringSmartScreen">
+			<HintPath>Lib\LcdDriver.TuringSmartScreen.dll</HintPath>
+		</Reference>
+		<Reference Include="LcdDriver.TrofeoVision">
+			<HintPath>Lib\LcdDriver.TrofeoVision.dll</HintPath>
 		</Reference>
 	</ItemGroup>
 
@@ -197,6 +207,7 @@
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<PackageReference Include="MinVer" Version="6.0.0" PrivateAssets="all" />
 		<PackageReference Include="AsyncKeyedLock" Version="8.0.2" />
 		<PackageReference Include="AutoMapper" Version="14.0.0" />
 		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
@@ -204,9 +215,10 @@
 		<PackageReference Include="StreamJsonRpc" Version="2.19.27" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Flurl.Http" Version="4.0.2" />
-		<!-- FlyleafLib 3.10.2 with headless renderer fix (https://github.com/habibrehmansg/Flyleaf/tree/fix/headless-renderer-frame) -->
+		<!--<PackageReference Include="FlyleafLib" Version="3.10.3" />-->
+		<!-- FlyleafLib 3.10.3 with headless renderer fix (https://github.com/habibrehmansg/Flyleaf/tree/fix/headless-renderer-frame) -->
 		<Reference Include="FlyleafLib">
-			<HintPath>..\libs\FlyleafLib.dll</HintPath>
+			<HintPath>Lib\FlyleafLib.dll</HintPath>
 		</Reference>
 		<PackageReference Include="Flyleaf.FFmpeg.Bindings" Version="7.1.1" />
 		<PackageReference Include="Vortice.D3DCompiler" Version="3.7.6-beta" />
@@ -232,9 +244,8 @@
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 		<PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
 		<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
-		<PackageReference Include="SkiaSharp" Version="3.119.1" />
-		<PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.1" />
-		<PackageReference Include="Svg.Skia" Version="3.2.1" />
+		<PackageReference Include="SkiaSharp" Version="3.119.2" />
+		<PackageReference Include="Svg.Skia" Version="3.6.0" />
 		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.3" />
 		<PackageReference Include="System.Management" Version="10.0.3" />
 		<PackageReference Include="System.IO.Ports" Version="10.0.3" />
@@ -248,6 +259,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\InfoPanel.Views.Skia\InfoPanel.Views.Skia.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Ipc\InfoPanel.Plugins.Ipc.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
@@ -297,6 +309,14 @@
 			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
 		</EmbeddedResource>
 		<EmbeddedResource Include="Resources\PawnIO_setup.exe" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_left_0.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_left_90.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_left_180.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_left_270.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_all_0.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_all_90.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_all_180.png" />
+		<EmbeddedResource Include="Resources\Overlays\mask_rounded_all_270.png" />
 	</ItemGroup>
 
 	<ItemGroup>

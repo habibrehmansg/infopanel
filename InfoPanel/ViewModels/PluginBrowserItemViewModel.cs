@@ -48,7 +48,8 @@ namespace InfoPanel.ViewModels
             SourceUrl = data.SourceUrl;
 
             string? installedVersion = null;
-            if (installedPlugins.TryGetValue(RepoName, out installedVersion))
+            if (installedPlugins.TryGetValue(Slug, out installedVersion)
+                || installedPlugins.TryGetValue(RepoName, out installedVersion))
             {
                 IsInstalled = true;
                 InstalledVersion = installedVersion;

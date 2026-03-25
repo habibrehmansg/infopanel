@@ -330,8 +330,19 @@ namespace InfoPanel.Monitors
             var pluginFile = Path.Combine(directory, Path.GetFileName(directory) + ".dll");
             var pluginDescriptor = new PluginDescriptor(pluginFile, pluginInfo);
 
+            var hubFile = Path.Combine(directory, ".hub");
+            if (File.Exists(hubFile))
+            {
+                pluginDescriptor.Slug = File.ReadAllText(hubFile).Trim();
+            }
+
             // Don't load the assembly in the main process - host process will do that
             return pluginDescriptor;
+        }
+
+        internal static void WriteHubSlug(string folderPath, string slug)
+        {
+            File.WriteAllText(Path.Combine(folderPath, ".hub"), slug);
         }
 
         public async Task StopPluginModulesAsync(PluginDescriptor pluginDescriptor)

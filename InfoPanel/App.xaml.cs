@@ -1,4 +1,4 @@
-using FlyleafLib;
+﻿using FlyleafLib;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
@@ -98,6 +98,7 @@ namespace InfoPanel
            .Enrich.WithMachineName()
            .Enrich.FromLogContext()
            .WriteTo.Debug()
+           .WriteTo.Sink(Logging.InMemoryLogSink.Instance)
            .WriteTo.File(
                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InfoPanel", "logs", "infopanel-.log"),
                rollingInterval: RollingInterval.Day,
@@ -151,6 +152,8 @@ namespace InfoPanel
            services.AddScoped<UpdatesViewModel>();
            services.AddScoped<Views.Pages.UsbPanelsPage>();
            services.AddScoped<UsbPanelsViewModel>();
+           services.AddScoped<Views.Pages.LogsPage>();
+           services.AddScoped<LogsViewModel>();
            services.AddScoped<Views.Pages.AccountPage>();
            services.AddSingleton<AccountViewModel>();
 
@@ -192,7 +195,7 @@ namespace InfoPanel
                 o.SendDefaultPii = true; // Include user info
                 o.AttachStacktrace = true; // Always attach stack traces
                 o.Environment = "production"; // or "development"
-                o.Release = Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+                o.Release = Utils.VersionHelper.AppVersion;
             });
         }
 
@@ -386,6 +389,7 @@ namespace InfoPanel
             Exit += App_Exit;
 
             await StartPanels();
+            Services.GlobalHotkeyService.Instance.Start();
 
             _ = Task.Run(() => GetService<AccountViewModel>()?.TryRestoreSessionAsync());
 
@@ -398,6 +402,8 @@ namespace InfoPanel
             {
                 await BeadaPanelTask.Instance.StopAsync(true);
                 await TuringPanelTask.Instance.StopAsync(true);
+                await ThermalrightPanelTask.Instance.StopAsync(true);
+                await ThermaltakePanelTask.Instance.StopAsync(true);
             });
         }
 
@@ -417,6 +423,7 @@ namespace InfoPanel
                     {
                         await BeadaPanelTask.Instance.StopAsync(true);
                         await TuringPanelTask.Instance.StopAsync(true);
+                        await ThermalrightPanelTask.Instance.StopAsync(true);
                     });
                     break;
             }
@@ -434,6 +441,16 @@ namespace InfoPanel
                 await TuringPanelTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.ThermalrightPanelMultiDeviceMode)
+            {
+                await ThermalrightPanelTask.Instance.StartAsync();
+            }
+
+            if (ConfigModel.Instance.Settings.ThermaltakePanelMultiDeviceMode)
+            {
+                await ThermaltakePanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.WebServer)
             {
                 await WebServerTask.Instance.StartAsync();
@@ -445,6 +462,8 @@ namespace InfoPanel
         {
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelTask.Instance.StopAsync();
+            await ThermalrightPanelTask.Instance.StopAsync();
+            await ThermaltakePanelTask.Instance.StopAsync();
         }
 
         private void App_Exit(object sender, ExitEventArgs e)
@@ -546,6 +565,7 @@ namespace InfoPanel
 
         public static async Task CleanShutDown()
         {
+            Services.GlobalHotkeyService.Instance.Stop();
             DisplayWindowManager.Instance.CloseAll();
             await StopPanels();
             await LibreMonitor.Instance.StopAsync();

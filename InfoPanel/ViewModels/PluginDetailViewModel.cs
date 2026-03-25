@@ -182,7 +182,12 @@ namespace InfoPanel.ViewModels
                 var zipPath = Path.Combine(pluginFolder, $"{Slug}.zip");
                 await File.WriteAllBytesAsync(zipPath, zipBytes);
 
-                await PluginMonitor.Instance.InstallPluginFromZipAsync(zipPath);
+                var descriptor = await PluginMonitor.Instance.InstallPluginFromZipAsync(zipPath);
+                if (descriptor?.FolderPath != null)
+                {
+                    PluginMonitor.WriteHubSlug(descriptor.FolderPath, Slug);
+                    descriptor.Slug = Slug;
+                }
 
                 IsInstalled = true;
                 IsUpdateAvailable = false;
@@ -212,6 +217,8 @@ namespace InfoPanel.ViewModels
                 lock (PluginMonitor.Instance.PluginsLock)
                 {
                     descriptor = PluginMonitor.Instance.Plugins.FirstOrDefault(
+                        p => string.Equals(p.Slug, Slug, StringComparison.OrdinalIgnoreCase))
+                      ?? PluginMonitor.Instance.Plugins.FirstOrDefault(
                         p => string.Equals(p.FolderName, RepoName, StringComparison.OrdinalIgnoreCase));
                 }
 

@@ -5,7 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:InfoPanel.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
+    xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=InfoPanel.Views.Skia"
     Title="SkiaDisplayWindow"
     Width="800"
     Height="450"

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using TuringSmartScreenLib;
 using TuringSmartScreenLib.Helpers.SkiaSharp;
 using System.Diagnostics;
+using System.IO.Ports;
 
 namespace InfoPanel
 {
@@ -102,6 +103,20 @@ namespace InfoPanel
             await Task.Delay(300, token);
             try
             {
+                // Wake the serial device before opening — mirrors TuringPanelHelper.WakeSerialDevices()
+                try
+                {
+                    using var wakePort = new SerialPort(_device.DeviceLocation, 115200);
+                    wakePort.Open();
+                    wakePort.Close();
+                    await Task.Delay(500, token);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Debug("TuringPanelDevice {Device}: Wake attempt on {Port}: {Message}",
+                        _device, _device.DeviceLocation, ex.Message);
+                }
+
                 using var screen = ScreenFactory.Create(_screenType, _device.DeviceLocation);
 
                 if (screen == null)
@@ -197,7 +212,7 @@ namespace InfoPanel
             }
             catch (Exception e)
             {
-                Log.Error(e, "Initialization error");
+                Log.Warning(e, "Initialization error");
             }
             finally
             {

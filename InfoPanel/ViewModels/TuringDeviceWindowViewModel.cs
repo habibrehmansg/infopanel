@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Wpf.Ui.Controls;
@@ -30,12 +31,6 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
 
     [ObservableProperty]
     private string _deviceId = "";
-
-    [ObservableProperty]
-    private string _deviceStatus = "Disconnected";
-
-    [ObservableProperty]
-    private string _firmwareVersion = "Unknown";
 
     [ObservableProperty]
     private bool _isLoading;
@@ -61,9 +56,6 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
 
     [ObservableProperty]
     private DeviceFile? _selectedFile;
-
-    [ObservableProperty]
-    private bool _isFileSelected;
 
     // Playback properties
     [ObservableProperty]
@@ -98,6 +90,8 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
     [ObservableProperty]
     private string _statusMessage = "";
 
+    private CancellationTokenSource? _statusHideCts;
+
     public TuringDeviceWindowViewModel(TuringPanelDevice device)
     {
         _device = device;
@@ -113,7 +107,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         Task.Run(InitializeDevice);
     }
 
-    private async Task<UsbRegistry?> FindTargetDeviceAsync()
+    private UsbRegistry? FindTargetDevice()
     {
         foreach (UsbRegistry deviceReg in UsbDevice.AllDevices)
         {
@@ -148,7 +142,7 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
                 LoadingText = "Connecting to device...";
             });
 
-            var usbRegistry = await FindTargetDeviceAsync();
+            var usbRegistry = FindTargetDevice();
 
             if (usbRegistry == null)
             {
@@ -162,29 +156,22 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
             try
             {
                 _turingDevice.Initialize(usbRegistry);
-                await Application.Current.Dispatcher.InvokeAsync(() => DeviceStatus = "Connected");
+
                 await RefreshStorage();
             }
             catch (TuringDeviceException ex)
             {
-                await Application.Current.Dispatcher.InvokeAsync(() => DeviceStatus = "Failed to connect");
                 ShowStatus("Connection Failed", $"Could not connect to the Turing device: {ex.Message}", InfoBarSeverity.Error);
             }
         }
         catch (Exception ex)
         {
-            await Application.Current.Dispatcher.InvokeAsync(() => DeviceStatus = "Error");
             ShowStatus("Error", $"Failed to initialize device: {ex.Message}", InfoBarSeverity.Error);
         }
         finally
         {
             await Application.Current.Dispatcher.InvokeAsync(() => IsLoading = false);
         }
-    }
-
-    partial void OnSelectedFileChanged(DeviceFile? value)
-    {
-        IsFileSelected = value != null;
     }
 
     [RelayCommand]
@@ -206,11 +193,11 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
                 var storageInfo = _turingDevice.GetStorageInfo();
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    TotalStorageDisplay = FormatBytes(storageInfo.TotalBytes);
-                    UsedStorageDisplay = FormatBytes(storageInfo.UsedBytes);
-                    FreeStorageDisplay = FormatBytes(storageInfo.TotalBytes - storageInfo.UsedBytes);
-                    StorageUsagePercentage = storageInfo.TotalBytes > 0
-                        ? (double)storageInfo.UsedBytes / storageInfo.TotalBytes * 100
+                    TotalStorageDisplay = storageInfo.FormattedTotal;
+                    UsedStorageDisplay = storageInfo.FormattedUsed;
+                    FreeStorageDisplay = StorageInfo.FormatKB(storageInfo.TotalKB - storageInfo.UsedKB);
+                    StorageUsagePercentage = storageInfo.TotalKB > 0
+                        ? (double)storageInfo.UsedKB / storageInfo.TotalKB * 100
                         : 0;
                 });
             }
@@ -304,7 +291,6 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
             }
         }
     }
-
 
     [RelayCommand]
     private async Task PlayFile(DeviceFile? file)
@@ -401,8 +387,6 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         }
     }
 
-
-
     [RelayCommand]
     private async Task SaveSettings()
     {
@@ -496,9 +480,11 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         }
     }
 
-
     private void ShowStatus(string title, string message, InfoBarSeverity severity)
     {
+        _statusHideCts?.Cancel();
+        var cts = _statusHideCts = new CancellationTokenSource();
+
         _ = Application.Current.Dispatcher.InvokeAsync(() =>
         {
             StatusTitle = title;
@@ -508,33 +494,23 @@ public partial class TuringDeviceWindowViewModel : ObservableObject
         });
 
         // Auto-hide after 5 seconds
-        Task.Delay(5000).ContinueWith(__ =>
+        Task.Delay(5000, cts.Token).ContinueWith(_ =>
         {
-            Application.Current.Dispatcher.InvokeAsync(new Action(() => IsStatusVisible = false));
-        }, TaskScheduler.Default);
+            Application.Current?.Dispatcher.InvokeAsync(new Action(() => IsStatusVisible = false));
+        }, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
     }
 
-    private string FormatBytes(long bytes)
+    private static string FormatBytes(long bytes)
     {
-        string[] sizes = { "KB", "MB", "GB", "TB" };
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
         double len = bytes;
         int order = 0;
         while (len >= 1024 && order < sizes.Length - 1)
         {
             order++;
-            len = len / 1024;
+            len /= 1024;
         }
         return $"{len:0.##} {sizes[order]}";
-    }
-
-    private string GetFileType(string fileName)
-    {
-        var extension = Path.GetExtension(fileName).ToLower();
-        return extension switch
-        {
-            ".mp4" or ".h264" => "Video",
-            _ => "Other"
-        };
     }
 
     public void Cleanup()

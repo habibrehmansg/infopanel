@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
+using InfoPanel.Utils;
 using System.Collections.ObjectModel;
 
 namespace InfoPanel.ViewModels
@@ -46,7 +47,7 @@ namespace InfoPanel.ViewModels
 
         public AboutViewModel() 
         {
-            Version = "1.4.x-fweepa-experimental";
+            Version = VersionHelper.AppVersion;
             InitializeCollections();
         }
 

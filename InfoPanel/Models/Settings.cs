@@ -73,6 +73,33 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _turingPanelMultiDeviceMode = false;
 
+        private readonly ObservableCollection<ThermalrightPanelDevice> _thermalrightPanelDevices = [];
+
+        public ObservableCollection<ThermalrightPanelDevice> ThermalrightPanelDevices
+        {
+            get { return _thermalrightPanelDevices; }
+        }
+
+        [ObservableProperty]
+        private bool _thermalrightPanelMultiDeviceMode = false;
+
+        private readonly ObservableCollection<ThermaltakePanelDevice> _thermaltakePanelDevices = [];
+
+        public ObservableCollection<ThermaltakePanelDevice> ThermaltakePanelDevices
+        {
+            get { return _thermaltakePanelDevices; }
+        }
+
+        [ObservableProperty]
+        private bool _thermaltakePanelMultiDeviceMode = false;
+
+        private readonly ObservableCollection<HotkeyBinding> _hotkeyBindings = [];
+
+        public ObservableCollection<HotkeyBinding> HotkeyBindings
+        {
+            get { return _hotkeyBindings; }
+        }
+
         [ObservableProperty]
         private bool _webServer = false;
 
@@ -111,6 +138,8 @@ namespace InfoPanel.Models
         {
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
             TuringPanelDevices.CollectionChanged += TuringPanelDevices_CollectionChanged;
+            ThermalrightPanelDevices.CollectionChanged += ThermalrightPanelDevices_CollectionChanged;
+            ThermaltakePanelDevices.CollectionChanged += ThermaltakePanelDevices_CollectionChanged;
         }
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -153,6 +182,56 @@ namespace InfoPanel.Models
         {
             if (e.PropertyName != nameof(TuringPanelDevice.RuntimeProperties))
                 OnPropertyChanged(nameof(TuringPanelDevices));
+        }
+
+        private void ThermalrightPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (ThermalrightPanelDevice device in e.OldItems)
+                {
+                    device.PropertyChanged -= ThermalrightDevice_PropertyChanged;
+                }
+            }
+
+            if (e.NewItems != null)
+            {
+                foreach (ThermalrightPanelDevice device in e.NewItems)
+                {
+                    device.PropertyChanged += ThermalrightDevice_PropertyChanged;
+                }
+            }
+
+            OnPropertyChanged(nameof(ThermalrightPanelDevices));
+        }
+
+        private void ThermalrightDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ThermalrightPanelDevice.RuntimeProperties))
+            {
+                OnPropertyChanged(nameof(ThermalrightPanelDevices));
+            }
+        }
+
+        private void ThermaltakePanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (ThermaltakePanelDevice device in e.OldItems)
+                    device.PropertyChanged -= ThermaltakeDevice_PropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (ThermaltakePanelDevice device in e.NewItems)
+                    device.PropertyChanged += ThermaltakeDevice_PropertyChanged;
+            }
+            OnPropertyChanged(nameof(ThermaltakePanelDevices));
+        }
+
+        private void ThermaltakeDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ThermaltakePanelDevice.RuntimeProperties))
+                OnPropertyChanged(nameof(ThermaltakePanelDevices));
         }
     }
 }

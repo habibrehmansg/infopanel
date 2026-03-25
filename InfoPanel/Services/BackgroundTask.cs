@@ -28,7 +28,7 @@ namespace InfoPanel
             _shutdown = false;
             if (IsRunning) return;
 
-            Logger.Debug("{TaskName} starting initialization", this.GetType().Name);
+            Logger.Verbose("{TaskName} starting initialization", this.GetType().Name);
 
             if (token == null)
             {
@@ -43,7 +43,7 @@ namespace InfoPanel
 
         public virtual async Task StopAsync(bool shutdown = false)
         {
-            Logger.Debug("{TaskName} stopping", this.GetType().Name);
+            Logger.Verbose("{TaskName} stopping", this.GetType().Name);
 
             using var _ = await _startStopLock.LockAsync();
             _shutdown = shutdown;
@@ -72,7 +72,7 @@ namespace InfoPanel
             }
             finally
             {
-                Logger.Debug("{TaskName} stopped", this.GetType().Name);
+                Logger.Verbose("{TaskName} stopped", this.GetType().Name);
             }            
         }
 
@@ -80,7 +80,7 @@ namespace InfoPanel
 
         private void DisposeResources()
         {
-            Logger.Debug("Disposing resources for {TaskName}", this.GetType().Name);
+            Logger.Verbose("Disposing resources for {TaskName}", this.GetType().Name);
             _cts?.Dispose();
             _task?.Dispose();
             _cts = null;
