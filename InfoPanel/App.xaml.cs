@@ -403,6 +403,7 @@ namespace InfoPanel
                 await BeadaPanelTask.Instance.StopAsync(true);
                 await TuringPanelTask.Instance.StopAsync(true);
                 await ThermalrightPanelTask.Instance.StopAsync(true);
+                await ThermaltakePanelTask.Instance.StopAsync(true);
             });
         }
 
@@ -445,6 +446,11 @@ namespace InfoPanel
                 await ThermalrightPanelTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.ThermaltakePanelMultiDeviceMode)
+            {
+                await ThermaltakePanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.WebServer)
             {
                 await WebServerTask.Instance.StartAsync();
@@ -457,6 +463,7 @@ namespace InfoPanel
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelTask.Instance.StopAsync();
             await ThermalrightPanelTask.Instance.StopAsync();
+            await ThermaltakePanelTask.Instance.StopAsync();
         }
 
         private void App_Exit(object sender, ExitEventArgs e)

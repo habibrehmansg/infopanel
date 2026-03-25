@@ -83,6 +83,16 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _thermalrightPanelMultiDeviceMode = false;
 
+        private readonly ObservableCollection<ThermaltakePanelDevice> _thermaltakePanelDevices = [];
+
+        public ObservableCollection<ThermaltakePanelDevice> ThermaltakePanelDevices
+        {
+            get { return _thermaltakePanelDevices; }
+        }
+
+        [ObservableProperty]
+        private bool _thermaltakePanelMultiDeviceMode = false;
+
         private readonly ObservableCollection<HotkeyBinding> _hotkeyBindings = [];
 
         public ObservableCollection<HotkeyBinding> HotkeyBindings
@@ -123,6 +133,7 @@ namespace InfoPanel.Models
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
             TuringPanelDevices.CollectionChanged += TuringPanelDevices_CollectionChanged;
             ThermalrightPanelDevices.CollectionChanged += ThermalrightPanelDevices_CollectionChanged;
+            ThermaltakePanelDevices.CollectionChanged += ThermaltakePanelDevices_CollectionChanged;
         }
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -194,6 +205,27 @@ namespace InfoPanel.Models
             {
                 OnPropertyChanged(nameof(ThermalrightPanelDevices));
             }
+        }
+
+        private void ThermaltakePanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (ThermaltakePanelDevice device in e.OldItems)
+                    device.PropertyChanged -= ThermaltakeDevice_PropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (ThermaltakePanelDevice device in e.NewItems)
+                    device.PropertyChanged += ThermaltakeDevice_PropertyChanged;
+            }
+            OnPropertyChanged(nameof(ThermaltakePanelDevices));
+        }
+
+        private void ThermaltakeDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ThermaltakePanelDevice.RuntimeProperties))
+                OnPropertyChanged(nameof(ThermaltakePanelDevices));
         }
     }
 }
