@@ -74,6 +74,7 @@ namespace InfoPanel.Monitors
                 PipeOptions.Asynchronous);
 
             var hostExePath = GetHostExePath();
+
             if (!File.Exists(hostExePath))
             {
                 throw new FileNotFoundException($"Plugin host executable not found: {hostExePath}");
@@ -141,7 +142,7 @@ namespace InfoPanel.Monitors
             using var initCts = CancellationTokenSource.CreateLinkedTokenSource(token);
             initCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-            var metadata = await _jsonRpc.InvokeWithCancellationAsync<List<PluginMetadataDto>>(
+            List<PluginMetadataDto> metadata = await _jsonRpc.InvokeWithCancellationAsync<List<PluginMetadataDto>>(
                 nameof(IPluginHostService.InitializeAsync),
                 cancellationToken: initCts.Token);
 
