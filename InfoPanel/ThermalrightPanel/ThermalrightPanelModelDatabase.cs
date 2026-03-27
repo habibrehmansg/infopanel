@@ -317,20 +317,21 @@ namespace InfoPanel.ThermalrightPanel
                 ProtocolType = ThermalrightProtocolType.Trofeo,
                 PmByte = TROFEO_AS120_PM_BYTE
             },
-            // PM 0x33 (51): TRCC bulk table = "Frozen Warframe" 320x320 Jpeg
+            // PM 0x33 (51): TRCC FBL 51 = 320x240 RGB565 with 90° rotation → 240x320 physical
             [ThermalrightPanelModel.AS120VisionB] = new ThermalrightPanelModelInfo
             {
                 Model = ThermalrightPanelModel.AS120VisionB,
                 Name = "Frozen Warframe",
                 DeviceIdentifier = TROFEO_686_HID_IDENTIFIER,
-                Width = 320,
+                Width = 240,
                 Height = 320,
-                RenderWidth = 320,
+                RenderWidth = 240,
                 RenderHeight = 320,
                 VendorId = TROFEO_VENDOR_ID,
                 ProductId = TROFEO_PRODUCT_ID_686,
                 TransportType = ThermalrightTransportType.Hid,
                 ProtocolType = ThermalrightProtocolType.Trofeo,
+                PixelFormat = ThermalrightPixelFormat.Rgb565,
                 PmByte = TROFEO_AS120B_PM_BYTE
             },
             [ThermalrightPanelModel.BA120Vision] = new ThermalrightPanelModelInfo
