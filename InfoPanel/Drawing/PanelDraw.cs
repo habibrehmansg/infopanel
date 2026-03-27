@@ -355,14 +355,14 @@ namespace InfoPanel.Drawing
                                 scaledWidth = (int)Math.Floor(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
                                 scaledHeight = (int)Math.Floor(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
 
-                                g.DrawImage(cachedA, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint);
+                                g.DrawImage(cachedA, x, y, scaledWidth, scaledHeight, gaugeDisplayItem.Rotation, 0, 0, cache, cacheHint);
 
                                 if (imageB != null && imageB != imageA && blend > 0f)
                                 {
                                     var cachedB = Cache.GetLocalImage(imageB);
                                     if (cachedB != null)
                                     {
-                                        g.DrawImage(cachedB, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint, opacity: blend);
+                                        g.DrawImage(cachedB, x, y, scaledWidth, scaledHeight, gaugeDisplayItem.Rotation, 0, 0, cache, cacheHint, opacity: blend);
                                     }
                                 }
                             }
