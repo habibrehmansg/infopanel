@@ -925,12 +925,12 @@
                         <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Thermaltake Displays" />
+                            Text="Thermaltake / ASRock LCD" />
                         <TextBlock
                             Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Text="Configure and run Thermaltake USB LCD panels." />
+                            Text="Configure and run Thermaltake, ASRock, and compatible USB LCD panels." />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
