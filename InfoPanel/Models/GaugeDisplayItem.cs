@@ -91,6 +91,16 @@ namespace InfoPanel.Models
             }
         }
 
+        private bool _flipX = false;
+        public bool FlipX
+        {
+            get { return _flipX; }
+            set
+            {
+                SetProperty(ref _flipX, value);
+            }
+        }
+
         public SensorValueType _valueType = SensorValueType.NOW;
         public SensorValueType ValueType
         {
