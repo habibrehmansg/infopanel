@@ -224,7 +224,7 @@
                             Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Rotation" />
+                            Text="Rotation °" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"

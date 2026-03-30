@@ -355,14 +355,14 @@ namespace InfoPanel.Drawing
                                 scaledWidth = (int)Math.Floor(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
                                 scaledHeight = (int)Math.Floor(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
 
-                                g.DrawImage(cachedA, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint);
+                                g.DrawImage(cachedA, x, y, scaledWidth, scaledHeight, gaugeDisplayItem.Rotation, 0, 0, cache, cacheHint);
 
                                 if (imageB != null && imageB != imageA && blend > 0f)
                                 {
                                     var cachedB = Cache.GetLocalImage(imageB);
                                     if (cachedB != null)
                                     {
-                                        g.DrawImage(cachedB, x, y, scaledWidth, scaledHeight, 0, 0, 0, cache, cacheHint, opacity: blend);
+                                        g.DrawImage(cachedB, x, y, scaledWidth, scaledHeight, gaugeDisplayItem.Rotation, 0, 0, cache, cacheHint, opacity: blend);
                                     }
                                 }
                             }
@@ -382,11 +382,11 @@ namespace InfoPanel.Drawing
 
                         if (chartDisplayItem.FlipX)
                         {
-                            g.DrawBitmap(graphBitmap, x, y, width, height, flipX: true);
+                            g.DrawBitmap(graphBitmap, x, y, width, height, rotation: chartDisplayItem.Rotation, flipX: true);
                         }
                         else
                         {
-                            g.DrawBitmap(graphBitmap, x, y, width, height);
+                            g.DrawBitmap(graphBitmap, x, y, width, height, rotation: chartDisplayItem.Rotation);
                         }
 
                         break;
@@ -921,10 +921,12 @@ namespace InfoPanel.Drawing
             var glowColor = textDisplayItem.GlowEnabled && !string.IsNullOrEmpty(textDisplayItem.GlowColor) ? textDisplayItem.GlowColor : null;
             var glowBlendMode = textDisplayItem.GlowEnabled ? textDisplayItem.GlowBlendMode : null;
 
-            g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color, 
+            var drawHeight = (int)(textDisplayItem.Height * scale);
+
+            g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color,
                 x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,
-                textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline, 
-                textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, drawWidth, 0, glowRadius, glowColor, glowBlendMode);
+                textDisplayItem.Bold, textDisplayItem.Italic, textDisplayItem.Underline,
+                textDisplayItem.Strikeout, textDisplayItem.Wrap, textDisplayItem.Ellipsis, drawWidth, drawHeight, glowRadius, glowColor, glowBlendMode, textDisplayItem.Rotation);
         }
 
     }

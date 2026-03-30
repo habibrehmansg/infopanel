@@ -168,10 +168,30 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, bool wrap = false, bool ellipsis = true, int width = 0, int height = 0, int glowRadius = 0, string? glowColor = null, string? glowBlendMode = null)
+        public void DrawString(string text, string fontName, string fontStyle, int fontSize, string color, int x, int y, bool rightAlign = false, bool centerAlign = false, bool bold = false, bool italic = false, bool underline = false, bool strikeout = false, bool wrap = false, bool ellipsis = true, int width = 0, int height = 0, int glowRadius = 0, string? glowColor = null, string? glowBlendMode = null, int rotation = 0)
         {
             if (string.IsNullOrEmpty(text))
                 return;
+
+            Canvas.Save();
+
+            if (rotation != 0)
+            {
+                int centerX;
+                int centerY;
+                if (width > 0 && height > 0)
+                {
+                    centerX = x + width / 2;
+                    centerY = y + height / 2;
+                }
+                else
+                {
+                    var (measuredWidth, measuredHeight) = MeasureString(text, fontName, fontStyle, fontSize, bold, italic, underline, strikeout, wrap, ellipsis, width, height);
+                    centerX = x + (width > 0 ? width / 2 : (int)(measuredWidth / 2));
+                    centerY = y + (height > 0 ? height / 2 : (int)(measuredHeight / 2));
+                }
+                Canvas.RotateDegrees(rotation, centerX, centerY);
+            }
 
             if (glowRadius > 0)
             {
@@ -193,10 +213,13 @@ namespace InfoPanel.Drawing
                 DrawStringCore(text, fontName, fontStyle, fontSize, color, x, y, rightAlign, centerAlign, bold, italic, underline, strikeout, wrap, ellipsis, width);
 
                 Canvas.Restore();
+                Canvas.Restore();
                 return;
             }
 
             DrawStringCore(text, fontName, fontStyle, fontSize, color, x, y, rightAlign, centerAlign, bold, italic, underline, strikeout, wrap, ellipsis, width);
+
+            Canvas.Restore();
         }
 
         private static bool TryParseBlendMode(string? value, out SKBlendMode mode)

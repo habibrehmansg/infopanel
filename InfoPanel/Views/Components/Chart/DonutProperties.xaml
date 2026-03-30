@@ -161,8 +161,8 @@
                     <Slider
                         Grid.Column="1"
                         Margin="0,0,0,0"
-                        Maximum="360"
-                        Minimum="0"
+                        Maximum="180"
+                        Minimum="-180"
                         Value="{Binding Rotation}" />
 
                     <Grid Margin="5,0,5,0">

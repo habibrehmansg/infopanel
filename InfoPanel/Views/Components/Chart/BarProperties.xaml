@@ -18,9 +18,14 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-        <Grid Margin="0,0,0,0">
+        <Grid Grid.Row="0" Margin="0,0,0,0">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -167,7 +172,10 @@
         </Grid>
 
 
-        <Grid Grid.Column="1" Margin="20,0,0,0">
+        <Grid
+            Grid.Row="0"
+            Grid.Column="1"
+            Margin="20,0,0,0">
 
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto" />
@@ -203,7 +211,7 @@
                         <TextBlock.Text>
                             <MultiBinding Converter="{StaticResource SensorSourceConverter}">
                                 <Binding Path="SensorType" />
-                                <Binding Path="HwInfoRemoteIndex" FallbackValue="-1" />
+                                <Binding FallbackValue="-1" Path="HwInfoRemoteIndex" />
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
@@ -259,7 +267,38 @@
                 </StackPanel>
             </Grid>
 
+        </Grid>
 
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="1">
+                <Slider
+                    Margin="0,0,0,0"
+                    Maximum="180"
+                    Minimum="-180"
+                    Value="{Binding Rotation}" />
+                <Grid Margin="5,0,5,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Grid.Column="0"
+                        Margin="0,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="Rotation °" />
+                    <TextBlock
+                        Grid.Column="1"
+                        Margin="0,0,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding Rotation, Mode=OneWay}" />
+                </Grid>
+            </StackPanel>
         </Grid>
 
     </Grid>
