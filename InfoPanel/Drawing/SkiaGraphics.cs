@@ -177,8 +177,19 @@ namespace InfoPanel.Drawing
 
             if (rotation != 0)
             {
-                int centerX = x + width / 2;
-                int centerY = y + height / 2;
+                int centerX;
+                int centerY;
+                if (width > 0 && height > 0)
+                {
+                    centerX = x + width / 2;
+                    centerY = y + height / 2;
+                }
+                else
+                {
+                    var (measuredWidth, measuredHeight) = MeasureString(text, fontName, fontStyle, fontSize, bold, italic, underline, strikeout, wrap, ellipsis, width, height);
+                    centerX = x + (width > 0 ? width / 2 : (int)(measuredWidth / 2));
+                    centerY = y + (height > 0 ? height / 2 : (int)(measuredHeight / 2));
+                }
                 Canvas.RotateDegrees(rotation, centerX, centerY);
             }
 
