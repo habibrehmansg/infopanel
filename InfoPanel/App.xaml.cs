@@ -424,6 +424,7 @@ namespace InfoPanel
                         await BeadaPanelTask.Instance.StopAsync(true);
                         await TuringPanelTask.Instance.StopAsync(true);
                         await ThermalrightPanelTask.Instance.StopAsync(true);
+                        await ThermaltakePanelTask.Instance.StopAsync(true);
                     });
                     break;
             }

@@ -596,7 +596,7 @@ public partial class UsbPanelsPage : Page
 
                     if (discoveredDevice.ModelInfo != null)
                     {
-                        newDevice.RuntimeProperties.Name = $"Thermaltake {discoveredDevice.ModelInfo.Name}";
+                        newDevice.RuntimeProperties.Name = discoveredDevice.ModelInfo.Name;
                     }
 
                     settings.ThermaltakePanelDevices.Add(newDevice);
@@ -608,7 +608,7 @@ public partial class UsbPanelsPage : Page
 
                     if (device.ModelInfo != null)
                     {
-                        device.RuntimeProperties.Name = $"Thermaltake {device.ModelInfo.Name}";
+                        device.RuntimeProperties.Name = device.ModelInfo.Name;
                     }
 
                     Logger.Information("ThermaltakePanel Discovery: Device '{DeviceId}' already exists", discoveredDevice.DeviceId);
@@ -639,4 +639,5 @@ public partial class UsbPanelsPage : Page
             });
         }
     }
+
 }

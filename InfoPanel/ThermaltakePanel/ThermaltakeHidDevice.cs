@@ -8,7 +8,8 @@ namespace InfoPanel.ThermaltakePanel
 {
     /// <summary>
     /// HID communication for Thermaltake LCD panels (VID 264A).
-    /// Protocol: text-based HTTP-like POST commands over 1024-byte HID reports.
+    /// Protocol: text-based HTTP-like POST commands over 1024-byte HID reports with checksum.
+    /// Same BY OEM protocol as ASRock panels (VID 26CE).
     /// The HID descriptor declares NO report IDs, so byte[0] must be 0x00 (null report ID).
     /// </summary>
     public class ThermaltakeHidDevice : IDisposable
@@ -20,26 +21,14 @@ namespace InfoPanel.ThermaltakePanel
         private const int IMAGE_HEADER_SIZE = 24;
         private const int IMAGE_PAYLOAD_PER_CHUNK = WIRE_PACKET_SIZE - IMAGE_HEADER_SIZE; // 1000
 
-        // Exact handshake packets captured from TT RGB Plus
-        private static readonly byte[] CONN_PACKET = HexToBytes(
-            "5a0048504f535420636f6e6e20310d0a5365714e756d6265723d3131320d0a" +
-            "436f6e74656e74547970653d6a736f6e0d0a436f6e74656e744c656e677468" +
-            "3d3234300d0a0d0a075a00");
-
-        private static readonly byte[] REALTIME_ENABLE_PACKET = HexToBytes(
-            "5a0061504f5354207265616c74696d65446973706c617920310d0a5365714e" +
-            "756d6265723d3131320d0a436f6e74656e74547970653d6a736f6e0d0a436f" +
-            "6e74656e744c656e6774683d31350d0a0d0a7b22656e61626c65223a747275" +
-            "657d085a00");
-
-        private static readonly byte[] REALTIME_DISABLE_PACKET = HexToBytes(
-            "5a0062504f5354207265616c74696d65446973706c617920310d0a5365714e" +
-            "756d6265723d3131320d0a436f6e74656e74547970653d6a736f6e0d0a436f" +
-            "6e74656e744c656e6774683d31360d0a0d0a7b22656e61626c65223a66616c" +
-            "73657d035a00");
+        // Framing: 5A 00 [len] [content] [checksum] 5A 00
+        private const byte FRAME_MARKER = 0x5A;
+        private const byte FRAME_ZERO = 0x00;
+        private const int FRAME_OVERHEAD = 5; // 5A 00 [len] ... [checksum] 5A 00
 
         private HidStream? _stream;
         private bool _disposed;
+        private int _seqNumber = 100;
 
         public bool IsOpen => _stream != null;
 
@@ -96,15 +85,28 @@ namespace InfoPanel.ThermaltakePanel
             Logger.Information("ThermaltakeHidDevice: Starting handshake");
 
             // POST conn
-            if (!SendPacketAndCheckResponse(CONN_PACKET, "conn"))
+            var connPacket = BuildCommandPacket("POST conn 1", hasBody: false);
+            if (!SendPacketAndCheckResponse(connPacket, "conn"))
                 return false;
 
             // POST realtimeDisplay enable
-            if (!SendPacketAndCheckResponse(REALTIME_ENABLE_PACKET, "realtimeDisplay"))
+            var enablePacket = BuildCommandPacket("POST realtimeDisplay 1",
+                body: "{\"enable\":true}", contentType: "json");
+            if (!SendPacketAndCheckResponse(enablePacket, "realtimeDisplay"))
                 return false;
 
             Logger.Information("ThermaltakeHidDevice: Handshake complete");
             return true;
+        }
+
+        /// <summary>
+        /// Sets the hardware brightness (0-100).
+        /// </summary>
+        public bool SetBrightness(int value)
+        {
+            var packet = BuildCommandPacket("POST brightness 1",
+                body: $"{{\"value\":{value}}}", contentType: "json");
+            return SendPacketAndCheckResponse(packet, "brightness");
         }
 
         /// <summary>
@@ -145,7 +147,9 @@ namespace InfoPanel.ThermaltakePanel
         {
             try
             {
-                SendPacketAndCheckResponse(REALTIME_DISABLE_PACKET, "realtimeDisplay disable");
+                var disablePacket = BuildCommandPacket("POST realtimeDisplay 1",
+                    body: "{\"enable\":false}", contentType: "json");
+                SendPacketAndCheckResponse(disablePacket, "realtimeDisplay disable");
             }
             catch (Exception ex)
             {
@@ -167,8 +171,6 @@ namespace InfoPanel.ThermaltakePanel
 
                 if (bytesRead > 4)
                 {
-                    // Response format: [00 report_id] [5A] [flags] [len] [text...]
-                    // Extract all printable ASCII from the entire buffer
                     var sb = new StringBuilder();
                     for (int i = 1; i < bytesRead; i++)
                     {
@@ -177,7 +179,6 @@ namespace InfoPanel.ThermaltakePanel
                             sb.Append((char)b);
                         else if (b == 13 || b == 10)
                             sb.Append((char)b);
-                        // Don't break on nulls - response has nulls mixed with text (5A 00 len format)
                     }
                     return sb.Length > 0 ? sb.ToString() : null;
                 }
@@ -189,6 +190,53 @@ namespace InfoPanel.ThermaltakePanel
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Builds a framed command packet with SeqNumber, Date, and checksum.
+        /// Frame: 5A 00 [len] [content] [checksum] 5A 00
+        /// len = content_length + 5
+        /// checksum = (len + SUM(content)) mod 256
+        /// </summary>
+        private byte[] BuildCommandPacket(string command, string? body = null, string? contentType = null, bool hasBody = true)
+        {
+            var sb = new StringBuilder();
+            sb.Append(command);
+            sb.Append("\r\n");
+            sb.AppendFormat("SeqNumber={0}\r\n", _seqNumber++);
+            sb.AppendFormat("Date={0}\r\n", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+            if (hasBody && contentType != null)
+            {
+                sb.AppendFormat("ContentType={0}\r\n", contentType);
+                sb.AppendFormat("ContentLength={0}\r\n", body?.Length ?? 0);
+            }
+
+            sb.Append("\r\n");
+
+            if (hasBody && body != null)
+                sb.Append(body);
+
+            byte[] content = Encoding.ASCII.GetBytes(sb.ToString());
+            byte lenByte = (byte)(content.Length + FRAME_OVERHEAD);
+
+            // Compute checksum: (lenByte + SUM(content)) mod 256
+            int sum = lenByte;
+            for (int i = 0; i < content.Length; i++)
+                sum += content[i];
+            byte checksum = (byte)(sum & 0xFF);
+
+            // Build wire data: 5A 00 [len] [content] [checksum] 5A 00
+            var wireData = new byte[WIRE_PACKET_SIZE];
+            wireData[0] = FRAME_MARKER;
+            wireData[1] = FRAME_ZERO;
+            wireData[2] = lenByte;
+            Array.Copy(content, 0, wireData, 3, content.Length);
+            wireData[3 + content.Length] = checksum;
+            wireData[3 + content.Length + 1] = FRAME_MARKER;
+            wireData[3 + content.Length + 2] = FRAME_ZERO;
+
+            return wireData;
         }
 
         private bool SendPacketAndCheckResponse(byte[] wireData, string commandName)
@@ -220,13 +268,6 @@ namespace InfoPanel.ThermaltakePanel
             Array.Copy(wireData, 0, report, 1, Math.Min(wireData.Length, WIRE_PACKET_SIZE));
 
             _stream.Write(report, 0, report.Length);
-        }
-
-        private static byte[] HexToBytes(string hex)
-        {
-            return Enumerable.Range(0, hex.Length / 2)
-                .Select(i => Convert.ToByte(hex.Substring(i * 2, 2), 16))
-                .ToArray();
         }
 
         public void Dispose()

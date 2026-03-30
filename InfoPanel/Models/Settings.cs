@@ -227,5 +227,6 @@ namespace InfoPanel.Models
             if (e.PropertyName != nameof(ThermaltakePanelDevice.RuntimeProperties))
                 OnPropertyChanged(nameof(ThermaltakePanelDevices));
         }
+
     }
 }
