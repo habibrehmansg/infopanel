@@ -1,10 +1,12 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using InfoPanel.Utils;
 using InfoPanel.ViewModels;
+using InfoPanel.Views.Windows;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Forms;
 using Wpf.Ui.Abstractions.Controls;
 using Wpf.Ui.Controls;
@@ -34,9 +36,7 @@ namespace InfoPanel.Views.Pages
             InitializeComponent();
 
             Loaded += ProfilesPage_Loaded;
-            Unloaded += ProfilesPage_Unloaded;
         }
-
 
         private async void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
         {
@@ -48,10 +48,6 @@ namespace InfoPanel.Views.Pages
                     InstalledFonts.Add(font);
                 }
             }
-        }
-
-        private void ProfilesPage_Unloaded(object sender, RoutedEventArgs e)
-        {
         }
 
         private void ButtonAdd_Click(object sender, RoutedEventArgs e)
@@ -139,6 +135,30 @@ namespace InfoPanel.Views.Pages
         {
             ViewModel.Profile = null;
             ProfileDetailOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void ButtonSelectFromList_Click(object sender, RoutedEventArgs e)
+        {
+            if (ViewModel.Profile is not Profile profile)
+                return;
+            var picker = new ProcessPickerWindow
+            {
+                Owner = Window.GetWindow(this)
+            };
+            if (picker.ShowDialog() == true && !string.IsNullOrWhiteSpace(picker.SelectedProcessName))
+            {
+                AppendTriggerProcessName(profile, picker.SelectedProcessName);
+                _snackbarService.Show("Trigger app", $"Added '{picker.SelectedProcessName}' to {profile.Name}.", Wpf.Ui.Controls.ControlAppearance.Success, null, TimeSpan.FromSeconds(2));
+            }
+        }
+
+        private static void AppendTriggerProcessName(Profile profile, string name)
+        {
+            var existing = profile.TriggerProcessNames?.Trim();
+            if (!string.IsNullOrEmpty(existing))
+                profile.TriggerProcessNames = existing + ", " + name;
+            else
+                profile.TriggerProcessNames = name;
         }
     }
 }

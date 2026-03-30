@@ -1,4 +1,4 @@
-﻿using InfoPanel.Drawing;
+using InfoPanel.Drawing;
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using SkiaSharp;

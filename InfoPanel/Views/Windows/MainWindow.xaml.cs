@@ -40,6 +40,7 @@ namespace InfoPanel.Views.Windows
         private HwndSource? _hwndSource;
         private bool _isExiting;
         private readonly IContentDialogService _contentDialogService;
+        private readonly ISnackbarService _snackbarService;
 
         public MainWindow(INavigationService navigationService, INavigationViewPageProvider pageProvider, ITaskBarService taskBarService, ISnackbarService snackbarService, IContentDialogService contentDialogService)
         {
@@ -48,6 +49,7 @@ namespace InfoPanel.Views.Windows
             DataContext = this;
 
             _contentDialogService = contentDialogService;
+            _snackbarService = snackbarService;
             // Attach the taskbar service
             _taskBarService = taskBarService;
 
@@ -74,7 +76,7 @@ namespace InfoPanel.Views.Windows
             // If you want to use INavigationService instead of INavigationWindow you can define its navigation here.
             navigationService.SetNavigationControl(RootNavigation);
 
-            snackbarService.SetSnackbarPresenter(RootSnackbar);
+            _snackbarService.SetSnackbarPresenter(RootSnackbar);
             contentDialogService.SetDialogHost(RootContentDialog);
 
             RootTitleBar.Title = $"InfoPanel - v{VersionHelper.AppVersion}";
