@@ -101,7 +101,7 @@ namespace InfoPanel.Models
             get { return _hotkeyBindings; }
         }
 
-        /// <summary>Optional global hotkeys for bundled Stopwatch (InfoPanel.Extras). Key.None = disabled.</summary>
+        /// <summary>Optional global hotkeys for bundled InfoPanel.StopWatch. Key.None = disabled.</summary>
         [ObservableProperty]
         private ModifierKeys _stopwatchHotkeyStartModifiers = ModifierKeys.None;
 

@@ -299,7 +299,11 @@ namespace InfoPanel.Monitors
             }
         }
 
-        private static readonly string[] _bundledPlugins = [Path.Combine("plugins", "InfoPanel.Extras")];
+        private static readonly string[] _bundledPlugins =
+        [
+            Path.Combine("plugins", "InfoPanel.Extras"),
+            Path.Combine("plugins", "InfoPanel.StopWatch"),
+        ];
         internal void FindPlugins()
         {
             UnzipPluginArchives();

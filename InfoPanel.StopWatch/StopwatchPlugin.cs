@@ -1,7 +1,7 @@
 using System.Globalization;
 using InfoPanel.Plugins;
 
-namespace InfoPanel.Extras;
+namespace InfoPanel.StopWatch;
 
 public class StopwatchPlugin : BasePlugin
 {
@@ -20,7 +20,7 @@ public class StopwatchPlugin : BasePlugin
     private readonly PluginSensor _seconds = new("seconds", "Elapsed second (0–59)", 0f, "s");
 
     public StopwatchPlugin()
-        : base("infopanel-stopwatch", "Stopwatch", "Stopwatch with start, stop, reset and elapsed sensors (bundled).")
+        : base("infopanel-stopwatch", "Stopwatch", "Elapsed time, state, and resettable timer for overlays.")
     {
     }
 
