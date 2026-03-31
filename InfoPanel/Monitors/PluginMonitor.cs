@@ -434,6 +434,38 @@ namespace InfoPanel.Monitors
             return result;
         }
 
+        /// <summary>Invokes a plugin action method on a loaded host (same RPC path as the Plugins UI).</summary>
+        public async Task InvokePluginHotkeyActionAsync(string pluginId, string methodName)
+        {
+            RemotePluginWrapper? target = null;
+            lock (PluginsLock)
+            {
+                foreach (var kvp in RemoteWrappers)
+                {
+                    target = kvp.Value.FirstOrDefault(w =>
+                        string.Equals(w.Id, pluginId, StringComparison.OrdinalIgnoreCase)
+                        && w.Actions.Exists(a => string.Equals(a.MethodName, methodName, StringComparison.Ordinal)));
+                    if (target != null)
+                        break;
+                }
+            }
+
+            if (target == null)
+            {
+                Logger.Warning("Global hotkey: plugin {PluginId} not loaded or has no action {Method}", pluginId, methodName);
+                return;
+            }
+
+            try
+            {
+                await target.InvokeActionAsync(methodName).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Global hotkey: failed to invoke {PluginId}.{Method}", pluginId, methodName);
+            }
+        }
+
         public record struct PluginReading
         {
             public string Id { get; set; }

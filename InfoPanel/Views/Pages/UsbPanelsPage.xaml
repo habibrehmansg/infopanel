@@ -1354,5 +1354,98 @@
             </StackPanel>
         </ui:CardExpander>
         <!--  end Global Hotkeys  -->
+
+        <ui:CardExpander Margin="0,12,0,0" IsExpanded="True">
+            <ui:CardExpander.Icon>
+                <ui:SymbolIcon Symbol="Timer20" />
+            </ui:CardExpander.Icon>
+            <ui:CardExpander.Header>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock FontSize="13" FontWeight="Medium" Text="Stopwatch hotkeys" />
+                    <TextBlock
+                        Margin="0,5,0,0"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="Global shortcuts for the bundled Stopwatch (InfoPanel.Extras). Requires modifiers plus a key. InfoPanel must stay running." />
+                </StackPanel>
+            </ui:CardExpander.Header>
+            <StackPanel>
+                <ui:InfoBar
+                    Margin="0,0,0,8"
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="Maps to the bundled Stopwatch plugin actions (Start, Stop, Reset). Enable InfoPanel.Extras in Plugins if disabled."
+                    Severity="Informational" />
+                <Grid Margin="0,4,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Start" />
+                    <TextBox
+                        x:Name="StopwatchHotkeyStartCapture"
+                        Grid.Column="1"
+                        Margin="8,0,8,0"
+                        GotFocus="StopwatchHotkeyCapture_GotFocus"
+                        IsReadOnly="True"
+                        PreviewKeyDown="StopwatchHotkeyCapture_PreviewKeyDown"
+                        Tag="Start"
+                        Text="Click and press a key combo (optional)" />
+                    <ui:Button
+                        Grid.Column="2"
+                        Appearance="Secondary"
+                        Click="StopwatchHotkeyClear_Click"
+                        Content="Clear"
+                        Tag="Start" />
+                </Grid>
+                <Grid Margin="0,4,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Stop" />
+                    <TextBox
+                        x:Name="StopwatchHotkeyStopCapture"
+                        Grid.Column="1"
+                        Margin="8,0,8,0"
+                        GotFocus="StopwatchHotkeyCapture_GotFocus"
+                        IsReadOnly="True"
+                        PreviewKeyDown="StopwatchHotkeyCapture_PreviewKeyDown"
+                        Tag="Stop"
+                        Text="Click and press a key combo (optional)" />
+                    <ui:Button
+                        Grid.Column="2"
+                        Appearance="Secondary"
+                        Click="StopwatchHotkeyClear_Click"
+                        Content="Clear"
+                        Tag="Stop" />
+                </Grid>
+                <Grid Margin="0,4,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Reset" />
+                    <TextBox
+                        x:Name="StopwatchHotkeyResetCapture"
+                        Grid.Column="1"
+                        Margin="8,0,8,0"
+                        GotFocus="StopwatchHotkeyCapture_GotFocus"
+                        IsReadOnly="True"
+                        PreviewKeyDown="StopwatchHotkeyCapture_PreviewKeyDown"
+                        Tag="Reset"
+                        Text="Click and press a key combo (optional)" />
+                    <ui:Button
+                        Grid.Column="2"
+                        Appearance="Secondary"
+                        Click="StopwatchHotkeyClear_Click"
+                        Content="Clear"
+                        Tag="Reset" />
+                </Grid>
+            </StackPanel>
+        </ui:CardExpander>
     </StackPanel>
 </Page>

@@ -43,6 +43,7 @@ public partial class UsbPanelsPage : Page
         DataContext = this;
         InitializeComponent();
         PopulateDeviceCombo();
+        Loaded += (_, _) => RefreshStopwatchHotkeyDisplayTexts();
 
         // Refresh device combo when device lists change
         ConfigModel.Instance.Settings.BeadaPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
@@ -424,6 +425,110 @@ public partial class UsbPanelsPage : Page
             ConfigModel.Instance.Settings.HotkeyBindings.Remove(binding);
             _ = ConfigModel.Instance.SaveSettingsAsync();
         }
+    }
+
+    private void RefreshStopwatchHotkeyDisplayTexts()
+    {
+        var s = ConfigModel.Instance.Settings;
+        StopwatchHotkeyStartCapture.Text =
+            FormatOptionalHotkeyChord(s.StopwatchHotkeyStartModifiers, s.StopwatchHotkeyStartKey);
+        StopwatchHotkeyStopCapture.Text =
+            FormatOptionalHotkeyChord(s.StopwatchHotkeyStopModifiers, s.StopwatchHotkeyStopKey);
+        StopwatchHotkeyResetCapture.Text =
+            FormatOptionalHotkeyChord(s.StopwatchHotkeyResetModifiers, s.StopwatchHotkeyResetKey);
+    }
+
+    private static string FormatOptionalHotkeyChord(ModifierKeys modifiers, Key key)
+    {
+        if (key == Key.None)
+            return "Click and press a key combo (optional)";
+        var hint = new HotkeyBinding { ModifierKeys = modifiers, Key = key };
+        return hint.HotkeyDisplayText;
+    }
+
+    private void StopwatchHotkeyCapture_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox tb)
+            tb.Text = "Press a key combo...";
+    }
+
+    private void StopwatchHotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not TextBox tb || tb.Tag is not string slot)
+            return;
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+            or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+            return;
+
+        var modifiers = Keyboard.Modifiers;
+        if (modifiers == ModifierKeys.None)
+        {
+            _snackbarService.Show(
+                "Error",
+                "At least one modifier key (Ctrl, Alt, Shift, Win) is required.",
+                Wpf.Ui.Controls.ControlAppearance.Caution,
+                null,
+                TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        ApplyStopwatchHotkeySlot(slot, modifiers, key);
+        RefreshStopwatchHotkeyDisplayTexts();
+    }
+
+    private void ApplyStopwatchHotkeySlot(string slot, ModifierKeys modifiers, Key key)
+    {
+        var s = ConfigModel.Instance.Settings;
+        switch (slot)
+        {
+            case "Start":
+                s.StopwatchHotkeyStartModifiers = modifiers;
+                s.StopwatchHotkeyStartKey = key;
+                break;
+            case "Stop":
+                s.StopwatchHotkeyStopModifiers = modifiers;
+                s.StopwatchHotkeyStopKey = key;
+                break;
+            case "Reset":
+                s.StopwatchHotkeyResetModifiers = modifiers;
+                s.StopwatchHotkeyResetKey = key;
+                break;
+            default:
+                return;
+        }
+
+        _ = ConfigModel.Instance.SaveSettingsAsync();
+    }
+
+    private void StopwatchHotkeyClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.Tag is not string slot)
+            return;
+
+        var s = ConfigModel.Instance.Settings;
+        switch (slot)
+        {
+            case "Start":
+                s.StopwatchHotkeyStartModifiers = ModifierKeys.None;
+                s.StopwatchHotkeyStartKey = Key.None;
+                break;
+            case "Stop":
+                s.StopwatchHotkeyStopModifiers = ModifierKeys.None;
+                s.StopwatchHotkeyStopKey = Key.None;
+                break;
+            case "Reset":
+                s.StopwatchHotkeyResetModifiers = ModifierKeys.None;
+                s.StopwatchHotkeyResetKey = Key.None;
+                break;
+            default:
+                return;
+        }
+
+        _ = ConfigModel.Instance.SaveSettingsAsync();
+        RefreshStopwatchHotkeyDisplayTexts();
     }
 
     // --- Thermalright Panel ---
