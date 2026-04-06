@@ -17,6 +17,7 @@
         REV_88INCH_USB,
         REV_8INCH_USB,
         REV_92INCH_USB,
+        REV_46INCH_USB,
         REV_5INCH_USB,
         REV_16INCH_USB,
         REV_21INCH_USB,
