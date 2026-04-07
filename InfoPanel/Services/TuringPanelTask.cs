@@ -40,6 +40,7 @@ namespace InfoPanel.Services
                     case TuringPanelModel.REV_8INCH_USB:
                     case TuringPanelModel.REV_88INCH_USB:
                     case TuringPanelModel.REV_92INCH_USB:
+                    case TuringPanelModel.REV_46INCH_USB:
                     case TuringPanelModel.REV_5INCH_USB:
                     case TuringPanelModel.REV_16INCH_USB:
                     case TuringPanelModel.REV_21INCH_USB:

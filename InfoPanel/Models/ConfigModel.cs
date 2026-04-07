@@ -892,6 +892,10 @@ namespace InfoPanel
                 {
                     device.Model = TuringPanelModel.REV_88INCH_USB.ToString();
                 }
+				else if (device.Model == "REV_46INCH_USB" && device.DeviceId.StartsWith(@"USB\VID_1CBE&PID_0046\"))
+                {
+                    device.Model = TuringPanelModel.REV_46INCH_USB.ToString();
+                }
             }
         }
         private void Upgrade_File_Structure_From_1_1_4()
