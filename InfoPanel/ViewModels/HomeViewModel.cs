@@ -55,6 +55,9 @@ namespace InfoPanel.ViewModels
                 case "navigate_to_settings":
                     _navigationService.Navigate(typeof(Views.Pages.SettingsPage));
                     return;
+                case "navigate_to_userguide":
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/emaspa/infopanel-guide") { UseShellExecute = true });
+                    return;
                 default:
                     _navigationService.Navigate(typeof(Views.Pages.HomePage));
                     return;
