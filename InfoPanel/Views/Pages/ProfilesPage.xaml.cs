@@ -1,10 +1,11 @@
 using InfoPanel.Models;
 using InfoPanel.Utils;
 using InfoPanel.ViewModels;
-using InfoPanel.Views.Windows;
+using InfoPanel.Views.Components;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Forms;
@@ -137,18 +138,31 @@ namespace InfoPanel.Views.Pages
             ProfileDetailOverlay.Visibility = Visibility.Collapsed;
         }
 
-        private void ButtonSelectFromList_Click(object sender, RoutedEventArgs e)
+        private async void ButtonSelectFromList_Click(object sender, RoutedEventArgs e)
         {
             if (ViewModel.Profile is not Profile profile)
                 return;
-            var picker = new ProcessPickerWindow
+
+            var picker = new ProcessPickerControl();
+            var dialog = new ContentDialog
             {
-                Owner = Window.GetWindow(this)
+                Title = "Select running program",
+                Content = picker,
+                PrimaryButtonText = "OK",
+                CloseButtonText = "Cancel",
+                IsPrimaryButtonEnabled = false,
             };
-            if (picker.ShowDialog() == true && !string.IsNullOrWhiteSpace(picker.SelectedProcessName))
+
+            picker.SelectionChanged += (_, _) =>
+                dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(picker.SelectedProcessName);
+            picker.ItemActivated += (_, _) => dialog.Hide(ContentDialogResult.Primary);
+
+            var result = await _contentDialogService.ShowAsync(dialog, CancellationToken.None);
+
+            if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(picker.SelectedProcessName))
             {
                 AppendTriggerProcessName(profile, picker.SelectedProcessName);
-                _snackbarService.Show("Trigger app", $"Added '{picker.SelectedProcessName}' to {profile.Name}.", Wpf.Ui.Controls.ControlAppearance.Success, null, TimeSpan.FromSeconds(2));
+                _snackbarService.Show("Trigger app", $"Added '{picker.SelectedProcessName}' to {profile.Name}.", ControlAppearance.Success, null, TimeSpan.FromSeconds(2));
             }
         }
 

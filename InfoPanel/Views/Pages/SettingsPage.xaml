@@ -400,77 +400,72 @@
                 </StackPanel>
 
             </ui:CardControl>
-            <StackPanel Margin="0,10,0,0">
-                <Label
-                    Margin="0,0,0,5"
-                    FontSize="12"
-                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Content="Program-specific panels" />
-                <ui:CardControl>
-                    <ui:CardControl.Icon>
-                        <ui:SymbolIcon Symbol="AppGeneric20" />
-                    </ui:CardControl.Icon>
-                    <ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
-                                    FontSize="13"
-                                    FontWeight="Medium"
-                                    Text="Enable program-specific panels" />
-                                <TextBlock
-                                    Margin="0,5,0,0"
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Automatically show or hide panels based on which application is in the foreground (e.g. game-specific overlays)."
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Margin="0,8,0,0"
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="How to use: for each profile, set Trigger app(s) to the process name (no “.exe”). When the matching app is in the foreground, InfoPanel will show/hide that profile. Important: the profile must be marked Active in the UI, otherwise it won't appear."
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Grid>
-                    </ui:CardControl.Header>
-                    <ui:ToggleSwitch
-                        IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled}"
-                        ToolTip="When ON, InfoPanel matches your profile’s Trigger app(s) to the current foreground process and automatically shows/hides those profiles. Important: the matching profile must be set to Active in the UI, or it won't show. Trigger app(s) should be the process name (no “.exe”)."/>
-                </ui:CardControl>
-                <ui:CardControl Margin="0,10,0,0" Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <ui:CardControl.Icon>
-                        <ui:SymbolIcon Symbol="WindowMultiple20" />
-                    </ui:CardControl.Icon>
-                    <ui:CardControl.Header>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock
-                                    FontSize="13"
-                                    FontWeight="Medium"
-                                    Text="Hide other profiles when program-specific panel is shown" />
-                                <TextBlock
-                                    Margin="0,5,0,0"
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="When a game or app triggers its panel, hide all other panels to avoid overlap and save resources. Recommended: on."
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Grid>
-                    </ui:CardControl.Header>
-                    <ui:ToggleSwitch
-                        IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.HideOtherProfilesWhenProgramSpecificShown}"
-                        IsEnabled="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled}"/>
-                </ui:CardControl>
-            </StackPanel>
         </StackPanel>
         <!--  End General Panel Settings  -->
+
+        <StackPanel Margin="0,40,0,0">
+            <Label
+                Margin="0,0,0,10"
+                Content="Automation"
+                FontSize="14"
+                FontWeight="Medium"
+                Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            <ui:CardControl>
+                <ui:CardControl.Icon>
+                    <ui:SymbolIcon Symbol="AppGeneric20" />
+                </ui:CardControl.Icon>
+                <ui:CardControl.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Text="Enable program-specific panels" />
+                            <TextBlock
+                                Margin="0,5,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="Automatically show or hide panels based on the foreground application."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch
+                    IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled}"
+                    ToolTip="Matches the foreground app to each profile's Trigger app(s)." />
+            </ui:CardControl>
+            <ui:CardControl Margin="0,10,0,0" Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <ui:CardControl.Icon>
+                    <ui:SymbolIcon Symbol="WindowMultiple20" />
+                </ui:CardControl.Icon>
+                <ui:CardControl.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Text="Hide other profiles when program-specific panel is shown" />
+                            <TextBlock
+                                Margin="0,5,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="When a game or app triggers its panel, hide all other panels to avoid overlap and save resources. Recommended: on."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch
+                    IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.HideOtherProfilesWhenProgramSpecificShown}" />
+            </ui:CardControl>
+        </StackPanel>
 
         <StackPanel Margin="0,40,0,0">
             <Label

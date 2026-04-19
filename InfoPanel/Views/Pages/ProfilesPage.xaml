@@ -292,7 +292,7 @@
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                             Text="Trigger app(s) — show this panel only when this process is in foreground (e.g. game.exe). Comma-separated."
                                                             TextWrapping="Wrap" />
-                                                        <Grid Margin="0,4,0,0">
+                                                        <Grid Margin="0,10,0,0">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
