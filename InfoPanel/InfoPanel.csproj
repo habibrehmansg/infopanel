@@ -334,6 +334,9 @@
 		<None Update="FFmpeg\avutil-60.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
+		<None Update="FFmpeg\ffmpeg.exe">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
 		<None Update="FFmpeg\swresample-6.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
