@@ -117,6 +117,7 @@ namespace InfoPanel.Models
         private readonly ProxyPluginImage? _pluginImage;
 
         private readonly object Lock = new();
+        private const int AccessLockTimeoutMs = 50;
         private bool IsDisposed = false;
 
         private readonly Stopwatch Stopwatch = new();
@@ -538,12 +539,21 @@ namespace InfoPanel.Models
                 return;
             }
 
-            lock (Lock)
+            if (!Monitor.TryEnter(Lock, AccessLockTimeoutMs))
+            {
+                return;
+            }
+
+            try
             {
                 if (SKSvg?.Picture is SKPicture picture)
                 {
                     access(picture);
                 }
+            }
+            finally
+            {
+                Monitor.Exit(Lock);
             }
         }
 
@@ -635,7 +645,12 @@ namespace InfoPanel.Models
             if (targetWidth <= 0 || targetHeight <= 0)
                 return;
 
-            lock (Lock)
+            if (!Monitor.TryEnter(Lock, AccessLockTimeoutMs))
+            {
+                return;
+            }
+
+            try
             {
                 if (Type == ImageType.PLUGIN)
                 {
@@ -735,6 +750,10 @@ namespace InfoPanel.Models
                         bitmapFrame.Invalidate();
                     }
                 }
+            }
+            finally
+            {
+                Monitor.Exit(Lock);
             }
         }
 
