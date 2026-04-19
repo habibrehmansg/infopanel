@@ -182,6 +182,9 @@ namespace InfoPanel.Models
                         _config.Player.Stats = true;
                         _config.Player.UICurTime = UIRefreshType.PerFrame; // Refresh CurTime on every frame for progress bar
 
+                        // Ensure snapshots are always up-to-date for streaming content
+                        _config.Player.SnapshotAlways = true;
+
                         _backgroundVideoPlayer = new(_config)
                         {
                             LoopPlayback = true,
