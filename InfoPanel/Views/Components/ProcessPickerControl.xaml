@@ -46,13 +46,9 @@
                 <ListView.View>
                     <GridView>
                         <GridViewColumn
-                            Width="240"
+                            Width="360"
                             DisplayMemberBinding="{Binding ProcessName}"
                             Header="Process name" />
-                        <GridViewColumn
-                            Width="80"
-                            DisplayMemberBinding="{Binding Id}"
-                            Header="PID" />
                     </GridView>
                 </ListView.View>
             </ListView>

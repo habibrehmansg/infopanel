@@ -10,7 +10,7 @@ namespace InfoPanel.Views.Components
 {
     public partial class ProcessPickerControl : UserControl
     {
-        private sealed record ProcessEntry(string ProcessName, int Id);
+        private sealed record ProcessEntry(string ProcessName);
 
         private List<ProcessEntry> _allProcesses = new();
 
@@ -30,14 +30,14 @@ namespace InfoPanel.Views.Components
             try
             {
                 var currentPid = Process.GetCurrentProcess().Id;
-                var list = new List<ProcessEntry>();
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var p in Process.GetProcesses())
                 {
                     try
                     {
                         if (p.Id == currentPid) continue;
                         if (string.IsNullOrWhiteSpace(p.ProcessName)) continue;
-                        list.Add(new ProcessEntry(p.ProcessName, p.Id));
+                        names.Add(p.ProcessName);
                     }
                     catch { }
                     finally
@@ -45,7 +45,10 @@ namespace InfoPanel.Views.Components
                         p.Dispose();
                     }
                 }
-                _allProcesses = list.OrderBy(x => x.ProcessName, StringComparer.OrdinalIgnoreCase).ToList();
+                _allProcesses = names
+                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                    .Select(n => new ProcessEntry(n))
+                    .ToList();
                 ApplyFilter();
             }
             catch
