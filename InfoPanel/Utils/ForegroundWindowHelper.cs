@@ -1,3 +1,4 @@
+using Serilog;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -8,7 +9,11 @@ namespace InfoPanel.Utils
     /// <summary>Helpers for detecting the foreground window and its process (for program-specific panels).</summary>
     public static class ForegroundWindowHelper
     {
+        private static readonly ILogger Logger = Log.ForContext(typeof(ForegroundWindowHelper));
+
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        private const int ERROR_INSUFFICIENT_BUFFER = 122;
+        private const uint MAX_PATH_EXTENDED = 32767;
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
@@ -33,37 +38,36 @@ namespace InfoPanel.Utils
         /// Uses PROCESS_QUERY_LIMITED_INFORMATION so elevated (admin) foreground apps can be detected without running InfoPanel as admin.</summary>
         public static string? GetForegroundProcessName()
         {
+            IntPtr hwnd;
+            uint processId;
             try
             {
-                var hwnd = GetForegroundWindow();
+                hwnd = GetForegroundWindow();
                 if (hwnd == IntPtr.Zero)
                     return null;
 
-                _ = GetWindowThreadProcessId(hwnd, out uint processId);
+                _ = GetWindowThreadProcessId(hwnd, out processId);
                 if (processId == 0)
                     return null;
-
-                // Prefer limited query so we can read elevated processes without admin
-                var name = GetProcessNameByLimitedQuery(processId);
-                if (name != null)
-                {
-                    return name;
-                }
-
-                // Fallback for same-process or when limited query isn't allowed (e.g. different user)
-                try
-                {
-                    using var process = Process.GetProcessById((int)processId);
-                    var fallbackName = process.ProcessName;
-                    return fallbackName;
-                }
-                catch
-                {
-                    return null;
-                }
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.Debug(ex, "Foreground window lookup failed");
+                return null;
+            }
+
+            var name = GetProcessNameByLimitedQuery(processId);
+            if (name != null)
+                return name;
+
+            try
+            {
+                using var process = Process.GetProcessById((int)processId);
+                return process.ProcessName;
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "Process.GetProcessById fallback failed for pid {ProcessId}", processId);
                 return null;
             }
         }
@@ -79,10 +83,32 @@ namespace InfoPanel.Utils
                 uint capacity = 260;
                 var buffer = new char[capacity];
                 if (!QueryFullProcessImageNameW(hProcess, PROCESS_NAME_WIN32, buffer, ref capacity))
-                    return null;
+                {
+                    var err = Marshal.GetLastWin32Error();
+                    if (err == ERROR_INSUFFICIENT_BUFFER)
+                    {
+                        capacity = MAX_PATH_EXTENDED;
+                        buffer = new char[capacity];
+                        if (!QueryFullProcessImageNameW(hProcess, PROCESS_NAME_WIN32, buffer, ref capacity))
+                        {
+                            Logger.Debug("QueryFullProcessImageNameW retry failed for pid {ProcessId}, win32 error {Error}", processId, Marshal.GetLastWin32Error());
+                            return null;
+                        }
+                    }
+                    else
+                    {
+                        Logger.Debug("QueryFullProcessImageNameW failed for pid {ProcessId}, win32 error {Error}", processId, err);
+                        return null;
+                    }
+                }
 
                 var path = new string(buffer, 0, (int)capacity);
                 return Path.GetFileNameWithoutExtension(path);
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "GetProcessNameByLimitedQuery failed for pid {ProcessId}", processId);
+                return null;
             }
             finally
             {
