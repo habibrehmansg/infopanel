@@ -339,6 +339,7 @@ namespace InfoPanel
 #endif
                 PluginsPath = ":FlyleafPlugins",
                 FFmpegPath = ":FFmpeg",
+                KeepDisplayActive = false,
             }));
             Logger.Debug("Flyleaf engine started");
 
