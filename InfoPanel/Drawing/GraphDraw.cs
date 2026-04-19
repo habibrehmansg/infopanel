@@ -121,7 +121,7 @@ namespace InfoPanel.Drawing
                     GraphDataCache3.TryGetValue(key, out Queue<double>? queue);
                     if (queue != null)
                     {
-                        if(PluginMonitor.SENSORHASH.TryGetValue(key, out PluginMonitor.PluginReading value) && value.Data is PluginSensor sensor)
+                        if(PluginMonitor.SENSORHASH.TryGetValue(key, out PluginMonitor.PluginReading value) && value.Data is IPluginSensor sensor)
                         {
                             lock (queue)
                             {
