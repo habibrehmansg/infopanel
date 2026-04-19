@@ -160,6 +160,13 @@ namespace InfoPanel.ViewModels
 
             ThirdPartyLicenses.Add(new ThirdPartyLicense
             {
+                Name = "AsyncKeyedLock",
+                License = "MIT License. Copyright © 2023 Mark Cilia Vincenti.",
+                ProjectUrl = "https://github.com/MarkCiliaVincenti/AsyncKeyedLock"
+            });
+
+            ThirdPartyLicenses.Add(new ThirdPartyLicense
+            {
                 Name = "BouncyCastle.NetCore",
                 License = "MIT X Consortium License. Copyright © The Legion of the Bouncy Castle.",
                 ProjectUrl = "https://www.bouncycastle.org/"
@@ -184,6 +191,20 @@ namespace InfoPanel.ViewModels
                 Name = "FlyleafLib",
                 License = "LGPL-3.0-or-later. Copyright © SuRGeoNix.",
                 ProjectUrl = "https://github.com/SuRGeoNix/Flyleaf"
+            });
+
+            ThirdPartyLicenses.Add(new ThirdPartyLicense
+            {
+                Name = "Flyleaf.FFmpeg.Bindings",
+                License = "LGPL-3.0-or-later. Copyright © SuRGeoNix.",
+                ProjectUrl = "https://github.com/SuRGeoNix/Flyleaf.FFmpeg.Bindings"
+            });
+
+            ThirdPartyLicenses.Add(new ThirdPartyLicense
+            {
+                Name = "Vortice.Windows",
+                License = "MIT License. Copyright © Amer Koleci and Contributors.",
+                ProjectUrl = "https://github.com/amerkoleci/Vortice.Windows"
             });
 
             ThirdPartyLicenses.Add(new ThirdPartyLicense
@@ -223,6 +244,20 @@ namespace InfoPanel.ViewModels
 
             ThirdPartyLicenses.Add(new ThirdPartyLicense
             {
+                Name = "Microsoft.Toolkit.Uwp.Notifications",
+                License = "MIT License. Copyright © .NET Foundation and Contributors.",
+                ProjectUrl = "https://github.com/CommunityToolkit/WindowsCommunityToolkit"
+            });
+
+            ThirdPartyLicenses.Add(new ThirdPartyLicense
+            {
+                Name = "StreamJsonRpc",
+                License = "MIT License. Copyright © Microsoft Corporation.",
+                ProjectUrl = "https://github.com/microsoft/vs-streamjsonrpc"
+            });
+
+            ThirdPartyLicenses.Add(new ThirdPartyLicense
+            {
                 Name = "SecureStore",
                 License = "MIT License. Copyright © 2016 Dmitry Lokshin.",
                 ProjectUrl = "https://github.com/dscoduc/SecureStore"
@@ -247,6 +282,13 @@ namespace InfoPanel.ViewModels
                 Name = "SkiaSharp",
                 License = "MIT License. Copyright © 2015-2016 Xamarin, Inc., Microsoft Corporation.",
                 ProjectUrl = "https://github.com/mono/SkiaSharp"
+            });
+
+            ThirdPartyLicenses.Add(new ThirdPartyLicense
+            {
+                Name = "OpenTK / OpenTK.GLWpfControl",
+                License = "MIT License. Copyright © 2006 - 2020 Stefanos Apostolopoulos and the OpenTK team.",
+                ProjectUrl = "https://github.com/opentk/opentk"
             });
 
             ThirdPartyLicenses.Add(new ThirdPartyLicense
@@ -279,6 +321,13 @@ namespace InfoPanel.ViewModels
 
             ThirdPartyLicenses.Add(new ThirdPartyLicense
             {
+                Name = "Topten.RichTextKit",
+                License = "Apache License 2.0. Copyright © Topten Software.",
+                ProjectUrl = "https://github.com/toptensoftware/RichTextKit"
+            });
+
+            ThirdPartyLicenses.Add(new ThirdPartyLicense
+            {
                 Name = "NAudio.Wasapi",
                 License = "MIT License. Copyright © 2020 Mark Heath & Contributors.",
                 ProjectUrl = "https://github.com/naudio/NAudio"
@@ -286,9 +335,9 @@ namespace InfoPanel.ViewModels
 
             ThirdPartyLicenses.Add(new ThirdPartyLicense
             {
-                Name = "OpenWeatherMap.Standard",
-                License = "MIT License. Copyright © Ken Tucker.",
-                ProjectUrl = "https://github.com/Ken-Tucker/OpenWeatherMap.Standard"
+                Name = "OpenWeatherMap.Cache",
+                License = "MIT License. Copyright © Mark Cilia Vincenti.",
+                ProjectUrl = "https://github.com/MarkCiliaVincenti/OpenWeatherMap.Cache"
             });
 
             ThirdPartyLicenses.Add(new ThirdPartyLicense
@@ -321,6 +370,18 @@ namespace InfoPanel.ViewModels
             {
                 Name = "Boredape",
                 Description = "For your graphical musings."
+            });
+
+            Contributors.Add(new Contributor
+            {
+                Name = "emaspa (bubbl3 on Discord)",
+                Description = "For numerous contributions including additional USB LCD panel support, the log viewer, hotkeys, plugin config UI, and many other improvements."
+            });
+
+            Contributors.Add(new Contributor
+            {
+                Name = "fweepa",
+                Description = "For program-specific panels (auto show/hide by foreground app), the glowing text effect, and other feature contributions."
             });
 
             Contributors.Add(new Contributor
