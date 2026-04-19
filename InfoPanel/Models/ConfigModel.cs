@@ -674,6 +674,8 @@ namespace InfoPanel
                             Settings.Version = settings.Version;
                             Settings.AutosaveEnabled = settings.AutosaveEnabled;
                             Settings.AutosaveIdleSeconds = Math.Clamp(settings.AutosaveIdleSeconds, 1, 60);
+                            Settings.ProgramSpecificPanelsEnabled = settings.ProgramSpecificPanelsEnabled;
+                            Settings.HideOtherProfilesWhenProgramSpecificShown = settings.HideOtherProfilesWhenProgramSpecificShown;
 
                             // Load BeadaPanel multi-device settings
                             Settings.BeadaPanelMultiDeviceMode = settings.BeadaPanelMultiDeviceMode;
