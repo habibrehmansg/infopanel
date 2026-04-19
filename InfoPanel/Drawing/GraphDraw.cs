@@ -443,7 +443,7 @@ namespace InfoPanel.Drawing
 
                             var offset = 1;
                             g.FillDonut((int)frameRect.Left + offset, (int)frameRect.Top + offset, ((int)frameRect.Width / 2) - offset, donutDisplayItem.Thickness,
-                                 donutDisplayItem.Rotation, (int)value, donutDisplayItem.Span, donutDisplayItem.Color,
+                                 0, (int)value, donutDisplayItem.Span, donutDisplayItem.Color,
                                 donutDisplayItem.Background ? donutDisplayItem.BackgroundColor : "#00000000",
                                 donutDisplayItem.Frame ? 1 : 0, donutDisplayItem.FrameColor);
 

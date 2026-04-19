@@ -542,23 +542,10 @@ namespace InfoPanel.Models
             }
         }
 
-        private int _rotation = 90;
-        public int Rotation
-        {
-            get { return _rotation; }
-            set
-            {
-                if (value < 0 || value > 360)
-                {
-                    return;
-                }
-                SetProperty(ref _rotation, value);
-            }
-        }
-
         public DonutDisplayItem()
         {
             Name = "Donut";
+            Rotation = 90;
         }
 
         public DonutDisplayItem(string name, Profile profile) : base(name, profile)
@@ -566,6 +553,7 @@ namespace InfoPanel.Models
             Frame = false;
             BackgroundColor = "#FFDCDCDC";
             Width = 100; Height = 100;
+            Rotation = 90;
         }
 
         public DonutDisplayItem(string name, Profile profile, string libreSensorId) : base(name, profile, libreSensorId)
@@ -573,13 +561,15 @@ namespace InfoPanel.Models
             Frame = false;
             BackgroundColor = "#FFDCDCDC";
             Width = 100; Height = 100;
+            Rotation = 90;
         }
 
         public DonutDisplayItem(string name, Profile profile, UInt32 id, UInt32 instance, UInt32 entryId) : base(name, profile, id, instance, entryId)
         {
             Frame = false;
             BackgroundColor = "#FFDCDCDC";
-            Width = 100; Height = 100; 
+            Width = 100; Height = 100;
+            Rotation = 90;
         }
 
         public override object Clone()
