@@ -12,6 +12,8 @@ namespace InfoPanel.Extras
 
         private readonly Dictionary<string, MMDevice> _deviceCache = [];
 
+        private string? _lastDefaultDeviceId;
+
         public VolumePlugin() : base("volume-plugin","Volume Info", "Retrieves audio output devices and relevant details. Powered by NAudio.")
         {
         }
@@ -25,9 +27,13 @@ namespace InfoPanel.Extras
             using var defaultDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
 
             PluginContainer container = new("Default");
+            container.Entries.Add(new PluginText("device_friendly_name", "Device Name", defaultDevice.DeviceFriendlyName));
+            container.Entries.Add(new PluginText("friendly_name", "Name", defaultDevice.FriendlyName));
+            container.Entries.Add(new PluginText("short_name", "Short Name", defaultDevice.FriendlyName.Replace($"({defaultDevice.DeviceFriendlyName})", "").Trim()));
             container.Entries.Add(new PluginSensor("volume", "Volume", (float)Math.Round(defaultDevice.AudioEndpointVolume.MasterVolumeLevelScalar * 100), "%"));
             container.Entries.Add(new PluginText("mute", "Mute", defaultDevice.AudioEndpointVolume.Mute.ToString()));
             _containers.Add(container);
+            _lastDefaultDeviceId = defaultDevice.ID;
 
             var devices = _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
             foreach (var device in devices)
@@ -73,11 +79,17 @@ namespace InfoPanel.Extras
 
                 try
                 {
-                    if (container.Name == "Default")
+                    bool isDefault = container.Name == "Default";
+                    bool defaultDeviceChanged = false;
+
+                    if (isDefault)
                     {
                         var tempDevice = _deviceEnumerator?.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
                         if (tempDevice != null)
                         {
+                            defaultDeviceChanged = tempDevice.ID != _lastDefaultDeviceId;
+                            _lastDefaultDeviceId = tempDevice.ID;
+
                             device = _deviceCache.GetValueOrDefault(tempDevice.ID);
 
                             if(device == null)
@@ -114,6 +126,30 @@ namespace InfoPanel.Extras
                                         if (entry is PluginText text)
                                         {
                                             text.Value = device.AudioEndpointVolume.Mute.ToString();
+                                        }
+                                    }
+                                    break;
+                                case "device_friendly_name":
+                                    {
+                                        if (isDefault && defaultDeviceChanged && entry is PluginText text)
+                                        {
+                                            text.Value = device.DeviceFriendlyName;
+                                        }
+                                    }
+                                    break;
+                                case "friendly_name":
+                                    {
+                                        if (isDefault && defaultDeviceChanged && entry is PluginText text)
+                                        {
+                                            text.Value = device.FriendlyName;
+                                        }
+                                    }
+                                    break;
+                                case "short_name":
+                                    {
+                                        if (isDefault && defaultDeviceChanged && entry is PluginText text)
+                                        {
+                                            text.Value = device.FriendlyName.Replace($"({device.DeviceFriendlyName})", "").Trim();
                                         }
                                     }
                                     break;
