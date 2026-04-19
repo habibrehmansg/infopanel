@@ -870,7 +870,7 @@ namespace InfoPanel
                 var config = new AutoMapper.MapperConfiguration(cfg =>
                 {
                     cfg.CreateMap<Profile, Profile>();
-                });
+                }, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
 
                 var mapper = config.CreateMapper();
 
