@@ -1,8 +1,10 @@
 using InfoPanel.Models;
+using InfoPanel.Monitors;
 using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -25,7 +27,6 @@ namespace InfoPanel.Services
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
-        // Win32 modifier flags (different from WPF ModifierKeys enum values)
         private const uint MOD_ALT = 0x0001;
         private const uint MOD_CONTROL = 0x0002;
         private const uint MOD_SHIFT = 0x0004;
@@ -34,9 +35,12 @@ namespace InfoPanel.Services
 
         private HwndSource? _hwndSource;
         private readonly Dictionary<int, HotkeyBinding> _registeredHotkeys = new();
+        /// <summary>Hotkey id -> plugin action method name (bundled Stopwatch only today).</summary>
+        private readonly Dictionary<int, string> _stopwatchHotkeyActions = new();
         private readonly HashSet<int> _failedHotkeyIds = new();
         private int _nextId = 1;
         private bool _started;
+        private PropertyChangedEventHandler? _settingsPropertyChanged;
 
         public void Start()
         {
@@ -45,28 +49,41 @@ namespace InfoPanel.Services
 
             Application.Current.Dispatcher.Invoke(() =>
             {
-                // Create a hidden message-only window for receiving WM_HOTKEY
                 var parameters = new HwndSourceParameters("InfoPanel_HotkeyWindow")
                 {
                     Width = 0,
                     Height = 0,
                     WindowStyle = 0,
-                    ParentWindow = new IntPtr(-3) // HWND_MESSAGE
+                    ParentWindow = new IntPtr(-3)
                 };
                 _hwndSource = new HwndSource(parameters);
                 _hwndSource.AddHook(WndProc);
 
-                // Register all configured hotkeys
                 var bindings = ConfigModel.Instance.Settings.HotkeyBindings;
                 foreach (var binding in bindings)
                 {
                     RegisterBinding(binding);
                 }
 
-                bindings.CollectionChanged += OnBindingsCollectionChanged;
-            });
+                RegisterStopwatchHotkeyBindings();
 
-            Logger.Information("GlobalHotkeyService started with {Count} hotkeys", _registeredHotkeys.Count);
+                bindings.CollectionChanged += OnBindingsCollectionChanged;
+
+                _settingsPropertyChanged = (_, e) =>
+                {
+                    if (e.PropertyName is { } name
+                        && name.StartsWith("StopwatchHotkey", StringComparison.Ordinal))
+                    {
+                        RefreshAll();
+                    }
+                };
+                ConfigModel.Instance.Settings.PropertyChanged += _settingsPropertyChanged;
+
+                Logger.Information(
+                    "GlobalHotkeyService started with {PanelCount} panel hotkeys and {StopwatchCount} stopwatch hotkeys",
+                    _registeredHotkeys.Count,
+                    _stopwatchHotkeyActions.Count);
+            });
         }
 
         public void Stop()
@@ -78,6 +95,11 @@ namespace InfoPanel.Services
             {
                 Application.Current.Dispatcher.Invoke(() =>
                 {
+                    if (_settingsPropertyChanged != null)
+                    {
+                        ConfigModel.Instance.Settings.PropertyChanged -= _settingsPropertyChanged;
+                        _settingsPropertyChanged = null;
+                    }
                     ConfigModel.Instance.Settings.HotkeyBindings.CollectionChanged -= OnBindingsCollectionChanged;
                     UnregisterAll();
                     _hwndSource?.RemoveHook(WndProc);
@@ -104,7 +126,43 @@ namespace InfoPanel.Services
                 {
                     RegisterBinding(binding);
                 }
+
+                RegisterStopwatchHotkeyBindings();
             });
+        }
+
+        private void RegisterStopwatchHotkeyBindings()
+        {
+            var s = ConfigModel.Instance.Settings;
+            TryRegisterStopwatchChord(s.StopwatchHotkeyStartModifiers, s.StopwatchHotkeyStartKey, "Start");
+            TryRegisterStopwatchChord(s.StopwatchHotkeyStopModifiers, s.StopwatchHotkeyStopKey, "Stop");
+            TryRegisterStopwatchChord(s.StopwatchHotkeyResetModifiers, s.StopwatchHotkeyResetKey, "Reset");
+        }
+
+        private void TryRegisterStopwatchChord(ModifierKeys modifiers, Key key, string methodName)
+        {
+            if (_hwndSource == null || key == Key.None || modifiers == ModifierKeys.None)
+                return;
+
+            var display = new HotkeyBinding { ModifierKeys = modifiers, Key = key }.HotkeyDisplayText;
+
+            int id = _nextId++;
+            uint mod = ToWin32Modifiers(modifiers) | MOD_NOREPEAT;
+            uint vk = (uint)KeyInterop.VirtualKeyFromKey(key);
+
+            if (RegisterHotKey(_hwndSource.Handle, id, mod, vk))
+            {
+                _stopwatchHotkeyActions[id] = methodName;
+                Logger.Debug("Registered stopwatch hotkey {Id}: {Hotkey} -> {Method}", id, display, methodName);
+            }
+            else
+            {
+                _failedHotkeyIds.Add(id);
+                Logger.Warning(
+                    "Failed to register stopwatch hotkey {Hotkey} (error {Error}). Key combination may be in use.",
+                    display,
+                    Marshal.GetLastWin32Error());
+            }
         }
 
         private void OnBindingsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -116,7 +174,6 @@ namespace InfoPanel.Services
         {
             if (_hwndSource == null || binding.Key == Key.None) return;
 
-            // Require at least one modifier to avoid intercepting bare keys system-wide
             if (binding.ModifierKeys == ModifierKeys.None)
             {
                 Logger.Warning("Skipping hotkey {Hotkey}: at least one modifier key (Ctrl, Alt, Shift, Win) is required",
@@ -156,7 +213,14 @@ namespace InfoPanel.Services
             {
                 UnregisterHotKey(_hwndSource.Handle, id);
             }
+
+            foreach (var id in _stopwatchHotkeyActions.Keys)
+            {
+                UnregisterHotKey(_hwndSource.Handle, id);
+            }
+
             _registeredHotkeys.Clear();
+            _stopwatchHotkeyActions.Clear();
             _failedHotkeyIds.Clear();
             _nextId = 1;
         }
@@ -170,6 +234,12 @@ namespace InfoPanel.Services
                 {
                     handled = true;
                     ApplyHotkey(binding);
+                }
+                else if (_stopwatchHotkeyActions.TryGetValue(id, out var methodName))
+                {
+                    handled = true;
+                    Logger.Information("Stopwatch hotkey -> {Method}", methodName);
+                    _ = PluginMonitor.Instance.InvokePluginHotkeyActionAsync(StopwatchHotkeySupport.PluginId, methodName);
                 }
             }
             return IntPtr.Zero;

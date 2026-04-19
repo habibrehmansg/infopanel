@@ -3,6 +3,7 @@ using InfoPanel.ViewModels;
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Windows.Input;
 
 namespace InfoPanel.Models
 {
@@ -99,6 +100,25 @@ namespace InfoPanel.Models
         {
             get { return _hotkeyBindings; }
         }
+
+        /// <summary>Optional global hotkeys for bundled InfoPanel.StopWatch. Key.None = disabled.</summary>
+        [ObservableProperty]
+        private ModifierKeys _stopwatchHotkeyStartModifiers = ModifierKeys.None;
+
+        [ObservableProperty]
+        private Key _stopwatchHotkeyStartKey = Key.None;
+
+        [ObservableProperty]
+        private ModifierKeys _stopwatchHotkeyStopModifiers = ModifierKeys.None;
+
+        [ObservableProperty]
+        private Key _stopwatchHotkeyStopKey = Key.None;
+
+        [ObservableProperty]
+        private ModifierKeys _stopwatchHotkeyResetModifiers = ModifierKeys.None;
+
+        [ObservableProperty]
+        private Key _stopwatchHotkeyResetKey = Key.None;
 
         [ObservableProperty]
         private bool _webServer = false;

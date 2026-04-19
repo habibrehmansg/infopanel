@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using InfoPanel.Extensions;
+using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Ipc;
@@ -528,6 +529,10 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private string? _website;
 
+        /// <summary>When true, the Plugins UI shows global hotkey configuration inside this plugin card.</summary>
+        public bool ShowStopwatchHotkeys =>
+            string.Equals(Name, StopwatchHotkeySupport.BundledPackageName, StringComparison.Ordinal);
+
         public bool IsExternal { get; }
 
         public bool ShowRemoveButton => IsExternal && !_activated;
@@ -627,6 +632,11 @@ namespace InfoPanel.ViewModels
             {
                 ControlEnabled = true;
             }
+        }
+
+        partial void OnNameChanged(string value)
+        {
+            OnPropertyChanged(nameof(ShowStopwatchHotkeys));
         }
 
         public PluginViewModel(PluginDescriptor pluginDescriptor)
