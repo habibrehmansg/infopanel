@@ -87,13 +87,23 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default", float opacity = 1f)
+        public void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default", bool flipX = false, float opacity = 1f)
         {
             if (lockedImage.Type == LockedImage.ImageType.SVG)
             {
                 lockedImage.AccessSVG(picture =>
                 {
-                    Canvas.DrawPicture(picture, x, y, width, height, rotation);
+                    if (flipX)
+                    {
+                        Canvas.Save();
+                        Canvas.Scale(-1, 1, x + width / 2f, y + height / 2f);
+                        Canvas.DrawPicture(picture, x, y, width, height, rotation);
+                        Canvas.Restore();
+                    }
+                    else
+                    {
+                        Canvas.DrawPicture(picture, x, y, width, height, rotation);
+                    }
                 });
             }
             else
@@ -102,7 +112,7 @@ namespace InfoPanel.Drawing
                 {
                     if (image != null)
                     {
-                        DrawImage(image, x, y, width, height, rotation, rotationCenterX, rotationCenterY, opacity: opacity);
+                        DrawImage(image, x, y, width, height, rotation, rotationCenterX, rotationCenterY, flipX: flipX, opacity: opacity);
                     }
                 }, cache, cacheHint, GRContext);
             }
