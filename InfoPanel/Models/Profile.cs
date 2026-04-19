@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SkiaSharp;
 using System;
 using System.Linq;
@@ -257,6 +257,15 @@ namespace InfoPanel.Models
         {
             get { return _strictWindowMatching; }
             set { SetProperty(ref _strictWindowMatching, value); }
+        }
+
+        /// <summary>Comma-separated process names (e.g. "game.exe, another.exe"). When set, this profile is shown only when one of these apps is foreground. Empty = always-on when Active.</summary>
+        private string? _triggerProcessNames;
+
+        public string? TriggerProcessNames
+        {
+            get { return _triggerProcessNames; }
+            set { SetProperty(ref _triggerProcessNames, value); }
         }
 
         public object Clone()
