@@ -366,34 +366,54 @@ namespace InfoPanel.Drawing
                             value = preview ? value : InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
+                            // Inset fill/background when the frame is drawn so the 1px AA stroke
+                            // doesn't blend with the fill underneath (issue #81).
+                            var innerLeft = frameRect.Left;
+                            var innerTop = frameRect.Top;
+                            var innerRight = frameRect.Left + frameRect.Width;
+                            var innerBottom = frameRect.Top + frameRect.Height;
+                            var innerRadius = (float)barDisplayItem.CornerRadius;
+                            if (barDisplayItem.Frame)
+                            {
+                                innerLeft = Math.Min(innerLeft + 1, innerRight);
+                                innerTop = Math.Min(innerTop + 1, innerBottom);
+                                innerRight = Math.Max(innerRight - 1, innerLeft);
+                                innerBottom = Math.Max(innerBottom - 1, innerTop);
+                                innerRadius = Math.Max(0, innerRadius - 1);
+                            }
+                            var innerWidth = innerRight - innerLeft;
+                            var innerHeight = innerBottom - innerTop;
+
                             // Create SKPath for usage rectangle
                             using SKPath usagePath = new();
                             if (frameRect.Height > frameRect.Width)
                             {
                                 // Vertical bar - bottom draw
+                                var fillHeight = Math.Min((float)value, innerHeight);
                                 usagePath.AddRoundRect(new SKRoundRect(new SKRect(
-                                    frameRect.Left,
-                                    frameRect.Top + frameRect.Height - (float)value,
-                                    frameRect.Left + frameRect.Width,
-                                    frameRect.Top + frameRect.Height
-                                ), barDisplayItem.CornerRadius));
+                                    innerLeft,
+                                    innerBottom - fillHeight,
+                                    innerRight,
+                                    innerBottom
+                                ), innerRadius));
                             }
                             else
                             {
                                 // Horizontal bar
+                                var fillWidth = Math.Min((float)value, innerWidth);
                                 usagePath.AddRoundRect(new SKRoundRect(new SKRect(
-                                    frameRect.Left,
-                                    frameRect.Top,
-                                    frameRect.Left + (float)value,
-                                    frameRect.Top + frameRect.Height
-                                ), barDisplayItem.CornerRadius));
+                                    innerLeft,
+                                    innerTop,
+                                    innerLeft + fillWidth,
+                                    innerBottom
+                                ), innerRadius));
                             }
 
                             // Draw background if enabled
                             if (chartDisplayItem.Background && SKColor.TryParse(barDisplayItem.BackgroundColor, out var backgroundColor))
                             {
                                 using var bgPath = new SKPath();
-                                bgPath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.Left, frameRect.Top, frameRect.Left + frameRect.Width, frameRect.Top + frameRect.Height), barDisplayItem.CornerRadius));
+                                bgPath.AddRoundRect(new SKRoundRect(new SKRect(innerLeft, innerTop, innerRight, innerBottom), innerRadius));
                                 g.FillPath(bgPath, backgroundColor);
                             }
 
