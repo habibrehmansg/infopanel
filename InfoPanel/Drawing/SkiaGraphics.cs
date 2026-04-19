@@ -93,7 +93,17 @@ namespace InfoPanel.Drawing
             {
                 lockedImage.AccessSVG(picture =>
                 {
-                    Canvas.DrawPicture(picture, x, y, width, height, rotation);
+                    if (flipX)
+                    {
+                        Canvas.Save();
+                        Canvas.Scale(-1, 1, x + width / 2f, y + height / 2f);
+                        Canvas.DrawPicture(picture, x, y, width, height, rotation);
+                        Canvas.Restore();
+                    }
+                    else
+                    {
+                        Canvas.DrawPicture(picture, x, y, width, height, rotation);
+                    }
                 });
             }
             else
