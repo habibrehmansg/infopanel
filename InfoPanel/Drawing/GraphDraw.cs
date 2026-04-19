@@ -18,10 +18,63 @@ namespace InfoPanel.Drawing
         {
             ExpirationScanFrequency = TimeSpan.FromSeconds(5)
         });
+        private static readonly IMemoryCache AutoRangeCache = new MemoryCache(new MemoryCacheOptions()
+        {
+            ExpirationScanFrequency = TimeSpan.FromSeconds(5)
+        });
         private static readonly ConcurrentDictionary<(int, UInt32, UInt32, UInt32), Queue<double>> GraphDataCache = [];
         private static readonly ConcurrentDictionary<string, Queue<double>> GraphDataCache2 = [];
         private static readonly ConcurrentDictionary<string, Queue<double>> GraphDataCache3 = [];
         private static readonly Stopwatch Stopwatch = new();
+
+        // Expand the auto-scale range immediately on new extremes; contract it gradually so
+        // the scale doesn't yo-yo when a transient spike falls out of the sample window.
+        // 0.05 per frame ≈ 14 frames to halfway convergence at 40fps — responsive but stable.
+        private const double AutoRangeContract = 0.05;
+        private const double AutoRangeMinSpan = 1e-6;
+        private static readonly TimeSpan AutoRangeTtl = TimeSpan.FromSeconds(30);
+
+        private static (double min, double max) ResolveAutoRange(
+            Guid id, double[] samples, double userMin, double userMax, bool autoValue)
+        {
+            if (!autoValue || samples.Length == 0)
+                return (userMin, userMax);
+
+            var sMin = samples[0];
+            var sMax = samples[0];
+            for (int i = 1; i < samples.Length; i++)
+            {
+                var v = samples[i];
+                if (v < sMin) sMin = v;
+                if (v > sMax) sMax = v;
+            }
+
+            if (AutoRangeCache.TryGetValue(id, out (double min, double max) prev))
+            {
+                var newMin = sMin < prev.min ? sMin : prev.min + (sMin - prev.min) * AutoRangeContract;
+                var newMax = sMax > prev.max ? sMax : prev.max + (sMax - prev.max) * AutoRangeContract;
+
+                if (newMax - newMin < AutoRangeMinSpan)
+                {
+                    var mid = 0.5 * (newMin + newMax);
+                    newMin = mid - 0.5;
+                    newMax = mid + 0.5;
+                }
+
+                AutoRangeCache.Set(id, (newMin, newMax), AutoRangeTtl);
+                return (newMin, newMax);
+            }
+
+            // First frame: seed from samples, or fall back to user range if the window is flat.
+            if (sMax - sMin < AutoRangeMinSpan)
+            {
+                AutoRangeCache.Set(id, (userMin, userMax), AutoRangeTtl);
+                return (userMin, userMax);
+            }
+
+            AutoRangeCache.Set(id, (sMin, sMax), AutoRangeTtl);
+            return (sMin, sMax);
+        }
 
         static GraphDraw()
         {
@@ -208,14 +261,8 @@ namespace InfoPanel.Drawing
 
                                         var values = tempValues[(tempValues.Length - size)..];
 
-                                        if (chartDisplayItem.AutoValue)
-                                        {
-                                            if (values.Length > 1 && values.Min() != values.Max())
-                                            {
-                                                minValue = values.Min();
-                                                maxValue = values.Max();
-                                            }
-                                        }
+                                        (minValue, maxValue) = ResolveAutoRange(
+                                            chartDisplayItem.Guid, values, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
 
                                         using var path = new SKPath();
 
@@ -280,14 +327,8 @@ namespace InfoPanel.Drawing
 
                                         var values = tempValues[(tempValues.Length - size)..];
 
-                                        if (chartDisplayItem.AutoValue)
-                                        {
-                                            if (values.Length > 1 && values.Min() != values.Max())
-                                            {
-                                                minValue = values.Min();
-                                                maxValue = values.Max();
-                                            }
-                                        }
+                                        (minValue, maxValue) = ResolveAutoRange(
+                                            chartDisplayItem.Guid, values, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
 
                                         // Initialize refRect to start at the right edge of frameRect
                                         var refRect = new SKRect(
@@ -339,14 +380,8 @@ namespace InfoPanel.Drawing
                         }
                     case BarDisplayItem barDisplayItem:
                         {
-                            if (chartDisplayItem.AutoValue)
-                            {
-                                if (tempValues.Length > 1 && tempValues.Min() != tempValues.Max())
-                                {
-                                    minValue = tempValues.Min();
-                                    maxValue = tempValues.Max();
-                                }
-                            }
+                            (minValue, maxValue) = ResolveAutoRange(
+                                chartDisplayItem.Guid, tempValues, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
 
                             var value = 0.0;
                             var sensorReading = barDisplayItem.GetValue();
@@ -449,14 +484,8 @@ namespace InfoPanel.Drawing
                         }
                     case DonutDisplayItem donutDisplayItem:
                         {
-                            if (donutDisplayItem.AutoValue)
-                            {
-                                if (tempValues.Length > 1 && tempValues.Min() != tempValues.Max())
-                                {
-                                    minValue = tempValues.Min();
-                                    maxValue = tempValues.Max();
-                                }
-                            }
+                            (minValue, maxValue) = ResolveAutoRange(
+                                chartDisplayItem.Guid, tempValues, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
 
                             var value = tempValues.LastOrDefault(0.0);
                             var scale = maxValue - minValue;
