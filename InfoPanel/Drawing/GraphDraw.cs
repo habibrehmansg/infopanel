@@ -432,8 +432,15 @@ namespace InfoPanel.Drawing
 
                             if (barDisplayItem.Frame && SKColor.TryParse(barDisplayItem.FrameColor, out var color))
                             {
+                                // Offset by 0.5px so the 1px stroke lands on whole pixels instead of
+                                // splitting across two columns at 50% opacity each.
                                 using var framePath = new SKPath();
-                                framePath.AddRoundRect(new SKRoundRect(new SKRect(frameRect.Left, frameRect.Top, frameRect.Left + frameRect.Width, frameRect.Top + frameRect.Height), barDisplayItem.CornerRadius));
+                                framePath.AddRoundRect(new SKRoundRect(new SKRect(
+                                    frameRect.Left + 0.5f,
+                                    frameRect.Top + 0.5f,
+                                    frameRect.Left + frameRect.Width - 0.5f,
+                                    frameRect.Top + frameRect.Height - 0.5f
+                                ), Math.Max(0, barDisplayItem.CornerRadius - 0.5f)));
 
                                 g.DrawPath(framePath, color, 1);
                             }
