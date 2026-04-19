@@ -129,7 +129,7 @@ namespace InfoPanel.Monitors
             Logger.Information("Plugin host connected for {PluginPath}", _pluginDllPath);
 
             _jsonRpc = new JsonRpc(_pipeServer);
-            _jsonRpc.AddLocalRpcTarget(this, new JsonRpcTargetOptions { NotifyClientOfEvents = false });
+            _jsonRpc.AddLocalRpcTarget<IPluginClientCallback>(this, new JsonRpcTargetOptions { NotifyClientOfEvents = false });
             _jsonRpc.Disconnected += (_, _) =>
             {
                 Logger.Warning("JSON-RPC disconnected for {PluginPath}", _pluginDllPath);
