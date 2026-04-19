@@ -24,65 +24,53 @@ namespace InfoPanel.Views.Pages
 
         public SettingsPage(SettingsViewModel viewModel)
         {
-            ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+            ViewModel = viewModel;
             DataContext = this;
-            try
-            {
-                InitializeComponent();
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Settings page: InitializeComponent failed");
-                throw;
-            }
+            InitializeComponent();
 
-            try
+            ComboBoxListenIp.Items.Add("127.0.0.1");
+            foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
             {
-                ComboBoxListenIp.Items.Add("127.0.0.1");
-                foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
+                try
                 {
-                    try
+                    if (ni.NetworkInterfaceType != NetworkInterfaceType.Ethernet && ni.NetworkInterfaceType != NetworkInterfaceType.Wireless80211)
+                        continue;
+                    var ipProps = ni.GetIPProperties();
+                    foreach (IPAddressInformation addr in ipProps.UnicastAddresses)
                     {
-                        if (ni.NetworkInterfaceType != NetworkInterfaceType.Ethernet && ni.NetworkInterfaceType != NetworkInterfaceType.Wireless80211)
-                            continue;
-                        var ipProps = ni.GetIPProperties();
-                        foreach (IPAddressInformation addr in ipProps.UnicastAddresses)
+                        if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                            && !addr.Address.ToString().StartsWith("169.254."))
                         {
-                            if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
-                                && !addr.Address.ToString().StartsWith("169.254."))
-                            {
-                                ComboBoxListenIp.Items.Add(addr.Address.ToString());
-                            }
+                            ComboBoxListenIp.Items.Add(addr.Address.ToString());
                         }
                     }
-                    catch { /* skip this interface */ }
                 }
-
-                ComboBoxListenPort.Items.Add("80");
-                ComboBoxListenPort.Items.Add("81");
-                ComboBoxListenPort.Items.Add("2020");
-                ComboBoxListenPort.Items.Add("8000");
-                ComboBoxListenPort.Items.Add("8008");
-                ComboBoxListenPort.Items.Add("8080");
-                ComboBoxListenPort.Items.Add("8081");
-                ComboBoxListenPort.Items.Add("8088");
-                ComboBoxListenPort.Items.Add("10000");
-                ComboBoxListenPort.Items.Add("10001");
-
-                ComboBoxRefreshRate.Items.Add(16);
-                ComboBoxRefreshRate.Items.Add(33);
-                ComboBoxRefreshRate.Items.Add(50);
-                ComboBoxRefreshRate.Items.Add(66);
-                ComboBoxRefreshRate.Items.Add(100);
-                ComboBoxRefreshRate.Items.Add(200);
-                ComboBoxRefreshRate.Items.Add(300);
-                ComboBoxRefreshRate.Items.Add(500);
-                ComboBoxRefreshRate.Items.Add(1000);
+                catch (Exception ex)
+                {
+                    Logger.Debug(ex, "Skipping network interface {Name}", ni.Name);
+                }
             }
-            catch (Exception ex)
-            {
-                Logger.Warning(ex, "Settings page: failed to populate network/combos");
-            }
+
+            ComboBoxListenPort.Items.Add("80");
+            ComboBoxListenPort.Items.Add("81");
+            ComboBoxListenPort.Items.Add("2020");
+            ComboBoxListenPort.Items.Add("8000");
+            ComboBoxListenPort.Items.Add("8008");
+            ComboBoxListenPort.Items.Add("8080");
+            ComboBoxListenPort.Items.Add("8081");
+            ComboBoxListenPort.Items.Add("8088");
+            ComboBoxListenPort.Items.Add("10000");
+            ComboBoxListenPort.Items.Add("10001");
+
+            ComboBoxRefreshRate.Items.Add(16);
+            ComboBoxRefreshRate.Items.Add(33);
+            ComboBoxRefreshRate.Items.Add(50);
+            ComboBoxRefreshRate.Items.Add(66);
+            ComboBoxRefreshRate.Items.Add(100);
+            ComboBoxRefreshRate.Items.Add(200);
+            ComboBoxRefreshRate.Items.Add(300);
+            ComboBoxRefreshRate.Items.Add(500);
+            ComboBoxRefreshRate.Items.Add(1000);
         }
 
         private void ButtonOpenDataFolder_Click(object sender, RoutedEventArgs e)
