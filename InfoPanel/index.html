@@ -13,8 +13,6 @@
         const path = window.location.pathname; // Get the path from the current URL
         const id = path.replace(/^\/([^\/]*).*$/, '$1'); // Extract the first segment as the ID
 
-        var count = 0;
-
         function loadImage() {
             var img = new Image();
             img.onload = function () {
@@ -25,10 +23,7 @@
             img.onerror = function () {
                 setTimeout(loadImage, 1000); // Try loading the image again after 1000ms
             };
-            img.src = '';
-            img.src = `/${id}/image`;
-
-            count++;
+            img.src = `/${id}/image?t=${Date.now()}`;
         }
         window.onload = loadImage;
     </script>
