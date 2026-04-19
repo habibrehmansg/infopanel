@@ -112,7 +112,6 @@
 		<None Remove="index.html" />
 		<None Remove="Logo.png" />
 		<None Remove="logo_white.png" />
-		<None Remove="Resources\Binaries\ffmpeg.exe" />
 		<None Remove="Resources\Images\home.jpg" />
 		<None Remove="Resources\Images\hwinfo_icon.ico" />
 		<None Remove="Resources\Images\hwinfo_logo_white.png" />
@@ -221,12 +220,12 @@
 			<HintPath>Lib\FlyleafLib.dll</HintPath>
 		</Reference>
 		<PackageReference Include="Flyleaf.FFmpeg.Bindings" Version="8.0.1" />
-		<PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
-		<PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
-		<PackageReference Include="Vortice.DirectComposition" Version="3.8.3" />
-		<PackageReference Include="Vortice.Mathematics" Version="2.1.0" />
-		<PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
-		<PackageReference Include="Vortice.XAudio2" Version="3.8.3" />
+		<PackageReference Include="Vortice.D3DCompiler" Version="3.7.6-beta" />
+		<PackageReference Include="Vortice.Direct3D11" Version="3.7.6-beta" />
+		<PackageReference Include="Vortice.DirectComposition" Version="3.7.6-beta" />
+		<PackageReference Include="Vortice.Mathematics" Version="1.9.3" />
+		<PackageReference Include="Vortice.MediaFoundation" Version="3.7.6-beta" />
+		<PackageReference Include="Vortice.XAudio2" Version="3.7.6-beta" />
 		<PackageReference Include="gong-wpf-dragdrop" Version="4.0.0" />
 		<PackageReference Include="HidSharp" Version="2.6.4" />
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.3" />
@@ -320,31 +319,25 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Update="FFmpeg\avcodec-61.dll">
+		<None Update="FFmpeg\avcodec-62.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="FFmpeg\avdevice-61.dll">
+		<None Update="FFmpeg\avdevice-62.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="FFmpeg\avfilter-10.dll">
+		<None Update="FFmpeg\avfilter-11.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="FFmpeg\avformat-61.dll">
+		<None Update="FFmpeg\avformat-62.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="FFmpeg\avutil-59.dll">
+		<None Update="FFmpeg\avutil-60.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="FFmpeg\ffmpeg.exe">
+		<None Update="FFmpeg\swresample-6.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="FFmpeg\postproc-58.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</None>
-		<None Update="FFmpeg\swresample-5.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</None>
-		<None Update="FFmpeg\swscale-8.dll">
+		<None Update="FFmpeg\swscale-9.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<None Update="NunitoSans_7pt_Condensed-BlackItalic.ttf">
@@ -387,9 +380,5 @@
 			<XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
 			<SubType>Designer</SubType>
 		</Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="Resources\Binaries\" />
 	</ItemGroup>
 </Project>
