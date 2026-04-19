@@ -480,7 +480,11 @@ namespace InfoPanel.Drawing
 
                 if (chartDisplayItem is not DonutDisplayItem && chartDisplayItem is not BarDisplayItem && chartDisplayItem.Frame && SKColor.TryParse(chartDisplayItem.FrameColor, out var frameColor))
                 {
-                    g.DrawRectangle(frameColor, 1, 0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
+                    // Offset by 0.5px so the 1px stroke lands on whole pixels instead of
+                    // splitting across two columns at 50% opacity each.
+                    using var framePath = new SKPath();
+                    framePath.AddRect(new SKRect(0.5f, 0.5f, chartDisplayItem.Width - 0.5f, chartDisplayItem.Height - 0.5f));
+                    g.DrawPath(framePath, frameColor, 1);
                 }
             }
         }
