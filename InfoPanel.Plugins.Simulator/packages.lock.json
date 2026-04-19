@@ -17,8 +17,8 @@
       },
       "Serilog": {
         "type": "Transitive",
-        "resolved": "4.3.0",
-        "contentHash": "+cDryFR0GRhsGOnZSKwaDzRRl4MupvJ42FhCE4zhQRVanX0Jpg6WuCBk59OVhVDPmab1bB+nRykAnykYELA9qQ=="
+        "resolved": "4.3.1",
+        "contentHash": "savYe7h5yRlkqBVOwP8cIRDOdqKiPmYCU4W87JH38sBmcKD5EBoXvQIw6bNEvZ/pTe1gsiye3VFCzBsoppGkXQ=="
       },
       "System.Threading.Tasks.Extensions": {
         "type": "Transitive",
@@ -33,7 +33,7 @@
         "dependencies": {
           "AsyncKeyedLock": "[8.0.2, )",
           "InfoPanel.Plugins": "[1.0.0, )",
-          "Serilog": "[4.3.0, )",
+          "Serilog": "[4.3.1, )",
           "System.Threading.Tasks.Extensions": "[4.6.3, )",
           "ini-parser-netstandard": "[2.5.3, )"
         }

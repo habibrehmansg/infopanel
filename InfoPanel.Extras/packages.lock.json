@@ -4,11 +4,11 @@
     "net8.0-windows7.0": {
       "NAudio.Wasapi": {
         "type": "Direct",
-        "requested": "[2.2.1, )",
-        "resolved": "2.2.1",
-        "contentHash": "lFfXoqacZZe0WqNChJgGYI+XV/n/61LzPHT3C1CJp4khoxeo2sziyX5wzNYWeCMNbsWxFvT3b3iXeY1UYjBhZw==",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "y5K2BxrLnvohgu5znzg5wRsai3YcuNXfrpo68i7PmCQqpK5MC/R24e5aO3OyN/XhfRr12e0QYV0OnUWEHi5SzA==",
         "dependencies": {
-          "NAudio.Core": "2.2.1"
+          "NAudio.Core": "2.3.0"
         }
       },
       "OpenWeatherMap.Cache": {
@@ -27,24 +27,24 @@
       },
       "Sentry": {
         "type": "Direct",
-        "requested": "[5.16.1, )",
-        "resolved": "5.16.1",
-        "contentHash": "Ji9rBurSp5pUTHkZg1KLyODVQWeGlZfLHybpdfWvUEfrNlVyBvujOPi2sZVb6Y+KfphpKtuUF+138gqIkO0K5A=="
+        "requested": "[6.4.0, )",
+        "resolved": "6.4.0",
+        "contentHash": "0YOQfECCEpR+oRG0nTBZhdVrP6/7SP+WTA/JsP6Na43+c8zsgbgxRDe0H6dQiJR92FnwA2S0Qyw2MSSE3fTUQg=="
       },
       "Serilog": {
         "type": "Direct",
-        "requested": "[4.3.0, )",
-        "resolved": "4.3.0",
-        "contentHash": "+cDryFR0GRhsGOnZSKwaDzRRl4MupvJ42FhCE4zhQRVanX0Jpg6WuCBk59OVhVDPmab1bB+nRykAnykYELA9qQ=="
+        "requested": "[4.3.1, )",
+        "resolved": "4.3.1",
+        "contentHash": "savYe7h5yRlkqBVOwP8cIRDOdqKiPmYCU4W87JH38sBmcKD5EBoXvQIw6bNEvZ/pTe1gsiye3VFCzBsoppGkXQ=="
       },
       "System.Diagnostics.PerformanceCounter": {
         "type": "Direct",
-        "requested": "[10.0.3, )",
-        "resolved": "10.0.3",
-        "contentHash": "pQHdkk3QNDYRsNzWVUIamlTiHb3/I50PxGXMRaEqiLmUe+FkInuMj92lCOhvTT6KbLlnMWGRgZq1rDaMJdQixw==",
+        "requested": "[10.0.6, )",
+        "resolved": "10.0.6",
+        "contentHash": "AUDijWLi1W0XoKhNqnPVNaxDctWmvAI/GwEOzn77f/vh2yZHip+a1/fVBfX/BXfLct8ToF3kEW5zmkEQ+M4wcw==",
         "dependencies": {
-          "System.Configuration.ConfigurationManager": "10.0.3",
-          "System.Threading.AccessControl": "10.0.3"
+          "System.Configuration.ConfigurationManager": "10.0.6",
+          "System.Threading.AccessControl": "10.0.6"
         }
       },
       "AsyncKeyedLock": {
@@ -194,16 +194,16 @@
       },
       "NAudio.Core": {
         "type": "Transitive",
-        "resolved": "2.2.1",
-        "contentHash": "GgkdP6K/7FqXFo7uHvoqGZTJvW4z8g2IffhOO4JHaLzKCdDOUEzVKtveoZkCuUX8eV2HAINqi7VFqlFndrnz/g=="
+        "resolved": "2.3.0",
+        "contentHash": "jMd7r6dB6tAtXhOYL58ntPqwERNm1/Rhw5MKOIYvsnXzuX+PTGsa2VMam6n0npZYSwlSidKa4GAm4bFcXFUlcg=="
       },
       "System.Configuration.ConfigurationManager": {
         "type": "Transitive",
-        "resolved": "10.0.3",
-        "contentHash": "69ZT/MYxQSxwdiiHRtI08noXiG5drj/bXDDZISmeWkNUtbIfYgmTiof16tCVOLTdmSQY7W7gwxkMliKdreWHGQ==",
+        "resolved": "10.0.6",
+        "contentHash": "NQyzNGPPKUf5ykuPcUl1oKiY/gS+r9iASQmc8ITcwC6jBC20C9aFMIrBznpirpkoRev6I+p9n11u5QcqTfr+vg==",
         "dependencies": {
-          "System.Diagnostics.EventLog": "10.0.3",
-          "System.Security.Cryptography.ProtectedData": "10.0.3"
+          "System.Diagnostics.EventLog": "10.0.6",
+          "System.Security.Cryptography.ProtectedData": "10.0.6"
         }
       },
       "System.Diagnostics.DiagnosticSource": {
@@ -213,8 +213,8 @@
       },
       "System.Diagnostics.EventLog": {
         "type": "Transitive",
-        "resolved": "10.0.3",
-        "contentHash": "+bZnyzt0/vt4g3QSllhsRNGTpa09p7Juy5K8spcK73cOTOefu4+HoY89hZOgIOmzB5A4hqPyEDKnzra7KKnhZw=="
+        "resolved": "10.0.6",
+        "contentHash": "RMe4gRBwSVd1O6HVRjNwLgcH2jjrT8sHyNRJegZLX68voA+HzMf1xZPvFxMMDpyW86B9U2pYslgl4DFCE61WyA=="
       },
       "System.IO.Pipelines": {
         "type": "Transitive",
@@ -223,8 +223,8 @@
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "Transitive",
-        "resolved": "10.0.3",
-        "contentHash": "JCKbH/CN5l0CSoJBILEvJmNQVp5vV+FY3q2ue4K9p4eDT4mFEv0bjTQCV+MD6Qk1b/qk9fWmZZKhG1TklbXw1Q=="
+        "resolved": "10.0.6",
+        "contentHash": "XsGj3pcZ4PIqz9Vhk7ymbL9iNQzOAnDzHmMBqK1rzjjfQBJ4AUZVJQWbDmTKUS8BIXX53QBDRrdiCpwdWfZM9A=="
       },
       "System.Text.Encodings.Web": {
         "type": "Transitive",
@@ -242,8 +242,8 @@
       },
       "System.Threading.AccessControl": {
         "type": "Transitive",
-        "resolved": "10.0.3",
-        "contentHash": "PO3IM2ZXOJTjuuFDYMP62i290J41y891C+ytTa1HCDUo5FdywK/Ro6jflWHmbgZ2tz62EhRDa8WIT2vVJX45AQ=="
+        "resolved": "10.0.6",
+        "contentHash": "+1oC3G49kclaze4ghePN1YvyL8Bvt+e7cNmttfOjOI1AzTFIBglpQt3e/7aSvafPCy2x069mFDvPHdKlebzBeQ=="
       },
       "System.Threading.Tasks.Extensions": {
         "type": "Transitive",
@@ -262,18 +262,18 @@
     "net8.0-windows7.0/win-x64": {
       "System.Diagnostics.PerformanceCounter": {
         "type": "Direct",
-        "requested": "[10.0.3, )",
-        "resolved": "10.0.3",
-        "contentHash": "pQHdkk3QNDYRsNzWVUIamlTiHb3/I50PxGXMRaEqiLmUe+FkInuMj92lCOhvTT6KbLlnMWGRgZq1rDaMJdQixw==",
+        "requested": "[10.0.6, )",
+        "resolved": "10.0.6",
+        "contentHash": "AUDijWLi1W0XoKhNqnPVNaxDctWmvAI/GwEOzn77f/vh2yZHip+a1/fVBfX/BXfLct8ToF3kEW5zmkEQ+M4wcw==",
         "dependencies": {
-          "System.Configuration.ConfigurationManager": "10.0.3",
-          "System.Threading.AccessControl": "10.0.3"
+          "System.Configuration.ConfigurationManager": "10.0.6",
+          "System.Threading.AccessControl": "10.0.6"
         }
       },
       "System.Diagnostics.EventLog": {
         "type": "Transitive",
-        "resolved": "10.0.3",
-        "contentHash": "+bZnyzt0/vt4g3QSllhsRNGTpa09p7Juy5K8spcK73cOTOefu4+HoY89hZOgIOmzB5A4hqPyEDKnzra7KKnhZw=="
+        "resolved": "10.0.6",
+        "contentHash": "RMe4gRBwSVd1O6HVRjNwLgcH2jjrT8sHyNRJegZLX68voA+HzMf1xZPvFxMMDpyW86B9U2pYslgl4DFCE61WyA=="
       },
       "System.Text.Encodings.Web": {
         "type": "Transitive",
@@ -282,8 +282,8 @@
       },
       "System.Threading.AccessControl": {
         "type": "Transitive",
-        "resolved": "10.0.3",
-        "contentHash": "PO3IM2ZXOJTjuuFDYMP62i290J41y891C+ytTa1HCDUo5FdywK/Ro6jflWHmbgZ2tz62EhRDa8WIT2vVJX45AQ=="
+        "resolved": "10.0.6",
+        "contentHash": "+1oC3G49kclaze4ghePN1YvyL8Bvt+e7cNmttfOjOI1AzTFIBglpQt3e/7aSvafPCy2x069mFDvPHdKlebzBeQ=="
       }
     }
   }

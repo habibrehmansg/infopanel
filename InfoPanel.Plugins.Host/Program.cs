@@ -4,15 +4,18 @@ using InfoPanel.Plugins.Host;
 using Serilog;
 using StreamJsonRpc;
 
-var pipeOption = new Option<string>("--pipe", "Named pipe name") { IsRequired = true };
-var pluginOption = new Option<string>("--plugin", "Path to plugin DLL") { IsRequired = true };
+var pipeOption = new Option<string>("--pipe") { Description = "Named pipe name", Required = true };
+var pluginOption = new Option<string>("--plugin") { Description = "Path to plugin DLL", Required = true };
 
 var rootCommand = new RootCommand("InfoPanel Plugin Host Process");
-rootCommand.AddOption(pipeOption);
-rootCommand.AddOption(pluginOption);
+rootCommand.Options.Add(pipeOption);
+rootCommand.Options.Add(pluginOption);
 
-rootCommand.SetHandler(async (string pipeName, string pluginPath) =>
+rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
+    var pipeName = parseResult.GetValue(pipeOption)!;
+    var pluginPath = parseResult.GetValue(pluginOption)!;
+
     var logPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "InfoPanel", "logs", $"plugin-host-{Path.GetFileNameWithoutExtension(pluginPath)}.log");
@@ -30,7 +33,7 @@ rootCommand.SetHandler(async (string pipeName, string pluginPath) =>
     try
     {
         Log.Information("Connecting to pipe {PipeName}...", pipeName);
-        await pipeStream.ConnectAsync(30000);
+        await pipeStream.ConnectAsync(30000, cancellationToken);
         Log.Information("Connected to pipe");
 
         var hostService = new HostService(pluginPath);
@@ -43,16 +46,18 @@ rootCommand.SetHandler(async (string pipeName, string pluginPath) =>
 
         Log.Information("JSON-RPC started, waiting for requests...");
         await jsonRpc.Completion;
+        return 0;
     }
     catch (Exception ex)
     {
         Log.Fatal(ex, "Plugin host fatal error");
+        return 1;
     }
     finally
     {
         Log.Information("Plugin host shutting down");
         Log.CloseAndFlush();
     }
-}, pipeOption, pluginOption);
+});
 
-return await rootCommand.InvokeAsync(args);
+return await rootCommand.Parse(args).InvokeAsync();
