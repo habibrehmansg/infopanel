@@ -490,21 +490,30 @@ namespace InfoPanel.Drawing
                 }
             }
 
-            // --- Draw outline (stroke) ---
+            // --- Draw outline ---
             if (strokeWidth > 0)
             {
-                using var strokePaint = new SKPaint
-                {
-                    Style = SKPaintStyle.Stroke,
-                    Color = SKColor.Parse(strokeColor),
-                    StrokeWidth = strokeWidth,
-                    IsAntialias = true
-                };
-
                 if (span == 360)
                 {
-                    Canvas.DrawCircle(centerX, centerY, radius - strokeWidth / 2f, strokePaint);
-                    Canvas.DrawCircle(centerX, centerY, innerRadius + strokeWidth / 2f, strokePaint);
+                    // Draw each border as a filled annulus rather than a stroked circle.
+                    // Fills compute AA from pixel-area coverage of the ring, which looks
+                    // markedly smoother on curves than a thin centerline stroke.
+                    using var fillPaint = new SKPaint
+                    {
+                        Style = SKPaintStyle.Fill,
+                        Color = SKColor.Parse(strokeColor),
+                        IsAntialias = true
+                    };
+
+                    using var outerRing = new SKPath();
+                    outerRing.AddCircle(centerX, centerY, radius, SKPathDirection.Clockwise);
+                    outerRing.AddCircle(centerX, centerY, Math.Max(0, radius - strokeWidth), SKPathDirection.CounterClockwise);
+                    Canvas.DrawPath(outerRing, fillPaint);
+
+                    using var innerRing = new SKPath();
+                    innerRing.AddCircle(centerX, centerY, innerRadius + strokeWidth, SKPathDirection.Clockwise);
+                    innerRing.AddCircle(centerX, centerY, Math.Max(0, innerRadius), SKPathDirection.CounterClockwise);
+                    Canvas.DrawPath(innerRing, fillPaint);
                 }
                 else
                 {
