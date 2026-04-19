@@ -57,14 +57,16 @@ namespace InfoPanel.Drawing
                     for (int i = 1; i < verticalLines; i++)
                     {
                         //draw vertical lines
-                        g.DrawLine(i * gridSpace, 0, i * gridSpace, profile.Height, gridColor, 1);
+                        var x = i * gridSpace + 0.5f;
+                        g.DrawLine(x, 0, x, profile.Height, gridColor, 1);
                     }
 
                     var horizontalLines = profile.Height / gridSpace;
                     for (int j = 1; j < horizontalLines; j++)
                     {
                         //draw horizontal lines
-                        g.DrawLine(0, j * gridSpace, profile.Width, j * gridSpace, gridColor, 1);
+                        var y = j * gridSpace + 0.5f;
+                        g.DrawLine(0, y, profile.Width, y, gridColor, 1);
                     }
                 }
 
