@@ -1,3 +1,13 @@
+// This file is part of InfoPanel.
+// Original project: https://github.com/habibrehmansg/infopanel
+// 
+// Modified by yuupone, 2026
+// Changes: Added brightness workaround for Trofeo Vision 6.86" black screen issue on startup.
+//          Temporarily lowers brightness to 30 on HID init, restores after 3 seconds.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License.
 using InfoPanel.Extensions;
 using System.Buffers;
 using System.Linq;
@@ -30,7 +40,7 @@ namespace InfoPanel.Services
         private static readonly object _maskCacheLock = new();
 
         // ChiZhu Tech USBDISPLAY Protocol constants
-        // Based on USB capture analysis of TRCC software at boot
+        
         private static readonly byte[] MAGIC_BYTES = { 0x12, 0x34, 0x56, 0x78 };
         private const int HEADER_SIZE = 64;
         private const int COMMAND_DISPLAY = 0x02;
@@ -903,11 +913,11 @@ namespace InfoPanel.Services
             const int SUB_DATA_SIZE = 496;         // Data per sub-packet (512 - 16)
             const int RESPONSE_SIZE = 512;
 
-            // TRCC does NOT abort/reset pipes before init. Some device units react badly
+            
             // to pipe reset, causing persistent flicker. Skip the abort/reset — if stale IRPs
             // cause issues on restart, the init timeout will handle it.
 
-            // TRCC: Thread.Sleep(50) before init (DCReadWriteAsync.cs line 768)
+            
             await Task.Delay(50, token);
 
             // Send init command: 2048 bytes, byte[0]=0x02, byte[1]=0xFF, byte[8]=0x01
@@ -933,7 +943,7 @@ namespace InfoPanel.Services
                 readEc = reader.Read(responseBuffer, 10000, out readBytes);
             });
 
-            await Task.Delay(200, token); // TRCC: Thread.Sleep(200) before checking results
+            await Task.Delay(200, token);
 
             var initWritten = await writeTask;
             if (initWritten < 0)
@@ -1014,10 +1024,8 @@ namespace InfoPanel.Services
                 _panelHeight = _device.ModelInfo.RenderHeight;
             }
 
-            // TRCC sends 1920x462 JPEGs for v1, NOT 1920x480 as reported by the device.
+            
             // The JPEG SOF0 in USB captures confirms height=0x01CE=462.
-            // Some panel units have a 462-row framebuffer; sending 480-height JPEGs overflows
-            // by 18 rows, wrapping to the top of the display.
             // Flicker fix is toggled live via _device.FlickerFix, checked each frame in GenerateJpegBuffer.
             if (_panelHeight == 480)
             {
@@ -1115,7 +1123,7 @@ namespace InfoPanel.Services
         /// <summary>
         /// Sends a single frame using the Trofeo DA DB DC DD protocol over USB bulk.
         /// 20-byte header (magic, cmd=0x02, width/height, type, payload_len) + frame data in 512-byte chunks.
-        /// Reused by DoWinUsbTrofeoProtocol and hybrid HID+Bulk mode.
+        
         /// </summary>
         private static void SendTrofeoFrameOverBulk(
             UsbEndpointWriter writer, byte[] frameData, int width, int height,
@@ -1200,7 +1208,7 @@ namespace InfoPanel.Services
 
             Logger.Information("ThermalrightPanelDevice {Device}: Sending TrofeoBulk LY1 init ({Size} bytes)", _device, INIT_PACKET_SIZE);
 
-            // Match TRCC init order: write first, then read
+            
             var responseBuffer = new byte[RESPONSE_SIZE];
             ErrorCode readEc = ErrorCode.None;
             int readBytes = 0;
@@ -1275,7 +1283,7 @@ namespace InfoPanel.Services
 
             _maxJpegSize = 230_000;
 
-            // Fully sequential frame loop (matching TRCC): write all → read ACK → loop
+            
             var ackBuffer = new byte[RESPONSE_SIZE];
             int consecutiveAckFailures = 0;
 
@@ -1645,6 +1653,22 @@ namespace InfoPanel.Services
                 UpdateDeviceDisplayName();
 
                 await Task.Delay(100, token); // Small delay after init
+
+                // 起動時に輝度を一時的に下げて安定させる
+                var originalBrightness = _device.Brightness;
+                if (originalBrightness > 30)
+                {
+                    _device.Brightness = 30;
+                    Logger.Information("ThermalrightPanelDevice {Device}: Temporarily lowering brightness to 30 for stable init", _device);
+                }
+
+                // 3秒後に元の輝度に戻すタスク
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    _device.Brightness = originalBrightness;
+                    Logger.Information("ThermalrightPanelDevice {Device}: Restoring brightness to {Brightness}", _device, originalBrightness);
+                });
 
                 // --- Attempt hybrid HID+Bulk upgrade ---
                 // 0416:5302 is a composite USB device: HID interface (auto-driver) + vendor-specific bulk interface.

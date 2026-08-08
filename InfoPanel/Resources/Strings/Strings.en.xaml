@@ -1,0 +1,80 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:system="clr-namespace:System;assembly=mscorlib">
+    <!-- Application -->
+    <system:String x:Key="Settings_Application">Application</system:String>
+    <system:String x:Key="Settings_Language">Language</system:String>
+    <system:String x:Key="Settings_Language_Desc">Select the display language for InfoPanel.</system:String>
+    <system:String x:Key="Settings_AppTheme">App theme</system:String>
+    <system:String x:Key="Settings_AppTheme_Desc">Select which app theme to display</system:String>
+    <system:String x:Key="Settings_UIScale">UI Scale</system:String>
+    <system:String x:Key="Settings_UIScale_Desc">Change InfoPanel UI scale to fit or zoom accordingly.</system:String>
+    <system:String x:Key="Settings_RunOnStartup">Run on startup</system:String>
+    <system:String x:Key="Settings_RunOnStartup_Desc">Launch InfoPanel automatically on windows sign in.</system:String>
+    <system:String x:Key="Settings_StartupDelay">Startup delay (secs):</system:String>
+    <system:String x:Key="Settings_Autosave">Autosave</system:String>
+    <system:String x:Key="Settings_Autosave_Desc">Periodically backs up unsaved changes and offers to restore them on next launch.</system:String>
+    <system:String x:Key="Settings_AutosaveAfter">Autosave after (secs):</system:String>
+    <system:String x:Key="Settings_MinimizeToTray">Minimize to tray</system:String>
+    <system:String x:Key="Settings_MinimizeToTray_Desc">Minimize InfoPanel to the system tray instead.</system:String>
+    <system:String x:Key="Settings_StartMinimized">Start minimised</system:String>
+    <system:String x:Key="Settings_StartMinimized_Desc">Runs InfoPanel minimized on startup.</system:String>
+    <system:String x:Key="Settings_CloseToMinimize">Close to minimize</system:String>
+    <system:String x:Key="Settings_CloseToMinimize_Desc">Minimize InfoPanel instead of closing when the window close button is clicked.</system:String>
+
+    <!-- Panel -->
+    <system:String x:Key="Settings_Panel">Panel</system:String>
+    <system:String x:Key="Settings_SelectedItemColor">Selected item color</system:String>
+    <system:String x:Key="Settings_SelectedItemColor_Desc">Select an item via the Design Page or middle click on the panel itself when Design Page is active.</system:String>
+    <system:String x:Key="Settings_ShowGridLines">Show grid lines</system:String>
+    <system:String x:Key="Settings_ShowGridLines_Desc">Display grid lines when an item is selected.</system:String>
+    <system:String x:Key="Settings_GridLinesSettings">Grid lines settings</system:String>
+    <system:String x:Key="Settings_GridLinesSettings_Desc">Customise the grid lines to your preferences.</system:String>
+    <system:String x:Key="Settings_GridSpacingInPx">Grid spacing in px</system:String>
+
+    <!-- Automation -->
+    <system:String x:Key="Settings_Automation">Automation</system:String>
+    <system:String x:Key="Settings_EnableProgramSpecificPanels">Enable program-specific panels</system:String>
+    <system:String x:Key="Settings_EnableProgramSpecificPanels_Desc">Automatically show or hide panels based on the foreground application.</system:String>
+    <system:String x:Key="Settings_EnableProgramSpecificPanels_Tooltip">Matches the foreground app to each profile's Trigger app(s).</system:String>
+    <system:String x:Key="Settings_HideOtherProfiles">Hide other profiles when program-specific panel is shown</system:String>
+    <system:String x:Key="Settings_HideOtherProfiles_Desc">When a game or app triggers its panel, hide all other panels to avoid overlap and save resources. Recommended: on.</system:String>
+
+    <!-- Libre -->
+    <system:String x:Key="Settings_Libre">Libre</system:String>
+    <system:String x:Key="Settings_EnableLibreHardwareMonitor">Enable LibreHardwareMonitor</system:String>
+    <system:String x:Key="Settings_EnableLibreHardwareMonitor_Desc">Enables polling LibreHardwareMonitor sensor data.</system:String>
+    <system:String x:Key="Settings_PawniODriver">PawniO Driver</system:String>
+    <system:String x:Key="Settings_PawniODriver_Desc">Required for low-level hardware access (CPU temps, voltages, etc.). Click Check Status to verify installation.</system:String>
+    <system:String x:Key="Settings_CheckStatus">Check Status</system:String>
+    <system:String x:Key="Settings_StorageMonitoring">Storage Monitoring</system:String>
+    <system:String x:Key="Settings_StorageMonitoring_Desc">Enable storage/disk monitoring. Disable if not needed.</system:String>
+    <system:String x:Key="Settings_StoragePollingInterval">Storage Polling Interval</system:String>
+    <system:String x:Key="Settings_StoragePollingInterval_Desc">How often to poll storage devices (seconds). Higher values reduce HDD activity.</system:String>
+
+    <!-- Performance -->
+    <system:String x:Key="Settings_Performance">Performance</system:String>
+    <system:String x:Key="Settings_TargetFrameRate">Target Frame Rate</system:String>
+    <system:String x:Key="Settings_TargetFrameRate_Desc">The rate at which panels (including LCD) are rendered (excluding Direct2D acceleration).</system:String>
+    <system:String x:Key="Settings_TargetFrameRate_Tooltip">A lower value reduces CPU usage but results in slower updates</system:String>
+    <system:String x:Key="Settings_TargetFrameRate_Label">Target framerate</system:String>
+    <system:String x:Key="Settings_TargetGraphUpdateRate_Tooltip">A higher value reduces CPU usage but results in slower updates</system:String>
+    <system:String x:Key="Settings_TargetGraphUpdateRate_Label">Target graph update rate (ms)</system:String>
+
+    <!-- Remote Sensor -->
+    <system:String x:Key="Settings_RemoteSensor">Remote Sensor</system:String>
+    <system:String x:Key="Settings_EnableWebserver">Enable webserver</system:String>
+    <system:String x:Key="Settings_EnableWebserver_Desc">Act as a webserver to display panels remotely via HTTP.</system:String>
+    <system:String x:Key="Settings_ListenIP">Listen IP</system:String>
+    <system:String x:Key="Settings_ListenIP_Desc">IP to run the webserver on.</system:String>
+    <system:String x:Key="Settings_ListenPort">Listen Port</system:String>
+    <system:String x:Key="Settings_ListenPort_Desc">Port to run the webserver on.</system:String>
+    <system:String x:Key="Settings_RefreshRate">Refresh Rate</system:String>
+    <system:String x:Key="Settings_RefreshRate_Desc">The target rate at which remote sensor updates in milliseconds.</system:String>
+
+    <!-- Misc -->
+    <system:String x:Key="Settings_Misc">Misc</system:String>
+    <system:String x:Key="Settings_ApplicationData">Application Data</system:String>
+    <system:String x:Key="Settings_ApplicationData_Desc">Go to where all your data is stored. Backing up often is always a good thing.</system:String>
+    <system:String x:Key="Settings_OpenFolder">Open Folder</system:String>
+</ResourceDictionary>

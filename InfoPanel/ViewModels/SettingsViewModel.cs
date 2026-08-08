@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
+using InfoPanel.Services;
 using InfoPanel.Utils;
 using System;
 using System.Collections.ObjectModel;
@@ -36,9 +37,22 @@ namespace InfoPanel.ViewModels
         [ObservableProperty]
         private ApplicationTheme _currentApplicationTheme = ApplicationTheme.Unknown;
 
+        [ObservableProperty]
+        private string _language = "en";
+
         public SettingsViewModel()
         {
             _currentApplicationTheme = ApplicationThemeManager.GetAppTheme();
+            _language = ConfigModel.Instance.Settings.Language;
+        }
+
+        partial void OnLanguageChanged(string oldValue, string newValue)
+        {
+            if (oldValue != newValue)
+            {
+                ConfigModel.Instance.Settings.Language = newValue;
+                LocalizationService.SetLanguage(newValue);
+            }
         }
 
         partial void OnCurrentApplicationThemeChanged(ApplicationTheme oldValue, ApplicationTheme newValue)
