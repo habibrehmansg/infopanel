@@ -1654,7 +1654,7 @@ namespace InfoPanel.Services
 
                 await Task.Delay(100, token); // Small delay after init
 
-                // 起動時に輝度を一時的に下げて安定させる
+                // Temporarily lower the brightness at startup to stabilize
                 var originalBrightness = _device.Brightness;
                 if (originalBrightness > 30)
                 {
@@ -1662,7 +1662,7 @@ namespace InfoPanel.Services
                     Logger.Information("ThermalrightPanelDevice {Device}: Temporarily lowering brightness to 30 for stable init", _device);
                 }
 
-                // 3秒後に元の輝度に戻すタスク
+                // A task to revert to the original brightness after 3 sec
                 _ = Task.Run(async () =>
                 {
                     await Task.Delay(3000);
