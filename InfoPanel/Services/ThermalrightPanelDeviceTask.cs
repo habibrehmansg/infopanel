@@ -1,13 +1,3 @@
-// This file is part of InfoPanel.
-// Original project: https://github.com/habibrehmansg/infopanel
-// 
-// Modified by yuupone, 2026
-// Changes: Added brightness workaround for Trofeo Vision 6.86" black screen issue on startup.
-//          Temporarily lowers brightness to 30 on HID init, restores after 3 seconds.
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License.
 using InfoPanel.Extensions;
 using System.Buffers;
 using System.Linq;
