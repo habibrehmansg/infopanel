@@ -101,6 +101,18 @@
       "name": "Windows 11 Now Playing",
       "description": "Displays currently playing media information from Windows 11's Global Media Transport Controls",
       "category": "media"
+    },
+    {
+      "repo": "1ZeeN/InfoPanel.EasyBluetooth",
+      "name": "InfoPanel.EasyBluetooth",
+      "description": "Battery and Status from mouses using Easy Bluetooth Unified Standard Data API",
+      "category": "monitoring"
+    },
+    {
+      "repo": "1ZeeN/InfoPanel.CrealityPrinter",
+      "name": "InfoPanel.Creality",
+      "description": "Real-time Creality printer telemetry over WebSocket",
+      "category": "monitoring"
     }
   ]
 }
