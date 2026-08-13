@@ -107,6 +107,12 @@
       "name": "InfoPanel.EasyBluetooth",
       "description": "Battery and Status from mouses using Easy Bluetooth Unified Standard Data API",
       "category": "monitoring"
+    },
+    {
+      "repo": "1ZeeN/InfoPanel.CrealityPrinter",
+      "name": "InfoPanel.Creality",
+      "description": "Real-time Creality printer telemetry over WebSocket",
+      "category": "monitoring"
     }
   ]
 }
