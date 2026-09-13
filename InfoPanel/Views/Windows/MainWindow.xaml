@@ -1,4 +1,4 @@
-<ui:FluentWindow
+﻿<ui:FluentWindow
     x:Class="InfoPanel.Views.Windows.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -68,7 +68,7 @@
 
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem
-                    Content="Home"
+                    Content="{DynamicResource Nav_Home}"
                     Tag="home"
                     TargetPageType="{x:Type pages:HomePage}">
                     <ui:NavigationViewItem.Icon>
@@ -76,7 +76,7 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="Profiles"
+                    Content="{DynamicResource Nav_Profiles}"
                     Tag="profiles"
                     TargetPageType="{x:Type pages:ProfilesPage}">
                     <ui:NavigationViewItem.Icon>
@@ -84,7 +84,7 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="Design"
+                    Content="{DynamicResource Nav_Design}"
                     Tag="design"
                     TargetPageType="{x:Type pages:DesignPage}">
                     <ui:NavigationViewItem.Icon>
@@ -95,7 +95,7 @@
 
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem
-                    Content="Updates"
+                    Content="{DynamicResource Nav_Updates}"
                     Tag="updates"
                     TargetPageType="{x:Type pages:UpdatesPage}">
                     <ui:NavigationViewItem.Icon>
@@ -103,7 +103,7 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="Plugins"
+                    Content="{DynamicResource Nav_Plugins}"
                     Tag="plugins"
                     TargetPageType="{x:Type pages:PluginsPage}">
                     <ui:NavigationViewItem.Icon>
@@ -111,7 +111,7 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="USB Panels"
+                    Content="{DynamicResource Nav_UsbPanels}"
                     Tag="usbpanels"
                     TargetPageType="{x:Type pages:UsbPanelsPage}">
                     <ui:NavigationViewItem.Icon>
@@ -119,7 +119,7 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="Account"
+                    Content="{DynamicResource Nav_Account}"
                     Tag="account"
                     TargetPageType="{x:Type pages:AccountPage}">
                     <ui:NavigationViewItem.Icon>
@@ -127,7 +127,7 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="Settings"
+                    Content="{DynamicResource Nav_Settings}"
                     Tag="settings"
                     TargetPageType="{x:Type pages:SettingsPage}">
                     <ui:NavigationViewItem.Icon>
@@ -135,7 +135,7 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="Logs"
+                    Content="{DynamicResource Nav_Logs}"
                     Tag="logs"
                     TargetPageType="{x:Type pages:LogsPage}">
                     <ui:NavigationViewItem.Icon>
@@ -143,7 +143,7 @@
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="About"
+                    Content="{DynamicResource Nav_About}"
                     Tag="about"
                     TargetPageType="{x:Type pages:AboutPage}">
                     <ui:NavigationViewItem.Icon>
@@ -175,7 +175,7 @@
                 <ContextMenu>
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="Open"
+                        Header="{DynamicResource Tray_Open}"
                         Tag="open">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="Open24" />
@@ -184,7 +184,7 @@
                     <Separator />
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="Profiles"
+                        Header="{DynamicResource Nav_Profiles}"
                         Tag="profiles">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="List20" />
@@ -192,7 +192,7 @@
                     </MenuItem>
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="Design"
+                        Header="{DynamicResource Nav_Design}"
                         Tag="design">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="DesktopCursor20" />
@@ -201,7 +201,7 @@
                     <Separator />
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="Updates"
+                        Header="{DynamicResource Nav_Updates}"
                         Tag="updates">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="PhoneUpdate20" />
@@ -209,7 +209,7 @@
                     </MenuItem>
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="Plugins"
+                        Header="{DynamicResource Nav_Plugins}"
                         Tag="plugins">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="PlugConnected20" />
@@ -217,7 +217,7 @@
                     </MenuItem>
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="USB Panels"
+                        Header="{DynamicResource Nav_UsbPanels}"
                         Tag="usb">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="UsbPlug20" />
@@ -225,7 +225,7 @@
                     </MenuItem>
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="Settings"
+                        Header="{DynamicResource Nav_Settings}"
                         Tag="settings">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="Settings20" />
@@ -234,7 +234,7 @@
 
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="Logs"
+                        Header="{DynamicResource Nav_Logs}"
                         Tag="logs">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="Document20" />
@@ -242,7 +242,7 @@
                     </MenuItem>
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="About"
+                        Header="{DynamicResource Nav_About}"
                         Tag="about">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="ChatHelp20" />
@@ -251,7 +251,7 @@
                     <Separator />
                     <MenuItem
                         Click="TrayMenuItem_OnClick"
-                        Header="Exit"
+                        Header="{DynamicResource Tray_Exit}"
                         Tag="close">
                         <MenuItem.Icon>
                             <ui:SymbolIcon Symbol="Power20" />

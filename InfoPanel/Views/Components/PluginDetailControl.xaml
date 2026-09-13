@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="InfoPanel.Views.Components.PluginDetailControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -101,7 +101,7 @@
                     <ui:HyperlinkButton
                         Margin="0,4,0,0"
                         HorizontalAlignment="Center"
-                        Content="GitHub"
+                        Content="{DynamicResource About_Github}"
                         NavigateUri="{Binding SourceUrl}">
                         <ui:HyperlinkButton.Style>
                             <Style TargetType="ui:HyperlinkButton" BasedOn="{StaticResource {x:Type ui:HyperlinkButton}}">
@@ -158,7 +158,7 @@
                         VerticalAlignment="Center"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Your Rating" />
+                        Text="{DynamicResource Plugins_YourRating}" />
                     <ui:Button Appearance="Transparent" Click="Rate1_Click" Padding="2">
                         <ui:SymbolIcon FontSize="18" Symbol="Star20" x:Name="Star1" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                     </ui:Button>
@@ -233,7 +233,7 @@
                 <TextBlock
                     FontSize="13"
                     FontWeight="Medium"
-                    Text="What's New" />
+                    Text="{DynamicResource Updates_WhatsNew}" />
                 <TextBlock
                     Margin="8,0,0,0"
                     VerticalAlignment="Center"
@@ -274,7 +274,7 @@
                 Margin="0,0,0,4"
                 FontSize="13"
                 FontWeight="Medium"
-                Text="Previous Releases" />
+                Text="{DynamicResource Updates_PreviousReleases}" />
             <ItemsControl ItemsSource="{Binding Releases}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type viewmodels:ReleaseViewModel}">

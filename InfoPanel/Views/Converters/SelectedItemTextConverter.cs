@@ -1,4 +1,4 @@
-﻿using InfoPanel.Models;
+using InfoPanel.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -22,7 +22,7 @@ namespace InfoPanel
                 return $"{profile.Name}";
             }
 
-            return "No item selected";
+            return Services.LocalizationService.GetString("Design_NoItemSelected");
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

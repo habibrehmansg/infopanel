@@ -136,7 +136,7 @@
                                 Margin="5,0,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Entry Id" />
+                                Text="{DynamicResource Prop_EntryId}" />
                         </StackPanel>
                     </Grid>
 

@@ -19,7 +19,7 @@
             <RowDefinition/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <Label Grid.Row="0" FontSize="20" Content="Performance Settings" FontWeight="Medium" Margin="0,0,0,10"/>
+        <Label Grid.Row="0" FontSize="20" Content="{DynamicResource Common_PerformanceSettings}" FontWeight="Medium" Margin="0,0,0,10"/>
 
         <StackPanel Grid.Row="1">
             <Grid>
@@ -29,11 +29,11 @@
                 </Grid.ColumnDefinitions>
 
                 <!--<TextBox Grid.Column="0" IsReadOnly="True"
-                             ToolTip="Use the slider to adjust"
+                             ToolTip="{DynamicResource Prop_SliderAdjust}"
                              Text="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.TargetFrameRate, Mode=OneWay}" Margin="0,0,0,20" TextAlignment="Center"/>-->
 
                 <Slider Grid.Column="1" Value="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.TargetFrameRate}"
-                            ToolTip="A lower value reduces CPU usage but results in slower updates"
+                            ToolTip="{DynamicResource Settings_TargetFrameRate_Tooltip}"
                             Minimum="1" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True" HorizontalAlignment="Stretch" Margin="10,0,0,0"/>
 
             </Grid>

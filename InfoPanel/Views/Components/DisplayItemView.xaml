@@ -126,7 +126,7 @@
             BorderThickness="0"
             Command="{Binding ToggleLockCommand}"
             Cursor="Hand"
-            ToolTip="Lock item to prevent drag move.">
+            ToolTip="{DynamicResource Design_LockItemDrag}">
             <ui:SymbolIcon Foreground="{Binding IsLocked, Converter={StaticResource LockColorConverter}}" Symbol="{Binding IsLocked, Converter={StaticResource LockSymbolConverter}}" />
         </Button>
 

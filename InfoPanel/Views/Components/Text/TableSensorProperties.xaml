@@ -45,7 +45,7 @@
                             Margin="0,0,0,0"
                             HorizontalAlignment="Right"
                             IsChecked="{Binding ShowHeader}">
-                            <ui:SymbolIcon Symbol="DocumentHeader20" ToolTip="Show headers" />
+                            <ui:SymbolIcon Symbol="DocumentHeader20" ToolTip="{DynamicResource Prop_ShowHeaders}" />
                         </ToggleButton>
                     </StackPanel>
                 </StackPanel>
@@ -57,13 +57,13 @@
                         FontSize="14"
                         SmallChange="1"
                         Text="{Binding MaxRows}"
-                        ToolTip="Maximum number of rows to display."
+                        ToolTip="{DynamicResource Prop_MaxRowsDesc}"
                         Value="{Binding MaxRows}" />
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Max Rows" />
+                        Text="{DynamicResource Prop_MaxRows}" />
                 </StackPanel>
             </Grid>
 
@@ -73,7 +73,7 @@
                     Margin="5,0,0,0"
                     FontSize="12"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="Table Format (Press tab to apply)" />
+                    Text="{DynamicResource Prop_TableFormat}" />
                 <TextBlock
                     Margin="5,10,0,0"
                     FontSize="12"

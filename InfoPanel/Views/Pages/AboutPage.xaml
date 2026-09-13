@@ -45,7 +45,7 @@
                                     Margin="0,0,0,0"
                                     VerticalAlignment="Center"
                                     Appearance="Secondary"
-                                    Content="Github"
+                                    Content="{DynamicResource About_Github}"
                                     NavigateUri="https://github.com/habibrehmansg/infopanel" />
 
                             </Grid>
@@ -114,12 +114,12 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="People" />
+                                        Text="{DynamicResource About_People}" />
                                     <TextBlock
                                         Margin="0,5,0,0"
                                         FontSize="12"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="Fellow humans who helped and continue to make InfoPanel great." />
+                                        Text="{DynamicResource About_PeopleDesc}" />
                                 </StackPanel>
                             </Grid>
                         </ui:CardExpander.Header>
@@ -169,12 +169,12 @@
                                     <TextBlock
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="Licenses" />
+                                        Text="{DynamicResource About_Licenses}" />
                                     <TextBlock
                                         Margin="0,5,0,0"
                                         FontSize="12"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="Software and licenses used." />
+                                        Text="{DynamicResource About_LicensesDesc}" />
                                 </StackPanel>
                             </Grid>
                         </ui:CardExpander.Header>

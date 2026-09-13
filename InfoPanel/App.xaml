@@ -18,6 +18,7 @@
 
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
+                <ResourceDictionary Source="pack://application:,,,/InfoPanel;component/Resources/Strings/Strings.en.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!--<FontFamily x:Key="NunitoSansRegular">./Fonts/NunitoSans_7pt-Regular.ttf#Noto Sans</FontFamily>-->
@@ -57,6 +58,7 @@
             <local:IntDoubleValueConverter x:Key="IntDoubleValueConverter" />
             <local:EnumToDescriptionConverter x:Key="EnumToDescriptionConverter" />
             <local:FontFamilyConverter x:Key="FontFamilyConverter" />
+            <converters:LocalizedTextConverter x:Key="LocalizedTextConverter" />
             <local:EnumEqualsConverter x:Key="EnumEqualsConverter" />
             <local:SensorSourceConverter x:Key="SensorSourceConverter" />
 

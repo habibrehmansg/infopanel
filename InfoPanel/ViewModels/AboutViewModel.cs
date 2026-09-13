@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
+using InfoPanel.Services;
 using InfoPanel.Utils;
 using System.Collections.ObjectModel;
 
@@ -51,60 +52,61 @@ namespace InfoPanel.ViewModels
             InitializeCollections();
         }
 
-        private void InitializeCollections()
+        public void InitializeCollections()
         {
+            InfoLinks.Clear();
             // Initialize info links
             InfoLinks.Add(new InfoLink
             {
                 Icon = "WebAsset20",
-                Title = "Website",
-                Description = "https://infopanel.net",
-                ButtonText = "Launch",
+                Title = LocalizationService.GetString("About_Website"),
+                Description = LocalizationService.GetString("About_WebsiteDesc"),
+                ButtonText = LocalizationService.GetString("Common_Launch"),
                 NavigateUri = "https://infopanel.net/"
             });
 
             InfoLinks.Add(new InfoLink
             {
                 Icon = "HardDrive20",
-                Title = "HWiNFO",
-                Description = "Download HWiNFO to get started if you have not.",
-                ButtonText = "Download",
+                Title = LocalizationService.GetString("About_HWiNFO"),
+                Description = LocalizationService.GetString("About_HWiNFODesc"),
+                ButtonText = LocalizationService.GetString("Common_Download"),
                 NavigateUri = "https://www.hwinfo.com/"
             });
 
             InfoLinks.Add(new InfoLink
             {
                 Icon = "Chat20",
-                Title = "Discord",
-                Description = "Join in conversations with others regarding InfoPanel.",
-                ButtonText = "Join",
+                Title = LocalizationService.GetString("About_Discord"),
+                Description = LocalizationService.GetString("About_DiscordDesc"),
+                ButtonText = LocalizationService.GetString("Common_Join"),
                 NavigateUri = "https://discord.gg/cQnjdMC7Qc"
             });
 
             InfoLinks.Add(new InfoLink
             {
                 Icon = "WebAsset20",
-                Title = "Reddit",
-                Description = "Help grow the /r/InfoPanel community.",
-                ButtonText = "Launch",
+                Title = LocalizationService.GetString("About_Reddit"),
+                Description = LocalizationService.GetString("About_RedditDesc"),
+                ButtonText = LocalizationService.GetString("Common_Launch"),
                 NavigateUri = "https://www.reddit.com/r/InfoPanel/"
             });
 
             InfoLinks.Add(new InfoLink
             {
                 Icon = "Heart20",
-                Title = "Love InfoPanel?",
-                Description = "Leave a review for others to see and help InfoPanel grow.",
-                ButtonText = "Review",
+                Title = LocalizationService.GetString("About_LoveInfoPanel"),
+                Description = LocalizationService.GetString("About_LoveInfoPanelDesc"),
+                ButtonText = LocalizationService.GetString("Common_Review"),
                 NavigateUri = "ms-windows-store://review/?ProductId=XPFP7C8H5446ZD"
             });
 
             InfoLinks.Add(new InfoLink
             {
                 Icon = "DrinkCoffee20",
-                Title = "Support Development",
-                Description = "Show appreciation and help to offset costs incurred such web and certificate fees.",
-                ButtonText = "Donate",
+                Title = LocalizationService.GetString("About_SupportDev"),
+                Description = LocalizationService.GetString("About_SupportDevDesc"),
+                ButtonText = LocalizationService.GetString("Common_Donate"),
                 NavigateUri = "https://www.buymeacoffee.com/urfath3r"
             });
 

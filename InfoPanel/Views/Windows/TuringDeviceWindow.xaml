@@ -1,11 +1,11 @@
-<ui:FluentWindow
+﻿<ui:FluentWindow
     x:Class="InfoPanel.Views.Windows.TuringDeviceWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    Title="Turing Device Manager"
+    Title="{DynamicResource Turing_Title}"
     Width="900"
     Height="600"
     ExtendsContentIntoTitleBar="True"
@@ -26,7 +26,7 @@
 
         <TabControl Grid.Row="1" Margin="20,20,20,20">
             <!--  Video Management Tab  -->
-            <TabItem Header="Video Management">
+            <TabItem Header="{DynamicResource Turing_VideoManagement}">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -42,7 +42,7 @@
                                 Margin="0,0,0,10"
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Storage Information" />
+                                Text="{DynamicResource Turing_StorageInfo}" />
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -58,7 +58,7 @@
                                     Grid.Row="0"
                                     Grid.Column="0"
                                     Margin="0,0,10,5"
-                                    Text="Total Space:" />
+                                    Text="{DynamicResource Turing_TotalSpace}" />
                                 <TextBlock
                                     Grid.Row="0"
                                     Grid.Column="1"
@@ -69,7 +69,7 @@
                                     Grid.Row="1"
                                     Grid.Column="0"
                                     Margin="0,0,10,5"
-                                    Text="Used Space:" />
+                                    Text="{DynamicResource Turing_UsedSpace}" />
                                 <TextBlock
                                     Grid.Row="1"
                                     Grid.Column="1"
@@ -80,7 +80,7 @@
                                     Grid.Row="2"
                                     Grid.Column="0"
                                     Margin="0,0,10,0"
-                                    Text="Free Space:" />
+                                    Text="{DynamicResource Turing_FreeSpace}" />
                                 <TextBlock
                                     Grid.Row="2"
                                     Grid.Column="1"
@@ -104,13 +104,13 @@
                             Margin="0,0,10,0"
                             Appearance="Secondary"
                             Command="{Binding RefreshStorageCommand}"
-                            Content="Refresh"
+                            Content="{DynamicResource Common_Refresh}"
                             Icon="{ui:SymbolIcon ArrowSync24}" />
                         <ui:Button
                             Margin="0,0,10,0"
                             Appearance="Primary"
                             Command="{Binding UploadVideoCommand}"
-                            Content="Upload Video"
+                            Content="{DynamicResource Turing_UploadVideo}"
                             Icon="{ui:SymbolIcon VideoClip24}" />
                         <TextBlock
                             Margin="10,0,0,0"
@@ -132,7 +132,7 @@
                                 Margin="0,0,0,10"
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Video Files" />
+                                Text="{DynamicResource Turing_VideoFiles}" />
 
                             <DataGrid
                                 Grid.Row="1"
@@ -147,16 +147,16 @@
                                     <DataGridTextColumn
                                         Width="*"
                                         Binding="{Binding Name}"
-                                        Header="Name" />
+                                        Header="{DynamicResource Common_Name}" />
                                     <DataGridTextColumn
                                         Width="80"
                                         Binding="{Binding Type}"
-                                        Header="Type" />
+                                        Header="{DynamicResource Common_Type}" />
                                     <DataGridTextColumn
                                         Width="100"
                                         Binding="{Binding SizeDisplay}"
-                                        Header="Size" />
-                                    <DataGridTemplateColumn Width="200" Header="Actions">
+                                        Header="{DynamicResource Common_Size}" />
+                                    <DataGridTemplateColumn Width="200" Header="{DynamicResource Common_Actions}">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
@@ -165,13 +165,13 @@
                                                         Appearance="Secondary"
                                                         Command="{Binding DataContext.PlayFileCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                         CommandParameter="{Binding}"
-                                                        Content="Play"
+                                                        Content="{DynamicResource Common_Play}"
                                                         FontSize="12" />
                                                     <ui:Button
                                                         Appearance="Danger"
                                                         Command="{Binding DataContext.DeleteFileCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                         CommandParameter="{Binding}"
-                                                        Content="Delete"
+                                                        Content="{DynamicResource Common_Delete}"
                                                         FontSize="12" />
                                                 </StackPanel>
                                             </DataTemplate>
@@ -198,7 +198,7 @@
             </TabItem>
 
             <!--  Settings Tab  -->
-            <TabItem Header="Settings">
+            <TabItem Header="{DynamicResource Nav_Settings}">
                 <Grid Margin="10">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel>
@@ -209,9 +209,9 @@
                                         Margin="0,0,0,10"
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="Device Settings" />
+                                        Text="{DynamicResource Turing_DeviceSettings}" />
 
-                                    <TextBlock Margin="0,0,0,5" Text="Default Brightness:" />
+                                    <TextBlock Margin="0,0,0,5" Text="{DynamicResource Turing_DefaultBrightness}" />
                                     <Grid Margin="0,0,0,15">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -231,7 +231,7 @@
                                             Text="{Binding Brightness, StringFormat='{}{0}%'}" />
                                     </Grid>
 
-                                    <TextBlock Margin="0,0,0,5" Text="Default Orientation:" />
+                                    <TextBlock Margin="0,0,0,5" Text="{DynamicResource Turing_DefaultOrientation}" />
                                     <ComboBox
                                         MinWidth="200"
                                         Margin="0,0,0,15"
@@ -239,7 +239,7 @@
                                         ItemsSource="{Binding OrientationOptions}"
                                         SelectedItem="{Binding SelectedOrientation}" />
 
-                                    <TextBlock Margin="0,0,0,5" Text="Startup Mode:" />
+                                    <TextBlock Margin="0,0,0,5" Text="{DynamicResource Turing_StartupMode}" />
                                     <ComboBox
                                         MinWidth="200"
                                         Margin="0,0,0,10"
@@ -251,7 +251,7 @@
                                         Margin="0,0,0,10"
                                         FontSize="12"
                                         FontStyle="Italic"
-                                        Text="Note: When 'Video' is selected as startup mode, the currently playing video will be set as the auto-play video."
+                                        Text="{DynamicResource Turing_StartupModeNote}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </ui:Card>
@@ -263,20 +263,20 @@
                                         Margin="0,0,0,10"
                                         FontSize="13"
                                         FontWeight="Medium"
-                                        Text="Device Actions" />
+                                        Text="{DynamicResource Turing_DeviceActions}" />
 
                                     <WrapPanel>
                                         <ui:Button
                                             Margin="0,0,10,10"
                                             Appearance="Primary"
                                             Command="{Binding SaveSettingsCommand}"
-                                            Content="Save Settings"
+                                            Content="{DynamicResource Turing_SaveSettings}"
                                             Icon="{ui:SymbolIcon Save24}" />
                                         <ui:Button
                                             Margin="0,0,10,10"
                                             Appearance="Secondary"
                                             Command="{Binding RestartDeviceCommand}"
-                                            Content="Restart Device"
+                                            Content="{DynamicResource Turing_RestartDevice}"
                                             Icon="{ui:SymbolIcon ArrowReset24}" />
                                     </WrapPanel>
                                 </StackPanel>

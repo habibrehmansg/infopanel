@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     x:Class="InfoPanel.Views.Pages.UpdatesPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -30,18 +30,19 @@
                                 <StackPanel Grid.Column="0">
                                     <TextBlock
                                         FontSize="13"
-                                        FontWeight="Medium"
-                                        Text="{Binding Version, StringFormat='You are using InfoPanel v{0}'}" />
+                                        FontWeight="Medium">
+                                        <Run Text="InfoPanel v" /><Run Text="{Binding Version, Mode=OneWay}" />
+                                    </TextBlock>
 
                                     <TextBlock Margin="0,5,0,0" FontSize="12">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                                                <Setter Property="Text" Value="There are no updates available. You are using the latest version." />
+                                                <Setter Property="Text" Value="{DynamicResource Updates_NoUpdatesAvailable}" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding UpdateAvailable}" Value="True">
                                                         <Setter Property="Foreground" Value="{DynamicResource SystemAccentColorPrimaryBrush}" />
-                                                        <Setter Property="Text" Value="{Binding VersionModel.Version, StringFormat='Version {0} is available. Click update to download and install.'}" />
+                                                        <Setter Property="Text" Value="{DynamicResource Updates_UpdateAvailableFormat}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -55,7 +56,7 @@
                                     Margin="0,0,0,0"
                                     Appearance="Primary"
                                     Click="ButtonUpdate_Click"
-                                    Content="Update"
+                                    Content="{DynamicResource Updates_Update}"
                                     IsEnabled="{Binding DownloadInProgress, Converter={StaticResource InverseBooleanConverter}}"
                                     Visibility="{Binding UpdateAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <ui:Button
@@ -63,7 +64,7 @@
                                     Width="150"
                                     Margin="10,0,0,0"
                                     Click="ButtonCheckUpdates_Click"
-                                    Content="Check for updates"
+                                    Content="{DynamicResource Updates_CheckForUpdates}"
                                     IsEnabled="{Binding UpdateCheckInProgress, Converter={StaticResource InverseBooleanConverter}}" />
                             </Grid>
                         </ui:CardControl.Header>
@@ -88,7 +89,7 @@
 
                     <Label
                         Margin="0,30,0,0"
-                        Content="What's New"
+                        Content="{DynamicResource Updates_WhatsNew}"
                         FontSize="14"
                         FontWeight="Medium"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />

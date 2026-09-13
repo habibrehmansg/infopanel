@@ -42,7 +42,7 @@
                 VerticalAlignment="Top"
                 Appearance="Secondary"
                 Click="ButtonImportProfile_Click"
-                Content="Import Profile" />
+                Content="{DynamicResource Profile_ImportProfile}" />
 
             <ui:Button
                 Name="ButtonAdd"
@@ -52,7 +52,7 @@
                 VerticalAlignment="Top"
                 Appearance="Primary"
                 Click="ButtonAdd_Click"
-                Content="New Profile" />
+                Content="{DynamicResource Profile_NewProfile}" />
         </StackPanel>
 
         <ListView
@@ -121,7 +121,7 @@
                     BorderThickness="0"
                     Click="ButtonClose_Click"
                     Cursor="Hand"
-                    ToolTip="Close Panel">
+                    ToolTip="{DynamicResource Profile_ClosePanel}">
                     <ui:SymbolIcon FontSize="16" Symbol="Dismiss24" />
                 </Button>
 
@@ -151,47 +151,46 @@
                                                             VerticalAlignment="Stretch"
                                                             AllowDrop="False"
                                                             TextWrapping="Wrap">
-                                                            <Bold>Profile Guide:</Bold>
+                                                            <Bold><Run Text="{DynamicResource Guide_ProfileGuideTitle}" /></Bold>
                                                             <LineBreak /><LineBreak />
                                                             <Bold>1.</Bold>
-                                                            Set profile settings such as width, height, background color and typography defaults and save them.<LineBreak /><LineBreak />
+                                                            <Run Text="{DynamicResource Guide_ProfileGuide1}" /><LineBreak /><LineBreak />
                                                             <Bold>2.</Bold>
-                                                            Mouse over icons to see more details.<LineBreak /><LineBreak />
+                                                            <Run Text="{DynamicResource Guide_ProfileGuide2}" /><LineBreak /><LineBreak />
                                                             <Bold>3.</Bold>
-                                                            Direct 2D Acceleration uses your GPU instead of CPU for faster frame rendering up to 100 FPS.
-                                                            It also uses VRAM instead of memory to load images and GIFs. This results in faster GIF rendering and lower CPU usage for use cases with larger panel sizes and multiple high quality/high framerate images and GIFs.<LineBreak /><LineBreak />
-                                                            Direct2D is only available for HDMI/DP displays. Enabling for USB panels will not have an impact. USB displays are mostly limited by their update bus.</TextBlock>
+                                                            <Run Text="{DynamicResource Guide_ProfileGuide3}" /><LineBreak /><LineBreak />
+                                                            <Run Text="{DynamicResource Guide_ProfileGuideDirect2DNote}" /></TextBlock>
                                                         <TextBlock
                                                             Grid.Column="1"
                                                             Margin="10,0,0,0"
                                                             VerticalAlignment="Stretch"
                                                             AllowDrop="False"
                                                             TextWrapping="Wrap">
-                                                            <Bold>Direct2D Acceleration Notes:</Bold>
+                                                            <Bold><Run Text="{DynamicResource Guide_Direct2DNotesTitle}" /></Bold>
                                                             <LineBreak /><LineBreak />
                                                             <Bold>1.</Bold>
-                                                            Direct2D uses a different rendering engine. This results in different fonts being displayed differently when it is on versus off. This means that text may appear smaller or larger, and be offset lower, higher or more towards the left or right.<LineBreak /><LineBreak />
+                                                            <Run Text="{DynamicResource Guide_Direct2DNote1}" /><LineBreak /><LineBreak />
                                                             <Bold>2.</Bold>
-                                                            Adjust Font Scale, Text X Offset and Text Y Offset accordingly for backward compatibility with Non-Direct2D profiles.<LineBreak /><LineBreak />
+                                                            <Run Text="{DynamicResource Guide_Direct2DNote2}" /><LineBreak /><LineBreak />
                                                             <Bold>3.</Bold>
-                                                            Panel FPS shows the rendering speed of that particular panel. Although it uses mostly GPU, a CPU bottleneck by other non-Direct2D profiles or external applications can impact the speed as it is capped by the sensor calculations. The maximum FPS is 100.</TextBlock>
+                                                            <Run Text="{DynamicResource Guide_Direct2DNote3}" /></TextBlock>
                                                         <TextBlock
                                                             Grid.Column="2"
                                                             Margin="10,0,0,0"
                                                             VerticalAlignment="Stretch"
                                                             AllowDrop="False"
                                                             TextWrapping="Wrap">
-                                                            <Bold>Additional Notes:</Bold>
+                                                            <Bold><Run Text="{DynamicResource Guide_AdditionalNotesTitle}" /></Bold>
                                                             <LineBreak /><LineBreak />
                                                             <Bold>1.</Bold>
-                                                            This software is provided on a best effort basis. Expect bugs and/or crashes. You are encouraged to save often.<LineBreak /><LineBreak />
+                                                            <Run Text="{DynamicResource Guide_AdditionalNote1}" /><LineBreak /><LineBreak />
                                                             <Bold>2.</Bold>
-                                                            Performance and memory usage is largely determined by the number of active profiles and<Bold Foreground="Orange">size of your panel and number of images and GIFs.</Bold>
+                                                            <Run Text="{DynamicResource Guide_AdditionalNote2}" />
                                                             <LineBreak /><LineBreak />
                                                             <Bold>3.</Bold>
-                                                            Join our discord for support, feature requests and share your designs by using the export button to generate an .infopanel file for uploading.<LineBreak />
+                                                            <Run Text="{DynamicResource Guide_AdditionalNote3}" /><LineBreak />
                                                             <LineBreak /> <LineBreak />
-                                                            <Bold Foreground="OrangeRed">Lastly, remember to save your work. Updates are live but not auto saved.</Bold><LineBreak />
+                                                            <Bold Foreground="OrangeRed"><Run Text="{DynamicResource Guide_RememberSaveWork}" /></Bold><LineBreak />
                                                         </TextBlock>
                                                     </Grid>
                                                 </ControlTemplate>
@@ -215,7 +214,7 @@
                                             <TabItem.Header>
                                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                                                     <ui:SymbolIcon FontSize="16" Symbol="Settings20" />
-                                                    <TextBlock Margin="6,0,0,0" Text="General" />
+                                                    <TextBlock Margin="6,0,0,0" Text="{DynamicResource Common_General}" />
                                                 </StackPanel>
                                             </TabItem.Header>
                                             <Grid Margin="10,10,10,0">
@@ -232,7 +231,7 @@
                                                             Margin="5,0,0,0"
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Name" />
+                                                            Text="{DynamicResource Common_Name}" />
                                                     </StackPanel>
 
                                                     <Grid Margin="0,10,0,0" IsEnabled="{Binding Active}">
@@ -260,25 +259,25 @@
                                                             HorizontalAlignment="Right"
                                                             VerticalAlignment="Top"
                                                             Orientation="Horizontal">
-                                                            <ToggleButton IsChecked="{Binding StrictWindowMatching}" ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
+                                                            <ToggleButton IsChecked="{Binding StrictWindowMatching}" ToolTip="{DynamicResource Profile_StrictMatching}">
                                                                 <ui:SymbolIcon Symbol="WindowInprivate20" />
                                                             </ToggleButton>
                                                             <ToggleButton
                                                                 Margin="10,0,0,0"
                                                                 IsChecked="{Binding Topmost}"
-                                                                ToolTip="Keep panel visible on top of all other windows.">
+                                                                ToolTip="{DynamicResource Profile_AlwaysOnTop}">
                                                                 <ui:SymbolIcon Symbol="ShareScreenStart20" />
                                                             </ToggleButton>
                                                             <ToggleButton
                                                                 Margin="10,0,0,0"
                                                                 IsChecked="{Binding Drag}"
-                                                                ToolTip="Enables drag and drop placement of panel.">
+                                                                ToolTip="{DynamicResource Profile_EnableDragMove}">
                                                                 <ui:SymbolIcon Symbol="Drag20" />
                                                             </ToggleButton>
                                                             <ToggleButton
                                                                 Margin="10,0,0,0"
                                                                 IsChecked="{Binding Resize}"
-                                                                ToolTip="Enables drag resizing of panel.">
+                                                                ToolTip="{DynamicResource Profile_EnableDragResize}">
                                                                 <ui:SymbolIcon Symbol="Resize20" />
                                                             </ToggleButton>
                                                         </StackPanel>
@@ -290,7 +289,7 @@
                                                         <TextBlock
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Trigger app(s) — show this panel only when this process is in foreground (e.g. game.exe). Comma-separated."
+                                                            Text="{DynamicResource Profile_TriggerAppsDesc}"
                                                             TextWrapping="Wrap" />
                                                         <Grid Margin="0,10,0,0">
                                                             <Grid.ColumnDefinitions>
@@ -300,14 +299,14 @@
                                                             <TextBox
                                                                 Grid.Column="0"
                                                                 Margin="0,0,8,0"
-                                                                ToolTip="Process name(s), e.g. Cyberpunk2077, chrome"
+                                                                ToolTip="{DynamicResource Profile_TriggerAppsWatermark}"
                                                                 Text="{Binding TriggerProcessNames, UpdateSourceTrigger=PropertyChanged}" />
                                                             <ui:Button
                                                                 Grid.Column="1"
                                                                 x:Name="ButtonSelectFromList"
                                                                 Click="ButtonSelectFromList_Click"
-                                                                Content="Select from list..."
-                                                                ToolTip="Browse running processes and pick one" />
+                                                                Content="{DynamicResource Profile_SelectFromList}"
+                                                                ToolTip="{DynamicResource Profile_BrowseProcesses}" />
                                                         </Grid>
                                                     </StackPanel>
                                                 </StackPanel>
@@ -338,7 +337,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="Width" />
+                                                                Text="{DynamicResource Common_Width}" />
                                                         </StackPanel>
 
                                                         <StackPanel Grid.Column="1" Margin="5,0,5,0">
@@ -354,7 +353,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="Height" />
+                                                                Text="{DynamicResource Common_Height}" />
                                                         </StackPanel>
 
                                                         <ui:Button
@@ -366,7 +365,7 @@
                                                             Click="ButtonMaximise_Click"
                                                             Content=""
                                                             Icon="{ui:SymbolIcon Maximize20}"
-                                                            ToolTip="Fill screen" />
+                                                            ToolTip="{DynamicResource Profile_FillScreen}" />
                                                     </Grid>
 
                                                     <Grid Margin="0,10,0,0">
@@ -413,7 +412,7 @@
                                                             Click="ButtonResetPosition_Click"
                                                             Content=""
                                                             Icon="{ui:SymbolIcon ArrowReset20}"
-                                                            ToolTip="Reset window position" />
+                                                            ToolTip="{DynamicResource Profile_ResetPosition}" />
                                                     </Grid>
                                                 </StackPanel>
                                             </Grid>
@@ -424,7 +423,7 @@
                                             <TabItem.Header>
                                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                                                     <ui:SymbolIcon FontSize="16" Symbol="PaintBrush20" />
-                                                    <TextBlock Margin="6,0,0,0" Text="Appearance" />
+                                                    <TextBlock Margin="6,0,0,0" Text="{DynamicResource Common_Appearance}" />
                                                 </StackPanel>
                                             </TabItem.Header>
                                             <Grid Margin="10,10,10,0">
@@ -445,7 +444,7 @@
                                                             Margin="5,0,0,0"
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Background Color" />
+                                                            Text="{DynamicResource Profile_BgColor}" />
                                                     </StackPanel>
 
                                                     <StackPanel Margin="0,10,0,0">
@@ -459,7 +458,7 @@
                                                             Margin="5,0,0,0"
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Default Text Color" />
+                                                            Text="{DynamicResource Profile_DefaultTextColor}" />
                                                     </StackPanel>
                                                 </StackPanel>
 
@@ -480,7 +479,7 @@
                                                             Margin="5,0,0,0"
                                                             FontSize="12"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                            Text="Default Font Family" />
+                                                            Text="{DynamicResource Profile_DefaultFontFamily}" />
                                                     </StackPanel>
 
                                                     <Grid Margin="0,10,0,0">
@@ -500,7 +499,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="Default Font Size" />
+                                                                Text="{DynamicResource Profile_DefaultFontSize}" />
                                                         </StackPanel>
 
                                                         <StackPanel Grid.Column="1" Margin="5,0,0,0">
@@ -517,7 +516,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="Global Font Scale" />
+                                                                Text="{DynamicResource Profile_GlobalFontScale}" />
                                                         </StackPanel>
                                                     </Grid>
                                                 </StackPanel>
@@ -529,7 +528,7 @@
                                             <TabItem.Header>
                                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                                                     <ui:SymbolIcon FontSize="16" Symbol="VideoClip20" />
-                                                    <TextBlock Margin="6,0,0,0" Text="Rendering" />
+                                                    <TextBlock Margin="6,0,0,0" Text="{DynamicResource Common_Rendering}" />
                                                 </StackPanel>
                                             </TabItem.Header>
                                             <Grid Margin="10,10,10,0" VerticalAlignment="Top">
@@ -544,7 +543,7 @@
                                                             <TextBlock
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="Use OpenGL (GPU) rendering" />
+                                                                Text="{DynamicResource Profile_UseOpenGL}" />
                                                         </ui:CardControl.Header>
                                                         <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding OpenGL}" />
                                                     </ui:CardControl>
@@ -556,7 +555,7 @@
                                                             <TextBlock
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="Show Panel Overlay" />
+                                                                Text="{DynamicResource Profile_ShowOverlay}" />
                                                         </ui:CardControl.Header>
                                                         <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowFps}" />
                                                     </ui:CardControl>
@@ -574,12 +573,12 @@
                                         <ui:Button
                                             Appearance="Primary"
                                             Click="ButtonSave_Click"
-                                            Content="Save" />
+                                            Content="{DynamicResource Common_Save}" />
                                         <ui:Button
                                             Margin="10,0,0,0"
                                             Appearance="Danger"
                                             Click="ButtonReload_Click"
-                                            Content="Revert" />
+                                            Content="{DynamicResource Common_Revert}" />
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>

@@ -38,11 +38,11 @@
                         FontSize="28"
                         FontWeight="Bold"
                         Foreground="#FFFFFF"
-                        Text="Welcome to InfoPanel." />
+                        Text="{DynamicResource Home_Welcome}" />
                     <TextBlock
                         FontSize="18"
                         Foreground="#B7FFFFFF"
-                        Text="Level up your desktop." />
+                        Text="{DynamicResource Home_LevelUp}" />
                 </StackPanel>
             </Border>
         </Border>
@@ -64,11 +64,11 @@
                             Margin="0"
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Profiles" />
+                            Text="{DynamicResource Nav_Profiles}" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Create and manage your profiles." />
+                            Text="{DynamicResource Home_ProfilesDesc}" />
                     </StackPanel>
                 </ui:CardAction>
                 <ui:CardAction
@@ -81,11 +81,11 @@
                             Margin="0"
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Design" />
+                            Text="{DynamicResource Nav_Design}" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Customisation and design." />
+                            Text="{DynamicResource Home_DesignDesc}" />
                     </StackPanel>
                 </ui:CardAction>
                 <ui:CardAction
@@ -98,11 +98,11 @@
                             Margin="0"
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Updates" />
+                            Text="{DynamicResource Nav_Updates}" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Check for updates and view version history." />
+                            Text="{DynamicResource Home_UpdatesDesc}" />
                     </StackPanel>
                 </ui:CardAction>
                 <ui:CardAction
@@ -115,11 +115,11 @@
                             Margin="0"
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Plugins" />
+                            Text="{DynamicResource Nav_Plugins}" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="View activated plugins." />
+                            Text="{DynamicResource Home_PluginsDesc}" />
                     </StackPanel>
                 </ui:CardAction>
                 <ui:CardAction
@@ -132,11 +132,11 @@
                             Margin="0"
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Settings" />
+                            Text="{DynamicResource Nav_Settings}" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Manage settings." />
+                            Text="{DynamicResource Home_SettingsDesc}" />
                     </StackPanel>
                 </ui:CardAction>
                 <ui:CardAction
@@ -149,11 +149,11 @@
                             Margin="0"
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="About" />
+                            Text="{DynamicResource Nav_About}" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Resource links, donations and acknowledgments." />
+                            Text="{DynamicResource Home_AboutDesc}" />
                     </StackPanel>
                 </ui:CardAction>
 
@@ -176,13 +176,13 @@
                                 <TextBlock
                                     FontSize="13"
                                     FontWeight="Medium"
-                                    Text="Love InfoPanel?" />
+                                    Text="{DynamicResource Home_LoveInfoPanel}" />
                                 <TextBlock
                                     Margin="0,5,0,0"
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     TextWrapping="Wrap"
-                                    Text="Leave a review for others to see and help InfoPanel grow." />
+                                    Text="{DynamicResource Home_LoveInfoPanelDesc}" />
                             </StackPanel>
                             <ui:Anchor
                                 Grid.Column="1"
@@ -190,7 +190,7 @@
                                 Margin="10,0,0,0"
                                 VerticalAlignment="Center"
                                 Appearance="Secondary"
-                                Content="Review"
+                                Content="{DynamicResource Common_Review}"
                                 NavigateUri="ms-windows-store://review/?ProductId=XPFP7C8H5446ZD" />
                         </Grid>
                     </ui:CardControl.Header>
@@ -207,13 +207,13 @@
                                 <TextBlock
                                     FontSize="13"
                                     FontWeight="Medium"
-                                    Text="Support Development" />
+                                    Text="{DynamicResource Home_SupportDev}" />
                                 <TextBlock
                                     Margin="0,5,0,0"
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     TextWrapping="Wrap"
-                                    Text="Show your appreciation and buy me a coffee." />
+                                    Text="{DynamicResource Home_SupportDevDesc}" />
                             </StackPanel>
                             <ui:Anchor
                                 Grid.Column="1"
@@ -221,7 +221,7 @@
                                 Margin="10,0,0,0"
                                 VerticalAlignment="Center"
                                 Appearance="Secondary"
-                                Content="Donate"
+                                Content="{DynamicResource Common_Donate}"
                                 NavigateUri="https://www.buymeacoffee.com/urfath3r" />
                         </Grid>
                     </ui:CardControl.Header>
@@ -245,7 +245,7 @@
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     TextWrapping="Wrap"
-                                    Text="Join in conversations with others regarding InfoPanel." />
+                                    Text="{DynamicResource Home_DiscordDesc}" />
                             </StackPanel>
                             <ui:Anchor
                                 Grid.Column="1"
@@ -253,7 +253,7 @@
                                 Margin="10,0,0,0"
                                 VerticalAlignment="Center"
                                 Appearance="Secondary"
-                                Content="Join"
+                                Content="{DynamicResource Common_Join}"
                                 NavigateUri="https://discord.gg/cQnjdMC7Qc" />
                         </Grid>
                     </ui:CardControl.Header>
@@ -277,7 +277,7 @@
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     TextWrapping="Wrap"
-                                    Text="Help grow the /r/InfoPanel community." />
+                                    Text="{DynamicResource Home_RedditDesc}" />
                             </StackPanel>
                             <ui:Anchor
                                 Grid.Column="1"
@@ -285,7 +285,7 @@
                                 Margin="10,0,0,0"
                                 VerticalAlignment="Center"
                                 Appearance="Secondary"
-                                Content="Launch"
+                                Content="{DynamicResource Common_Launch}"
                                 NavigateUri="https://www.reddit.com/r/InfoPanel/" />
                         </Grid>
                     </ui:CardControl.Header>

@@ -47,7 +47,7 @@
                             Margin="0,0,0,0"
                             HorizontalAlignment="Right"
                             IsChecked="{Binding AbsoluteAddition}">
-                            <ui:SymbolIcon Symbol="FilterAdd20" ToolTip="Absolute" />
+                            <ui:SymbolIcon Symbol="FilterAdd20" ToolTip="{DynamicResource Prop_Absolute}" />
                         </ToggleButton>
 
                         <ToggleButton
@@ -55,7 +55,7 @@
                             Margin="5,0,0,0"
                             HorizontalAlignment="Right"
                             IsChecked="{Binding ShowName}">
-                            <ui:SymbolIcon Symbol="DrawText20" ToolTip="Show Name" />
+                            <ui:SymbolIcon Symbol="DrawText20" ToolTip="{DynamicResource Prop_ShowName}" />
                         </ToggleButton>
 
                         <ToggleButton
@@ -63,7 +63,7 @@
                             Margin="5,0,0,0"
                             HorizontalAlignment="Right"
                             IsChecked="{Binding ShowUnit}">
-                            <ui:SymbolIcon Symbol="TextAsterisk20" ToolTip="Show Unit" />
+                            <ui:SymbolIcon Symbol="TextAsterisk20" ToolTip="{DynamicResource Prop_ShowUnit}" />
                         </ToggleButton>
 
                         <ToggleButton
@@ -71,7 +71,7 @@
                             Margin="5,0,0,0"
                             HorizontalAlignment="Right"
                             IsChecked="{Binding ShowThousandsSeparator}">
-                            <ui:SymbolIcon Symbol="NumberRow20" ToolTip="Thousands Separator" />
+                            <ui:SymbolIcon Symbol="NumberRow20" ToolTip="{DynamicResource Prop_ThousandsSeparator}" />
                         </ToggleButton>
                     </StackPanel>
                 </StackPanel>
@@ -82,7 +82,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Reading" />
+                        Text="{DynamicResource Prop_Reading}" />
                 </StackPanel>
             </Grid>
 
@@ -123,7 +123,7 @@
                             FontSize="14"
                             Minimum="1"
                             Text="{Binding MultiplicationModifier}"
-                            ToolTip="Useful for unit conversion. E.g Kbps to Mbps"
+                            ToolTip="{DynamicResource Prop_UnitConversionDesc}"
                             Value="{Binding MultiplicationModifier}" />
                         <ui:ToggleSwitch
                             Grid.Column="1"
@@ -136,13 +136,13 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Multiplier (toggle for divisor)"
+                        Text="{DynamicResource Prop_Multiplier}"
                         Visibility="{Binding DivisionToggle, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                     <TextBlock
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Divisor (toggle for multiplier)"
+                        Text="{DynamicResource Prop_Divisor}"
                         Visibility="{Binding DivisionToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
 
@@ -155,13 +155,13 @@
                             SmallChange="1"
                             Text="{Binding AdditionModifier}"
                             TextChanged="NumberBoxAddition_TextChanged"
-                            ToolTip="Useful for inversing values. E.g. -32000 (with ABS) from Memory Usage for Memory Free."
+                            ToolTip="{DynamicResource Prop_ModifierDesc}"
                             Value="{Binding AdditionModifier}" />
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Modifier" />
+                            Text="{DynamicResource Prop_Modifier}" />
                     </StackPanel>
                 </StackPanel>
 
@@ -193,7 +193,7 @@
                                 SmallChange="1"
                                 Text="{Binding Precision}"
                                 TextChanged="NumberBoxPrecision_TextChanged"
-                                ToolTip="Number of decimal places"
+                                ToolTip="{DynamicResource Prop_NumDecimalPlaces}"
                                 Value="{Binding Precision}" />
                             <ui:ToggleSwitch
                                 Grid.Column="1"
@@ -205,7 +205,7 @@
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Override Precision" />
+                            Text="{DynamicResource Prop_OverridePrecision}" />
                     </StackPanel>
 
 
@@ -233,7 +233,7 @@
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Override Unit" />
+                            Text="{DynamicResource Prop_OverrideUnit}" />
                     </StackPanel>
 
 
@@ -263,13 +263,13 @@
                             SmallChange="1"
                             Text="{Binding Threshold1}"
                             TextChanged="NumberBoxThreshold1_TextChanged"
-                            ToolTip="Change color when sensor ≥ value"
+                            ToolTip="{DynamicResource Prop_ColorThreshold}"
                             Value="{Binding Threshold1}" />
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="≥ Threshold #1" />
+                            Text="{DynamicResource Prop_Threshold1}" />
                     </StackPanel>
 
 
@@ -303,13 +303,13 @@
                             SmallChange="1"
                             Text="{Binding Threshold2}"
                             TextChanged="NumberBoxThreshold2_TextChanged"
-                            ToolTip="Change color when sensor ≥ value"
+                            ToolTip="{DynamicResource Prop_ColorThreshold}"
                             Value="{Binding Threshold2}" />
                         <TextBlock
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="≥ Threshold #2" />
+                            Text="{DynamicResource Prop_Threshold2}" />
                     </StackPanel>
 
 

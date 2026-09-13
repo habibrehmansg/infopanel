@@ -71,7 +71,7 @@
                                             VerticalAlignment="Top"
                                             Appearance="Primary"
                                             Click="ButtonSelect_Click"
-                                            Content="Select Media"
+                                            Content="{DynamicResource Prop_SelectMedia}"
                                             Visibility="{Binding ReadOnly, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                     </Grid>
                                 </DataTemplate>
@@ -94,7 +94,7 @@
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
                                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                        Text="RTSP Stream URL (tab to apply)" />
+                                                        Text="{DynamicResource Prop_RtspUrlTab}" />
                                                 </StackPanel>
                                             </Grid>
                                         </DataTemplate>
@@ -117,7 +117,7 @@
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
                                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                        Text="HTTP/HTTPS URL (tab to apply)" />
+                                                        Text="{DynamicResource Prop_HttpUrlTab}" />
                                                 </StackPanel>
                                             </Grid>
                                         </DataTemplate>
@@ -151,7 +151,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Width" />
+                        Text="{DynamicResource Common_Width}" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
@@ -167,7 +167,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Height" />
+                        Text="{DynamicResource Common_Height}" />
                 </StackPanel>
             </Grid>
 
@@ -197,7 +197,7 @@
                             Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Resize scale" />
+                            Text="{DynamicResource Prop_Scale}" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
@@ -224,7 +224,7 @@
                             Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Rotation °" />
+                            Text="{DynamicResource Common_RotationDeg_Alt}" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
@@ -274,7 +274,7 @@
                     <CheckBox
                         x:Name="CheckBoxLayer"
                         Margin="0,0,0,0"
-                        Content="Add Fill Layer"
+                        Content="{DynamicResource Prop_AddFillLayer}"
                         IsChecked="{Binding Layer}" />
                     <metro:ColorPicker
                         Height="40"
@@ -310,7 +310,7 @@
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Name" />
+                            Text="{DynamicResource Common_Name}" />
                     </StackPanel>
                     <StackPanel
                         Grid.Column="1"
@@ -324,7 +324,7 @@
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Type" />
+                            Text="{DynamicResource Common_Type}" />
                     </StackPanel>
                 </Grid>
 
@@ -339,7 +339,7 @@
                         Visibility="{Binding Type, Converter={StaticResource EnumEqualsConverter}, ConverterParameter='FILE'}">
                         <ui:CardControl.Header>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="12" Text="Use Caching" />
+                                <TextBlock FontSize="12" Text="{DynamicResource Prop_UseCaching}" />
                             </StackPanel>
                         </ui:CardControl.Header>
                         <StackPanel>
@@ -352,7 +352,7 @@
                     <ui:CardControl Grid.Column="1" Margin="10,0,0,0">
                         <ui:CardControl.Header>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="12" Text="Show Panel" />
+                                <TextBlock FontSize="12" Text="{DynamicResource Profile_ShowPanel}" />
                             </StackPanel>
                         </ui:CardControl.Header>
                         <StackPanel>
@@ -425,7 +425,7 @@
                                             Margin="5,0,0,0"
                                             FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                            Text="Reading" />
+                                            Text="{DynamicResource Prop_Reading}" />
                                     </StackPanel>
                                 </Grid>
 
@@ -462,7 +462,7 @@
                                                     Margin="5,0,0,0"
                                                     FontSize="12"
                                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                    Text="Show when ≥ Threshold #1" />
+                                                    Text="{DynamicResource Prop_ShowThreshold1}" />
                                                 <TextBlock
                                                     Grid.Column="1"
                                                     Margin="5,0,0,0"
@@ -495,7 +495,7 @@
                                                 Margin="5,0,0,0"
                                                 FontSize="12"
                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="Hide when &gt; Threshold #2" />
+                                                Text="{DynamicResource Prop_HideThreshold2}" />
                                         </StackPanel>
 
                                     </Grid>

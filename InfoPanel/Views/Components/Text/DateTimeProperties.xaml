@@ -39,7 +39,7 @@
                     Margin="5,0,0,0"
                     FontSize="12"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="Custom Format" />
+                    Text="{DynamicResource Prop_CustomFormat}" />
 
             </StackPanel>
             <!--  Quick Templates Section  -->
@@ -52,7 +52,7 @@
                     Margin="0,0,0,5"
                     FontSize="12"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="Quick Templates" />
+                    Text="{DynamicResource Prop_QuickTemplates}" />
             </StackPanel>
 
         </Grid>
@@ -70,13 +70,13 @@
                 <TextBlock
                     FontSize="11"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="Preview:" />
+                    Text="{DynamicResource Common_Preview}" />
                 <TextBlock
                     x:Name="PreviewText"
                     Margin="0,2,0,0"
                     FontSize="14"
                     FontWeight="Medium"
-                    Text="December 25, 2024 3:45:30 PM" />
+                    Text="{DynamicResource DateTime_Sample}" />
             </StackPanel>
         </Border>
 
@@ -86,7 +86,7 @@
                 Margin="0,0,0,5"
                 FontSize="12"
                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                Text="Format Builder (mouse over for details)" />
+                Text="{DynamicResource Prop_FormatBuilder}" />
             <WrapPanel Visibility="{Binding ElementName=UserControlRoot, Path=IsDateVisible, Converter={StaticResource BoolToVisConverter}}">
                 <!--  Date Components  -->
                 <Button
@@ -95,28 +95,28 @@
                     Click="FormatButton_Click"
                     Content="d"
                     Tag="d"
-                    ToolTip="Day (1-31)" />
+                    ToolTip="{DynamicResource DateTime_DayNumShort}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="dd"
                     Tag="dd"
-                    ToolTip="Day (01-31)" />
+                    ToolTip="{DynamicResource DateTime_DayNum}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="ddd"
                     Tag="ddd"
-                    ToolTip="Day name (Mon)" />
+                    ToolTip="{DynamicResource DateTime_DayNameShort}" />
                 <Button
                     Margin="0,0,10,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="dddd"
                     Tag="dddd"
-                    ToolTip="Day name (Monday)" />
+                    ToolTip="{DynamicResource DateTime_DayNameFull}" />
 
                 <Button
                     Margin="0,0,2,2"
@@ -124,28 +124,28 @@
                     Click="FormatButton_Click"
                     Content="M"
                     Tag="M"
-                    ToolTip="Month (1-12)" />
+                    ToolTip="{DynamicResource DateTime_MonthNumShort}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="MM"
                     Tag="MM"
-                    ToolTip="Month (01-12)" />
+                    ToolTip="{DynamicResource DateTime_MonthNum}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="MMM"
                     Tag="MMM"
-                    ToolTip="Month name (Dec)" />
+                    ToolTip="{DynamicResource DateTime_MonthNameShort}" />
                 <Button
                     Margin="0,0,10,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="MMMM"
                     Tag="MMMM"
-                    ToolTip="Month name (December)" />
+                    ToolTip="{DynamicResource DateTime_MonthNameFull}" />
 
                 <Button
                     Margin="0,0,2,2"
@@ -153,14 +153,14 @@
                     Click="FormatButton_Click"
                     Content="yy"
                     Tag="yy"
-                    ToolTip="Year (24)" />
+                    ToolTip="{DynamicResource DateTime_YearShort}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="yyyy"
                     Tag="yyyy"
-                    ToolTip="Year (2024)" />
+                    ToolTip="{DynamicResource DateTime_YearFull}" />
             </WrapPanel>
 
             <WrapPanel Margin="0,0,0,0" Visibility="{Binding ElementName=UserControlRoot, Path=IsTimeVisible, Converter={StaticResource BoolToVisConverter}}">
@@ -171,28 +171,28 @@
                     Click="FormatButton_Click"
                     Content="h"
                     Tag="h"
-                    ToolTip="Hour 12 (1-12)" />
+                    ToolTip="{DynamicResource DateTime_Hour12Short}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="hh"
                     Tag="hh"
-                    ToolTip="Hour 12 (01-12)" />
+                    ToolTip="{DynamicResource DateTime_Hour12}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="H"
                     Tag="H"
-                    ToolTip="Hour 24 (0-23)" />
+                    ToolTip="{DynamicResource DateTime_Hour24Short}" />
                 <Button
                     Margin="0,0,10,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="HH"
                     Tag="HH"
-                    ToolTip="Hour 24 (00-23)" />
+                    ToolTip="{DynamicResource DateTime_Hour24}" />
 
                 <Button
                     Margin="0,0,2,2"
@@ -200,14 +200,14 @@
                     Click="FormatButton_Click"
                     Content="m"
                     Tag="m"
-                    ToolTip="Minute (0-59)" />
+                    ToolTip="{DynamicResource DateTime_MinuteShort}" />
                 <Button
                     Margin="0,0,10,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="mm"
                     Tag="mm"
-                    ToolTip="Minute (00-59)" />
+                    ToolTip="{DynamicResource DateTime_Minute}" />
 
                 <Button
                     Margin="0,0,2,2"
@@ -215,14 +215,14 @@
                     Click="FormatButton_Click"
                     Content="s"
                     Tag="s"
-                    ToolTip="Second (0-59)" />
+                    ToolTip="{DynamicResource DateTime_SecondShort}" />
                 <Button
                     Margin="0,0,10,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="ss"
                     Tag="ss"
-                    ToolTip="Second (00-59)" />
+                    ToolTip="{DynamicResource DateTime_Second}" />
 
                 <Button
                     Margin="0,0,2,2"
@@ -230,14 +230,14 @@
                     Click="FormatButton_Click"
                     Content="tt"
                     Tag="tt"
-                    ToolTip="AM/PM" />
+                    ToolTip="{DynamicResource DateTime_AmPmFull}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="t"
                     Tag="t"
-                    ToolTip="A/P" />
+                    ToolTip="{DynamicResource DateTime_AmPmShort}" />
             </WrapPanel>
 
             <WrapPanel Margin="0,5,0,0">
@@ -248,35 +248,35 @@
                     Click="FormatButton_Click"
                     Content="/"
                     Tag="/"
-                    ToolTip="Slash separator" />
+                    ToolTip="{DynamicResource Prop_SlashSep}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content="-"
                     Tag="-"
-                    ToolTip="Dash separator" />
+                    ToolTip="{DynamicResource Prop_DashSep}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content=":"
                     Tag=":"
-                    ToolTip="Colon separator" />
+                    ToolTip="{DynamicResource Prop_ColonSep}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="12,4"
                     Click="FormatButton_Click"
                     Content=" "
                     Tag=" "
-                    ToolTip="Space separator" />
+                    ToolTip="{DynamicResource Prop_SpaceSep}" />
                 <Button
                     Margin="0,0,2,2"
                     Padding="8,4"
                     Click="FormatButton_Click"
                     Content=","
                     Tag=", "
-                    ToolTip="Comma separator" />
+                    ToolTip="{DynamicResource Prop_CommaSep}" />
             </WrapPanel>
         </StackPanel>
     </Grid>

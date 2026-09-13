@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="InfoPanel.Views.Components.PluginProperties"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -24,7 +24,7 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Text="{Binding DisplayName}"
+                            Text="{Binding DisplayName, Converter={StaticResource LocalizedTextConverter}}"
                             ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
                         <TextBox
                             Grid.Column="1"
@@ -43,7 +43,7 @@
                         <TextBlock
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Text="{Binding DisplayName}"
+                            Text="{Binding DisplayName, Converter={StaticResource LocalizedTextConverter}}"
                             ToolTip="{Binding Description, TargetNullValue={x:Null}}" />
                         <ui:NumberBox
                             Grid.Column="1"
@@ -268,7 +268,7 @@
                                 BorderThickness="0"
                                 Command="{Binding RemoveCommand}"
                                 Icon="{ui:SymbolIcon Delete20}"
-                                ToolTip="Uninstall plugin"
+                                ToolTip="{DynamicResource Plugins_Uninstall}"
                                 Visibility="{Binding ShowRemoveButton, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </Grid>
                     </Grid>
@@ -282,7 +282,7 @@
                 Margin="0,0,0,0"
                 FontSize="12"
                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                Text="Plugin not loaded."
+                Text="{DynamicResource Plugins_NotLoaded}"
                 Visibility="{Binding Activated, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
 
             <ItemsControl
@@ -303,14 +303,14 @@
                                         <TextBlock
                                             FontSize="13"
                                             FontWeight="Medium"
-                                            Text="{Binding Name}" />
+                                            Text="{Binding Name, Converter={StaticResource LocalizedTextConverter}}" />
 
                                         <TextBlock
                                             Margin="0,5,0,0"
                                             VerticalAlignment="Center"
                                             FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding Description}" />
+                                            Text="{Binding Description, Converter={StaticResource LocalizedTextConverter}}" />
 
                                         <ItemsControl
                                             Margin="0,10,0,0"
@@ -326,7 +326,7 @@
                                                     <Button
                                                         Margin="0,0,10,0"
                                                         Command="{Binding Command}"
-                                                        Content="{Binding DisplayName}" />
+                                                        Content="{Binding DisplayName, Converter={StaticResource LocalizedTextConverter}}" />
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -337,7 +337,7 @@
                                             Width="150"
                                             VerticalAlignment="Center"
                                             Appearance="Secondary"
-                                            Content="Open Config File"
+                                            Content="{DynamicResource Plugins_OpenConfigFile}"
                                             NavigateUri="{Binding ConfigFilePath}"
                                             Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
 
@@ -345,7 +345,7 @@
                                             Width="150"
                                             Margin="0,10,0,0"
                                             Command="{Binding ReloadCommand}"
-                                            Content="Reload"
+                                            Content="{DynamicResource Common_Reload}"
                                             Visibility="{Binding ConfigFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
                                     </StackPanel>
                                 </Grid>

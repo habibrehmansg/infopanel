@@ -26,7 +26,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Group Name" />
+                        Text="{DynamicResource Prop_GroupName}" />
                 </StackPanel>
                 <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
                     <ui:ToggleSwitch IsChecked="{Binding IsLocked}" />
@@ -34,7 +34,7 @@
                         Margin="10,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Lock - Prevent items from moving in or out" />
+                        Text="{DynamicResource Design_LockGroupInOut}" />
                 </StackPanel>
             </StackPanel>
         </StackPanel>

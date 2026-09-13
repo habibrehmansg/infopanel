@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     x:Class="InfoPanel.Views.Pages.UsbPanelsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -32,12 +32,12 @@
                         <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="BeadaPanel Displays" />
+                            Text="{DynamicResource Usb_BeadaPanelDisplays}" />
                         <TextBlock
                             Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Configure and run multiple BeadaPanel devices simultaneously." />
+                            Text="{DynamicResource Usb_BeadaPanelDisplaysDesc}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -63,7 +63,7 @@
                             Margin="0,0,0,0"
                             VerticalAlignment="Center"
                             Appearance="Secondary"
-                            Content="BeadaTools"
+                            Content="{DynamicResource Usb_BeadaTools}"
                             NavigateUri="https://www.nxelec.com/service/beadatools/" />
                     </StackPanel>
 
@@ -73,7 +73,7 @@
                         HorizontalAlignment="Right"
                         Appearance="Primary"
                         Click="ButtonDiscoverBeadaPanelDevices_Click"
-                        Content="Discover Devices"
+                        Content="{DynamicResource Usb_DiscoverDevices}"
                         Icon="{ui:SymbolIcon Search20}"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.BeadaPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
@@ -134,7 +134,7 @@
                                                         Margin="0,0,0,0"
                                                         FontSize="12"
                                                         Foreground="SeaGreen"
-                                                        Text="Panel is running:" />
+                                                        Text="{DynamicResource Usb_PanelIsRunning}" />
                                                     <TextBlock
                                                         Margin="10,0,0,0"
                                                         FontSize="12"
@@ -152,7 +152,7 @@
                                                     Margin="0,5,0,0"
                                                     FontSize="12"
                                                     Foreground="Orange"
-                                                    Text="Display is not running. Check your USB connection and try again."
+                                                    Text="{DynamicResource Usb_DisplayNotRunning}"
                                                     Visibility="{Binding RuntimeProperties.IsRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                             </StackPanel>
                                         </StackPanel>
@@ -164,7 +164,7 @@
                                         <ui:Button
                                             Width="160"
                                             Appearance="Secondary"
-                                            Content="Advanced"
+                                            Content="{DynamicResource Common_Advanced}"
                                             Icon="{ui:SymbolIcon Settings20}"
                                             Click="ButtonAdvancedPopup_Click" />
                                         <Popup
@@ -195,7 +195,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Brightness" />
+                                                                Text="{DynamicResource Common_Brightness}" />
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 Margin="5,0,0,0"
@@ -251,7 +251,7 @@
                                             Click="ButtonRemoveBeadaPanelDevice_Click"
                                             Icon="{ui:SymbolIcon Delete20}"
                                             Tag="{Binding}"
-                                            ToolTip="Remove Device" />
+                                            ToolTip="{DynamicResource Usb_RemoveDevice}" />
                                     </Grid>
                                 </StackPanel>
                             </ui:CardControl>
@@ -277,12 +277,12 @@
                         <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Turzx Displays" />
+                            Text="{DynamicResource Usb_TurzxDisplays}" />
                         <TextBlock
                             Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Configure and run multiple Turzx devices simultaneously." />
+                            Text="{DynamicResource Usb_TurzxDisplaysDesc}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -309,7 +309,7 @@
                         HorizontalAlignment="Right"
                         Appearance="Primary"
                         Click="ButtonDiscoverTuringPanelDevices_Click"
-                        Content="Discover Devices"
+                        Content="{DynamicResource Usb_DiscoverDevices}"
                         Icon="{ui:SymbolIcon Search20}"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TuringPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
@@ -370,7 +370,7 @@
                                                         Margin="0,0,0,0"
                                                         FontSize="12"
                                                         Foreground="SeaGreen"
-                                                        Text="Panel is running:" />
+                                                        Text="{DynamicResource Usb_PanelIsRunning}" />
                                                     <TextBlock
                                                         Margin="10,0,0,0"
                                                         FontSize="12"
@@ -388,7 +388,7 @@
                                                     Margin="0,5,0,0"
                                                     FontSize="12"
                                                     Foreground="Orange"
-                                                    Text="Display is not running. Check your USB connection and try again."
+                                                    Text="{DynamicResource Usb_DisplayNotRunning}"
                                                     Visibility="{Binding RuntimeProperties.IsRunning, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                             </StackPanel>
                                         </StackPanel>
@@ -402,18 +402,18 @@
                                             Width="160"
                                             Margin="0,0,0,10"
                                             Appearance="Secondary"
-                                            Content="Advanced"
+                                            Content="{DynamicResource Common_Advanced}"
                                             Icon="{ui:SymbolIcon Settings20}"
                                             Click="ButtonAdvancedPopup_Click" />
                                         <!--  Manage Storage button (disabled — no longer supported)  -->
                                         <!--<ui:Button
                                             Width="160"
                                             Click="ButtonManageTuringDevice_Click"
-                                            Content="Manage Storage"
+                                            Content="{DynamicResource Usb_ManageStorage}"
                                             Icon="{ui:SymbolIcon Settings24}"
                                             IsEnabled="{Binding Enabled, Converter={StaticResource InverseBooleanConverter}}"
                                             Tag="{Binding}"
-                                            ToolTip="Manage device storage, videos, and settings"
+                                            ToolTip="{DynamicResource Usb_ManageStorageDesc}"
                                             Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}" />-->
                                         <Popup
                                             AllowsTransparency="True"
@@ -443,7 +443,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Brightness" />
+                                                                Text="{DynamicResource Common_Brightness}" />
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 Margin="5,0,0,0"
@@ -470,7 +470,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Target FPS" />
+                                                                Text="{DynamicResource Usb_TargetFPS}" />
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 Margin="5,0,0,0"
@@ -497,7 +497,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="JPEG Quality" />
+                                                                Text="{DynamicResource Usb_JPEGQuality}" />
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 Margin="5,0,0,0"
@@ -553,7 +553,7 @@
                                             Click="ButtonRemoveTuringPanelDevice_Click"
                                             Icon="{ui:SymbolIcon Delete20}"
                                             Tag="{Binding}"
-                                            ToolTip="Remove Device" />
+                                            ToolTip="{DynamicResource Usb_RemoveDevice}" />
                                     </Grid>
                                 </StackPanel>
                             </ui:CardControl>
@@ -582,12 +582,12 @@
                         <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Thermalright Displays" />
+                            Text="{DynamicResource Usb_ThermalrightDisplays}" />
                         <TextBlock
                             Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Text="Configure and run Thermalright USB LCD panels." />
+                            Text="{DynamicResource Usb_ThermalrightDisplaysDesc}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -614,7 +614,7 @@
                         HorizontalAlignment="Right"
                         Appearance="Primary"
                         Click="ButtonDiscoverThermalrightPanelDevices_Click"
-                        Content="Discover Devices"
+                        Content="{DynamicResource Usb_DiscoverDevices}"
                         Icon="{ui:SymbolIcon Search20}"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ThermalrightPanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
@@ -678,7 +678,7 @@
                                                         Margin="0,0,0,0"
                                                         FontSize="12"
                                                         Foreground="LawnGreen"
-                                                        Text="Panel is running:" />
+                                                        Text="{DynamicResource Usb_PanelIsRunning}" />
                                                     <TextBlock
                                                         Margin="10,0,0,0"
                                                         FontSize="12"
@@ -698,7 +698,7 @@
                                                     <TextBlock
                                                         FontSize="12"
                                                         Foreground="Orange"
-                                                        Text="Display is not running. Check your USB connection and try again." />
+                                                        Text="{DynamicResource Usb_DisplayNotRunning}" />
                                                     <TextBlock
                                                         FontSize="12"
                                                         Foreground="Orange"
@@ -715,7 +715,7 @@
                                         <ui:Button
                                             Width="160"
                                             Appearance="Secondary"
-                                            Content="Advanced"
+                                            Content="{DynamicResource Common_Advanced}"
                                             Icon="{ui:SymbolIcon Settings20}"
                                             Click="ButtonAdvancedPopup_Click" />
                                         <Popup
@@ -746,7 +746,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Brightness" />
+                                                                Text="{DynamicResource Common_Brightness}" />
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 Margin="5,0,0,0"
@@ -772,7 +772,7 @@
                                                                     Margin="5,0,0,0"
                                                                     FontSize="12"
                                                                     Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="Target FPS" />
+                                                                    Text="{DynamicResource Usb_TargetFPS}" />
                                                                 <TextBlock
                                                                     Grid.Column="1"
                                                                     Margin="5,0,0,0"
@@ -799,7 +799,7 @@
                                                                     Margin="5,0,0,0"
                                                                     FontSize="12"
                                                                     Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="JPEG Quality" />
+                                                                    Text="{DynamicResource Usb_JPEGQuality}" />
                                                                 <TextBlock
                                                                     Grid.Column="1"
                                                                     Margin="5,0,0,0"
@@ -819,7 +819,7 @@
                                                                 VerticalAlignment="Center"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Flicker Fix" />
+                                                                Text="{DynamicResource Usb_FlickerFix}" />
                                                             <ui:ToggleSwitch
                                                                 Grid.Column="1"
                                                                 IsChecked="{Binding FlickerFix}" />
@@ -835,7 +835,7 @@
                                                                 VerticalAlignment="Center"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Mask" />
+                                                                Text="{DynamicResource Usb_Mask}" />
                                                             <ComboBox
                                                                 Grid.Column="1"
                                                                 Width="150"
@@ -896,7 +896,7 @@
                                             Click="ButtonRemoveThermalrightPanelDevice_Click"
                                             Icon="{ui:SymbolIcon Delete20}"
                                             Tag="{Binding}"
-                                            ToolTip="Remove Device" />
+                                            ToolTip="{DynamicResource Usb_RemoveDevice}" />
                                     </Grid>
                                 </StackPanel>
                             </ui:CardControl>
@@ -925,12 +925,12 @@
                         <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Thermaltake / ASRock LCD" />
+                            Text="{DynamicResource Usb_ThermaltakeAsrock}" />
                         <TextBlock
                             Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Text="Configure and run Thermaltake, ASRock, and compatible USB LCD panels." />
+                            Text="{DynamicResource Usb_ThermaltakeAsrockDesc}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -957,7 +957,7 @@
                         HorizontalAlignment="Right"
                         Appearance="Primary"
                         Click="ButtonDiscoverThermaltakePanelDevices_Click"
-                        Content="Discover Devices"
+                        Content="{DynamicResource Usb_DiscoverDevices}"
                         Icon="{ui:SymbolIcon Search20}"
                         Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ThermaltakePanelMultiDeviceMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
@@ -1018,7 +1018,7 @@
                                                         Margin="0,0,0,0"
                                                         FontSize="12"
                                                         Foreground="LawnGreen"
-                                                        Text="Panel is running:" />
+                                                        Text="{DynamicResource Usb_PanelIsRunning}" />
                                                     <TextBlock
                                                         Margin="10,0,0,0"
                                                         FontSize="12"
@@ -1038,7 +1038,7 @@
                                                     <TextBlock
                                                         FontSize="12"
                                                         Foreground="Orange"
-                                                        Text="Display is not running. Check your USB connection and try again." />
+                                                        Text="{DynamicResource Usb_DisplayNotRunning}" />
                                                     <TextBlock
                                                         FontSize="12"
                                                         Foreground="Orange"
@@ -1055,7 +1055,7 @@
                                         <ui:Button
                                             Width="160"
                                             Appearance="Secondary"
-                                            Content="Advanced"
+                                            Content="{DynamicResource Common_Advanced}"
                                             Icon="{ui:SymbolIcon Settings20}"
                                             Click="ButtonAdvancedPopup_Click" />
                                         <Popup
@@ -1086,7 +1086,7 @@
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Brightness" />
+                                                                Text="{DynamicResource Common_Brightness}" />
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 Margin="5,0,0,0"
@@ -1112,7 +1112,7 @@
                                                                     Margin="5,0,0,0"
                                                                     FontSize="12"
                                                                     Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="Target FPS" />
+                                                                    Text="{DynamicResource Usb_TargetFPS}" />
                                                                 <TextBlock
                                                                     Grid.Column="1"
                                                                     Margin="5,0,0,0"
@@ -1138,7 +1138,7 @@
                                                                     Margin="5,0,0,0"
                                                                     FontSize="12"
                                                                     Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="JPEG Quality" />
+                                                                    Text="{DynamicResource Usb_JPEGQuality}" />
                                                                 <TextBlock
                                                                     Grid.Column="1"
                                                                     Margin="5,0,0,0"
@@ -1195,7 +1195,7 @@
                                             Click="ButtonRemoveThermaltakePanelDevice_Click"
                                             Icon="{ui:SymbolIcon Delete20}"
                                             Tag="{Binding}"
-                                            ToolTip="Remove Device" />
+                                            ToolTip="{DynamicResource Usb_RemoveDevice}" />
                                     </Grid>
                                 </StackPanel>
                             </ui:CardControl>
@@ -1221,12 +1221,12 @@
                         <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Global Hotkeys" />
+                            Text="{DynamicResource Usb_GlobalHotkeys}" />
                         <TextBlock
                             Margin="0,5,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Switch panel profiles with keyboard shortcuts" />
+                            Text="{DynamicResource Usb_GlobalHotkeysDesc}" />
                     </StackPanel>
                 </Grid>
             </ui:CardExpander.Header>
@@ -1272,14 +1272,14 @@
                                         Click="ButtonEditHotkey_Click"
                                         Icon="{ui:SymbolIcon Edit20}"
                                         Tag="{Binding}"
-                                        ToolTip="Edit Hotkey" />
+                                        ToolTip="{DynamicResource Usb_EditHotkey}" />
                                     <ui:Button
                                         Margin="5,0,0,0"
                                         Appearance="Danger"
                                         Click="ButtonRemoveHotkey_Click"
                                         Icon="{ui:SymbolIcon Delete20}"
                                         Tag="{Binding}"
-                                        ToolTip="Remove Hotkey" />
+                                        ToolTip="{DynamicResource Usb_RemoveHotkey}" />
                                 </StackPanel>
                             </ui:CardControl>
                         </DataTemplate>
@@ -1295,21 +1295,21 @@
                                     Margin="0,0,0,5"
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Hotkey" />
+                                    Text="{DynamicResource Usb_Hotkey}" />
                                 <TextBox
                                     x:Name="HotkeyCapture"
                                     Width="200"
                                     GotFocus="HotkeyCapture_GotFocus"
                                     IsReadOnly="True"
                                     PreviewKeyDown="HotkeyCapture_PreviewKeyDown"
-                                    Text="Click and press a key combo" />
+                                    Text="{DynamicResource Usb_HotkeyPrompt}" />
                             </StackPanel>
                             <StackPanel Margin="0,0,10,5">
                                 <TextBlock
                                     Margin="0,0,0,5"
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Panel" />
+                                    Text="{DynamicResource Common_Panel}" />
                                 <ComboBox
                                     x:Name="HotkeyDeviceCombo"
                                     Width="200"
@@ -1321,7 +1321,7 @@
                                     Margin="0,0,0,5"
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Profile" />
+                                    Text="{DynamicResource Usb_Profile}" />
                                 <ComboBox
                                     x:Name="HotkeyProfileCombo"
                                     Width="200"
@@ -1339,14 +1339,14 @@
                                 Margin="0,0,5,0"
                                 BorderThickness="0"
                                 Click="ButtonCancelHotkey_Click"
-                                Content="Cancel"
+                                Content="{DynamicResource Common_Cancel}"
                                 Visibility="Collapsed" />
                             <ui:Button
                                 x:Name="HotkeyAddButton"
                                 Appearance="Primary"
                                 BorderThickness="0"
                                 Click="ButtonAddHotkey_Click"
-                                Content="Add"
+                                Content="{DynamicResource Common_Add}"
                                 Icon="{ui:SymbolIcon Add20}" />
                         </StackPanel>
                     </StackPanel>

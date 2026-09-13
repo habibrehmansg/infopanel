@@ -87,7 +87,7 @@
                             BorderThickness="0"
                             Command="{Binding ToggleLockCommand}"
                             Cursor="Hand"
-                            ToolTip="Lock items from moving in and out">
+                            ToolTip="{DynamicResource Design_LockItemsInOut}">
                             <ui:SymbolIcon Foreground="{Binding IsLocked, Converter={StaticResource LockColorConverter}}" Symbol="{Binding IsLocked, Converter={StaticResource LockSymbolConverter}}" />
                         </Button>
 
@@ -159,7 +159,7 @@
                     Grid.Column="0"
                     Width="200"
                     Margin="0,0,0,0"
-                    PlaceholderText="Search Items"
+                    PlaceholderText="{DynamicResource Common_SearchItems}"
                     TextChanged="TextBoxSearch_TextChanged" />
                 <StackPanel
                     Grid.Column="2"
@@ -178,35 +178,35 @@
                     <ToggleButton
                         Margin="10,0,0,0"
                         IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.ShowFps}"
-                        ToolTip="Show Panel Overlay">
+                        ToolTip="{DynamicResource Profile_ShowOverlay}">
                         <ui:SymbolIcon Symbol="Info20" />
                     </ToggleButton>
 
                     <ToggleButton
                         Margin="10,0,0,0"
                         IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.StrictWindowMatching}"
-                        ToolTip="Enforce strict window matching. Panel will not move over to a visible window even if the target display monitor is off.">
+                        ToolTip="{DynamicResource Profile_StrictMatching}">
                         <ui:SymbolIcon Symbol="WindowInprivate20" />
                     </ToggleButton>
 
                     <ToggleButton
                         Margin="10,0,0,0"
                         IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Topmost}"
-                        ToolTip="Keep panel visible on top of all other windows.">
+                        ToolTip="{DynamicResource Profile_AlwaysOnTop}">
                         <ui:SymbolIcon Symbol="ShareScreenStart20" />
                     </ToggleButton>
 
                     <ToggleButton
                         Margin="10,0,0,0"
                         IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Drag}"
-                        ToolTip="Enables drag and drop placement of panel.">
+                        ToolTip="{DynamicResource Profile_EnableDragMove}">
                         <ui:SymbolIcon Symbol="Drag20" />
                     </ToggleButton>
 
                     <ToggleButton
                         Margin="10,0,0,0"
                         IsChecked="{Binding Source={x:Static app:SharedModel.Instance}, Path=SelectedProfile.Resize}"
-                        ToolTip="Enables drag resizing of panel.">
+                        ToolTip="{DynamicResource Profile_EnableDragResize}">
                         <ui:SymbolIcon Symbol="Resize20" />
                     </ToggleButton>
 
@@ -302,7 +302,7 @@
                     Content=""
                     Icon="{ui:SymbolIcon ArrowUpload20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Push selected item to the top (overlapped by items below)" />
+                    ToolTip="{DynamicResource Design_PushItemTop}" />
                 <ui:Button
                     x:Name="ButtonPushUp"
                     Margin="0,10,0,0"
@@ -310,7 +310,7 @@
                     Content=""
                     Icon="{ui:SymbolIcon ArrowUp20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Push selected item up (overlapped by items below)" />
+                    ToolTip="{DynamicResource Design_PushItemUp}" />
                 <ui:Button
                     x:Name="ButtonPushDown"
                     Margin="0,10,0,0"
@@ -318,7 +318,7 @@
                     Content=""
                     Icon="{ui:SymbolIcon ArrowDown20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Bring selected item down (overlap items above)" />
+                    ToolTip="{DynamicResource Design_BringItemDown}" />
                 <ui:Button
                     x:Name="ButtonPushFront"
                     Margin="0,10,0,0"
@@ -326,7 +326,7 @@
                     Content=""
                     Icon="{ui:SymbolIcon ArrowDownload20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Bring selected item to bottom (overlap items above)" />
+                    ToolTip="{DynamicResource Design_BringItemBottom}" />
                 <ui:Button
                     x:Name="ButtonDuplicate"
                     Margin="0,10,0,0"
@@ -334,7 +334,7 @@
                     Content=""
                     Icon="{ui:SymbolIcon Copy20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Duplicate selected item" />
+                    ToolTip="{DynamicResource Design_DuplicateSelectedItem}" />
                 <ui:Button
                     x:Name="ButtonDelete"
                     Margin="0,10,0,0"
@@ -343,7 +343,7 @@
                     Content=""
                     Icon="{ui:SymbolIcon Delete20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Delete selected item" />
+                    ToolTip="{DynamicResource Design_DeleteSelectedItem}" />
             </StackPanel>
 
         </Grid>
@@ -377,7 +377,7 @@
                         RenderTransformOrigin="0.5,0.5"
                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                         Symbol="ArrowSync20"
-                        ToolTip="Autosave pending"
+                        ToolTip="{DynamicResource Design_AutosavePending}"
                         Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Pending}">
                         <ui:SymbolIcon.RenderTransform>
                             <RotateTransform Angle="0" />
@@ -413,7 +413,7 @@
                         VerticalAlignment="Center"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                         Symbol="Checkmark20"
-                        ToolTip="Auto-saved"
+                        ToolTip="{DynamicResource Design_AutoSaved}"
                         Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=AutosaveIndicator, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=AutoSaved}">
                         <ui:SymbolIcon.Style>
                             <Style TargetType="ui:SymbolIcon">
@@ -449,8 +449,8 @@
                     Margin="0,0,0,0"
                     Appearance="Primary"
                     Click="ButtonSave_Click"
-                    Content="Save"
-                    ToolTip="Make your changes permanent" />
+                    Content="{DynamicResource Common_Save}"
+                    ToolTip="{DynamicResource Profile_MakePermanent}" />
                 <ui:Button
                     x:Name="ButtonUndo"
                     Margin="10,0,0,0"
@@ -458,7 +458,7 @@
                     Content=""
                     Icon="{ui:SymbolIcon ArrowUndo20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=CanUndo}"
-                    ToolTip="Undo" />
+                    ToolTip="{DynamicResource Common_Undo}" />
                 <ui:Button
                     x:Name="ButtonRedo"
                     Margin="5,0,0,0"
@@ -466,15 +466,15 @@
                     Content=""
                     Icon="{ui:SymbolIcon ArrowRedo20}"
                     IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=CanRedo}"
-                    ToolTip="Redo" />
+                    ToolTip="{DynamicResource Common_Redo}" />
                 <ui:Button
                     x:Name="ButtonReload"
                     Width="105"
                     Margin="5,0,0,0"
                     Appearance="Danger"
                     Click="ButtonReload_Click"
-                    Content="Reload"
-                    ToolTip="Discard all changes and reload from disk" />
+                    Content="{DynamicResource Common_Reload}"
+                    ToolTip="{DynamicResource Profile_DiscardChanges}" />
             </StackPanel>
         </Grid>
     </Grid>

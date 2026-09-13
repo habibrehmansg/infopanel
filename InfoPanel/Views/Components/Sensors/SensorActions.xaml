@@ -29,7 +29,7 @@
             Click="ButtonSelect_Click"
             Icon="{ui:SymbolIcon Temperature20}"
             IsEnabled="True"
-            ToolTip="Add selected sensor as a text item" />
+            ToolTip="{DynamicResource Sensors_AddAsText}" />
         <ui:Button
             x:Name="ButtonAddBar"
             Grid.Column="1"
@@ -38,7 +38,7 @@
             Click="ButtonAddBar_Click"
             Icon="{ui:SymbolIcon DataBarHorizontal20}"
             IsEnabled="True"
-            ToolTip="Add selected sensor as a bar" />
+            ToolTip="{DynamicResource Sensors_AddAsBar}" />
         <ui:Button
             x:Name="ButtonAddDonut"
             Grid.Column="2"
@@ -47,7 +47,7 @@
             Click="ButtonAddDonut_Click"
             Icon="{ui:SymbolIcon DataPie20}"
             IsEnabled="True"
-            ToolTip="Add selected sensor as a donut" />
+            ToolTip="{DynamicResource Sensors_AddAsDonut}" />
         <ui:Button
             x:Name="ButtonAddGraph"
             Grid.Column="3"
@@ -56,7 +56,7 @@
             Click="ButtonAddGraph_Click"
             Icon="{ui:SymbolIcon DataBarVertical20}"
             IsEnabled="True"
-            ToolTip="Add selected sensor as a graph" />
+            ToolTip="{DynamicResource Sensors_AddAsGraph}" />
         <ui:Button
             x:Name="ButtonAddCustom"
             Grid.Column="4"
@@ -65,7 +65,7 @@
             Click="ButtonAddCustom_Click"
             Icon="{ui:SymbolIcon Gauge20}"
             IsEnabled="True"
-            ToolTip="Add selected sensor as gauge" />
+            ToolTip="{DynamicResource Sensors_AddAsGauge}" />
         <ui:Button
             x:Name="ButtonAddSensorImage"
             Grid.Column="5"
@@ -74,7 +74,7 @@
             Click="ButtonAddSensorImage_Click"
             Icon="{ui:SymbolIcon CircleImage20}"
             IsEnabled="True"
-            ToolTip="Add selected sensor as sensor image" />
+            ToolTip="{DynamicResource Sensors_AddAsSensorImage}" />
         <ui:Button
             x:Name="ButtonReplace"
             Grid.Column="6"
@@ -83,6 +83,6 @@
             Click="ButtonReplace_Click"
             Icon="{ui:SymbolIcon ArrowSwap20}"
             IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource IsSensorConverter}}"
-            ToolTip="Replace selected sensor" />
+            ToolTip="{DynamicResource Design_ReplaceSensor}" />
     </Grid>
 </UserControl>

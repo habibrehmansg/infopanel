@@ -98,7 +98,7 @@
                                 Margin="5,0,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Sensor Id" />
+                                Text="{DynamicResource Prop_SensorId}" />
                         </StackPanel>
 
 
@@ -129,7 +129,7 @@
                     Click="ButtonAddHttpImage_Click"
                     Icon="{ui:SymbolIcon WebAsset20}"
                     IsEnabled="True"
-                    ToolTip="Add selected sensor as Http image" />
+                    ToolTip="{DynamicResource Sensors_AddAsHttpImage}" />
 
                 <ui:Button
                     x:Name="ButtonAddTableSensor"
@@ -139,7 +139,7 @@
                     Click="ButtonAddTableSensor_Click"
                     Icon="{ui:SymbolIcon Table20}"
                     IsEnabled="{Binding SelectedItem.SensorReading, Converter={StaticResource IsPluginTableConverter}}"
-                    ToolTip="Add selected sensor in table view" />
+                    ToolTip="{DynamicResource Sensors_AddInTableView}" />
             </Grid>
 
             <Separator Grid.Row="4" Margin="0,5,0,0" />

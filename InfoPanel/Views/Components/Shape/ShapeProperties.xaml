@@ -27,7 +27,7 @@
                     Margin="5,0,0,0"
                     FontSize="12"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="Name" />
+                    Text="{DynamicResource Common_Name}" />
             </StackPanel>
 
             <Grid Grid.Row="1" Margin="0,10,0,0">
@@ -50,7 +50,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Width" />
+                        Text="{DynamicResource Common_Width}" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
@@ -66,7 +66,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Height" />
+                        Text="{DynamicResource Common_Height}" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Margin="10,0,0,0">
@@ -106,7 +106,7 @@
                     Grid.Column="0"
                     Margin="0,0,0,10"
                     VerticalAlignment="Top"
-                    Content="Show Frame"
+                    Content="{DynamicResource Prop_ShowFrame}"
                     IsChecked="{Binding ShowFrame}" />
 
                 <StackPanel Grid.Column="1" Margin="0,0,0,0">
@@ -114,7 +114,7 @@
                         Height="40"
                         Margin="0,0,0,0"
                         metro:TextBoxHelper.UseFloatingWatermark="True"
-                        metro:TextBoxHelper.Watermark="Frame color"
+                        metro:TextBoxHelper.Watermark="{DynamicResource Common_FrameColor}"
                         Background="Transparent"
                         SelectedColor="{Binding FrameColor, Mode=TwoWay}" />
 
@@ -131,7 +131,7 @@
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Frame thickness" />
+                            Text="{DynamicResource Prop_FrameThickness}" />
                     </StackPanel>
 
                 </StackPanel>
@@ -148,7 +148,7 @@
                     Grid.Row="5"
                     Margin="0,0,0,10"
                     VerticalAlignment="Top"
-                    Content="Fill Shape"
+                    Content="{DynamicResource Prop_FillShape}"
                     IsChecked="{Binding ShowFill}" />
                 <metro:ColorPicker
                     Grid.Column="1"
@@ -176,7 +176,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Type" />
+                        Text="{DynamicResource Common_Type}" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
@@ -196,7 +196,7 @@
                             Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Rotation °" />
+                            Text="{DynamicResource Common_RotationDeg_Alt}" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
@@ -215,7 +215,7 @@
                 <CheckBox
                     Margin="0,0,0,0"
                     VerticalAlignment="Top"
-                    Content="Add Gradient"
+                    Content="{DynamicResource Prop_AddGradient}"
                     IsChecked="{Binding ShowGradient}" />
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
                     <ComboBox Name="ComboBoxGradientType" SelectedValue="{Binding GradientType}" />
@@ -223,7 +223,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Gradient type" />
+                        Text="{DynamicResource Prop_GradientType}" />
                 </StackPanel>
             </Grid>
 
@@ -250,7 +250,7 @@
                             Margin="0,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Gradient angle" />
+                            Text="{DynamicResource Prop_GradientAngle}" />
                         <TextBlock
                             Grid.Column="1"
                             Margin="0,0,0,0"
@@ -278,7 +278,7 @@
                                 Margin="0,0,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Animation speed" />
+                                Text="{DynamicResource Prop_AnimationSpeed}" />
                             <TextBlock
                                 Grid.Column="1"
                                 Margin="0,0,0,0"

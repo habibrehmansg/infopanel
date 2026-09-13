@@ -1,6 +1,7 @@
-﻿using Flurl;
+using Flurl;
 using Flurl.Http;
 using InfoPanel.Models;
+using InfoPanel.Services;
 using InfoPanel.ViewModels;
 using System;
 using System.IO;
@@ -30,6 +31,8 @@ namespace InfoPanel.Views.Pages
             DataContext = this;
 
             InitializeComponent();
+
+            LocalizationService.LanguageChanged += (_, _) => ViewModel.InitializeCollections();
         }
     }
 }

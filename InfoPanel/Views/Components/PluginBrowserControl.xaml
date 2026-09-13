@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="InfoPanel.Views.Components.PluginBrowserControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -39,12 +39,12 @@
                     HorizontalAlignment="Center"
                     FontSize="14"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="Sign in to browse and install plugins." />
+                    Text="{DynamicResource Plugins_SignInToBrowse}" />
                 <ui:Button
                     Margin="0,12,0,0"
                     HorizontalAlignment="Center"
                     Appearance="Primary"
-                    Content="Go to Account"
+                    Content="{DynamicResource Plugins_GoToAccount}"
                     Click="GoToAccount_Click" />
             </StackPanel>
 
@@ -62,7 +62,7 @@
                 <ui:TextBox
                     Grid.Column="0"
                     Margin="0,0,10,0"
-                    PlaceholderText="Search plugins..."
+                    PlaceholderText="{DynamicResource Common_SearchPlugins}"
                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
 
                 <ComboBox
@@ -71,7 +71,7 @@
                     Margin="0,0,10,0"
                     SelectedIndex="0"
                     SelectionChanged="Category_SelectionChanged">
-                    <ComboBoxItem Content="All Categories" Tag="{x:Null}" />
+                    <ComboBoxItem Content="{DynamicResource Plugins_AllCategories}" Tag="{x:Null}" />
                     <ComboBoxItem Content="Media" />
                     <ComboBoxItem Content="Monitoring" />
                     <ComboBoxItem Content="Utilities" />
@@ -83,10 +83,10 @@
                     Width="160"
                     SelectedIndex="0"
                     SelectionChanged="Sort_SelectionChanged">
-                    <ComboBoxItem Content="Sort: Downloads" />
-                    <ComboBoxItem Content="Sort: Rating" />
-                    <ComboBoxItem Content="Sort: Name" />
-                    <ComboBoxItem Content="Sort: Newest" />
+                    <ComboBoxItem Content="{DynamicResource Plugins_SortDownloads}" />
+                    <ComboBoxItem Content="{DynamicResource Plugins_SortRating}" />
+                    <ComboBoxItem Content="{DynamicResource Plugins_SortName}" />
+                    <ComboBoxItem Content="{DynamicResource Plugins_SortNewest}" />
                 </ComboBox>
             </Grid>
 
@@ -243,7 +243,7 @@
                 HorizontalAlignment="Center"
                 Appearance="Secondary"
                 Command="{Binding LoadMoreCommand}"
-                Content="Load More"
+                Content="{DynamicResource Common_LoadMore}"
                 Visibility="{Binding HasMorePages, Converter={StaticResource BoolToVis}}" />
 
             <!-- Error message + Retry -->

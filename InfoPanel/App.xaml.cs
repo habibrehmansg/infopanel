@@ -1,4 +1,4 @@
-﻿using FlyleafLib;
+using FlyleafLib;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
@@ -345,6 +345,8 @@ namespace InfoPanel
 
             ConfigModel.Instance.Initialize();
             Logger.Debug("Configuration initialized");
+
+            LocalizationService.SetLanguage(ConfigModel.Instance.Settings.Language);
 
             if (ConfigModel.Instance.Profiles.Count == 0)
             {

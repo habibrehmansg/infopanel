@@ -54,7 +54,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Width" />
+                        Text="{DynamicResource Common_Width}" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
@@ -70,7 +70,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Height" />
+                        Text="{DynamicResource Common_Height}" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Margin="10,0,0,0">
@@ -86,7 +86,7 @@
                         Margin="5,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Corner Radius" />
+                        Text="{DynamicResource Prop_CornerRadius}" />
                 </StackPanel>
 
             </Grid>
@@ -116,14 +116,14 @@
                     x:Name="CheckBoxFrame"
                     Grid.Column="0"
                     Margin="0,10,0,10"
-                    Content="Show Frame"
+                    Content="{DynamicResource Prop_ShowFrame}"
                     IsChecked="{Binding Frame}" />
                 <metro:ColorPicker
                     Grid.Column="1"
                     Height="40"
                     Margin="0,10,0,0"
                     metro:TextBoxHelper.UseFloatingWatermark="True"
-                    metro:TextBoxHelper.Watermark="Frame color"
+                    metro:TextBoxHelper.Watermark="{DynamicResource Common_FrameColor}"
                     Background="Transparent"
                     SelectedColor="{Binding FrameColor, Mode=TwoWay}" />
             </Grid>
@@ -137,14 +137,14 @@
                     x:Name="CheckBoxBackground"
                     Grid.Row="5"
                     Margin="0,10,0,10"
-                    Content="Show Background"
+                    Content="{DynamicResource Prop_ShowBg}"
                     IsChecked="{Binding Background}" />
                 <metro:ColorPicker
                     Grid.Column="1"
                     Height="40"
                     Margin="0,10,0,0"
                     metro:TextBoxHelper.UseFloatingWatermark="True"
-                    metro:TextBoxHelper.Watermark="Background color"
+                    metro:TextBoxHelper.Watermark="{DynamicResource Common_BgColor}"
                     Background="Transparent"
                     SelectedColor="{Binding BackgroundColor, Mode=TwoWay}" />
             </Grid>
@@ -158,7 +158,7 @@
                     x:Name="CheckBoxGradient"
                     Grid.Row="5"
                     Margin="0,10,0,10"
-                    Content="Show Gradient"
+                    Content="{DynamicResource Prop_ShowGradient}"
                     IsChecked="{Binding Gradient}" />
                 <metro:ColorPicker
                     Grid.Column="1"
@@ -196,7 +196,7 @@
                     Margin="0,10,0,0"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
-                    Content="Flip Horizontally"
+                    Content="{DynamicResource Prop_FlipH}"
                     IsChecked="{Binding FlipX}" />
 
                 <StackPanel Grid.Column="1">
@@ -290,7 +290,7 @@
                         Margin="0,0,0,0"
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="Rotation °" />
+                        Text="{DynamicResource Common_RotationDeg_Alt}" />
                     <TextBlock
                         Grid.Column="1"
                         Margin="0,0,0,0"

@@ -19,12 +19,45 @@
         <StackPanel Grid.Row="0" Margin="0,0,0,0">
             <Label
                 Margin="0,0,0,10"
-                Content="Application"
+                Content="{DynamicResource Common_Application}"
                 FontSize="14"
                 FontWeight="Medium"
                 Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
 
             <ui:CardControl>
+                <ui:CardControl.Icon>
+                    <ui:SymbolIcon Symbol="LocalLanguage24" />
+                </ui:CardControl.Icon>
+                <ui:CardControl.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Text="{DynamicResource Settings_Language}" />
+                            <TextBlock
+                                Margin="0,5,0,0"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{DynamicResource Settings_Language_Desc}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </ui:CardControl.Header>
+                <ComboBox
+                    MinWidth="200"
+                    SelectedValue="{Binding ViewModel.Language, Mode=TwoWay}"
+                    SelectedValuePath="Tag">
+                    <ComboBoxItem Content="English" Tag="en" />
+                    <ComboBoxItem Content="日本語 (Japanese)" Tag="ja" />
+                </ComboBox>
+            </ui:CardControl>
+
+            <ui:CardControl Margin="0,10,0,0">
                 <ui:CardControl.Icon>
                     <ui:SymbolIcon Symbol="Color24" />
                 </ui:CardControl.Icon>
@@ -38,12 +71,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="App theme" />
+                                Text="{DynamicResource Settings_AppTheme}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Select which app theme to display"
+                                Text="{DynamicResource Settings_AppTheme_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -51,8 +84,8 @@
                 <ComboBox
                     MinWidth="200"
                     SelectedIndex="{Binding ViewModel.CurrentApplicationTheme, Converter={StaticResource ThemeToIndexConverter}, Mode=TwoWay}">
-                    <ComboBoxItem Content="Light" />
-                    <ComboBoxItem Content="Dark" />
+                    <ComboBoxItem Content="{DynamicResource Common_Light}" />
+                    <ComboBoxItem Content="{DynamicResource Common_Dark}" />
                 </ComboBox>
             </ui:CardControl>
 
@@ -70,12 +103,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="UI Scale" />
+                                Text="{DynamicResource Settings_UIScale}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Change InfoPanel UI scale to fit or zoom accordingly."
+                                Text="{DynamicResource Settings_UIScale_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -107,12 +140,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Run on startup" />
+                                Text="{DynamicResource Settings_RunOnStartup}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Launch InfoPanel automatically on windows sign in."
+                                Text="{DynamicResource Settings_RunOnStartup_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -129,7 +162,7 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Startup delay (secs):" />
+                            Text="{DynamicResource Settings_StartupDelay}" />
                         <ui:NumberBox
                             Width="150"
                             Margin="0,0,0,0"
@@ -160,12 +193,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Autosave" />
+                                Text="{DynamicResource Settings_Autosave}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Periodically backs up unsaved changes and offers to restore them on next launch."
+                                Text="{DynamicResource Settings_Autosave_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -182,7 +215,7 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Autosave after (secs):" />
+                            Text="{DynamicResource Settings_AutosaveAfter}" />
                         <ui:NumberBox
                             Width="100"
                             Margin="0,0,0,0"
@@ -211,12 +244,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Minimize to tray" />
+                                Text="{DynamicResource Settings_MinimizeToTray}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Minimize InfoPanel to the system tray instead."
+                                Text="{DynamicResource Settings_MinimizeToTray_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -237,12 +270,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Start minimised" />
+                                Text="{DynamicResource Settings_StartMinimized}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Runs InfoPanel minimized on startup."
+                                Text="{DynamicResource Settings_StartMinimized_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -263,12 +296,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Close to minimize" />
+                                Text="{DynamicResource Settings_CloseToMinimize}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Minimize InfoPanel instead of closing when the window close button is clicked."
+                                Text="{DynamicResource Settings_CloseToMinimize_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -281,7 +314,7 @@
         <StackPanel Margin="0,40,0,0">
             <Label
                 Margin="0,0,0,10"
-                Content="Panel"
+                Content="{DynamicResource Common_Panel}"
                 FontSize="14"
                 FontWeight="Medium"
                 Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -299,12 +332,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Selected item color" />
+                                Text="{DynamicResource Settings_SelectedItemColor}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Select an item via the Design Page or middle click on the panel itself when Design Page is active."
+                                Text="{DynamicResource Settings_SelectedItemColor_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -332,12 +365,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Show grid lines" />
+                                Text="{DynamicResource Settings_ShowGridLines}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Display grid lines when an item is selected."
+                                Text="{DynamicResource Settings_ShowGridLines_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -359,12 +392,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Grid lines settings" />
+                                Text="{DynamicResource Settings_GridLinesSettings}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Customise the grid lines to your preferences."
+                                Text="{DynamicResource Settings_GridLinesSettings_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -395,7 +428,7 @@
                             Margin="5,0,0,0"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Grid spacing in px" />
+                            Text="{DynamicResource Settings_GridSpacingInPx}" />
                     </StackPanel>
                 </StackPanel>
 
@@ -406,7 +439,7 @@
         <StackPanel Margin="0,40,0,0">
             <Label
                 Margin="0,0,0,10"
-                Content="Automation"
+                Content="{DynamicResource Common_Automation}"
                 FontSize="14"
                 FontWeight="Medium"
                 Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -424,19 +457,19 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Enable program-specific panels" />
+                                Text="{DynamicResource Settings_EnableProgramSpecificPanels}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Automatically show or hide panels based on the foreground application."
+                                Text="{DynamicResource Settings_EnableProgramSpecificPanels_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch
                     IsChecked="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled}"
-                    ToolTip="Matches the foreground app to each profile's Trigger app(s)." />
+                    ToolTip="{DynamicResource Settings_EnableProgramSpecificPanels_Tooltip}" />
             </ui:CardControl>
             <ui:CardControl Margin="0,10,0,0" Visibility="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.ProgramSpecificPanelsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <ui:CardControl.Icon>
@@ -452,12 +485,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Hide other profiles when program-specific panel is shown" />
+                                Text="{DynamicResource Settings_HideOtherProfiles}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="When a game or app triggers its panel, hide all other panels to avoid overlap and save resources. Recommended: on."
+                                Text="{DynamicResource Settings_HideOtherProfiles_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -488,12 +521,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Enable LibreHardwareMonitor" />
+                                Text="{DynamicResource Settings_EnableLibreHardwareMonitor}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Enables polling LibreHardwareMonitor sensor data."
+                                Text="{DynamicResource Settings_EnableLibreHardwareMonitor_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -515,12 +548,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="PawniO Driver" />
+                                Text="{DynamicResource Settings_PawniODriver}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Required for low-level hardware access (CPU temps, voltages, etc.). Click Check Status to verify installation."
+                                Text="{DynamicResource Settings_PawniODriver_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -538,7 +571,7 @@
                         Width="150"
                         Margin="0,0,0,0"
                         Click="ButtonCheckPawnIO_Click"
-                        Content="Check Status" />
+                        Content="{DynamicResource Settings_CheckStatus}" />
                 </StackPanel>
             </ui:CardControl>
 
@@ -554,10 +587,10 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="13" FontWeight="Medium" Text="Storage Monitoring" />
+                                <TextBlock FontSize="13" FontWeight="Medium" Text="{DynamicResource Settings_StorageMonitoring}" />
                                 <TextBlock Margin="0,5,0,0" FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Enable storage/disk monitoring. Disable if not needed."
+                                    Text="{DynamicResource Settings_StorageMonitoring_Desc}"
                                     TextWrapping="Wrap" />
                             </StackPanel>
                         </Grid>
@@ -576,10 +609,10 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontSize="13" FontWeight="Medium" Text="Storage Polling Interval" />
+                                <TextBlock FontSize="13" FontWeight="Medium" Text="{DynamicResource Settings_StoragePollingInterval}" />
                                 <TextBlock Margin="0,5,0,0" FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="How often to poll storage devices (seconds). Higher values reduce HDD activity."
+                                    Text="{DynamicResource Settings_StoragePollingInterval_Desc}"
                                     TextWrapping="Wrap" />
                             </StackPanel>
                         </Grid>
@@ -601,7 +634,7 @@
         <StackPanel Grid.Row="1" Margin="0,40,0,0">
             <Label
                 Margin="0,0,0,10"
-                Content="Performance"
+                Content="{DynamicResource Common_Performance}"
                 FontSize="14"
                 FontWeight="Medium"
                 Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -619,12 +652,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Target Frame Rate" />
+                                Text="{DynamicResource Settings_TargetFrameRate}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="The rate at which panels (including LCD) are rendered (excluding Direct2D acceleration)."
+                                Text="{DynamicResource Settings_TargetFrameRate_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -646,7 +679,7 @@
                                 Maximum="60"
                                 Minimum="1"
                                 TickFrequency="1"
-                                ToolTip="A lower value reduces CPU usage but results in slower updates"
+                                ToolTip="{DynamicResource Settings_TargetFrameRate_Tooltip}"
                                 Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TargetFrameRate}" />
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
@@ -657,7 +690,7 @@
                                     Margin="5,0,0,0"
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Target framerate" />
+                                    Text="{DynamicResource Settings_TargetFrameRate_Label}" />
                                 <TextBlock
                                     Grid.Column="1"
                                     Margin="5,0,0,0"
@@ -680,7 +713,7 @@
                                 Maximum="3000"
                                 Minimum="100"
                                 TickFrequency="100"
-                                ToolTip="A higher value reduces CPU usage but results in slower updates"
+                                ToolTip="{DynamicResource Settings_TargetGraphUpdateRate_Tooltip}"
                                 Value="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Settings.TargetGraphUpdateRate}" />
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
@@ -691,7 +724,7 @@
                                     Margin="5,0,0,0"
                                     FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Target graph update rate (ms)" />
+                                    Text="{DynamicResource Settings_TargetGraphUpdateRate_Label}" />
                                 <TextBlock
                                     Grid.Column="1"
                                     Margin="5,0,0,0"
@@ -712,7 +745,7 @@
         <StackPanel Grid.Row="2" Margin="0,40,0,0">
             <Label
                 Margin="0,0,0,10"
-                Content="Remote Sensor"
+                Content="{DynamicResource Settings_RemoteSensor}"
                 FontSize="14"
                 FontWeight="Medium"
                 Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -730,12 +763,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Enable webserver" />
+                                Text="{DynamicResource Settings_EnableWebserver}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Act as a webserver to display panels remotely via HTTP."
+                                Text="{DynamicResource Settings_EnableWebserver_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -756,12 +789,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Listen IP" />
+                                Text="{DynamicResource Settings_ListenIP}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="IP to run the webserver on."
+                                Text="{DynamicResource Settings_ListenIP_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -785,12 +818,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Listen Port" />
+                                Text="{DynamicResource Settings_ListenPort}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Port to run the webserver on."
+                                Text="{DynamicResource Settings_ListenPort_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -814,12 +847,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Refresh Rate" />
+                                Text="{DynamicResource Settings_RefreshRate}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="The target rate at which remote sensor updates in milliseconds."
+                                Text="{DynamicResource Settings_RefreshRate_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -834,7 +867,7 @@
         <StackPanel Margin="0,40,0,0">
             <Label
                 Margin="0,0,0,10"
-                Content="Misc"
+                Content="{DynamicResource Common_Misc}"
                 FontSize="14"
                 FontWeight="Medium"
                 Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -852,12 +885,12 @@
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="Medium"
-                                Text="Application Data" />
+                                Text="{DynamicResource Settings_ApplicationData}" />
                             <TextBlock
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="Go to where all your data is stored. Backing up often is always a good thing."
+                                Text="{DynamicResource Settings_ApplicationData_Desc}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -866,7 +899,7 @@
                     x:Name="ButtonOpenDataFolder"
                     Width="150"
                     Click="ButtonOpenDataFolder_Click"
-                    Content="Open Folder" />
+                    Content="{DynamicResource Settings_OpenFolder}" />
             </ui:CardControl>
         </StackPanel>
 

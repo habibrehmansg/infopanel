@@ -17,19 +17,19 @@
             </Grid.ColumnDefinitions>
             <Menu Grid.Column="0">
                 <MenuItem Header="File" HorizontalAlignment="Left">
-                    <!--<MenuItem Header="Export current profile"/>
-                <MenuItem Header="Import profile"/>-->
-                    <MenuItem Name="MenuItemExit" Header="Exit Program" Click="MenuItemExit_Click"/>
+                    <!--<MenuItem Header="{DynamicResource Profile_ExportProfile}"/>
+                <MenuItem Header="{DynamicResource Profile_ImportProfileTooltip}"/>-->
+                    <MenuItem Name="MenuItemExit" Header="{DynamicResource Menu_ExitProgram}" Click="MenuItemExit_Click"/>
                 </MenuItem>
-                <MenuItem Header="Settings">
-                    <CheckBox Content="Start with Windows (Recommended)" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.AutoStart}" Margin="0,0,0,0"/>
-                    <CheckBox Content="Start minimized (Recommended)" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.StartMinimized}"/>
-                    <CheckBox Content="BeadaPanel support (1st Profile Only)" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.Beadapanel}"/>
-                    <CheckBox Grid.Column="0" Content="WebServer support" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.WebServer}"/>
+                <MenuItem Header="{DynamicResource Nav_Settings}">
+                    <CheckBox Content="{DynamicResource Menu_StartWithWindows}" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.AutoStart}" Margin="0,0,0,0"/>
+                    <CheckBox Content="{DynamicResource Menu_StartMinimized}" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.StartMinimized}"/>
+                    <CheckBox Content="{DynamicResource Menu_BeadaPanelSupport}" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.Beadapanel}"/>
+                    <CheckBox Grid.Column="0" Content="{DynamicResource Menu_WebServerSupport}" IsChecked="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.WebServer}"/>
                 </MenuItem>
-                <MenuItem Header="Misc">
-                    <MenuItem Name="MenuItemPerformanceSettings" Header="Performance Settings" Click="MenuItemPerformanceSettings_Click"/>
-                    <MenuItem Name="MenuItemWebserverSettings" Header="WebServer Settings" Click="MenuItemWebserverSettings_Click"/>
+                <MenuItem Header="{DynamicResource Common_Misc}">
+                    <MenuItem Name="MenuItemPerformanceSettings" Header="{DynamicResource Common_PerformanceSettings}" Click="MenuItemPerformanceSettings_Click"/>
+                    <MenuItem Name="MenuItemWebserverSettings" Header="{DynamicResource Menu_WebServerSettings}" Click="MenuItemWebserverSettings_Click"/>
                 </MenuItem>
                 <MenuItem Header="Help">
                     <MenuItem Name="MenuItemDiscord" Header="Discord" Click="MenuItemDiscord_Click"/>

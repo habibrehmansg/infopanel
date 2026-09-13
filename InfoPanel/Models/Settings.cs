@@ -21,6 +21,9 @@ namespace InfoPanel.Models
         private int _appTheme = 1; // 0=Light, 1=Dark
 
         [ObservableProperty]
+        private string _language = "en";
+
+        [ObservableProperty]
         private bool _isPaneOpen = true;
 
         [ObservableProperty]

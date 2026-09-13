@@ -8,7 +8,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="clr-namespace:InfoPanel.Models"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    Title="Design"
+    Title="{DynamicResource Nav_Design}"
     d:DesignHeight="450"
     d:DesignWidth="800"
     DataContext="{Binding RelativeSource={RelativeSource self}}"
@@ -69,11 +69,10 @@
                                         FontSize="14"
                                         TextAlignment="Justify"
                                         TextWrapping="Wrap">
-                                        If you are seeing this, InfoPanel is &#32;<Bold Foreground="Orange">unable</Bold>
-                                        &#32; to communicate with HWiNFO via the Shared Memory Interface (SHM).<LineBreak /><LineBreak />
-                                        Ensure that HWiNFO is installed, running and the following are set in settings:<LineBreak /><LineBreak />
-                                        1. 'Show sensors on startup' is enabled.<LineBreak />
-                                        2. 'Shared Memory Support' is enabled.</TextBlock>
+                                        <Run Text="{DynamicResource Design_HwInfoSHMError}" /><LineBreak /><LineBreak />
+                                        <Run Text="{DynamicResource Design_HwInfoSettingsEnsure}" /><LineBreak /><LineBreak />
+                                        <Run Text="{DynamicResource Design_HwInfoSetting1}" /><LineBreak />
+                                        <Run Text="{DynamicResource Design_HwInfoSetting2}" /></TextBlock>
                                 </StackPanel>
                                 <Border
                                     Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
@@ -128,17 +127,15 @@
                                         VerticalAlignment="Center"
                                         FontSize="14"
                                         TextAlignment="Justify"
-                                        TextWrapping="Wrap">
-                                        You don't have to download LibreHardwareMonitor. If you are seeing this, it is &#32;<Bold Foreground="Orange">disabled</Bold>
-                                        in settings.<LineBreak /><LineBreak />
-                                        Enable Libre to get started.</TextBlock>
+                                        TextWrapping="Wrap"
+                                        Text="{DynamicResource Design_LibreDisabledDesc}" />
                                     <Button
                                         Width="150"
                                         Margin="0,50,0,0"
                                         HorizontalAlignment="Center"
                                         Command="{Binding ViewModel.NavigateCommand}"
                                         CommandParameter="navigate_to_settings"
-                                        Content="Settings" />
+                                        Content="{DynamicResource Nav_Settings}" />
                                 </StackPanel>
                                 <Border
                                     Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
@@ -187,11 +184,11 @@
                 VerticalAlignment="Top"
                 Panel.ZIndex="5"
                 Click="ShowItemsPanel_Click"
-                ToolTip="Show Display Items Panel"
+                ToolTip="{DynamicResource Design_ShowDisplayItems}"
                 Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal">
                     <ui:SymbolIcon Symbol="PanelRight24" />
-                    <TextBlock Margin="6,0,0,0" Text="Items" />
+                    <TextBlock Margin="6,0,0,0" Text="{DynamicResource Common_Items}" />
                 </StackPanel>
             </Button>
 
@@ -287,7 +284,7 @@
                             BorderThickness="0"
                             Click="HideItemsPanel_Click"
                             Cursor="Hand"
-                            ToolTip="Close Panel">
+                            ToolTip="{DynamicResource Profile_ClosePanel}">
                             <ui:SymbolIcon FontSize="16" Symbol="Subtract24" />
                         </Button>
                     </Grid>
@@ -367,57 +364,57 @@
                                                             <ColumnDefinition />
                                                             <ColumnDefinition />
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock
-                                                            Grid.Column="0"
-                                                            Margin="0,0,0,0"
-                                                            VerticalAlignment="Stretch"
-                                                            AllowDrop="False"
-                                                            TextWrapping="Wrap">
-                                                            <Bold>Quick Guide:</Bold>
-                                                            <LineBreak /><LineBreak />
-                                                            <Bold>1.</Bold>
-                                                            Your profile defaults such as font type, size and color will be automatically set. Change them at the profiles page.<LineBreak /><LineBreak />
-                                                            <Bold>2.</Bold>
-                                                            Choose between HWiNFO (if you have it installed) or Libre. You can mix and match.<LineBreak /><LineBreak />
-                                                            <Bold>3.</Bold>
-                                                            Mouse over the icons below the sensor list to find out more.<LineBreak /><LineBreak />
-                                                            <Bold>4.</Bold>
-                                                            You can swap between sensors by clicking the swap button with a sensor and panel item selected. Works better with the duplicate function.</TextBlock>
-                                                        <TextBlock
-                                                            Grid.Column="1"
-                                                            Margin="10,0,0,0"
-                                                            VerticalAlignment="Stretch"
-                                                            AllowDrop="False"
-                                                            TextWrapping="Wrap">
-                                                            <Bold>Tips:</Bold>
-                                                            <LineBreak /><LineBreak />
-                                                            <Bold>1.</Bold>
-                                                            All updates are live not auto-saved.<LineBreak /><LineBreak />
-                                                            <Bold>2.</Bold> <Bold Foreground="Orange">Remember to save your changes.</Bold>
-                                                            <LineBreak /><LineBreak />
-                                                            <Bold>3.</Bold> <Bold Foreground="IndianRed">Undo/Redo revert design steps. Reload from disk resets to the last saved file.</Bold>
-                                                            <LineBreak /><LineBreak />
-                                                            <Bold>4.</Bold>
-                                                            Panel items are drawn over one another in order from top to bottom. Put your background first!<LineBreak /><LineBreak />
-                                                            <Bold>5.</Bold>
-                                                            Right-sizing your images and gifs will significantly help to reduce resource usage.</TextBlock>
-                                                        <TextBlock
-                                                            Grid.Column="2"
-                                                            Margin="10,0,0,0"
-                                                            VerticalAlignment="Stretch"
-                                                            AllowDrop="False"
-                                                            TextWrapping="Wrap">
-                                                            <Bold>Additional Notes:</Bold>
-                                                            <LineBreak /><LineBreak />
-                                                            <Bold>1.</Bold>
-                                                            This software is provided on a best effort basis. Expect bugs and/or crashes. You are encouraged to save often. You can manually backup your profiles at<Bold FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorSecondaryBrush}">'%localappdata%\infopanel'</Bold>
-                                                            <LineBreak /><LineBreak />
-                                                            <Bold>2.</Bold>
-                                                            Performance and memory usage is largely determined by the number of profiles and<Bold Foreground="Orange">size of your images</Bold>
-                                                            .<LineBreak /><LineBreak />
-                                                            <Bold>3.</Bold>
-                                                            Join our discord (link in about page) for support, feature requests and to share your designs!<LineBreak />
-                                                        </TextBlock>
+                                                         <TextBlock
+                                                             Grid.Column="0"
+                                                             Margin="0,0,0,0"
+                                                             VerticalAlignment="Stretch"
+                                                             AllowDrop="False"
+                                                             TextWrapping="Wrap">
+                                                             <Bold><Run Text="{DynamicResource Design_QuickGuideTitle}" /></Bold>
+                                                             <LineBreak /><LineBreak />
+                                                             <Bold>1.</Bold>
+                                                             <Run Text="{DynamicResource Design_QuickGuide1}" /><LineBreak /><LineBreak />
+                                                             <Bold>2.</Bold>
+                                                             <Run Text="{DynamicResource Design_QuickGuide2}" /><LineBreak /><LineBreak />
+                                                             <Bold>3.</Bold>
+                                                             <Run Text="{DynamicResource Design_QuickGuide3}" /><LineBreak /><LineBreak />
+                                                             <Bold>4.</Bold>
+                                                             <Run Text="{DynamicResource Design_QuickGuide4}" /></TextBlock>
+                                                         <TextBlock
+                                                             Grid.Column="1"
+                                                             Margin="10,0,0,0"
+                                                             VerticalAlignment="Stretch"
+                                                             AllowDrop="False"
+                                                             TextWrapping="Wrap">
+                                                             <Bold><Run Text="{DynamicResource Design_TipsTitle}" /></Bold>
+                                                             <LineBreak /><LineBreak />
+                                                             <Bold>1.</Bold>
+                                                             <Run Text="{DynamicResource Design_Tips1}" /><LineBreak /><LineBreak />
+                                                             <Bold>2.</Bold> <Bold Foreground="Orange"><Run Text="{DynamicResource Design_Tips2}" /></Bold>
+                                                             <LineBreak /><LineBreak />
+                                                             <Bold>3.</Bold> <Bold Foreground="IndianRed"><Run Text="{DynamicResource Design_Tips3}" /></Bold>
+                                                             <LineBreak /><LineBreak />
+                                                             <Bold>4.</Bold>
+                                                             <Run Text="{DynamicResource Design_Tips4}" /><LineBreak /><LineBreak />
+                                                             <Bold>5.</Bold>
+                                                             <Run Text="{DynamicResource Design_Tips5}" /></TextBlock>
+                                                         <TextBlock
+                                                             Grid.Column="2"
+                                                             Margin="10,0,0,0"
+                                                             VerticalAlignment="Stretch"
+                                                             AllowDrop="False"
+                                                             TextWrapping="Wrap">
+                                                             <Bold><Run Text="{DynamicResource Guide_AdditionalNotesTitle}" /></Bold>
+                                                             <LineBreak /><LineBreak />
+                                                             <Bold>1.</Bold>
+                                                             <Run Text="{DynamicResource Design_AdditionalNote1}" />
+                                                             <LineBreak /><LineBreak />
+                                                             <Bold>2.</Bold>
+                                                             <Run Text="{DynamicResource Design_AdditionalNote2}" />
+                                                             <LineBreak /><LineBreak />
+                                                             <Bold>3.</Bold>
+                                                             <Run Text="{DynamicResource Design_AdditionalNote3}" /><LineBreak />
+                                                         </TextBlock>
                                                     </Grid>
                                                 </ControlTemplate>
                                             </Setter.Value>

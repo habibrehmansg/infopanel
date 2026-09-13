@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     x:Class="InfoPanel.Views.Pages.PluginsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -29,7 +29,7 @@
                         <TextBlock
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Plugin Framework" />
+                            Text="{DynamicResource Plugins_Framework}" />
                         <TextBlock
                             Margin="0,5,0,0"
                             VerticalAlignment="Center"
@@ -44,7 +44,7 @@
                             VerticalAlignment="Center"
                             FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="If you would like to develop a plugin, visit our GitHub and reference Infopanel.Extras project for guidelines."
+                            Text="{DynamicResource Plugins_FrameworkDesc}"
                             TextWrapping="Wrap" />
                     </StackPanel>
                     <StackPanel
@@ -55,12 +55,12 @@
                             Width="150"
                             Appearance="Secondary"
                             Command="{Binding AddPluginFromZipCommand}"
-                            Content="Import Plugin" />
+                            Content="{DynamicResource Plugins_ImportPlugin}" />
                         <ui:Anchor
                             Width="150"
                             Margin="0,6,0,0"
                             Appearance="Secondary"
-                            Content="Open Plugins Folder"
+                            Content="{DynamicResource Plugins_OpenFolder}"
                             NavigateUri="{Binding PluginFolder}" />
                     </StackPanel>
                 </Grid>
@@ -69,7 +69,7 @@
 
         <Label
             Margin="0,40,0,0"
-            Content="Bundled Plugins"
+            Content="{DynamicResource Plugins_Bundled}"
             DockPanel.Dock="Top"
             FontSize="14"
             FontWeight="Medium"
@@ -84,7 +84,7 @@
 
         <Label
             Margin="0,40,0,0"
-            Content="User Plugins"
+            Content="{DynamicResource Plugins_User}"
             DockPanel.Dock="Top"
             FontSize="14"
             FontWeight="Medium"
@@ -102,7 +102,7 @@
                             Margin="8,0,0,0"
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Installed" />
+                            Text="{DynamicResource Common_Installed}" />
                     </StackPanel>
                 </TabItem.Header>
                 <components:PluginInstalledControl x:Name="InstalledControl" />
@@ -115,7 +115,7 @@
                             Margin="8,0,0,0"
                             FontSize="13"
                             FontWeight="Medium"
-                            Text="Discover" />
+                            Text="{DynamicResource Common_Discover}" />
                     </StackPanel>
                 </TabItem.Header>
                 <components:PluginBrowserControl x:Name="BrowserControl" />

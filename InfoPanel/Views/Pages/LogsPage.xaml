@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     x:Class="InfoPanel.Views.Pages.LogsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -23,7 +23,7 @@
             <ui:Button
                 Appearance="Primary"
                 Command="{Binding ViewModel.CopyToClipboardCommand}"
-                Content="Copy to Clipboard"
+                Content="{DynamicResource Logs_CopyToClipboard}"
                 IsEnabled="{Binding ViewModel.HasLogs}"
                 Margin="0,0,8,0">
                 <ui:Button.Icon>
@@ -33,7 +33,7 @@
             <ui:Button
                 Appearance="Primary"
                 Command="{Binding ViewModel.LoadLogsCommand}"
-                Content="Refresh">
+                Content="{DynamicResource Common_Refresh}">
                 <ui:Button.Icon>
                     <ui:SymbolIcon Symbol="ArrowSync20" />
                 </ui:Button.Icon>

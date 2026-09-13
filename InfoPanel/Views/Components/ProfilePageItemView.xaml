@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="InfoPanel.Views.Components.ProfilePageItemView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -76,7 +76,7 @@
                     Click="ButtonDelete_Click"
                     Content=""
                     Icon="{ui:SymbolIcon Delete20}"
-                    ToolTip="Delete Profile"
+                    ToolTip="{DynamicResource Profile_DeleteProfile}"
                     Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
             </Grid>
         </Border>
