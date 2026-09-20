@@ -329,6 +329,9 @@ namespace InfoPanel.Services
                 {
                     Logger.Error(ex, "JonsboDevice {Device}: MS9132 error", _device);
                     _device.UpdateRuntimeProperties(errorMessage: ex.Message);
+                    // Leave the panel powered while retrying, otherwise a transport error
+                    // turns into a visible on/off flicker loop on the panel.
+                    if (ms != null) ms.PowerOffOnDispose = false;
                     retryCount++;
                 }
                 finally
@@ -347,6 +350,7 @@ namespace InfoPanel.Services
             FpsCounter fpsCounter = new(60);
             var stopwatch = new Stopwatch();
             byte[]? bgrBuffer = null;
+            int framesSent = 0;
 
             while (!token.IsCancellationRequested)
             {
@@ -354,6 +358,13 @@ namespace InfoPanel.Services
 
                 GenerateBgrFrame(ref bgrBuffer);
                 ms.SendFrame(bgrBuffer!, _panelWidth, _panelHeight);
+                framesSent++;
+
+                // The OEM app turns the output on only after the first frames are on the
+                // wire, then polls the panel status once per frame. Enabling video earlier
+                // leaves the scaler refusing to drain the bulk pipe on some units (#166).
+                ms.PollPanelStatus();
+                if (framesSent == 2) ms.EnableVideo();
 
                 fpsCounter.Update(stopwatch.ElapsedMilliseconds);
                 _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
