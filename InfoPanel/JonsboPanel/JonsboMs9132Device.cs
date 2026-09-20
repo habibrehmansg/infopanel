@@ -87,6 +87,27 @@ namespace InfoPanel.JonsboPanel
 
         private static readonly byte[] PanelStatusReport = [0xB5, 0x00, 0x32, 0, 0, 0, 0, 0];
 
+        /// <summary>
+        /// Mode index (the OEM app calls it a VIC) per native resolution, from the EDID
+        /// timing table the OEM SDK injects (`_quickVic2DipslayTimings`) plus 320x960,
+        /// which the VMAX 4.6" capture in PR #143 pins to 178.
+        /// </summary>
+        private static readonly Dictionary<(int Width, int Height), byte> VicByResolution = new()
+        {
+            [(480, 480)] = 143,
+            [(240, 320)] = 147,
+            [(320, 240)] = 148,
+            [(240, 240)] = 156,
+            [(480, 272)] = 159,
+            [(360, 960)] = 160,
+            [(376, 960)] = 171,
+            [(320, 960)] = 178,
+            [(600, 1600)] = 177,
+        };
+
+        public static byte? GetVicForResolution(int width, int height) =>
+            VicByResolution.TryGetValue((width, height), out var vic) ? vic : null;
+
         private HidStream? _hidStream;
         private UsbDevice? _usbDevice;
         private UsbEndpointWriter? _writer;
@@ -94,6 +115,15 @@ namespace InfoPanel.JonsboPanel
         private bool _disposed;
 
         public string SerialNumber { get; private set; } = string.Empty;
+
+        /// <summary>The 128-byte EDID block 0 read during startup, or null if it looked invalid.</summary>
+        public byte[]? Edid { get; private set; }
+
+        /// <summary>Native resolution from the EDID's preferred detailed timing.</summary>
+        public (int Width, int Height)? EdidResolution { get; private set; }
+
+        /// <summary>Panel name from the EDID monitor-name descriptor (e.g. "VMAXB01").</summary>
+        public string? EdidPanelName { get; private set; }
 
         /// <summary>
         /// Powers the panel down on dispose. Cleared while retrying after a transport
@@ -180,8 +210,55 @@ namespace InfoPanel.JonsboPanel
 
         private void RunStartupBlock()
         {
+            var edid = new byte[128];
+            bool haveEdid = false;
+
             foreach (var report in StartupReports)
-                SendReport(report);
+            {
+                var reply = SendReport(report);
+
+                // B5 C0 xx returns the 4 EDID bytes at offset xx; the block reads 0x00..0x7C.
+                if (report[0] == 0xB5 && report[1] == 0xC0 && report[2] + 4 <= edid.Length)
+                {
+                    Array.Copy(reply, 0, edid, report[2], 4);
+                    haveEdid = true;
+                }
+            }
+
+            if (haveEdid) ParseEdid(edid);
+        }
+
+        private void ParseEdid(byte[] edid)
+        {
+            // Block 0 always starts 00 FF FF FF FF FF FF 00.
+            if (edid[1] != 0xFF || edid[2] != 0xFF || edid[6] != 0xFF || edid[7] != 0x00)
+            {
+                Logger.Debug("JonsboMs9132: EDID header not recognised, ignoring");
+                return;
+            }
+
+            Edid = edid;
+
+            // Preferred detailed timing descriptor at 0x36: hactive and vactive each split
+            // across a low byte and the high nibble/2 bits of a shared byte.
+            int hActive = ((edid[0x36 + 4] & 0xF0) << 4) | edid[0x36 + 2];
+            int vActive = ((edid[0x36 + 7] & 0x30) << 4) | edid[0x36 + 5];
+            if (hActive > 0 && vActive > 0)
+                EdidResolution = (hActive, vActive);
+
+            // Descriptors 2-4 (0x48, 0x5A, 0x6C): tag 0xFC is the monitor name.
+            for (int offset = 0x48; offset <= 0x6C; offset += 18)
+            {
+                if (edid[offset] != 0 || edid[offset + 1] != 0 || edid[offset + 3] != 0xFC) continue;
+                EdidPanelName = System.Text.Encoding.ASCII
+                    .GetString(edid, offset + 5, 13)
+                    .Split('\n')[0]
+                    .Trim();
+                break;
+            }
+
+            Logger.Information("JonsboMs9132: EDID reports {Width}x{Height}, panel name {Name}",
+                hActive, vActive, EdidPanelName ?? "(none)");
         }
 
         /// <summary>

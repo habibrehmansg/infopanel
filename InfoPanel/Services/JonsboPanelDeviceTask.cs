@@ -317,8 +317,35 @@ namespace InfoPanel.Services
                         // Continue anyway — some firmware revisions may not report status.
                     }
 
-                    ms.SetMode(_panelWidth, _panelHeight, modelInfo.Vic);
-                    _device.RuntimeProperties.Name = $"{modelInfo.Name} ({_panelWidth}x{_panelHeight})";
+                    // The panel reports its own native timing in its EDID, which the startup
+                    // block reads. Prefer it over the model database: the same 345F:9132
+                    // bridge ships behind several panel sizes, and driving one at the wrong
+                    // geometry paints a sheared, washed-out image (#166).
+                    var vic = modelInfo.Vic;
+                    if (ms.EdidResolution is (int edidWidth, int edidHeight)
+                        && JonsboMs9132Device.GetVicForResolution(edidWidth, edidHeight) is byte edidVic)
+                    {
+                        if (edidWidth != _panelWidth || edidHeight != _panelHeight)
+                        {
+                            Logger.Information(
+                                "JonsboDevice {Device}: Using EDID timing {W}x{H} (VIC {Vic}) instead of {Model}'s {DbW}x{DbH}",
+                                _device, edidWidth, edidHeight, edidVic, modelInfo.Name, _panelWidth, _panelHeight);
+                        }
+                        _panelWidth = edidWidth;
+                        _panelHeight = edidHeight;
+                        vic = edidVic;
+                    }
+                    else if (ms.EdidResolution is (int rawWidth, int rawHeight))
+                    {
+                        Logger.Warning(
+                            "JonsboDevice {Device}: EDID reports {W}x{H}, which has no known mode index. Falling back to {DbW}x{DbH} VIC {Vic}",
+                            _device, rawWidth, rawHeight, _panelWidth, _panelHeight, vic);
+                    }
+
+                    ms.SetMode(_panelWidth, _panelHeight, vic);
+
+                    var panelName = string.IsNullOrEmpty(ms.EdidPanelName) ? modelInfo.Name : $"{modelInfo.Name} {ms.EdidPanelName}";
+                    _device.RuntimeProperties.Name = $"{panelName} ({_panelWidth}x{_panelHeight})";
                     _device.UpdateRuntimeProperties(isRunning: true, errorMessage: string.Empty);
 
                     retryCount = 0;
