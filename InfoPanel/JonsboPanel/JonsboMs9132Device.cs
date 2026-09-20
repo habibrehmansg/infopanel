@@ -257,8 +257,12 @@ namespace InfoPanel.JonsboPanel
                 break;
             }
 
-            Logger.Information("JonsboMs9132: EDID reports {Width}x{Height}, panel name {Name}",
-                hActive, vActive, EdidPanelName ?? "(none)");
+            Logger.Information("JonsboMs9132: EDID reports {Width}x{Height} @ {PixelClock:F2} MHz, panel name {Name}",
+                hActive, vActive, ((edid[0x37] << 8) | edid[0x36]) / 100.0, EdidPanelName ?? "(none)");
+
+            // Dump the block so an unfamiliar panel can be identified from a user's log
+            // without another round trip.
+            Logger.Information("JonsboMs9132: EDID block 0: {Edid}", Convert.ToHexString(edid));
         }
 
         /// <summary>
