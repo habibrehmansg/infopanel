@@ -29,6 +29,9 @@ public partial class UsbPanelsPage : Page
     private readonly ISnackbarService _snackbarService;
     public UsbPanelsViewModel ViewModel { get; }
 
+    /// <summary>Profiles selectable for USB panels; web page profiles can't be rendered to a panel image.</summary>
+    public System.ComponentModel.ICollectionView ImageProfiles { get; } = ConfigModel.Instance.CreateImageProfilesView();
+
     private static bool deviceInserted = false;
     private static bool deviceRemoved = false;
 

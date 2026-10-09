@@ -1024,6 +1024,9 @@ namespace InfoPanel
                         Color = profile.Color,
                         OpenGL = profile.OpenGL,
                         FontScale = profile.FontScale,
+                        WebViewEnabled = profile.WebViewEnabled,
+                        WebViewUrl = profile.WebViewUrl,
+                        WebViewInteractive = profile.WebViewInteractive,
                     };
 
                     var entry = archive.CreateEntry("Profile.xml");

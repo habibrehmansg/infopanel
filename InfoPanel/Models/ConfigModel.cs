@@ -47,6 +47,21 @@ namespace InfoPanel
         public ObservableCollection<Profile> Profiles { get; private set; } = [];
         private readonly object _profilesLock = new();
 
+        /// <summary>
+        /// Creates a live-filtered view of the profiles that can be rendered to images (USB panels, web server).
+        /// Web page profiles are desktop-only, so they are left out. Must be called on the UI thread.
+        /// </summary>
+        public System.Windows.Data.ListCollectionView CreateImageProfilesView()
+        {
+            var view = new System.Windows.Data.ListCollectionView(Profiles)
+            {
+                Filter = item => item is Profile { WebViewEnabled: false },
+                IsLiveFiltering = true,
+            };
+            view.LiveFilteringProperties.Add(nameof(Profile.WebViewEnabled));
+            return view;
+        }
+
         public Settings Settings { get; private set; }
         private readonly object _settingsLock = new object();
 
@@ -339,7 +354,8 @@ namespace InfoPanel
         {
             if (sender is Profile profile)
             {
-                if (e.PropertyName == nameof(Profile.Active) || e.PropertyName == nameof(Profile.OpenGL))
+                if (e.PropertyName == nameof(Profile.Active) || e.PropertyName == nameof(Profile.OpenGL)
+                    || e.PropertyName == nameof(Profile.WebViewEnabled))
                 {
                     bool programSpecificOn = Settings.ProgramSpecificPanelsEnabled;
                     bool isTriggerProfile = !string.IsNullOrWhiteSpace(profile.TriggerProcessNames);

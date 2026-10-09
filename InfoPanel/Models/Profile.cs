@@ -268,6 +268,32 @@ namespace InfoPanel.Models
             set { SetProperty(ref _triggerProcessNames, value); }
         }
 
+        /// <summary>When true, the desktop panel shows a live WebView2 page instead of the profile's display items.</summary>
+        private bool _webViewEnabled = false;
+
+        public bool WebViewEnabled
+        {
+            get { return _webViewEnabled; }
+            set { SetProperty(ref _webViewEnabled, value); }
+        }
+
+        private string _webViewUrl = string.Empty;
+
+        public string WebViewUrl
+        {
+            get { return _webViewUrl; }
+            set { SetProperty(ref _webViewUrl, value ?? string.Empty); }
+        }
+
+        /// <summary>When true, mouse input goes to the web page; when false, the panel keeps its normal drag/resize behaviour.</summary>
+        private bool _webViewInteractive = false;
+
+        public bool WebViewInteractive
+        {
+            get { return _webViewInteractive; }
+            set { SetProperty(ref _webViewInteractive, value); }
+        }
+
         public object Clone()
         {
             return MemberwiseClone();

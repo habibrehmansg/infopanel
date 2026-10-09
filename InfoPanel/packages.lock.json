@@ -155,6 +155,12 @@
           "System.ValueTuple": "4.5.0"
         }
       },
+      "Microsoft.Web.WebView2": {
+        "type": "Direct",
+        "requested": "[1.0.2903.40, )",
+        "resolved": "1.0.2903.40",
+        "contentHash": "THrzYAnJgE3+cNH+9Epr44XjoZoRELdVpXlWGPs6K9C9G6TqyDfVCeVAR/Er8ljLitIUX5gaSkPsy9wRhD1sgQ=="
+      },
       "MinVer": {
         "type": "Direct",
         "requested": "[7.0.0, )",
@@ -1373,6 +1379,12 @@
           "System.Management": "10.0.2",
           "System.Threading.AccessControl": "10.0.3"
         }
+      },
+      "Microsoft.Web.WebView2": {
+        "type": "Direct",
+        "requested": "[1.0.2903.40, )",
+        "resolved": "1.0.2903.40",
+        "contentHash": "THrzYAnJgE3+cNH+9Epr44XjoZoRELdVpXlWGPs6K9C9G6TqyDfVCeVAR/Er8ljLitIUX5gaSkPsy9wRhD1sgQ=="
       },
       "System.Diagnostics.PerformanceCounter": {
         "type": "Direct",

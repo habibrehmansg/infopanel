@@ -214,7 +214,7 @@
                                             Width="250"
                                             Margin="0,0,0,0"
                                             DisplayMemberPath="Name"
-                                            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                            ItemsSource="{Binding Path=ImageProfiles, RelativeSource={RelativeSource AncestorType=pages:UsbPanelsPage}}"
                                             SelectedValue="{Binding ProfileGuid}"
                                             SelectedValuePath="Guid" />
                                         <!--  Rotation  -->
@@ -516,7 +516,7 @@
                                             Width="250"
                                             Margin="0,0,0,0"
                                             DisplayMemberPath="Name"
-                                            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                            ItemsSource="{Binding Path=ImageProfiles, RelativeSource={RelativeSource AncestorType=pages:UsbPanelsPage}}"
                                             SelectedValue="{Binding ProfileGuid}"
                                             SelectedValuePath="Guid" />
                                         <!--  Rotation  -->
@@ -858,7 +858,7 @@
                                             Width="250"
                                             Margin="0,0,0,0"
                                             DisplayMemberPath="Name"
-                                            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                            ItemsSource="{Binding Path=ImageProfiles, RelativeSource={RelativeSource AncestorType=pages:UsbPanelsPage}}"
                                             SelectedValue="{Binding ProfileGuid}"
                                             SelectedValuePath="Guid" />
                                         <!--  Rotation  -->
@@ -1157,7 +1157,7 @@
                                             Width="250"
                                             Margin="0,0,0,0"
                                             DisplayMemberPath="Name"
-                                            ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                            ItemsSource="{Binding Path=ImageProfiles, RelativeSource={RelativeSource AncestorType=pages:UsbPanelsPage}}"
                                             SelectedValue="{Binding ProfileGuid}"
                                             SelectedValuePath="Guid" />
                                         <!--  Rotation  -->
@@ -1326,7 +1326,7 @@
                                     x:Name="HotkeyProfileCombo"
                                     Width="200"
                                     DisplayMemberPath="Name"
-                                    ItemsSource="{Binding Source={x:Static local:ConfigModel.Instance}, Path=Profiles}"
+                                    ItemsSource="{Binding Path=ImageProfiles, RelativeSource={RelativeSource AncestorType=pages:UsbPanelsPage}}"
                                     SelectedValuePath="Guid" />
                             </StackPanel>
                         </WrapPanel>

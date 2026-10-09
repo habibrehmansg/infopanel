@@ -21,6 +21,9 @@ namespace InfoPanel.Views.Components.WebServer
     /// </summary>
     public partial class WebServerSettings : Window
     {
+        /// <summary>Profiles served by the web server; web page profiles can't be rendered to an image.</summary>
+        public System.ComponentModel.ICollectionView ImageProfiles { get; } = ConfigModel.Instance.CreateImageProfilesView();
+
         public WebServerSettings()
         {
             InitializeComponent();

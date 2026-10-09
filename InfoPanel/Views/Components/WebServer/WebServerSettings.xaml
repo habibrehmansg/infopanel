@@ -53,7 +53,7 @@
             </TextBlock>
         </Label>
 
-        <ItemsControl Grid.Row="4" ItemsSource="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Profiles}" 
+        <ItemsControl Grid.Row="4" ItemsSource="{Binding ImageProfiles}" 
                       Visibility="{Binding Source={x:Static app:ConfigModel.Instance}, Path=Settings.WebServer, Converter={StaticResource BooleanToVisibilityConverter}}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>

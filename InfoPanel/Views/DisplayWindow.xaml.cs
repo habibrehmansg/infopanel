@@ -56,6 +56,7 @@ namespace InfoPanel.Views.Common
             DataContext = this;
 
             OpenGL = profile.OpenGL;
+            WebView = profile.WebViewEnabled;
 
             InitializeComponent();
             InjectSkiaElement();
@@ -104,7 +105,14 @@ namespace InfoPanel.Views.Common
 
             SetWindowPositionRelativeToScreen();
 
-            UpdateSkiaTimer();
+            if (WebView)
+            {
+                _ = InitializeWebViewAsync();
+            }
+            else
+            {
+                UpdateSkiaTimer();
+            }
 
             Activate();
 
@@ -185,6 +193,8 @@ namespace InfoPanel.Views.Common
             LocationChanged -= DisplayWindow_LocationChanged;
             SizeChanged -= DisplayWindow_SizeChanged;
 
+            DisposeWebView();
+
             if (OpenGL)
             {
                 foreach (var item in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile))
@@ -232,7 +242,11 @@ namespace InfoPanel.Views.Common
 
             container.Children.Clear();
 
-            if (OpenGL)
+            if (WebView)
+            {
+                InjectWebView(container);
+            }
+            else if (OpenGL)
             {
                 AllowsTransparency = false;
                 try
@@ -556,7 +570,7 @@ namespace InfoPanel.Views.Common
 
         private void Config_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(ConfigModel.Instance.Settings.TargetFrameRate))
+            if (e.PropertyName == nameof(ConfigModel.Instance.Settings.TargetFrameRate) && !WebView)
             {
                 UpdateSkiaTimer();
             }
@@ -564,6 +578,10 @@ namespace InfoPanel.Views.Common
 
         private void Profile_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
+            if (WebView)
+            {
+                OnWebViewProfilePropertyChanged(e.PropertyName);
+            }
 
             if (e.PropertyName == nameof(Profile.TargetWindow) || e.PropertyName == nameof(Profile.WindowX)
                                  || e.PropertyName == nameof(Profile.WindowY) || e.PropertyName == nameof(Profile.StrictWindowMatching))
@@ -610,6 +628,9 @@ namespace InfoPanel.Views.Common
 
         private void Window_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
         {
+            // Display items aren't shown in web page mode, so don't let arrow keys move them unseen.
+            if (WebView) return;
+
             if (SharedModel.Instance.SelectedVisibleItems != null)
             {
                 foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
@@ -688,6 +709,16 @@ namespace InfoPanel.Views.Common
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (WebView)
+            {
+                // No display items to select in web page mode; a left click only moves the panel.
+                if (e.ChangedButton == MouseButton.Left && Profile.Drag)
+                {
+                    DragMoveWindow();
+                }
+                return;
+            }
+
             if (e.ChangedButton == MouseButton.Left)
             {
                 if (!dragStart)
@@ -718,39 +749,7 @@ namespace InfoPanel.Views.Common
                 {
                     if (Profile.Drag)
                     {
-                        try
-                        {
-                            this.DragMove();
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // DragMove can throw if mouse button is released during drag
-                            return;
-                        }
-
-                        var screen = ScreenHelper.GetWindowScreen(this);
-
-                        if (screen != null)
-                        {
-                            var position = ScreenHelper.GetWindowPositionPhysical(this);
-                            var relativePosition = ScreenHelper.GetWindowRelativePosition(screen, position);
-
-                            Logger.Debug("SetPosition screen={Screen}", screen);
-                            Logger.Debug("SetPosition screen={DeviceName} position={Position} relativePosition={RelativePosition}", screen.DeviceName, position, relativePosition);
-
-                            _dragMove = true;
-
-                            try
-                            {
-                                Profile.TargetWindow = new TargetWindow((int)screen.Bounds.Left, (int)screen.Bounds.Top, (int)screen.Bounds.Width, (int)screen.Bounds.Height, screen.DeviceName);
-                                Profile.WindowX = (int)relativePosition.X;
-                                Profile.WindowY = (int)relativePosition.Y;
-                            }
-                            finally
-                            {
-                                _dragMove = false;
-                            }
-                        }
+                        DragMoveWindow();
                     }
                 }
                 else
@@ -842,6 +841,43 @@ namespace InfoPanel.Views.Common
                     {
                         SharedModel.Instance.SelectedItem = null;
                     });
+                }
+            }
+        }
+
+        private void DragMoveWindow()
+        {
+            try
+            {
+                this.DragMove();
+            }
+            catch (InvalidOperationException)
+            {
+                // DragMove can throw if mouse button is released during drag
+                return;
+            }
+
+            var screen = ScreenHelper.GetWindowScreen(this);
+
+            if (screen != null)
+            {
+                var position = ScreenHelper.GetWindowPositionPhysical(this);
+                var relativePosition = ScreenHelper.GetWindowRelativePosition(screen, position);
+
+                Logger.Debug("SetPosition screen={Screen}", screen);
+                Logger.Debug("SetPosition screen={DeviceName} position={Position} relativePosition={RelativePosition}", screen.DeviceName, position, relativePosition);
+
+                _dragMove = true;
+
+                try
+                {
+                    Profile.TargetWindow = new TargetWindow((int)screen.Bounds.Left, (int)screen.Bounds.Top, (int)screen.Bounds.Width, (int)screen.Bounds.Height, screen.DeviceName);
+                    Profile.WindowX = (int)relativePosition.X;
+                    Profile.WindowY = (int)relativePosition.Y;
+                }
+                finally
+                {
+                    _dragMove = false;
                 }
             }
         }
