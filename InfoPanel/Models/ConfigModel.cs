@@ -361,7 +361,15 @@ namespace InfoPanel
                     bool isTriggerProfile = !string.IsNullOrWhiteSpace(profile.TriggerProcessNames);
                     if (programSpecificOn && isTriggerProfile)
                     {
-                        // Let ForegroundAppMonitor drive visibility for trigger profiles (Option B)
+                        // Let ForegroundAppMonitor drive visibility for trigger profiles (Option B).
+                        // It only acts on visibility changes, so a rendering mode change on an open
+                        // window is re-submitted here for the manager to recreate it.
+                        if (e.PropertyName != nameof(Profile.Active) && profile.Active
+                            && DisplayWindowManager.Instance.IsWindowOpen(profile.Guid)
+                            && System.Windows.Application.Current is App triggerApp)
+                        {
+                            triggerApp.ShowDisplayWindow(profile);
+                        }
                         return;
                     }
                     if (profile.Active)

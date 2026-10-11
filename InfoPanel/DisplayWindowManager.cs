@@ -68,7 +68,7 @@ namespace InfoPanel
                     if (_windows.TryGetValue(profile.Guid, out var existingWindow))
                     {
                         // If rendering mode (OpenGL / WebView) changed, close and recreate
-                        if (existingWindow.OpenGL != profile.OpenGL || existingWindow.WebView != profile.WebViewEnabled)
+                        if (existingWindow.OpenGL != DisplayWindow.UsesOpenGL(profile) || existingWindow.WebView != profile.WebViewEnabled)
                         {
                             existingWindow.Close();
                             _windows.Remove(profile.Guid);

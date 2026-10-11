@@ -5,6 +5,7 @@ using SkiaSharp;
 using System;
 using Serilog;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -233,7 +234,8 @@ namespace InfoPanel
                     sb.AppendLine("            </div>");
                     sb.AppendLine("        </div>");
 
-                    if (ConfigModel.Instance.Profiles.Count == 0)
+                    // Web page profiles are desktop-only and can't be rendered to an image.
+                    if (!ConfigModel.Instance.Profiles.Any(p => !p.WebViewEnabled))
                     {
                         sb.AppendLine("        <div class='empty-state'>");
                         sb.AppendLine("            <svg class='empty-icon' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'>");
@@ -250,6 +252,9 @@ namespace InfoPanel
                         for (int i = 0; i < ConfigModel.Instance.Profiles.Count; i++)
                         {
                             var profile = ConfigModel.Instance.Profiles[i];
+                            // Skip rather than filter so the route index stays the profile's position.
+                            if (profile.WebViewEnabled) continue;
+
                             var profileUrl = $"http://{ConfigModel.Instance.Settings.WebServerListenIp}:{ConfigModel.Instance.Settings.WebServerListenPort}/{i}";
 
                             sb.AppendLine($"        <a href='{profileUrl}' class='profile-card'>");
@@ -292,10 +297,10 @@ namespace InfoPanel
 
                 _webApplication.MapGet("/{id}/image", async context =>
                 {
-                    if (int.TryParse(context.Request.RouteValues["id"]?.ToString(), out int id) && id < ConfigModel.Instance.Profiles.Count)
+                    if (int.TryParse(context.Request.RouteValues["id"]?.ToString(), out int id) && id >= 0 && id < ConfigModel.Instance.Profiles.Count
+                        && ConfigModel.Instance.Profiles[id] is { WebViewEnabled: false } profile)
                     {
                         Logger.Debug("WebServer: Serving image for profile {ProfileId}", id);
-                        var profile = ConfigModel.Instance.Profiles[id];
 
                         using var bitmap = PanelDrawTask.RenderSK(profile, false);
                         using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
