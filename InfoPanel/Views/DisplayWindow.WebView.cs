@@ -139,6 +139,43 @@ namespace InfoPanel.Views.Common
             }
         }
 
+        /// <summary>Hard refresh: reloads the current page bypassing the cache.</summary>
+        public void RefreshWebView()
+        {
+            _dispatcher.BeginInvoke(async () =>
+            {
+                if (_webView == null) return;
+
+                if (_webView.CoreWebView2 is not CoreWebView2 core)
+                {
+                    // Only start over once recovery has given up; otherwise the browser is still starting.
+                    if (_webViewRestarts > MaxWebViewRestarts)
+                    {
+                        _webViewRestarts = 0;
+                        RecreateWebView();
+                    }
+                    return;
+                }
+
+                // A message is showing (no URL or an invalid one), so there's no page to reload yet.
+                if (_webViewMessage?.Visibility == Visibility.Visible)
+                {
+                    NavigateWebView();
+                    return;
+                }
+
+                try
+                {
+                    await core.CallDevToolsProtocolMethodAsync("Page.reload", "{\"ignoreCache\":true}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Hard reload failed for profile {ProfileName}; falling back to a normal reload", Profile.Name);
+                    core.Reload();
+                }
+            });
+        }
+
         private void OnWebViewProfilePropertyChanged(string? propertyName)
         {
             switch (propertyName)

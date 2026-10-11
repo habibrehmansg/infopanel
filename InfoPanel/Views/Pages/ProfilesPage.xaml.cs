@@ -116,6 +116,14 @@ namespace InfoPanel.Views.Pages
             }
         }
 
+        private void ButtonRefreshWebPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (System.Windows.Application.Current is App app && ViewModel.Profile is Profile profile)
+            {
+                app.RefreshWebPage(profile);
+            }
+        }
+
         private void ButtonReload_Click(object sender, RoutedEventArgs e)
         {
             if (ViewModel.Profile is Profile profile)

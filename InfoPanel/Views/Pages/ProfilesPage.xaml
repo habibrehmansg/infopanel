@@ -615,9 +615,24 @@
                                                 </Grid>
 
                                                 <StackPanel Margin="0,10,0,0" IsEnabled="{Binding WebViewEnabled}">
-                                                    <TextBox
-                                                        ToolTip="https:// address, or a local file such as C:\Dashboards\panel.html"
-                                                        Text="{Binding WebViewUrl, UpdateSourceTrigger=PropertyChanged, Delay=800}" />
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox
+                                                            Grid.Column="0"
+                                                            ToolTip="https:// address, or a local file such as C:\Dashboards\panel.html"
+                                                            Text="{Binding WebViewUrl, UpdateSourceTrigger=PropertyChanged, Delay=800}" />
+                                                        <ui:Button
+                                                            Grid.Column="1"
+                                                            Margin="5,0,0,0"
+                                                            VerticalAlignment="Stretch"
+                                                            Click="ButtonRefreshWebPage_Click"
+                                                            Content="Refresh"
+                                                            Icon="{ui:SymbolIcon ArrowClockwise20}"
+                                                            ToolTip="Reload the page, bypassing the cache" />
+                                                    </Grid>
                                                     <TextBlock
                                                         Margin="5,0,0,0"
                                                         FontSize="12"
