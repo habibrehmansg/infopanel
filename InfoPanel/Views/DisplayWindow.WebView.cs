@@ -28,8 +28,35 @@ namespace InfoPanel.Views.Common
         // Stops a browser that crashes on start from being relaunched forever.
         private const int MaxWebViewRestarts = 3;
         private int _webViewRestarts;
+        private DateTime _lastWebViewRestart;
+        // A browser that ran this long before crashing was stable: start the restart count afresh,
+        // so occasional crashes on a panel that runs for days never add up to giving up.
+        private static readonly TimeSpan WebViewStableAfter = TimeSpan.FromMinutes(10);
+        // After giving up, try again this much later: the panel usually runs unattended.
+        private static readonly TimeSpan WebViewRetryAfter = TimeSpan.FromMinutes(5);
+        private System.Windows.Threading.DispatcherTimer? _webViewRetryTimer;
 
         private System.Windows.Threading.DispatcherTimer? _webViewRefreshTimer;
+
+        /// <summary>
+        /// The browser core, or null while it is starting or after its browser process crashed:
+        /// once the browser is gone, reading <see cref="WebView2.CoreWebView2"/> throws until the
+        /// control is recreated, and a profile change or refresh can arrive in between.
+        /// </summary>
+        private CoreWebView2? WebViewCore
+        {
+            get
+            {
+                try
+                {
+                    return _webView?.CoreWebView2;
+                }
+                catch (InvalidOperationException)
+                {
+                    return null;
+                }
+            }
+        }
 
         private void InjectWebView(Panel container)
         {
@@ -87,7 +114,7 @@ namespace InfoPanel.Views.Common
             }
 
             // The window may have been closed while the browser was starting.
-            if (_webView?.CoreWebView2 is not CoreWebView2 core) return;
+            if (WebViewCore is not CoreWebView2 core) return;
 
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDevToolsEnabled = false;
@@ -131,7 +158,7 @@ namespace InfoPanel.Views.Common
         /// </summary>
         private async Task ApplyWebViewCacheAsync()
         {
-            if (_webView?.CoreWebView2 is not CoreWebView2 core) return;
+            if (WebViewCore is not CoreWebView2 core) return;
 
             try
             {
@@ -171,7 +198,7 @@ namespace InfoPanel.Views.Common
 
         private void NavigateWebView()
         {
-            if (_webView?.CoreWebView2 is not CoreWebView2 core) return;
+            if (WebViewCore is not CoreWebView2 core) return;
 
             var url = Profile.WebViewUrl;
             if (string.IsNullOrWhiteSpace(url))
@@ -199,7 +226,7 @@ namespace InfoPanel.Views.Common
             {
                 if (_webView == null) return;
 
-                if (_webView.CoreWebView2 is not CoreWebView2 core)
+                if (WebViewCore is not CoreWebView2 core)
                 {
                     // Only start over once recovery has given up; otherwise the browser is still starting.
                     if (_webViewRestarts > MaxWebViewRestarts)
@@ -308,19 +335,47 @@ namespace InfoPanel.Views.Common
             container.Children.Clear();
             InjectWebView(container);
 
+            if (DateTime.UtcNow - _lastWebViewRestart > WebViewStableAfter) _webViewRestarts = 0;
+            _lastWebViewRestart = DateTime.UtcNow;
+
             if (++_webViewRestarts > MaxWebViewRestarts)
             {
-                Logger.Error("WebView2 browser exited {Count} times for profile {ProfileName}; giving up", _webViewRestarts, Profile.Name);
-                ShowWebViewMessage("The web page keeps crashing. Toggle web page mode off and on to try again.");
+                Logger.Error("WebView2 browser exited {Count} times for profile {ProfileName}; retrying in {Delay}",
+                    _webViewRestarts, Profile.Name, WebViewRetryAfter);
+                ShowWebViewMessage($"The web page keeps crashing. Retrying in {WebViewRetryAfter.TotalMinutes:0} minutes.");
+                ScheduleWebViewRetry();
                 return;
             }
 
             _ = InitializeWebViewAsync();
         }
 
+        /// <summary>One more attempt after giving up, with a fresh restart count.</summary>
+        private void ScheduleWebViewRetry()
+        {
+            if (_webViewRetryTimer == null)
+            {
+                _webViewRetryTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, _dispatcher)
+                {
+                    Interval = WebViewRetryAfter,
+                };
+                _webViewRetryTimer.Tick += (_, _) =>
+                {
+                    _webViewRetryTimer.Stop();
+                    _webViewRestarts = 0;
+                    _lastWebViewRestart = DateTime.MinValue;
+                    RecreateWebView();
+                };
+            }
+
+            _webViewRetryTimer.Stop();
+            _webViewRetryTimer.Start();
+        }
+
         private void DisposeWebView()
         {
             _webViewRefreshTimer?.Stop();
+            _webViewRetryTimer?.Stop();
             if (_webView == null) return;
 
             BindingOperations.ClearBinding(_webView, WidthProperty);
