@@ -294,6 +294,26 @@ namespace InfoPanel.Models
             set { SetProperty(ref _webViewInteractive, value); }
         }
 
+        /// <summary>When true, the web page's requests bypass the browser cache.</summary>
+        private bool _webViewDisableCache = false;
+
+        public bool WebViewDisableCache
+        {
+            get { return _webViewDisableCache; }
+            set { SetProperty(ref _webViewDisableCache, value); }
+        }
+
+        public const int MinWebViewAutoRefreshSeconds = 5;
+
+        /// <summary>Hard-refresh interval for the web page in seconds; 0 turns it off.</summary>
+        private int _webViewAutoRefreshSeconds = 0;
+
+        public int WebViewAutoRefreshSeconds
+        {
+            get { return _webViewAutoRefreshSeconds; }
+            set { SetProperty(ref _webViewAutoRefreshSeconds, value <= 0 ? 0 : Math.Max(MinWebViewAutoRefreshSeconds, value)); }
+        }
+
         public object Clone()
         {
             return MemberwiseClone();

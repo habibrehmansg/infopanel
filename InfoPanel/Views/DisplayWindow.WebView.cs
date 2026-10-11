@@ -29,6 +29,8 @@ namespace InfoPanel.Views.Common
         private const int MaxWebViewRestarts = 3;
         private int _webViewRestarts;
 
+        private System.Windows.Threading.DispatcherTimer? _webViewRefreshTimer;
+
         private void InjectWebView(Panel container)
         {
             var webView = new WebView2
@@ -107,13 +109,64 @@ namespace InfoPanel.Views.Common
                         break;
                     case CoreWebView2ProcessFailedKind.RenderProcessExited:
                     case CoreWebView2ProcessFailedKind.RenderProcessUnresponsive:
-                        _dispatcher.BeginInvoke(NavigateWebView);
+                        // A new renderer may not keep the cache setting, so apply it again before reloading.
+                        _dispatcher.BeginInvoke(async () =>
+                        {
+                            await ApplyWebViewCacheAsync();
+                            NavigateWebView();
+                        });
                         break;
                 }
             };
 
             ApplyWebViewInteractive();
+            await ApplyWebViewCacheAsync();
             NavigateWebView();
+            UpdateWebViewAutoRefresh();
+        }
+
+        /// <summary>
+        /// Turns the browser cache off (or back on) for this panel's page only, so polled data and
+        /// assets that are replaced in place are always fetched fresh.
+        /// </summary>
+        private async Task ApplyWebViewCacheAsync()
+        {
+            if (_webView?.CoreWebView2 is not CoreWebView2 core) return;
+
+            try
+            {
+                await core.CallDevToolsProtocolMethodAsync("Network.enable", "{}");
+                await core.CallDevToolsProtocolMethodAsync("Network.setCacheDisabled",
+                    Profile.WebViewDisableCache ? "{\"cacheDisabled\":true}" : "{\"cacheDisabled\":false}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Failed to apply web page cache setting for profile {ProfileName}", Profile.Name);
+            }
+        }
+
+        /// <summary>Starts, changes or stops the periodic hard refresh to match the profile setting.</summary>
+        private void UpdateWebViewAutoRefresh()
+        {
+            var seconds = Profile.WebViewAutoRefreshSeconds;
+            if (seconds <= 0 || _webView == null)
+            {
+                _webViewRefreshTimer?.Stop();
+                return;
+            }
+
+            if (_webViewRefreshTimer == null)
+            {
+                _webViewRefreshTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, _dispatcher);
+                _webViewRefreshTimer.Tick += (_, _) =>
+                {
+                    // Don't reset the page while the user may be working in it.
+                    if (!Profile.WebViewInteractive) RefreshWebView();
+                };
+            }
+
+            _webViewRefreshTimer.Interval = TimeSpan.FromSeconds(seconds);
+            _webViewRefreshTimer.Start();
         }
 
         private void NavigateWebView()
@@ -189,6 +242,12 @@ namespace InfoPanel.Views.Common
                 case nameof(Profile.BackgroundColor):
                     _dispatcher.BeginInvoke(ApplyWebViewBackground);
                     break;
+                case nameof(Profile.WebViewDisableCache):
+                    _dispatcher.BeginInvoke(ApplyWebViewCacheAsync);
+                    break;
+                case nameof(Profile.WebViewAutoRefreshSeconds):
+                    _dispatcher.BeginInvoke(UpdateWebViewAutoRefresh);
+                    break;
             }
         }
 
@@ -261,6 +320,7 @@ namespace InfoPanel.Views.Common
 
         private void DisposeWebView()
         {
+            _webViewRefreshTimer?.Stop();
             if (_webView == null) return;
 
             BindingOperations.ClearBinding(_webView, WidthProperty);
