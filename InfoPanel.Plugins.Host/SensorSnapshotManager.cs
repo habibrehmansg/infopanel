@@ -26,11 +26,12 @@ namespace InfoPanel.Plugins.Host
                     {
                         update = CreateUpdateIfChanged(key, container.Id, entry);
                     }
-                    catch (InvalidOperationException)
+                    catch (InvalidOperationException) when (entry is IPluginTable)
                     {
                         // The plugin modified a table while it was being read
                         // ("Collection was modified"). Skip only this entry: its
                         // last value is not recorded, so it is re-checked next cycle.
+                        // Other entry types still surface their errors to the update loop.
                         continue;
                     }
 
