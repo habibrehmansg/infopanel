@@ -83,8 +83,15 @@ namespace InfoPanel
                     await next(context);
                 });
 
-                app.MapGet("/", () => Results.Json(Index(), JsonOptions));
-                app.MapGet("/api", () => Results.Json(Index(), JsonOptions));
+                // Browsers get a readable list of every data point; /api is the JSON index.
+                app.MapGet("/", () => Results.Content(
+                    DataApiIndexPage.Render(_snapshots.Get(baseUrl), Endpoints),
+                    "text/html; charset=utf-8"));
+                app.MapGet("/api", () => Results.Json(new
+                {
+                    name = "InfoPanel Data API",
+                    endpoints = Endpoints.Select(e => new { method = e.Method, path = e.Path, description = e.Description }),
+                }, JsonOptions));
                 app.MapGet("/api/sensors", () => Results.Json(_snapshots.Get(baseUrl), JsonOptions));
                 app.MapGet("/events", context => StreamEventsAsync(context, baseUrl));
                 app.MapGet("/api/sources", () => Results.Json(Sources(), JsonOptions));
@@ -111,19 +118,17 @@ namespace InfoPanel
             }
         }
 
-        private static object Index() => new
-        {
-            name = "InfoPanel Data API",
-            endpoints = new object[]
-            {
-                new { method = "GET",  path = "/api/sensors", description = "Full sensor snapshot" },
-                new { method = "GET",  path = "/events",      description = "Server-Sent Events: the full snapshot every second" },
-                new { method = "GET",  path = "/api/sources", description = "Plugins, containers and entries with their names and keys" },
-                new { method = "GET",  path = "/api/images/{pluginId}/{imageId}", description = "A plugin image as PNG" },
-                new { method = "POST", path = "/api/push",    description = "Add sensor values from another process (local machine only)" },
-                new { method = "POST", path = "/api/clear",   description = "Clear all pushed values (local machine only)" },
-            },
-        };
+        private static readonly (string Method, string Path, string Description)[] Endpoints =
+        [
+            ("GET",  "/",            "This page: every data point, grouped by source"),
+            ("GET",  "/api",         "Endpoint list as JSON"),
+            ("GET",  "/api/sensors", "Full sensor snapshot"),
+            ("GET",  "/events",      "Server-Sent Events: the full snapshot every second"),
+            ("GET",  "/api/sources", "Plugins, containers and entries with their names and keys"),
+            ("GET",  "/api/images/{pluginId}/{imageId}", "A plugin image as PNG"),
+            ("POST", "/api/push",    "Add sensor values from another process (local machine only)"),
+            ("POST", "/api/clear",   "Clear all pushed values (local machine only)"),
+        ];
 
         private async Task StreamEventsAsync(HttpContext context, string baseUrl)
         {
@@ -252,7 +257,7 @@ namespace InfoPanel
                                     IPluginTable => "table",
                                     _ => "text",
                                 },
-                                key = "plugins." + r.Id.TrimStart('/').Replace('/', '.'),
+                                key = SensorSnapshotBuilder.PluginKey(r.Id),
                             }),
                         }),
                     images = PluginMonitor.Instance.GetAllImageProxies()

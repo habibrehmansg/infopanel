@@ -83,13 +83,19 @@ namespace InfoPanel.DataApi
 
         /* ---------------- plugins ---------------- */
 
+        /// <summary>The Data API key of a PluginMonitor.SENSORHASH entry ("/{plugin}/{container}/{entry}").</summary>
+        internal static string PluginKey(string hashKey) => "plugins." + hashKey.TrimStart('/').Replace('/', '.');
+
+        internal static bool IsImageContainer(string containerId) =>
+            containerId.StartsWith(ImageContainerPrefix, StringComparison.Ordinal);
+
         private static void AddPlugins(Dictionary<string, DataApiValue> sensors, string imageBaseUrl)
         {
             foreach (var (hashKey, reading) in PluginMonitor.SENSORHASH)
             {
                 try
                 {
-                    string key = "plugins." + hashKey.TrimStart('/').Replace('/', '.');
+                    string key = PluginKey(hashKey);
                     string display = DisplayName(reading.ContainerName, reading.Name);
 
                     if (reading.ContainerId.StartsWith(ImageContainerPrefix, StringComparison.Ordinal))
@@ -238,32 +244,9 @@ namespace InfoPanel.DataApi
 
         private static void AddHwInfo(Dictionary<string, DataApiValue> sensors)
         {
-            var named = new List<(string Slug, string Name, HWHash.HWINFO_HASH Reading)>();
-            foreach (var reading in HWHash.SENSORHASH.Values)
+            foreach (var (key, name, reading) in HwInfoKeys())
             {
-                string name = CleanName(!string.IsNullOrWhiteSpace(reading.NameCustom) ? reading.NameCustom : reading.NameDefault);
-                string slug = Slug(name);
-                if (slug.Length == 0) continue;
-                string prefix = reading.RemoteIndex >= 0 ? $"r{reading.RemoteIndex}_" : "";
-                named.Add((prefix + slug, name, reading));
-            }
-
-            // HWiNFO names repeat across devices ("Read Activity" per drive):
-            // the first reading keeps the bare key, the others get their
-            // device name appended, then the device instance.
-            var keyed = Disambiguate(
-                named,
-                n => n.Slug,
-                group => group.OrderBy(n => n.Reading.IndexOrder),
-                [
-                    n => Slug(CleanName(!string.IsNullOrWhiteSpace(n.Reading.ParentNameCustom) ? n.Reading.ParentNameCustom : n.Reading.ParentNameDefault)),
-                    n => n.Reading.ParentInstance.ToString(),
-                ],
-                (key, n) => (key, n.Name, n.Reading));
-
-            foreach (var (key, name, reading) in keyed)
-            {
-                sensors[$"hwinfo.{key}"] = new DataApiValue
+                sensors[key] = new DataApiValue
                 {
                     Value = reading.ValueNow,
                     Unit = reading.Unit ?? "",
@@ -274,6 +257,39 @@ namespace InfoPanel.DataApi
                     Source = Source,
                 };
             }
+        }
+
+        /// <summary>The HWiNFO device (parent) name of a reading.</summary>
+        internal static string HwInfoDevice(HWHash.HWINFO_HASH reading) =>
+            CleanName(!string.IsNullOrWhiteSpace(reading.ParentNameCustom) ? reading.ParentNameCustom : reading.ParentNameDefault);
+
+        /// <summary>
+        /// Assigns every HWiNFO reading a unique, stable key. Names repeat
+        /// across devices ("Read Activity" per drive): the first reading keeps
+        /// "hwinfo.{slug}", the others get their device name appended, then
+        /// the device instance.
+        /// </summary>
+        internal static List<(string Key, string Name, HWHash.HWINFO_HASH Reading)> HwInfoKeys()
+        {
+            var named = new List<(string Slug, string Name, HWHash.HWINFO_HASH Reading)>();
+            foreach (var reading in HWHash.SENSORHASH.Values)
+            {
+                string name = CleanName(!string.IsNullOrWhiteSpace(reading.NameCustom) ? reading.NameCustom : reading.NameDefault);
+                string slug = Slug(name);
+                if (slug.Length == 0) continue;
+                string prefix = reading.RemoteIndex >= 0 ? $"r{reading.RemoteIndex}_" : "";
+                named.Add((prefix + slug, name, reading));
+            }
+
+            return Disambiguate(
+                named,
+                n => n.Slug,
+                group => group.OrderBy(n => n.Reading.IndexOrder),
+                [
+                    n => Slug(HwInfoDevice(n.Reading)),
+                    n => n.Reading.ParentInstance.ToString(),
+                ],
+                (key, n) => ($"hwinfo.{key}", n.Name, n.Reading));
         }
 
         /* ---------------- shared helpers ---------------- */
