@@ -21,7 +21,19 @@ namespace InfoPanel.Plugins.Host
                     var key = _keyCache.GetOrAdd(
                         (container.Id, entry.Id),
                         k => $"{wrapper.Id}/{k.containerId}/{k.entryId}");
-                    var update = CreateUpdateIfChanged(key, container.Id, entry);
+                    EntryUpdateDto? update;
+                    try
+                    {
+                        update = CreateUpdateIfChanged(key, container.Id, entry);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // The plugin modified a table while it was being read
+                        // ("Collection was modified"). Skip only this entry: its
+                        // last value is not recorded, so it is re-checked next cycle.
+                        continue;
+                    }
+
                     if (update != null)
                     {
                         updates.Add(update);
@@ -76,13 +88,16 @@ namespace InfoPanel.Plugins.Host
                 if (_lastValues.TryGetValue(key, out var lastHash) && lastHash is int lastInt && lastInt == hash)
                     return null;
 
+                // Convert before recording the hash: if the conversion throws,
+                // the change must still be sent on the next cycle.
+                var tableValue = TableDtoConverter.ConvertTableToDto(table);
                 _lastValues[key] = hash;
                 return new EntryUpdateDto
                 {
                     ContainerId = containerId,
                     EntryId = entry.Id,
                     Type = "table",
-                    TableValue = TableDtoConverter.ConvertTableToDto(table)
+                    TableValue = tableValue
                 };
             }
 
