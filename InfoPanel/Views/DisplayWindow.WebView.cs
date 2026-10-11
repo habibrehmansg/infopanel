@@ -25,11 +25,12 @@ namespace InfoPanel.Views.Common
 
         public bool WebView { get; }
 
+        // Stops a browser that crashes on start from being relaunched forever.
+        private const int MaxWebViewRestarts = 3;
+        private int _webViewRestarts;
+
         private void InjectWebView(Panel container)
         {
-            // The WPF WebView2 control is an HwndHost, which cannot render inside a layered (transparent) window.
-            AllowsTransparency = false;
-
             var webView = new WebView2
             {
                 // Default is next to the executable, which is not writable under Program Files.
@@ -95,7 +96,21 @@ namespace InfoPanel.Views.Common
                 core.Navigate(e.Uri);
             };
             core.ProcessFailed += (_, e) =>
+            {
                 Logger.Warning("WebView2 process failed ({Kind}) for profile {ProfileName}", e.ProcessFailedKind, Profile.Name);
+
+                switch (e.ProcessFailedKind)
+                {
+                    // The control is permanently unusable once its browser process is gone; build a new one.
+                    case CoreWebView2ProcessFailedKind.BrowserProcessExited:
+                        _dispatcher.BeginInvoke(RecreateWebView);
+                        break;
+                    case CoreWebView2ProcessFailedKind.RenderProcessExited:
+                    case CoreWebView2ProcessFailedKind.RenderProcessUnresponsive:
+                        _dispatcher.BeginInvoke(NavigateWebView);
+                        break;
+                }
+            };
 
             ApplyWebViewInteractive();
             NavigateWebView();
@@ -186,6 +201,25 @@ namespace InfoPanel.Views.Common
         {
             if (_webViewMessage != null) _webViewMessage.Visibility = Visibility.Collapsed;
             if (_webView != null) _webView.Visibility = Visibility.Visible;
+        }
+
+        private void RecreateWebView()
+        {
+            // Null means the window is closing.
+            if (_webView == null || FindName("SkiaContainer") is not Panel container) return;
+
+            DisposeWebView();
+            container.Children.Clear();
+            InjectWebView(container);
+
+            if (++_webViewRestarts > MaxWebViewRestarts)
+            {
+                Logger.Error("WebView2 browser exited {Count} times for profile {ProfileName}; giving up", _webViewRestarts, Profile.Name);
+                ShowWebViewMessage("The web page keeps crashing. Toggle web page mode off and on to try again.");
+                return;
+            }
+
+            _ = InitializeWebViewAsync();
         }
 
         private void DisposeWebView()

@@ -244,6 +244,8 @@ namespace InfoPanel.Views.Common
 
             if (WebView)
             {
+                // The WPF WebView2 control is an HwndHost, which cannot render inside a layered (transparent) window.
+                AllowsTransparency = false;
                 InjectWebView(container);
             }
             else if (OpenGL)
