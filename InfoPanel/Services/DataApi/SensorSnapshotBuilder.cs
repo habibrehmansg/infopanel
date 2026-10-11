@@ -75,6 +75,30 @@ namespace InfoPanel.DataApi
             }
         }
 
+        /// <summary>
+        /// The values whose key starts with <paramref name="prefix"/>. Plugin
+        /// keys are read fresh (plugin hosts update every ~100 ms, faster than
+        /// the shared snapshot); other keys come from the shared snapshot.
+        /// </summary>
+        public Dictionary<string, DataApiValue> GetMatching(string prefix, string imageBaseUrl)
+        {
+            var sensors = new Dictionary<string, DataApiValue>(StringComparer.OrdinalIgnoreCase);
+            if (prefix.StartsWith("plugins.", StringComparison.OrdinalIgnoreCase))
+            {
+                AddPlugins(sensors, imageBaseUrl);
+            }
+            else
+            {
+                foreach (var (key, value) in Get(imageBaseUrl).Sensors) sensors[key] = value;
+            }
+
+            foreach (var key in sensors.Keys.Where(k => !k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                sensors.Remove(key);
+            }
+            return sensors;
+        }
+
         /// <summary>Drops the cached snapshot (after a push), so the next read is current.</summary>
         public void Invalidate()
         {

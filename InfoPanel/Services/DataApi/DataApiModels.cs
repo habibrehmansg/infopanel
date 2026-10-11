@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace InfoPanel.DataApi
 {
-    /// <summary>One sensor reading as the Data API serves it.</summary>
-    public sealed class DataApiValue
+    /// <summary>One sensor reading as the Data API serves it. A record, so a filtered stream can send only changed values.</summary>
+    public sealed record DataApiValue
     {
         public double? Value { get; init; }
         public string? Text { get; init; }

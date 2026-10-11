@@ -31,6 +31,9 @@ namespace InfoPanel
 
         private const int MaxPushBytes = 5 * 1024 * 1024;
         private static readonly TimeSpan EventInterval = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(15);
+        // Plugin hosts send updates every ~100 ms; polling faster gains nothing.
+        private const int MinFilteredInterval = 100;
 
         // Sources the API produces itself; a replace push may not claim them.
         private static readonly HashSet<string> ReservedSources = new(StringComparer.OrdinalIgnoreCase) { "infopanel", "system" };
@@ -124,6 +127,7 @@ namespace InfoPanel
             ("GET",  "/api",         "Endpoint list as JSON"),
             ("GET",  "/api/sensors", "Full sensor snapshot"),
             ("GET",  "/events",      "Server-Sent Events: the full snapshot every second"),
+            ("GET",  "/events?prefix={key prefix}&interval={ms}", "Server-Sent Events: matching values, then only changes (interval 100–10000 ms, default 1000)"),
             ("GET",  "/api/sources", "Plugins, containers and entries with their names and keys"),
             ("GET",  "/api/images/{pluginId}/{imageId}", "A plugin image as PNG"),
             ("POST", "/api/push",    "Add sensor values from another process (local machine only)"),
@@ -137,6 +141,14 @@ namespace InfoPanel
             response.Headers.Connection = "keep-alive";
             var token = context.RequestAborted;
 
+            string? prefix = context.Request.Query["prefix"];
+            if (!string.IsNullOrWhiteSpace(prefix))
+            {
+                int interval = int.TryParse(context.Request.Query["interval"], out var ms) ? ms : 1000;
+                await StreamMatchingAsync(response, prefix.Trim(), TimeSpan.FromMilliseconds(Math.Clamp(interval, MinFilteredInterval, 10_000)), baseUrl, token);
+                return;
+            }
+
             try
             {
                 while (!token.IsCancellationRequested)
@@ -145,6 +157,56 @@ namespace InfoPanel
                     await response.WriteAsync($"data: {json}\n\n", token);
                     await response.Body.FlushAsync(token);
                     await Task.Delay(EventInterval, token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Client disconnected.
+            }
+        }
+
+        /// <summary>
+        /// /events?prefix=...: the matching values on connect, then only what
+        /// changed (<c>sensors</c>) or disappeared (<c>removed</c>), checked
+        /// every <paramref name="interval"/>. For fast-moving plugin values
+        /// such as audio meters, which the 1 s full snapshot is too slow for.
+        /// </summary>
+        private async Task StreamMatchingAsync(HttpResponse response, string prefix, TimeSpan interval, string baseUrl, CancellationToken token)
+        {
+            var sent = new Dictionary<string, DataApiValue>(StringComparer.OrdinalIgnoreCase);
+            var lastWrite = DateTime.MinValue;
+
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    var current = _snapshots.GetMatching(prefix, baseUrl);
+                    var changed = current.Where(kv => !sent.TryGetValue(kv.Key, out var old) || old != kv.Value)
+                        .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+                    var removed = sent.Keys.Where(k => !current.ContainsKey(k)).ToList();
+
+                    if (changed.Count > 0 || removed.Count > 0 || lastWrite == DateTime.MinValue)
+                    {
+                        var json = JsonSerializer.Serialize(new
+                        {
+                            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                            sensors = changed,
+                            removed,
+                        }, JsonOptions);
+                        await response.WriteAsync($"data: {json}\n\n", token);
+                        await response.Body.FlushAsync(token);
+                        sent = current;
+                        lastWrite = DateTime.UtcNow;
+                    }
+                    else if (DateTime.UtcNow - lastWrite > KeepAliveInterval)
+                    {
+                        // Comment line: keeps proxies and the client's connection alive.
+                        await response.WriteAsync(": keep-alive\n\n", token);
+                        await response.Body.FlushAsync(token);
+                        lastWrite = DateTime.UtcNow;
+                    }
+
+                    await Task.Delay(interval, token);
                 }
             }
             catch (OperationCanceledException)
