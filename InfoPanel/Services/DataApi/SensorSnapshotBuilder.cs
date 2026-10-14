@@ -1,6 +1,7 @@
 using InfoPanel.Monitors;
 using InfoPanel.Plugins;
 using LibreHardwareMonitor.Hardware;
+using LibreHardwareMonitor.Hardware.Storage;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -17,7 +18,8 @@ namespace InfoPanel.DataApi
     ///
     /// Keys:
     ///   plugins.{pluginId}.{containerId}.{entryId}   plugin entries
-    ///   libre.{slug}                                 LibreHardwareMonitor
+    ///   libre.{slug}                                 LibreHardwareMonitor (identical devices: "{name} #2" → {slug}__2_...)
+    ///   libre.{drive}_volumes / _drive_letters       a drive's volumes ("C: Windows") and letters
     ///   hwinfo.{slug} / hwinfo.r{n}_{slug}           HWiNFO (local / remote)
     ///   system.*                                     CPU / RAM load
     /// </summary>
@@ -219,6 +221,92 @@ namespace InfoPanel.DataApi
                     // Skip malformed entries
                 }
             }
+            AddLibreVolumes(sensors);
+        }
+
+        /// <summary>
+        /// The volumes on each physical drive, so a drive can be picked by its
+        /// letter and label instead of its model name:
+        ///   libre.{drive}_volumes        "C: Windows, D: Games" (label when set)
+        ///   libre.{drive}_drive_letters  "C:, D:"
+        /// {drive} is the same device slug its sensors use ("kingston_sfyrd2000g__2").
+        /// </summary>
+        private static void AddLibreVolumes(Dictionary<string, DataApiValue> sensors)
+        {
+            var hardwareNames = LibreHardwareNames(LibreMonitor.SENSORHASH.Values);
+            var storages = LibreMonitor.SENSORHASH.Values
+                .Select(s => s.Hardware)
+                .OfType<StorageDevice>()
+                .DistinctBy(h => h.Identifier.ToString());
+            foreach (var storage in storages)
+            {
+                try
+                {
+                    if (!hardwareNames.TryGetValue(storage.Identifier.ToString(), out var device)) continue;
+                    var volumes = storage.Storage.Partitions
+                        .Select(p => VolumeOf(p.DriveLetter?.ToString()))
+                        .Where(v => v.Letter.Length > 0)
+                        .DistinctBy(v => v.Letter)
+                        .OrderBy(v => v.Letter, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    if (volumes.Count == 0) continue;
+                    string slug = Slug(device);
+                    sensors[$"libre.{slug}_volumes"] = new DataApiValue
+                    {
+                        Text = string.Join(", ", volumes.Select(v => v.Label.Length > 0 ? $"{v.Letter} {v.Label}" : v.Letter)),
+                        Name = $"{device} Volumes",
+                        Source = Source,
+                    };
+                    sensors[$"libre.{slug}_drive_letters"] = new DataApiValue
+                    {
+                        Text = string.Join(", ", volumes.Select(v => v.Letter)),
+                        Name = $"{device} Drive Letters",
+                        Source = Source,
+                    };
+                }
+                catch
+                {
+                    // A volume can go away mid-read; skip the drive this cycle.
+                }
+            }
+        }
+
+        /// <summary>
+        /// A partition's letter ("C:") and volume label (empty when unset or
+        /// unreadable); no letter for a partition without one.
+        /// </summary>
+        private static (string Letter, string Label) VolumeOf(string? driveLetter)
+        {
+            char c = (driveLetter ?? "").Trim().FirstOrDefault();
+            if (!char.IsLetter(c)) return ("", "");
+            string letter = $"{char.ToUpperInvariant(c)}:";
+            try
+            {
+                var drive = new System.IO.DriveInfo(letter);
+                return (letter, drive.IsReady ? CleanName(drive.VolumeLabel) : "");
+            }
+            catch
+            {
+                return (letter, "");
+            }
+        }
+
+        /// <summary>The display name of every device that has sensors, by identifier (see HardwareNames).</summary>
+        private static Dictionary<string, string> LibreHardwareNames(IEnumerable<ISensor> sensors)
+        {
+            var devices = new List<(string Identifier, string Name)>();
+            foreach (var sensor in sensors)
+            {
+                try
+                {
+                    devices.Add((sensor.Hardware.Identifier.ToString(), sensor.Hardware.Name ?? ""));
+                }
+                catch
+                {
+                    // Skip malformed entries
+                }
+            }
+            return HardwareNames(devices);
         }
 
         /// <summary>
@@ -230,12 +318,16 @@ namespace InfoPanel.DataApi
         /// </summary>
         internal static List<(string Key, string Name, ISensor Sensor)> LibreKeys()
         {
+            var sensorsList = LibreMonitor.SENSORHASH.Values.ToList();
+            var hardwareNames = LibreHardwareNames(sensorsList);
+
             var named = new List<(string Slug, string Name, ISensor Sensor)>();
-            foreach (var sensor in LibreMonitor.SENSORHASH.Values)
+            foreach (var sensor in sensorsList)
             {
                 try
                 {
-                    string name = CleanName($"{sensor.Hardware.Name} {sensor.Name}".Trim());
+                    string hardware = hardwareNames.TryGetValue(sensor.Hardware.Identifier.ToString(), out var n) ? n : CleanName(sensor.Hardware.Name);
+                    string name = CleanName($"{hardware} {sensor.Name}".Trim());
                     string slug = Slug(name);
                     if (slug.Length > 0) named.Add((slug, name, sensor));
                 }
@@ -262,6 +354,48 @@ namespace InfoPanel.DataApi
                     n => n.Sensor.Index.ToString(),
                 ],
                 (key, n) => ($"libre.{key}", n.Name, n.Sensor));
+        }
+
+        /// <summary>
+        /// The display name of each LibreHardwareMonitor device, by identifier.
+        /// Identical devices (three of the same NVMe model) share a name, so
+        /// their sensors used to collide and get arbitrary suffixes: the first
+        /// by identifier keeps the plain name (existing keys stay put), the
+        /// others become "{name} #2", "#3", ... in identifier order
+        /// ("/nvme/2" before "/nvme/10"), which is stable across restarts.
+        /// </summary>
+        internal static Dictionary<string, string> HardwareNames(IEnumerable<(string Identifier, string Name)> hardware)
+        {
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var group in hardware.DistinctBy(h => h.Identifier).GroupBy(h => CleanName(h.Name), StringComparer.OrdinalIgnoreCase))
+            {
+                int i = 0;
+                foreach (var (identifier, _) in group.OrderBy(h => h.Identifier, IdentifierOrder.Instance))
+                {
+                    names[identifier] = i == 0 ? group.Key : $"{group.Key} #{i + 1}";
+                    i++;
+                }
+            }
+            return names;
+        }
+
+        /// <summary>Orders identifiers with their numeric segments compared as numbers.</summary>
+        private sealed class IdentifierOrder : IComparer<string>
+        {
+            public static readonly IdentifierOrder Instance = new();
+
+            public int Compare(string? x, string? y)
+            {
+                string[] a = (x ?? "").Split('/'), b = (y ?? "").Split('/');
+                for (int i = 0; i < Math.Min(a.Length, b.Length); i++)
+                {
+                    int c = int.TryParse(a[i], out int na) && int.TryParse(b[i], out int nb)
+                        ? na.CompareTo(nb)
+                        : string.CompareOrdinal(a[i], b[i]);
+                    if (c != 0) return c;
+                }
+                return a.Length.CompareTo(b.Length);
+            }
         }
 
         /* ---------------- HWiNFO ---------------- */
