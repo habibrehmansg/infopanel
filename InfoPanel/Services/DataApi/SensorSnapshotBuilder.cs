@@ -149,7 +149,7 @@ namespace InfoPanel.DataApi
                     {
                         IPluginSensor sensor => FromPluginSensor(sensor, display),
                         IPluginText text => new DataApiValue { Text = text.Value, Name = display, Source = Source },
-                        IPluginTable table => new DataApiValue { Text = FlattenTable(table.Value), Name = display, Source = Source },
+                        IPluginTable table => new DataApiValue { Text = FlattenTable(table.Value), Table = ToTable(table.Value), Name = display, Source = Source },
                         _ => new DataApiValue { Text = reading.Data?.ToString(), Name = display, Source = Source },
                     } with { Ref = sensorRef };
                 }
@@ -201,6 +201,31 @@ namespace InfoPanel.DataApi
                 lines.Add(string.Join(", ", cells));
             }
             return string.Join('\n', lines);
+        }
+
+        /// <summary>
+        /// A plugin table as a table sensor item draws it: the column names,
+        /// and each cell's text, which PanelDraw takes from IPluginData.ToString()
+        /// and leaves blank for anything else (null here).
+        /// </summary>
+        internal static DataApiTable? ToTable(DataTable? table)
+        {
+            if (table == null) return null;
+
+            var columns = new List<string>(table.Columns.Count);
+            foreach (DataColumn column in table.Columns) columns.Add(column.ColumnName);
+
+            var rows = new List<IReadOnlyList<string?>>(table.Rows.Count);
+            foreach (DataRow row in table.Rows)
+            {
+                var cells = new string?[columns.Count];
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    cells[i] = row[i] is IPluginData data ? data.ToString() : null;
+                }
+                rows.Add(cells);
+            }
+            return new DataApiTable { Columns = columns, Rows = rows };
         }
 
         /* ---------------- LibreHardwareMonitor ---------------- */

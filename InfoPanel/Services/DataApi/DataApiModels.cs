@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace InfoPanel.DataApi
 {
@@ -28,6 +30,34 @@ namespace InfoPanel.DataApi
         /// /api/sensors only; the event streams leave it out.
         /// </summary>
         public string? Ref { get; init; }
+
+        /// <summary>
+        /// A plugin table with its column names and each cell as InfoPanel
+        /// draws it (null where it draws nothing). <see cref="Text"/> keeps
+        /// the flattened form for older clients.
+        /// </summary>
+        public DataApiTable? Table { get; init; }
+    }
+
+    /// <summary>A plugin table, compared by content so a filtered stream only resends changed tables.</summary>
+    public sealed record DataApiTable
+    {
+        public IReadOnlyList<string> Columns { get; init; } = [];
+        public IReadOnlyList<IReadOnlyList<string?>> Rows { get; init; } = [];
+
+        public bool Equals(DataApiTable? other) =>
+            other is not null
+            && Columns.SequenceEqual(other.Columns)
+            && Rows.Count == other.Rows.Count
+            && Rows.Zip(other.Rows).All(pair => pair.First.SequenceEqual(pair.Second));
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            foreach (var column in Columns) hash.Add(column);
+            hash.Add(Rows.Count);
+            return hash.ToHashCode();
+        }
     }
 
     /// <summary>Freshness of one external push source.</summary>

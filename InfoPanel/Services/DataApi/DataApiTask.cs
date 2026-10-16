@@ -31,6 +31,7 @@ namespace InfoPanel
         public static DataApiTask Instance => _instance.Value;
 
         private const int MaxPushBytes = 5 * 1024 * 1024;
+        private const int MaxFontRequestBytes = 256 * 1024;
         private static readonly TimeSpan EventInterval = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(15);
         // Plugin hosts send updates every ~100 ms; polling faster gains nothing.
@@ -120,6 +121,11 @@ namespace InfoPanel
                 app.MapGet("/events", context => StreamEventsAsync(context, baseUrl));
                 app.MapGet("/api/sources", () => Results.Json(Sources(), JsonOptions));
                 app.MapGet("/api/images/{pluginId}/{imageId}", ServeImage);
+                app.MapPost("/api/fonts/resolve", (Func<HttpContext, Task<IResult>>)ResolveFontsAsync);
+                app.MapGet("/api/fonts/{id}", (string id) =>
+                    DataApiFonts.TryGetFace(id, out var bytes, out var contentType)
+                        ? Results.Bytes(bytes, contentType)
+                        : Results.NotFound());
                 app.MapPost("/api/push", (Func<HttpContext, Task<IResult>>)PushAsync);
                 app.MapPost("/api/clear", (HttpContext context) =>
                 {
@@ -151,6 +157,8 @@ namespace InfoPanel
             ("GET",  "/events?prefix={key prefix}&interval={ms}", "Server-Sent Events: matching values, then only changes (interval 100–10000 ms, default 1000)"),
             ("GET",  "/api/sources", "Plugins, containers and entries with their names and keys"),
             ("GET",  "/api/images/{pluginId}/{imageId}", "A plugin image as PNG"),
+            ("POST", "/api/fonts/resolve", "The face InfoPanel draws each [{font, style, bold, italic}] with"),
+            ("GET",  "/api/fonts/{id}", "The font file of a resolved face"),
             ("POST", "/api/push",    "Add sensor values from another process (local machine only)"),
             ("POST", "/api/clear",   "Clear all pushed values (local machine only)"),
         ];
@@ -309,6 +317,31 @@ namespace InfoPanel
                 JsonValueKind.String => new DataApiValue { Text = element.GetString(), Source = source },
                 _ => new DataApiValue { Source = source },
             };
+        }
+
+        /// <summary>
+        /// POST /api/fonts/resolve: an array of font requests as profile items
+        /// name them; for each, the face InfoPanel draws it with.
+        /// </summary>
+        private static async Task<IResult> ResolveFontsAsync(HttpContext context)
+        {
+            if (context.Request.ContentLength > MaxFontRequestBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
+            List<FontRequest?>? requests;
+            try
+            {
+                requests = await JsonSerializer.DeserializeAsync<List<FontRequest?>>(context.Request.Body, JsonOptions, context.RequestAborted);
+            }
+            catch (JsonException ex)
+            {
+                return Results.BadRequest($"Invalid JSON: {ex.Message}");
+            }
+
+            if (requests == null) return Results.BadRequest("expected an array of {font, style, bold, italic}");
+            if (requests.Count > DataApiFonts.MaxRequests) return Results.BadRequest($"at most {DataApiFonts.MaxRequests} requests");
+            if (!requests.All(r => r != null && DataApiFonts.IsValid(r))) return Results.BadRequest("every request needs a font name of at most 256 characters");
+
+            return Results.Json(requests.Select(r => DataApiFonts.Resolve(r!)).ToList(), JsonOptions);
         }
 
         private static bool IsLocal(HttpContext context) =>
