@@ -112,6 +112,9 @@ namespace InfoPanel.DataApi
         /// <summary>The Data API key of a PluginMonitor.SENSORHASH entry ("/{plugin}/{container}/{entry}").</summary>
         internal static string PluginKey(string hashKey) => "plugins." + hashKey.TrimStart('/').Replace('/', '.');
 
+        /// <summary>The Ref of a plugin entry: its PluginSensorId as a profile stores it.</summary>
+        internal static string PluginRef(string hashKey) => "plugin:" + hashKey;
+
         internal static bool IsImageContainer(string containerId) =>
             containerId.StartsWith(ImageContainerPrefix, StringComparison.Ordinal);
 
@@ -123,6 +126,7 @@ namespace InfoPanel.DataApi
                 {
                     string key = PluginKey(hashKey);
                     string display = DisplayName(reading.ContainerName, reading.Name);
+                    string sensorRef = PluginRef(hashKey);
 
                     if (reading.ContainerId.StartsWith(ImageContainerPrefix, StringComparison.Ordinal))
                     {
@@ -135,6 +139,7 @@ namespace InfoPanel.DataApi
                                 Text = $"{imageBaseUrl}/api/images/{link[PluginImageScheme.Length..]}",
                                 Name = display,
                                 Source = Source,
+                                Ref = sensorRef,
                             };
                         }
                         continue;
@@ -146,7 +151,7 @@ namespace InfoPanel.DataApi
                         IPluginText text => new DataApiValue { Text = text.Value, Name = display, Source = Source },
                         IPluginTable table => new DataApiValue { Text = FlattenTable(table.Value), Name = display, Source = Source },
                         _ => new DataApiValue { Text = reading.Data?.ToString(), Name = display, Source = Source },
-                    };
+                    } with { Ref = sensorRef };
                 }
                 catch
                 {
@@ -202,7 +207,7 @@ namespace InfoPanel.DataApi
 
         private static void AddLibre(Dictionary<string, DataApiValue> sensors)
         {
-            foreach (var (key, name, sensor) in LibreKeys())
+            foreach (var (key, name, sensor, hashKey) in LibreKeys())
             {
                 try
                 {
@@ -214,6 +219,7 @@ namespace InfoPanel.DataApi
                         Unit = sensor.GetUnit() ?? "",
                         Name = name,
                         Source = Source,
+                        Ref = LibreRef(hashKey),
                     };
                 }
                 catch
@@ -316,20 +322,20 @@ namespace InfoPanel.DataApi
         /// "libre.{slug}", the others get "_{sensortype}", plus "_{index}" if
         /// that still collides.
         /// </summary>
-        internal static List<(string Key, string Name, ISensor Sensor)> LibreKeys()
+        internal static List<(string Key, string Name, ISensor Sensor, string HashKey)> LibreKeys()
         {
-            var sensorsList = LibreMonitor.SENSORHASH.Values.ToList();
-            var hardwareNames = LibreHardwareNames(sensorsList);
+            var entries = LibreMonitor.SENSORHASH.ToList();
+            var hardwareNames = LibreHardwareNames(entries.Select(e => e.Value));
 
-            var named = new List<(string Slug, string Name, ISensor Sensor)>();
-            foreach (var sensor in sensorsList)
+            var named = new List<(string Slug, string Name, ISensor Sensor, string HashKey)>();
+            foreach (var (hashKey, sensor) in entries)
             {
                 try
                 {
                     string hardware = hardwareNames.TryGetValue(sensor.Hardware.Identifier.ToString(), out var n) ? n : CleanName(sensor.Hardware.Name);
                     string name = CleanName($"{hardware} {sensor.Name}".Trim());
                     string slug = Slug(name);
-                    if (slug.Length > 0) named.Add((slug, name, sensor));
+                    if (slug.Length > 0) named.Add((slug, name, sensor, hashKey));
                 }
                 catch
                 {
@@ -353,8 +359,17 @@ namespace InfoPanel.DataApi
                     n => n.Sensor.SensorType.ToString().ToLowerInvariant(),
                     n => n.Sensor.Index.ToString(),
                 ],
-                (key, n) => ($"libre.{key}", n.Name, n.Sensor));
+                (key, n) => ($"libre.{key}", n.Name, n.Sensor, n.HashKey));
         }
+
+        /// <summary>
+        /// The Ref of a LibreHardwareMonitor sensor: its LibreMonitor.SENSORHASH
+        /// key. That is the identifier a profile's LibreSensorId stores; of two
+        /// sensors sharing an identifier, the one InfoPanel reads for it keeps
+        /// the identifier and the other has "{identifier}/{name}", which no
+        /// profile binds to.
+        /// </summary>
+        internal static string LibreRef(string hashKey) => "libre:" + hashKey;
 
         /// <summary>
         /// The display name of each LibreHardwareMonitor device, by identifier.
@@ -413,9 +428,17 @@ namespace InfoPanel.DataApi
                     Avg = reading.ValueAvg,
                     Name = reading.RemoteIndex >= 0 ? $"Remote {reading.RemoteIndex}: {name}" : name,
                     Source = Source,
+                    Ref = HwInfoRef(reading),
                 };
             }
         }
+
+        /// <summary>
+        /// The Ref of a HWiNFO reading: its HWHash.SENSORHASH key, which a
+        /// profile stores as HwInfoRemoteIndex, Id, Instance and EntryId.
+        /// </summary>
+        internal static string HwInfoRef(HWHash.HWINFO_HASH reading) =>
+            $"hwinfo:{reading.RemoteIndex}/{reading.ParentID}/{reading.ParentInstance}/{reading.SensorID}";
 
         /// <summary>The HWiNFO device (parent) name of a reading.</summary>
         internal static string HwInfoDevice(HWHash.HWINFO_HASH reading) =>

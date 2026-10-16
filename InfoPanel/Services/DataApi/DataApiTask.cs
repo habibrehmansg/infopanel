@@ -12,6 +12,7 @@ using System.Linq;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -38,10 +39,30 @@ namespace InfoPanel
         // Sources the API produces itself; a replace push may not claim them.
         private static readonly HashSet<string> ReservedSources = new(StringComparer.OrdinalIgnoreCase) { "infopanel", "system" };
 
-        private static readonly JsonSerializerOptions JsonOptions = new()
+        internal static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        };
+
+        // The event streams leave out DataApiValue.Ref: it never changes, so
+        // clients read it once from /api/sensors.
+        internal static readonly JsonSerializerOptions StreamJsonOptions = new(JsonOptions)
+        {
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver
+            {
+                Modifiers =
+                {
+                    info =>
+                    {
+                        if (info.Type != typeof(DataApiValue)) return;
+                        foreach (var property in info.Properties)
+                        {
+                            if (property.Name == "ref") property.ShouldSerialize = (_, _) => false;
+                        }
+                    },
+                },
+            },
         };
 
         private readonly PushStore _pushStore = new();
@@ -153,7 +174,7 @@ namespace InfoPanel
             {
                 while (!token.IsCancellationRequested)
                 {
-                    var json = JsonSerializer.Serialize(_snapshots.Get(baseUrl), JsonOptions);
+                    var json = JsonSerializer.Serialize(_snapshots.Get(baseUrl), StreamJsonOptions);
                     await response.WriteAsync($"data: {json}\n\n", token);
                     await response.Body.FlushAsync(token);
                     await Task.Delay(EventInterval, token);
@@ -192,7 +213,7 @@ namespace InfoPanel
                             timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                             sensors = changed,
                             removed,
-                        }, JsonOptions);
+                        }, StreamJsonOptions);
                         await response.WriteAsync($"data: {json}\n\n", token);
                         await response.Body.FlushAsync(token);
                         sent = current;

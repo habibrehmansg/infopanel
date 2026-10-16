@@ -20,6 +20,14 @@ namespace InfoPanel.DataApi
         /// HWiNFO), "system", or the source label of an external push.
         /// </summary>
         public string? Source { get; init; }
+
+        /// <summary>
+        /// The sensor's native InfoPanel binding, so a client can match a key
+        /// to a profile item: "libre:{identifier}", "hwinfo:{remote}/{id}/{instance}/{entry}"
+        /// or "plugin:{sensor id}". Null for system and pushed values. Sent by
+        /// /api/sensors only; the event streams leave it out.
+        /// </summary>
+        public string? Ref { get; init; }
     }
 
     /// <summary>Freshness of one external push source.</summary>

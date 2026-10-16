@@ -48,6 +48,7 @@ namespace InfoPanel.Tests
         }
     }
 
+    [Collection("LibreMonitor.SENSORHASH")]
     public class LibreMonitorStoreTests
     {
         [Fact]
@@ -82,19 +83,50 @@ namespace InfoPanel.Tests
         }
     }
 
-    /// <summary>An ISensor that answers only Identifier and Name, enough for the key logic.</summary>
+    /// <summary>
+    /// An ISensor that answers Identifier and Name, enough for the key logic,
+    /// plus Hardware, SensorType and Index when built with a hardware.
+    /// </summary>
     public class FakeSensor : DispatchProxy
     {
         private string _id = "";
         private string _name = "";
+        private IHardware? _hardware;
 
-        public static ISensor Create(string identifier, string name)
+        public static ISensor Create(string identifier, string name, IHardware? hardware = null)
         {
             var sensor = Create<ISensor, FakeSensor>();
             var fake = (FakeSensor)(object)sensor;
             fake._id = identifier;
             fake._name = name;
+            fake._hardware = hardware;
             return sensor;
+        }
+
+        protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+        {
+            "get_Identifier" => new Identifier(_id.TrimStart('/').Split('/')),
+            "get_Name" => _name,
+            "get_Hardware" => _hardware,
+            "get_SensorType" => SensorType.Load,
+            "get_Index" => 0,
+            _ => null,
+        };
+    }
+
+    /// <summary>An IHardware that answers only Identifier and Name.</summary>
+    public class FakeHardware : DispatchProxy
+    {
+        private string _id = "";
+        private string _name = "";
+
+        public static IHardware Create(string identifier, string name)
+        {
+            var hardware = Create<IHardware, FakeHardware>();
+            var fake = (FakeHardware)(object)hardware;
+            fake._id = identifier;
+            fake._name = name;
+            return hardware;
         }
 
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
