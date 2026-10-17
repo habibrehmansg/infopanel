@@ -224,6 +224,17 @@ namespace InfoPanel.Services
                         }
                     }
                     break;
+                case "Valkyrie":
+                    foreach (var device in ConfigModel.Instance.Settings.ValkyriePanelDevices)
+                    {
+                        if (device.DeviceId == binding.DeviceId && device.DeviceLocation == binding.DeviceLocation)
+                        {
+                            device.ProfileGuid = binding.ProfileGuid;
+                            Logger.Information("Switched Valkyrie device {Device} to profile {Profile}", device.DeviceId, profile.Name);
+                            return;
+                        }
+                    }
+                    break;
             }
 
             Logger.Warning("Hotkey target device {DeviceType} {DeviceId} not found", binding.DeviceType, binding.DeviceId);

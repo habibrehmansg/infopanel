@@ -38,6 +38,9 @@ jobs:
     #     restore-keys: |
     #       ${{ runner.os }}-nuget-
 
+    - name: Test Valkyrie protocol
+      run: dotnet test tests/InfoPanel.Valkyrie.Tests/InfoPanel.Valkyrie.Tests.csproj -c Release
+
     - name: Build InfoPanel
       run: |
         dotnet restore --force-evaluate

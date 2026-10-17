@@ -93,6 +93,16 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _thermaltakePanelMultiDeviceMode = false;
 
+        private readonly ObservableCollection<ValkyriePanelDevice> _valkyriePanelDevices = [];
+
+        public ObservableCollection<ValkyriePanelDevice> ValkyriePanelDevices
+        {
+            get { return _valkyriePanelDevices; }
+        }
+
+        [ObservableProperty]
+        private bool _valkyriePanelMultiDeviceMode = false;
+
         private readonly ObservableCollection<HotkeyBinding> _hotkeyBindings = [];
 
         public ObservableCollection<HotkeyBinding> HotkeyBindings
@@ -140,6 +150,7 @@ namespace InfoPanel.Models
             TuringPanelDevices.CollectionChanged += TuringPanelDevices_CollectionChanged;
             ThermalrightPanelDevices.CollectionChanged += ThermalrightPanelDevices_CollectionChanged;
             ThermaltakePanelDevices.CollectionChanged += ThermaltakePanelDevices_CollectionChanged;
+            ValkyriePanelDevices.CollectionChanged += ValkyriePanelDevices_CollectionChanged;
         }
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -232,6 +243,27 @@ namespace InfoPanel.Models
         {
             if (e.PropertyName != nameof(ThermaltakePanelDevice.RuntimeProperties))
                 OnPropertyChanged(nameof(ThermaltakePanelDevices));
+        }
+
+        private void ValkyriePanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (ValkyriePanelDevice device in e.OldItems)
+                    device.PropertyChanged -= ValkyrieDevice_PropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (ValkyriePanelDevice device in e.NewItems)
+                    device.PropertyChanged += ValkyrieDevice_PropertyChanged;
+            }
+            OnPropertyChanged(nameof(ValkyriePanelDevices));
+        }
+
+        private void ValkyrieDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ValkyriePanelDevice.RuntimeProperties))
+                OnPropertyChanged(nameof(ValkyriePanelDevices));
         }
 
     }

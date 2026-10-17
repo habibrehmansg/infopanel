@@ -4,6 +4,7 @@ using InfoPanel.Services;
 using InfoPanel.TuringPanel;
 using InfoPanel.ThermalrightPanel;
 using InfoPanel.ThermaltakePanel;
+using InfoPanel.ValkyriePanel;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
 using LibUsbDotNet;
@@ -43,6 +44,8 @@ public partial class UsbPanelsPage : Page
         DataContext = this;
         InitializeComponent();
         PopulateDeviceCombo();
+
+        ConfigModel.Instance.Settings.ValkyriePanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
 
         // Refresh device combo when device lists change
         ConfigModel.Instance.Settings.BeadaPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
@@ -252,6 +255,9 @@ public partial class UsbPanelsPage : Page
             var name = d.RuntimeProperties?.Name ?? d.DeviceId;
             items.Add(Tuple.Create($"Thermalright|{d.DeviceId}|{d.DeviceLocation}", name));
         }
+
+        foreach (var d in ConfigModel.Instance.Settings.ValkyriePanelDevices)
+            items.Add(Tuple.Create($"Valkyrie|{d.DeviceId}|{d.DeviceLocation}", d.ModelInfo?.Name ?? d.DeviceId));
 
         HotkeyDeviceCombo.ItemsSource = items;
     }
@@ -638,6 +644,63 @@ public partial class UsbPanelsPage : Page
                 }
             });
         }
+    }
+
+    private void ButtonRemoveValkyriePanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is ValkyriePanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.ValkyriePanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (ValkyriePanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = ValkyriePanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.ValkyriePanelDevices.Remove(deviceConfig);
+                }
+            });
+        }
+    }
+
+    private async void ButtonDiscoverValkyriePanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        button.IsEnabled = false;
+        try
+        {
+            // Do not interleave EDID commands with a running screen's HID initialization/refresh.
+            var streaming = ConfigModel.Instance.Settings.ValkyriePanelDevices
+                .Where(d => ValkyriePanelTask.Instance.IsDeviceRunning(d.Id))
+                .Select(d => d.DeviceLocation).ToHashSet(StringComparer.Ordinal);
+            var discovered = await Task.Run(() => ValkyriePanelHelper.ScanDevices(streaming));
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                foreach (var info in discovered)
+                {
+                    if (settings.ValkyriePanelDevices.Any(d => d.IsMatching(info.DeviceId, info.DeviceLocation, info.Model)))
+                        continue;
+                    settings.ValkyriePanelDevices.Add(new ValkyriePanelDevice
+                    {
+                        DeviceId = info.DeviceId, DeviceLocation = info.DeviceLocation, Model = info.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty
+                    });
+                }
+            });
+            if (discovered.Count == 0 && streaming.Count == 0)
+                _snackbarService.Show("Valkyrie", "No confirmed V360 found. Close Myth.Cool and check that interface 0 still uses its HID driver.",
+                    Wpf.Ui.Controls.ControlAppearance.Caution, null, TimeSpan.FromSeconds(8));
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning(ex, "Valkyrie discovery failed");
+            _snackbarService.Show("Valkyrie", ex.Message, Wpf.Ui.Controls.ControlAppearance.Danger, null, TimeSpan.FromSeconds(8));
+        }
+        finally { button.IsEnabled = true; }
     }
 
 }
