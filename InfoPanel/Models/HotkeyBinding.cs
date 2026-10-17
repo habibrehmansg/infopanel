@@ -16,7 +16,7 @@ namespace InfoPanel.Models
         private Key _key = Key.None;
 
         /// <summary>
-        /// Device type: "Beada", "Turing", or "Thermalright"
+        /// Device type: "Beada", "Turing", "Thermalright", or "Valkyrie"
         /// </summary>
         [ObservableProperty]
         private string _deviceType = string.Empty;
@@ -92,6 +92,10 @@ namespace InfoPanel.Models
                     "Thermalright" => ConfigModel.Instance.Settings.ThermalrightPanelDevices
                         .Where(d => d.DeviceId == DeviceId)
                         .Select(d => d.RuntimeProperties?.Name ?? d.DeviceId)
+                        .FirstOrDefault() ?? DeviceId,
+                    "Valkyrie" => ConfigModel.Instance.Settings.ValkyriePanelDevices
+                        .Where(d => d.DeviceId == DeviceId && d.DeviceLocation == DeviceLocation)
+                        .Select(d => d.ModelInfo?.Name ?? d.DeviceId)
                         .FirstOrDefault() ?? DeviceId,
                     _ => DeviceId
                 };

@@ -6,6 +6,7 @@
 - [Display Types Comparison](#display-types-comparison)
 - [BeadaPanel Models](#beadapanel-models)
 - [Turing Smart Screen/TURZX Models](#turing-smart-screenturzx-models)
+- [Valkyrie V360 LCD](#valkyrie-v360-lcd)
 - [Connection and Setup](#connection-and-setup)
 - [Troubleshooting](#troubleshooting)
 - [Recommendations](#recommendations)
@@ -88,6 +89,26 @@ Turing Smart Screen (also known as TURZX) models are also supported by InfoPanel
 - Generally slower refresh rates than BeadaPanel options
 - Closed protocol with no official documentation (InfoPanel is compatible at best effort basis)
 - Turing's official software may provide better performance than third-party applications (e.g high FPS video backgrounds)
+
+## Valkyrie V360 LCD
+
+| Model | Resolution | USB ID | Transport |
+|-------|------------|--------|-----------|
+| Valkyrie V360 | 320×240 | `345F:9132` | HID control (interface 0), UYVY422 bulk output (interface 3, endpoint `0x04`) |
+
+This support is experimental on Windows. The initialization and frame protocol were verified on a physical V360 under Linux; Windows USB access and streaming still need hardware validation.
+
+1. Close Myth.Cool before using the screen in InfoPanel.
+2. The display interface **3** must use a WinUSB-compatible driver. If a driver change is needed, select only that interface in Zadig. Keep interface **0** on its native HID driver; do not replace the composite parent device driver. A driver change may require restoring the vendor driver before returning to Myth.Cool.
+3. In USB Panels, enable the separate **Valkyrie** section and discover devices. Select a profile, then enable the V360 entry. Brightness (software dimming), rotation, target frame rate (1–30 FPS) and profile hotkeys are supported. A 320×240 profile avoids scaling.
+
+Discovery reads the EDID detailed timing and accepts only 320×240 panels; the shared USB ID alone does not identify a V360. HID and bulk handles are matched by a nonempty serial number. Other MS9132 screens (including Jonsbo DS339 and VMAX panels) are skipped. Reconnection retries repeat the cold-start handshake, and static profiles continue sending frames.
+
+Protocol tests can run without Windows or a USB device:
+
+```sh
+dotnet test tests/InfoPanel.Valkyrie.Tests/InfoPanel.Valkyrie.Tests.csproj -c Release
+```
 
 ## Connection and Setup
 

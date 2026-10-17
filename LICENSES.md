@@ -6,6 +6,11 @@ This document lists all third-party libraries and their licenses used in InfoPan
 
 The following packages are licensed under the MIT License:
 
+### LCD Fusion (Valkyrie V360 initialization sequence)
+- **License**: MIT License (notice retained in `ValkyrieV360Protocol.cs`)
+- **Copyright**: © 2026 itsmylife44
+- **Project**: https://github.com/itsmylife44/LcdFusion
+
 ### AutoMapper
 - **License**: MIT License
 - **Copyright**: © 2009 Jimmy Bogard and contributors
