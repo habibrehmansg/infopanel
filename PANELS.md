@@ -96,7 +96,7 @@ Turing Smart Screen (also known as TURZX) models are also supported by InfoPanel
 |-------|------------|--------|-----------|
 | Valkyrie V360 | 320×240 | `345F:9132` | HID control (interface 0), UYVY422 bulk output (interface 3, endpoint `0x04`) |
 
-This support is experimental on Windows. The initialization and frame protocol were verified on a physical V360 under Linux; Windows USB access and streaming still need hardware validation.
+The initialization and frame protocol were verified on a physical V360 under Linux. USB access and display streaming were also tested successfully on a physical V360 under Windows.
 
 1. Close Myth.Cool before using the screen in InfoPanel.
 2. The display interface **3** must use a WinUSB-compatible driver. If a driver change is needed, select only that interface in Zadig. Keep interface **0** on its native HID driver; do not replace the composite parent device driver. A driver change may require restoring the vendor driver before returning to Myth.Cool.

@@ -47,7 +47,7 @@
 - CPU, GPU, RAM, storage, and network monitoring via LibreHardwareMonitor
 - BeadaPanel USB LCD panels (all models supported)
 - TuringPanel/TURZX displays (Models A, C, and E)
-  - Valkyrie V360 LCD (320×240, USB `345F:9132`; Windows hardware validation pending)
+  - Valkyrie V360 LCD (320×240, USB `345F:9132`; tested on Windows hardware)
 - Any standard monitor or display
 
 For detailed information about supported panels and recommendations, see our [Display Panels Guide](PANELS.md).
