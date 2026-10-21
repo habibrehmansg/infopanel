@@ -180,6 +180,12 @@ namespace InfoPanel.Services
 
                 await Task.Run(() =>
                 {
+                    if (profile.WebViewEnabled)
+                    {
+                        DrawWebViewPlaceholder(profile.PreviewBitmap, profile);
+                        return;
+                    }
+
                     using var g = SkiaGraphics.FromBitmap(profile.PreviewBitmap, profile.FontScale);
                     PanelDraw.Run(profile, g, true, scale, false, $"PREVIEW-{profile.Guid}");
                 });
@@ -193,6 +199,52 @@ namespace InfoPanel.Services
             {
                 Logger.Error(ex, "Error rendering preview for profile {ProfileGuid}", entry.Profile.Guid);
             }
+        }
+
+        /// <summary>
+        /// Web page profiles are rendered live by WebView2 in the desktop panel only, so the
+        /// preview shows a placeholder with the URL instead of a snapshot.
+        /// </summary>
+        private static void DrawWebViewPlaceholder(SKBitmap bitmap, Profile profile)
+        {
+            using var canvas = new SKCanvas(bitmap);
+
+            var background = SKColor.TryParse(profile.BackgroundColor, out var parsed) ? parsed.WithAlpha(255) : SKColors.Black;
+            canvas.Clear(background);
+
+            background.ToHsl(out _, out _, out var lightness);
+            using var paint = new SKPaint
+            {
+                Color = lightness > 50 ? SKColors.Black : SKColors.White,
+                IsAntialias = true,
+            };
+
+            var width = bitmap.Width;
+            var height = bitmap.Height;
+            var fontSize = Math.Clamp(height / 8f, 8f, 28f);
+            using var titleFont = new SKFont(SKTypeface.Default, fontSize) { Embolden = true };
+            using var urlFont = new SKFont(SKTypeface.Default, fontSize * 0.7f);
+
+            var centerX = width / 2f;
+            var centerY = height / 2f;
+
+            canvas.DrawText("Web page", centerX, centerY - fontSize * 0.2f, SKTextAlign.Center, titleFont, paint);
+
+            var url = string.IsNullOrWhiteSpace(profile.WebViewUrl) ? "No URL set" : profile.WebViewUrl;
+            canvas.DrawText(Ellipsize(url, urlFont, width - 10), centerX, centerY + fontSize, SKTextAlign.Center, urlFont, paint);
+        }
+
+        private static string Ellipsize(string text, SKFont font, float maxWidth)
+        {
+            if (maxWidth <= 0 || font.MeasureText(text) <= maxWidth) return text;
+
+            const string ellipsis = "\u2026";
+            var length = text.Length;
+            while (length > 0 && font.MeasureText(text[..length] + ellipsis) > maxWidth)
+            {
+                length--;
+            }
+            return text[..length] + ellipsis;
         }
 
         public void CompletePaint(Profile profile)

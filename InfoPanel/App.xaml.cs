@@ -593,6 +593,11 @@ namespace InfoPanel
             DisplayWindowManager.Instance.GetWindow(profile.Guid)?.Fullscreen();
         }
 
+        public void RefreshWebPage(Profile profile)
+        {
+            DisplayWindowManager.Instance.GetWindow(profile.Guid)?.RefreshWebView();
+        }
+
         public void ShowDisplayWindow(Profile profile)
         {
             DisplayWindowManager.Instance.ShowDisplayWindow(profile);

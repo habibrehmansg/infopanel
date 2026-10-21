@@ -268,6 +268,67 @@ namespace InfoPanel.Models
             set { SetProperty(ref _triggerProcessNames, value); }
         }
 
+        /// <summary>When true, the desktop panel shows a live WebView2 page instead of the profile's display items.</summary>
+        private bool _webViewEnabled = false;
+
+        public bool WebViewEnabled
+        {
+            get { return _webViewEnabled; }
+            set { SetProperty(ref _webViewEnabled, value); }
+        }
+
+        private string _webViewUrl = string.Empty;
+
+        public string WebViewUrl
+        {
+            get { return _webViewUrl; }
+            set { SetProperty(ref _webViewUrl, value ?? string.Empty); }
+        }
+
+        /// <summary>When true, mouse input goes to the web page; when false, the panel keeps its normal drag/resize behaviour.</summary>
+        private bool _webViewInteractive = false;
+
+        public bool WebViewInteractive
+        {
+            get { return _webViewInteractive; }
+            set { SetProperty(ref _webViewInteractive, value); }
+        }
+
+        /// <summary>When true, the web page's requests bypass the browser cache.</summary>
+        private bool _webViewDisableCache = false;
+
+        public bool WebViewDisableCache
+        {
+            get { return _webViewDisableCache; }
+            set { SetProperty(ref _webViewDisableCache, value); }
+        }
+
+        public const int MinWebViewAutoRefreshSeconds = 5;
+
+        /// <summary>Hard-refresh interval for the web page in seconds; 0 turns it off.</summary>
+        private int _webViewAutoRefreshSeconds = 0;
+
+        public int WebViewAutoRefreshSeconds
+        {
+            get { return _webViewAutoRefreshSeconds; }
+            set { SetProperty(ref _webViewAutoRefreshSeconds, value <= 0 ? 0 : Math.Max(MinWebViewAutoRefreshSeconds, value)); }
+        }
+
+        public const int MaxWebViewMaxFps = 240;
+
+        /// <summary>
+        /// Caps how often the web page's requestAnimationFrame callbacks run; 0 leaves it at the display's
+        /// refresh rate. Animation the page drives from script then redraws less often, which is most of
+        /// what an always-animating dashboard costs. CSS animations are not affected.
+        /// </summary>
+        private int _webViewMaxFps = 0;
+
+        public int WebViewMaxFps
+        {
+            get { return _webViewMaxFps; }
+            set { SetProperty(ref _webViewMaxFps, Math.Clamp(value, 0, MaxWebViewMaxFps)); }
+        }
+
         public object Clone()
         {
             return MemberwiseClone();

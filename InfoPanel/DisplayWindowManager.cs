@@ -67,8 +67,8 @@ namespace InfoPanel
                     // Check if window exists
                     if (_windows.TryGetValue(profile.Guid, out var existingWindow))
                     {
-                        // If Direct2D mode changed, close and recreate
-                        if (existingWindow.OpenGL != profile.OpenGL)
+                        // If rendering mode (OpenGL / WebView) changed, close and recreate
+                        if (existingWindow.OpenGL != DisplayWindow.UsesOpenGL(profile) || existingWindow.WebView != profile.WebViewEnabled)
                         {
                             existingWindow.Close();
                             _windows.Remove(profile.Guid);

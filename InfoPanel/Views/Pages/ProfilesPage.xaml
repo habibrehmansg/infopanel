@@ -525,7 +525,7 @@
                                         </TabItem>
 
                                         <!--  Tab 3: Rendering  -->
-                                        <TabItem>
+                                        <TabItem Margin="0,0,4,0">
                                             <TabItem.Header>
                                                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                                                     <ui:SymbolIcon FontSize="16" Symbol="VideoClip20" />
@@ -546,7 +546,10 @@
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                                 Text="Use OpenGL (GPU) rendering" />
                                                         </ui:CardControl.Header>
-                                                        <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding OpenGL}" />
+                                                        <ui:ToggleSwitch
+                                                            Margin="0,-5,0,-5"
+                                                            IsChecked="{Binding OpenGL}"
+                                                            IsEnabled="{Binding WebViewEnabled, Converter={StaticResource InverseBooleanConverter}}" />
                                                     </ui:CardControl>
                                                 </Grid>
 
@@ -558,10 +561,144 @@
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                                 Text="Show Panel Overlay" />
                                                         </ui:CardControl.Header>
-                                                        <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding ShowFps}" />
+                                                        <ui:ToggleSwitch
+                                                            Margin="0,-5,0,-5"
+                                                            IsChecked="{Binding ShowFps}"
+                                                            IsEnabled="{Binding WebViewEnabled, Converter={StaticResource InverseBooleanConverter}}" />
                                                     </ui:CardControl>
                                                 </Grid>
                                             </Grid>
+                                        </TabItem>
+
+                                        <!--  Tab 4: Web Page  -->
+                                        <TabItem>
+                                            <TabItem.Header>
+                                                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                                                    <ui:SymbolIcon FontSize="16" Symbol="Globe20" />
+                                                    <TextBlock Margin="6,0,0,0" Text="Web Page" />
+                                                </StackPanel>
+                                            </TabItem.Header>
+                                            <StackPanel
+                                                Margin="10,10,10,0"
+                                                VerticalAlignment="Top"
+                                                IsEnabled="{Binding Active}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <ui:CardControl Grid.Column="0">
+                                                        <ui:CardControl.Header>
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                Text="Show web page instead of display items"
+                                                                TextWrapping="Wrap" />
+                                                        </ui:CardControl.Header>
+                                                        <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding WebViewEnabled}" />
+                                                    </ui:CardControl>
+
+                                                    <ui:CardControl
+                                                        Grid.Column="1"
+                                                        Margin="10,0,0,0"
+                                                        IsEnabled="{Binding WebViewEnabled}">
+                                                        <ui:CardControl.Header>
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                Text="Interactive (clicks and scrolling go to the page; turn off to move or resize the panel)"
+                                                                TextWrapping="Wrap" />
+                                                        </ui:CardControl.Header>
+                                                        <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding WebViewInteractive}" />
+                                                    </ui:CardControl>
+                                                </Grid>
+
+                                                <StackPanel Margin="0,10,0,0" IsEnabled="{Binding WebViewEnabled}">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox
+                                                            Grid.Column="0"
+                                                            ToolTip="https:// address, or a local file such as C:\Dashboards\panel.html"
+                                                            Text="{Binding WebViewUrl, UpdateSourceTrigger=PropertyChanged, Delay=800}" />
+                                                        <ui:Button
+                                                            Grid.Column="1"
+                                                            Margin="5,0,0,0"
+                                                            VerticalAlignment="Stretch"
+                                                            Click="ButtonRefreshWebPage_Click"
+                                                            Content="Refresh"
+                                                            Icon="{ui:SymbolIcon ArrowClockwise20}"
+                                                            ToolTip="Reload the page, bypassing the cache" />
+                                                    </Grid>
+                                                    <TextBlock
+                                                        Margin="5,0,0,0"
+                                                        FontSize="12"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                        Text="URL or local HTML file. Web page profiles are desktop-only and are not available to USB panels or the web server."
+                                                        TextWrapping="Wrap" />
+                                                </StackPanel>
+
+                                                <Grid Margin="0,10,0,0" IsEnabled="{Binding WebViewEnabled}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <ui:CardControl Grid.Column="0">
+                                                        <ui:CardControl.Header>
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                Text="Disable cache (always fetch fresh content; for pages that poll for data or images)"
+                                                                TextWrapping="Wrap" />
+                                                        </ui:CardControl.Header>
+                                                        <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding WebViewDisableCache}" />
+                                                    </ui:CardControl>
+
+                                                    <ui:CardControl Grid.Column="1" Margin="10,0,0,0">
+                                                        <ui:CardControl.Header>
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                Text="Auto refresh every N seconds (0 = off, minimum 5; paused while interactive)"
+                                                                TextWrapping="Wrap" />
+                                                        </ui:CardControl.Header>
+                                                        <ui:NumberBox
+                                                            Width="110"
+                                                            Margin="0,-5,0,-5"
+                                                            FontSize="14"
+                                                            LargeChange="30"
+                                                            MaxDecimalPlaces="0"
+                                                            Maximum="86400"
+                                                            Minimum="0"
+                                                            SmallChange="5"
+                                                            Value="{Binding WebViewAutoRefreshSeconds}" />
+                                                    </ui:CardControl>
+                                                </Grid>
+
+                                                <ui:CardControl Margin="0,10,0,0" IsEnabled="{Binding WebViewEnabled}">
+                                                    <ui:CardControl.Header>
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                            Text="Max frame rate for script animation (0 = display rate). Lowers CPU and GPU use of pages that animate all the time; CSS animations are not affected. Reloads the page."
+                                                            TextWrapping="Wrap" />
+                                                    </ui:CardControl.Header>
+                                                    <ui:NumberBox
+                                                        Width="110"
+                                                        Margin="0,-5,0,-5"
+                                                        FontSize="14"
+                                                        LargeChange="30"
+                                                        MaxDecimalPlaces="0"
+                                                        Maximum="240"
+                                                        Minimum="0"
+                                                        SmallChange="5"
+                                                        Value="{Binding WebViewMaxFps}" />
+                                                </ui:CardControl>
+                                            </StackPanel>
                                         </TabItem>
                                     </TabControl>
 
