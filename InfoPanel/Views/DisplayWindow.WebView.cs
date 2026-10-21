@@ -34,6 +34,8 @@ namespace InfoPanel.Views.Common
         private Task<CoreWebView2Environment>? _webViewEnvironmentInUse;
         // Whether the DevTools Network domain is on; only the disable cache option needs it.
         private bool _webViewNetworkEnabled;
+        // The document-created script that caps the frame rate, so a setting change can replace it.
+        private string? _webViewMaxFpsScriptId;
 
         public bool WebView { get; }
 
@@ -170,6 +172,7 @@ namespace InfoPanel.Views.Common
                 ApplyWebViewInteractive();
                 ApplyWebViewMemoryTarget();
                 await ApplyWebViewCacheAsync();
+                await ApplyWebViewMaxFpsAsync();
                 NavigateWebView();
                 UpdateWebViewAutoRefresh();
             }
@@ -205,6 +208,8 @@ namespace InfoPanel.Views.Common
         {
             if (_hookedWebViewCore is not CoreWebView2 core) return;
             _hookedWebViewCore = null;
+            // Scripts belong to the core; a new one starts without any.
+            _webViewMaxFpsScriptId = null;
 
             try
             {
@@ -383,6 +388,74 @@ namespace InfoPanel.Views.Common
             }
         }
 
+        /// <summary>
+        /// Installs, replaces or removes the frame rate cap to match the profile setting. It takes effect
+        /// from the next page load.
+        /// </summary>
+        private async Task ApplyWebViewMaxFpsAsync()
+        {
+            if (WebViewCore is not CoreWebView2 core) return;
+
+            try
+            {
+                if (_webViewMaxFpsScriptId is string previous)
+                {
+                    core.RemoveScriptToExecuteOnDocumentCreated(previous);
+                    _webViewMaxFpsScriptId = null;
+                }
+
+                if (Profile.WebViewMaxFps > 0)
+                {
+                    var id = await core.AddScriptToExecuteOnDocumentCreatedAsync(WebViewMaxFpsScript(Profile.WebViewMaxFps));
+                    // The browser may have been replaced while the script was being added.
+                    if (ReferenceEquals(WebViewCore, core)) _webViewMaxFpsScriptId = id;
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or COMException)
+            {
+                Logger.Warning(ex, "Failed to apply web page frame rate cap for profile {ProfileName}", Profile.Name);
+            }
+        }
+
+        /// <summary>
+        /// A page script that delivers requestAnimationFrame callbacks at most <paramref name="fps"/> times a
+        /// second. Between frames it waits on a timer rather than on every display refresh, so a page that
+        /// animates all the time stops waking the browser at the display's rate.
+        /// </summary>
+        internal static string WebViewMaxFpsScript(int fps) => $$"""
+            (() => {
+              const interval = 1000 / {{fps}};
+              const raf = window.requestAnimationFrame.bind(window);
+              let callbacks = new Map(), nextId = 1, scheduled = false, last = -Infinity;
+              const run = now => {
+                scheduled = false;
+                last = now;
+                const due = callbacks;
+                callbacks = new Map();
+                for (const callback of due.values()) {
+                  try { callback(now); } catch (e) { setTimeout(() => { throw e; }); }
+                }
+              };
+              // Wake a little early and let the display refresh decide the frame; a refresh that is still
+              // too early waits for the next one. A late timer only lowers the rate, never raises it.
+              const tick = now => {
+                if (now - last < interval - 2) raf(tick); else run(now);
+              };
+              const schedule = () => {
+                scheduled = true;
+                const wait = last + interval - performance.now();
+                if (wait > 8) setTimeout(() => raf(tick), wait - 4); else raf(tick);
+              };
+              window.requestAnimationFrame = callback => {
+                const id = nextId++;
+                callbacks.set(id, callback);
+                if (!scheduled) schedule();
+                return id;
+              };
+              window.cancelAnimationFrame = id => { callbacks.delete(id); };
+            })();
+            """;
+
         /// <summary>Starts, changes or stops the periodic hard refresh to match the profile setting.</summary>
         private void UpdateWebViewAutoRefresh()
         {
@@ -502,6 +575,14 @@ namespace InfoPanel.Views.Common
                     break;
                 case nameof(Profile.WebViewAutoRefreshSeconds):
                     _dispatcher.BeginInvoke(UpdateWebViewAutoRefresh);
+                    break;
+                case nameof(Profile.WebViewMaxFps):
+                    _dispatcher.BeginInvoke(async () =>
+                    {
+                        // The script runs as a document is created, so the page must load again to pick it up.
+                        await ApplyWebViewMaxFpsAsync();
+                        NavigateWebView();
+                    });
                     break;
             }
         }

@@ -314,6 +314,21 @@ namespace InfoPanel.Models
             set { SetProperty(ref _webViewAutoRefreshSeconds, value <= 0 ? 0 : Math.Max(MinWebViewAutoRefreshSeconds, value)); }
         }
 
+        public const int MaxWebViewMaxFps = 240;
+
+        /// <summary>
+        /// Caps how often the web page's requestAnimationFrame callbacks run; 0 leaves it at the display's
+        /// refresh rate. Animation the page drives from script then redraws less often, which is most of
+        /// what an always-animating dashboard costs. CSS animations are not affected.
+        /// </summary>
+        private int _webViewMaxFps = 0;
+
+        public int WebViewMaxFps
+        {
+            get { return _webViewMaxFps; }
+            set { SetProperty(ref _webViewMaxFps, Math.Clamp(value, 0, MaxWebViewMaxFps)); }
+        }
+
         public object Clone()
         {
             return MemberwiseClone();
