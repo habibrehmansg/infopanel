@@ -3,9 +3,11 @@ using InfoPanel.Plugins;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Hardware.Storage;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace InfoPanel.DataApi
@@ -43,10 +45,16 @@ namespace InfoPanel.DataApi
             SensorType.Throughput, SensorType.Data, SensorType.SmallData,
         ];
 
+        // A plugin entry's key and ref never change, but the filtered streams
+        // read every entry up to ten times a second per client.
+        private static readonly ConcurrentDictionary<string, (string Key, string Ref)> PluginIds = new(StringComparer.Ordinal);
+
         private readonly SystemMetrics _system = new();
         private readonly object _lock = new();
         private DataApiSnapshot? _cached;
         private DateTime _cachedAt;
+        private DataApiSnapshot? _streamJsonOf;
+        private string? _streamJson;
 
         /// <summary>
         /// The current snapshot. <paramref name="imageBaseUrl"/> is the API's
@@ -78,6 +86,24 @@ namespace InfoPanel.DataApi
         }
 
         /// <summary>
+        /// The current snapshot as an /events message body, serialized once
+        /// per snapshot and shared by every full-stream client.
+        /// </summary>
+        public string GetStreamJson(string imageBaseUrl)
+        {
+            lock (_lock)
+            {
+                var snapshot = Get(imageBaseUrl);
+                if (!ReferenceEquals(snapshot, _streamJsonOf))
+                {
+                    _streamJson = JsonSerializer.Serialize(snapshot, DataApiTask.StreamJsonOptions);
+                    _streamJsonOf = snapshot;
+                }
+                return _streamJson!;
+            }
+        }
+
+        /// <summary>
         /// The values whose key starts with <paramref name="prefix"/>. Plugin
         /// keys are read fresh (plugin hosts update every ~100 ms, faster than
         /// the shared snapshot); other keys come from the shared snapshot.
@@ -87,16 +113,14 @@ namespace InfoPanel.DataApi
             var sensors = new Dictionary<string, DataApiValue>(StringComparer.OrdinalIgnoreCase);
             if (prefix.StartsWith("plugins.", StringComparison.OrdinalIgnoreCase))
             {
-                AddPlugins(sensors, imageBaseUrl);
+                AddPlugins(sensors, imageBaseUrl, prefix);
             }
             else
             {
-                foreach (var (key, value) in Get(imageBaseUrl).Sensors) sensors[key] = value;
-            }
-
-            foreach (var key in sensors.Keys.Where(k => !k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
-            {
-                sensors.Remove(key);
+                foreach (var (key, value) in Get(imageBaseUrl).Sensors)
+                {
+                    if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) sensors[key] = value;
+                }
             }
             return sensors;
         }
@@ -118,15 +142,20 @@ namespace InfoPanel.DataApi
         internal static bool IsImageContainer(string containerId) =>
             containerId.StartsWith(ImageContainerPrefix, StringComparison.Ordinal);
 
-        private static void AddPlugins(Dictionary<string, DataApiValue> sensors, string imageBaseUrl)
+        /// <summary>
+        /// Adds the plugin entries, or with <paramref name="prefix"/> only those
+        /// whose key starts with it: an entry that doesn't match is skipped
+        /// before its value (a whole table, say) is built.
+        /// </summary>
+        private static void AddPlugins(Dictionary<string, DataApiValue> sensors, string imageBaseUrl, string? prefix = null)
         {
             foreach (var (hashKey, reading) in PluginMonitor.SENSORHASH)
             {
                 try
                 {
-                    string key = PluginKey(hashKey);
+                    var (key, sensorRef) = PluginIds.GetOrAdd(hashKey, static h => (PluginKey(h), PluginRef(h)));
+                    if (prefix != null && !key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
                     string display = DisplayName(reading.ContainerName, reading.Name);
-                    string sensorRef = PluginRef(hashKey);
 
                     if (reading.ContainerId.StartsWith(ImageContainerPrefix, StringComparison.Ordinal))
                     {

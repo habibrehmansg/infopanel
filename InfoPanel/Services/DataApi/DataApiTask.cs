@@ -182,8 +182,7 @@ namespace InfoPanel
             {
                 while (!token.IsCancellationRequested)
                 {
-                    var json = JsonSerializer.Serialize(_snapshots.Get(baseUrl), StreamJsonOptions);
-                    await response.WriteAsync($"data: {json}\n\n", token);
+                    await response.WriteAsync($"data: {_snapshots.GetStreamJson(baseUrl)}\n\n", token);
                     await response.Body.FlushAsync(token);
                     await Task.Delay(EventInterval, token);
                 }
@@ -210,17 +209,29 @@ namespace InfoPanel
                 while (!token.IsCancellationRequested)
                 {
                     var current = _snapshots.GetMatching(prefix, baseUrl);
-                    var changed = current.Where(kv => !sent.TryGetValue(kv.Key, out var old) || old != kv.Value)
-                        .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
-                    var removed = sent.Keys.Where(k => !current.ContainsKey(k)).ToList();
+                    // Runs up to ten times a second per client and usually finds
+                    // nothing, so allocate only once something changed.
+                    Dictionary<string, DataApiValue>? changed = null;
+                    foreach (var (key, value) in current)
+                    {
+                        if (!sent.TryGetValue(key, out var old) || old != value)
+                        {
+                            (changed ??= new(StringComparer.OrdinalIgnoreCase))[key] = value;
+                        }
+                    }
+                    List<string>? removed = null;
+                    foreach (var key in sent.Keys)
+                    {
+                        if (!current.ContainsKey(key)) (removed ??= []).Add(key);
+                    }
 
-                    if (changed.Count > 0 || removed.Count > 0 || lastWrite == DateTime.MinValue)
+                    if (changed != null || removed != null || lastWrite == DateTime.MinValue)
                     {
                         var json = JsonSerializer.Serialize(new
                         {
                             timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                            sensors = changed,
-                            removed,
+                            sensors = changed ?? [],
+                            removed = removed ?? [],
                         }, StreamJsonOptions);
                         await response.WriteAsync($"data: {json}\n\n", token);
                         await response.Body.FlushAsync(token);
