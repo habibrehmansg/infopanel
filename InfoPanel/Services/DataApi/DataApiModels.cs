@@ -45,8 +45,16 @@ namespace InfoPanel.DataApi
         public IReadOnlyList<string> Columns { get; init; } = [];
         public IReadOnlyList<IReadOnlyList<string?>> Rows { get; init; } = [];
 
+        /// <summary>
+        /// The plugin's default column format (IPluginTable.DefaultFormat), which
+        /// InfoPanel gives a new table sensor item as its TableFormat. Null when
+        /// the plugin sets none.
+        /// </summary>
+        public string? Format { get; init; }
+
         public bool Equals(DataApiTable? other) =>
             other is not null
+            && Format == other.Format
             && Columns.SequenceEqual(other.Columns)
             && Rows.Count == other.Rows.Count
             && Rows.Zip(other.Rows).All(pair => pair.First.SequenceEqual(pair.Second));
@@ -56,6 +64,7 @@ namespace InfoPanel.DataApi
             var hash = new HashCode();
             foreach (var column in Columns) hash.Add(column);
             hash.Add(Rows.Count);
+            hash.Add(Format);
             return hash.ToHashCode();
         }
     }

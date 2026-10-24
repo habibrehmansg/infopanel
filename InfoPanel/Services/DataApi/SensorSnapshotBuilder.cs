@@ -178,7 +178,7 @@ namespace InfoPanel.DataApi
                     {
                         IPluginSensor sensor => FromPluginSensor(sensor, display),
                         IPluginText text => new DataApiValue { Text = text.Value, Name = display, Source = Source },
-                        IPluginTable table => new DataApiValue { Text = FlattenTable(table.Value), Table = ToTable(table.Value), Name = display, Source = Source },
+                        IPluginTable table => new DataApiValue { Text = FlattenTable(table.Value), Table = ToTable(table.Value, table.DefaultFormat), Name = display, Source = Source },
                         _ => new DataApiValue { Text = reading.Data?.ToString(), Name = display, Source = Source },
                     } with { Ref = sensorRef };
                 }
@@ -235,9 +235,10 @@ namespace InfoPanel.DataApi
         /// <summary>
         /// A plugin table as a table sensor item draws it: the column names,
         /// and each cell's text, which PanelDraw takes from IPluginData.ToString()
-        /// and leaves blank for anything else (null here).
+        /// and leaves blank for anything else (null here), with the plugin's
+        /// default column format.
         /// </summary>
-        internal static DataApiTable? ToTable(DataTable? table)
+        internal static DataApiTable? ToTable(DataTable? table, string? format = null)
         {
             if (table == null) return null;
 
@@ -254,7 +255,7 @@ namespace InfoPanel.DataApi
                 }
                 rows.Add(cells);
             }
-            return new DataApiTable { Columns = columns, Rows = rows };
+            return new DataApiTable { Columns = columns, Rows = rows, Format = string.IsNullOrEmpty(format) ? null : format };
         }
 
         /* ---------------- LibreHardwareMonitor ---------------- */

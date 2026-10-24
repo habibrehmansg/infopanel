@@ -53,6 +53,16 @@ namespace InfoPanel.Tests
         }
 
         [Fact]
+        public void Carries_the_plugins_default_format()
+        {
+            var json = JsonSerializer.Serialize(new DataApiValue { Table = SensorSnapshotBuilder.ToTable(Table(), "0:150|1:80") }, DataApiTask.JsonOptions);
+
+            Assert.Contains("\"format\":\"0:150|1:80\"", json);
+            Assert.Null(SensorSnapshotBuilder.ToTable(Table(), "")!.Format);
+            Assert.NotEqual(SensorSnapshotBuilder.ToTable(Table(), "0:150"), SensorSnapshotBuilder.ToTable(Table(), "0:80"));
+        }
+
+        [Fact]
         public void No_table_is_null()
         {
             Assert.Null(SensorSnapshotBuilder.ToTable(null));
