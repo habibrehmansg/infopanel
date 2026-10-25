@@ -528,6 +528,42 @@ namespace InfoPanel.DataApi
                 (key, n) => ($"hwinfo.{key}", n.Name, n.Reading));
         }
 
+        /// <summary>
+        /// The HWiNFO devices (sensors) with their readings, for /api/sources:
+        /// one device per remote, sensor id and instance, in HWiNFO's order,
+        /// each entry carrying the key and ref it has in /api/sensors.
+        /// </summary>
+        internal static List<HwInfoGroup> HwInfoTree() => HwInfoTree(HwInfoKeys());
+
+        internal static List<HwInfoGroup> HwInfoTree(IEnumerable<(string Key, string Name, HWHash.HWINFO_HASH Reading)> keyed) =>
+            keyed
+                .GroupBy(k => (k.Reading.RemoteIndex, k.Reading.ParentID, k.Reading.ParentInstance))
+                .OrderBy(g => g.Min(k => k.Reading.IndexOrder))
+                .Select(g =>
+                {
+                    var first = g.First().Reading;
+                    string device = HwInfoDevice(first);
+                    return new HwInfoGroup
+                    {
+                        Id = $"{first.RemoteIndex}/{first.ParentID}/{first.ParentInstance}",
+                        Name = device.Length > 0 ? device : $"Sensor {first.ParentID}",
+                        SensorId = first.ParentID,
+                        Instance = first.ParentInstance,
+                        Remote = first.RemoteIndex,
+                        Entries = g
+                            .OrderBy(k => k.Reading.IndexOrder)
+                            .Select(k => new HwInfoReading
+                            {
+                                Id = k.Reading.SensorID.ToString(),
+                                Name = k.Name,
+                                Key = k.Key,
+                                Ref = HwInfoRef(k.Reading),
+                            })
+                            .ToList(),
+                    };
+                })
+                .ToList();
+
         /* ---------------- shared helpers ---------------- */
 
         /// <summary>

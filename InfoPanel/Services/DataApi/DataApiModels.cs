@@ -79,6 +79,40 @@ namespace InfoPanel.DataApi
         public int Keys { get; init; }
     }
 
+    /// <summary>A HWiNFO device (sensor) in /api/sources, with its readings.</summary>
+    public sealed class HwInfoGroup
+    {
+        /// <summary>"{remote}/{sensorId}/{instance}", unique across devices.</summary>
+        public string Id { get; init; } = "";
+
+        /// <summary>The device name HWiNFO reports ("CPU [#0]: AMD Ryzen 9 9950X3D").</summary>
+        public string Name { get; init; } = "";
+
+        public uint SensorId { get; init; }
+        public uint Instance { get; init; }
+
+        /// <summary>-1 for the local HWiNFO, else the remote index.</summary>
+        public int Remote { get; init; }
+
+        public List<HwInfoReading> Entries { get; init; } = [];
+    }
+
+    /// <summary>One reading of a HWiNFO device in /api/sources.</summary>
+    public sealed class HwInfoReading
+    {
+        /// <summary>The reading's id within its device (the last part of its ref).</summary>
+        public string Id { get; init; } = "";
+
+        public string Name { get; init; } = "";
+        public string Type { get; init; } = "sensor";
+
+        /// <summary>The key in /api/sensors.</summary>
+        public string Key { get; init; } = "";
+
+        /// <summary>The ref in /api/sensors: hwinfo:{remote}/{sensorId}/{instance}/{entryId}.</summary>
+        public string Ref { get; init; } = "";
+    }
+
     /// <summary>The full payload of /api/sensors and of each /events message.</summary>
     public sealed class DataApiSnapshot
     {

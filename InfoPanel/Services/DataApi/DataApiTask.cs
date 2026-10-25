@@ -155,7 +155,7 @@ namespace InfoPanel
             ("GET",  "/api/sensors", "Full sensor snapshot"),
             ("GET",  "/events",      "Server-Sent Events: the full snapshot every second"),
             ("GET",  "/events?prefix={key prefix}&interval={ms}", "Server-Sent Events: matching values, then only changes (interval 100–10000 ms, default 1000)"),
-            ("GET",  "/api/sources", "Plugins, containers and entries with their names and keys"),
+            ("GET",  "/api/sources", "Plugins, containers and entries with their names and keys, and the HWiNFO devices with their readings"),
             ("GET",  "/api/images/{pluginId}/{imageId}", "A plugin image as PNG"),
             ("POST", "/api/fonts/resolve", "The face InfoPanel draws each [{font, style, bold, italic}] with"),
             ("GET",  "/api/fonts/{id}", "The font file of a resolved face"),
@@ -400,6 +400,8 @@ namespace InfoPanel
                     libre = LibreMonitor.SENSORHASH.Count,
                     hwinfo = HWHash.SENSORHASH.Count,
                 },
+                // Absent before this build; clients fall back to the flat /api/sensors list.
+                hwinfo = SensorSnapshotBuilder.HwInfoTree(),
             };
         }
 

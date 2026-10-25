@@ -26,6 +26,37 @@ namespace InfoPanel.Tests
         }
 
         [Fact]
+        public void HwInfo_tree_groups_readings_by_device_with_their_keys_and_refs()
+        {
+            var cpu = new HWHash.HWINFO_HASH { RemoteIndex = -1, ParentID = 100, ParentInstance = 0, ParentNameDefault = "CPU [#0]: AMD", SensorID = 1, NameDefault = "Core 0 Power", IndexOrder = 0 };
+            var smart1 = new HWHash.HWINFO_HASH { RemoteIndex = -1, ParentID = 200, ParentInstance = 0, ParentNameDefault = "S.M.A.R.T.: A", SensorID = 7, NameDefault = "Drive Temperature", IndexOrder = 1 };
+            var smart2 = new HWHash.HWINFO_HASH { RemoteIndex = -1, ParentID = 200, ParentInstance = 1, ParentNameDefault = "S.M.A.R.T.: B", SensorID = 7, NameDefault = "Drive Temperature", IndexOrder = 2 };
+            var cpu2 = cpu with { SensorID = 2, NameDefault = "Core 1 Power", IndexOrder = 3 };
+
+            var tree = SensorSnapshotBuilder.HwInfoTree(
+            [
+                ("hwinfo.core_0_power", "Core 0 Power", cpu),
+                ("hwinfo.drive_temperature", "Drive Temperature", smart1),
+                ("hwinfo.drive_temperature__s_m_a_r_t___b", "Drive Temperature", smart2),
+                ("hwinfo.core_1_power", "Core 1 Power", cpu2),
+            ]);
+
+            // Same sensor id, different instance: two devices. Devices keep HWiNFO's order.
+            Assert.Equal(["CPU [#0]: AMD", "S.M.A.R.T.: A", "S.M.A.R.T.: B"], tree.Select(d => d.Name));
+            Assert.Equal("-1/100/0", tree[0].Id);
+            Assert.Equal(1u, tree[2].Instance);
+            Assert.Equal(["hwinfo.core_0_power", "hwinfo.core_1_power"], tree[0].Entries.Select(e => e.Key));
+            Assert.Equal("hwinfo:-1/200/1/7", tree[2].Entries[0].Ref);
+            Assert.Equal("sensor", tree[0].Entries[0].Type);
+        }
+
+        [Fact]
+        public void HwInfo_tree_is_empty_without_readings()
+        {
+            Assert.Empty(SensorSnapshotBuilder.HwInfoTree([]));
+        }
+
+        [Fact]
         public void Libre_ref_is_the_identifier_InfoPanel_reads_for_it()
         {
             LibreMonitor.SENSORHASH.Clear();
