@@ -447,12 +447,15 @@ using System.Timers;
             public SENSOR_READING_TYPE SENSOR_TYPE;
             public uint Index;
             public uint ID;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = SENSOR_STRING_LEN)]
-            public string NameDefault;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = SENSOR_STRING_LEN)]
-            public string NameCustom;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = READING_STRING_LEN)]
-            public string Unit;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SENSOR_STRING_LEN)]
+            private byte[] NameDefaultBytes;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SENSOR_STRING_LEN)]
+            private byte[] NameCustomBytes;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = READING_STRING_LEN)]
+            private byte[] UnitBytes;
+            public string NameDefault => Utf8String(NameDefaultBytes);
+            public string NameCustom => Utf8String(NameCustomBytes);
+            public string Unit => Utf8String(UnitBytes);
             public double Value;
             public double ValueMin;
             public double ValueMax;
@@ -464,10 +467,23 @@ using System.Timers;
         {
             public uint ID;
             public uint Instance;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = SENSOR_STRING_LEN)]
-            public string NameDefault;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = SENSOR_STRING_LEN)]
-            public string NameCustom;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SENSOR_STRING_LEN)]
+            private byte[] NameDefaultBytes;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SENSOR_STRING_LEN)]
+            private byte[] NameCustomBytes;
+            public string NameDefault => Utf8String(NameDefaultBytes);
+            public string NameCustom => Utf8String(NameCustomBytes);
+        }
+
+        /// <summary>
+        /// A fixed-size string from HWiNFO's shared memory. HWiNFO writes UTF-8 (a degree sign is C2 B0);
+        /// marshalling it as ByValTStr read the bytes in the ANSI code page and gave "Â°C".
+        /// </summary>
+        internal static string Utf8String(byte[]? raw)
+        {
+            if (raw == null) return string.Empty;
+            int end = Array.IndexOf(raw, (byte)0);
+            return Encoding.UTF8.GetString(raw, 0, end < 0 ? raw.Length : end);
         }
 
 
