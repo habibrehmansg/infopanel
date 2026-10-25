@@ -51,6 +51,18 @@ namespace InfoPanel.Tests
         }
 
         [Fact]
+        public void HwInfo_strings_are_read_as_utf8_up_to_the_first_nul()
+        {
+            // "°C" as HWiNFO's shared memory holds it (seen on a live capture), then the field's padding
+            var raw = new byte[16];
+            new byte[] { 0xC2, 0xB0, 0x43 }.CopyTo(raw, 0);
+
+            Assert.Equal("°C", HWHash.Utf8String(raw));
+            Assert.Equal("", HWHash.Utf8String(new byte[4]));
+            Assert.Equal("", HWHash.Utf8String(null));
+        }
+
+        [Fact]
         public void HwInfo_tree_is_empty_without_readings()
         {
             Assert.Empty(SensorSnapshotBuilder.HwInfoTree([]));
