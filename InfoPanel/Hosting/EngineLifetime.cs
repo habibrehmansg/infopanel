@@ -6,7 +6,8 @@ namespace InfoPanel.Hosting;
 
 /// <summary>
 /// Once the server listens: confirms the port from <see cref="IServerAddressesFeature"/> (absent under
-/// <c>TestServer</c>, where the configured port stands), writes <c>runtime.json</c>, logs the sign-in links (with the token on the console only, redacted in the file log) and
+/// <c>TestServer</c>, where the configured port stands), writes <c>runtime.json</c>, logs the sign-in links and the pairing links for cross-origin clients (with the token on the console only,
+/// redacted in the file log) and
 /// opens the browser unless <c>--no-browser</c>. Deletes <c>runtime.json</c> on clean shutdown.
 /// </summary>
 public sealed class EngineLifetime(
@@ -66,12 +67,14 @@ public sealed class EngineLifetime(
             browser.Open(runtime.AuthUrl);
     }
 
-    /// <summary>The sign-in links: with the token to the console only, redacted to the file log only.</summary>
+    /// <summary>The sign-in and pairing links: with the token to the console only, redacted to the file log only.</summary>
     private void LogSignInLinks(bool redacted)
     {
         using var scope = logger.BeginScope(LogTargets.Only(redacted ? LogTargets.File : LogTargets.Console));
         logger.LogInformation("Open the editor: {AuthUrl}", runtime.AuthUrlFor(runtime.BaseUrl, redacted));
         foreach (var origin in runtime.DevOrigins)
             logger.LogInformation("Open the editor (dev server): {AuthUrl}", runtime.AuthUrlFor(origin, redacted));
+        foreach (var origin in runtime.CrossOrigins)
+            logger.LogInformation("Pair the client at {Origin}: {PairingUrl}", origin, runtime.PairingUrlFor(origin, redacted));
     }
 }

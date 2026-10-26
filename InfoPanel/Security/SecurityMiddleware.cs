@@ -9,21 +9,35 @@ namespace InfoPanel.Security;
 /// <list type="bullet">
 /// <item>An <c>Origin</c> header, when present on any request (any method, WebSocket upgrades included), must be
 /// <c>http://127.0.0.1:{port}</c>, <c>http://localhost:{port}</c> or a <c>--dev-origin</c>; otherwise 403.</item>
-/// <item><c>/api/*</c> needs <c>Authorization: Bearer {token}</c>; <c>/ws</c> needs the WebSocket subprotocols
-/// <c>infopanel.v1</c> and <c>auth.{token}</c> (browsers can't set headers on a WebSocket); otherwise 401, before any
-/// upgrade. There is no cookie: browsers send loopback cookies to every port on the host, so another local server
-/// would receive it. Everything else (static files, <c>/healthz</c>, <c>/auth/{token}</c>) is public.</item>
+/// <item>An origin given with <c>--allow-origin</c> gets CORS on <c>/api</c> and <c>/healthz</c> (<see cref="CrossOrigin"/>);
+/// its preflights are answered here, before the token check.</item>
+/// <item><c>/api/*</c> needs <c>Authorization: Bearer {token}</c>. <c>/ws</c> needs the WebSocket subprotocol
+/// <c>infopanel.v1</c>, and the token either as the subprotocol <c>auth.{token}</c> (browsers can't set headers on a
+/// WebSocket) or, when no <c>auth.*</c> subprotocol is offered, in the first message after the upgrade
+/// (<see cref="PendingWebSocketAuthItem"/>, checked by <c>/ws</c> itself). Otherwise 401, before any upgrade; an
+/// <c>auth.*</c> subprotocol with a wrong token is always refused. There is no cookie: browsers send loopback cookies
+/// to every port on the host, so another local server would receive it. Everything else (static files,
+/// <c>/healthz</c>, <c>/auth/{token}</c>) is public.</item>
 /// </list>
 /// </summary>
 public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runtime)
 {
+    /// <summary>
+    /// Set in <see cref="HttpContext.Items"/> on a <c>/ws</c> request that offers <c>infopanel.v1</c> and no
+    /// <c>auth.*</c> subprotocol: the socket is accepted and must authenticate with its first message.
+    /// </summary>
+    public const string PendingWebSocketAuthItem = "InfoPanel.WebSocketAuthPending";
+
     public Task InvokeAsync(HttpContext context)
     {
         var request = context.Request;
-        if (request.Headers.TryGetValue("Origin", out var origins)
-            && (origins.Count != 1 || !runtime.IsAllowedOrigin(origins[0] ?? "")))
+        if (request.Headers.TryGetValue("Origin", out var origins))
         {
-            return Problems.Write(context, StatusCodes.Status403Forbidden, "Forbidden", "This origin may not call the engine.");
+            if (origins.Count != 1 || !runtime.IsAllowedOrigin(origins[0] ?? ""))
+                return Problems.Write(context, StatusCodes.Status403Forbidden, "Forbidden", "This origin may not call the engine.");
+
+            if (CrossOrigin.Handle(context, runtime, origins[0]!))
+                return Task.CompletedTask;
         }
 
         if (request.Path.StartsWithSegments("/api") && !HasBearerToken(request))
@@ -33,14 +47,26 @@ public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runti
                 "Open InfoPanel from the link it logs, or send the session token as a Bearer token.");
         }
 
-        if (request.Path.StartsWithSegments("/ws") && !HasWebSocketToken(request))
+        if (request.Path.StartsWithSegments("/ws"))
         {
-            return Problems.Write(context, StatusCodes.Status401Unauthorized, "Unauthorized",
-                $"Connect with the WebSocket subprotocols '{EngineRuntime.WebSocketProtocol}' and '{EngineRuntime.WebSocketAuthPrefix}{{token}}'.");
+            switch (WebSocketToken(request))
+            {
+                case TokenCheck.Valid:
+                    break;
+                case TokenCheck.Deferred:
+                    context.Items[PendingWebSocketAuthItem] = true;
+                    break;
+                default:
+                    return Problems.Write(context, StatusCodes.Status401Unauthorized, "Unauthorized",
+                        $"Connect with the WebSocket subprotocol '{EngineRuntime.WebSocketProtocol}' and either the subprotocol " +
+                        $"'{EngineRuntime.WebSocketAuthPrefix}{{token}}' or a first message {{\"type\":\"auth\",\"token\":\"…\"}}.");
+            }
         }
 
         return next(context);
     }
+
+    private enum TokenCheck { Invalid, Valid, Deferred }
 
     private bool HasBearerToken(HttpRequest request)
     {
@@ -51,23 +77,28 @@ public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runti
     }
 
     /// <summary>
-    /// <c>Sec-WebSocket-Protocol</c> lists <c>infopanel.v1</c> and a valid <c>auth.{token}</c>. M6's <c>/ws</c>
-    /// must accept with <c>infopanel.v1</c> only, never echoing the token.
+    /// <c>Sec-WebSocket-Protocol</c> must list <c>infopanel.v1</c>. With an <c>auth.*</c> subprotocol the token must be
+    /// valid; with none, the check is deferred to the first message. <c>/ws</c> accepts with <c>infopanel.v1</c> only,
+    /// never echoing the token.
     /// </summary>
-    private bool HasWebSocketToken(HttpRequest request)
+    private TokenCheck WebSocketToken(HttpRequest request)
     {
         var protocols = request.Headers.GetCommaSeparatedValues(HeaderNames.SecWebSocketProtocol);
         if (!protocols.Contains(EngineRuntime.WebSocketProtocol, StringComparer.Ordinal))
-            return false;
+            return TokenCheck.Invalid;
 
+        var offered = false;
         var valid = false;
         foreach (var protocol in protocols)
         {
             if (protocol.StartsWith(EngineRuntime.WebSocketAuthPrefix, StringComparison.Ordinal))
+            {
+                offered = true;
                 valid |= runtime.IsValidToken(protocol[EngineRuntime.WebSocketAuthPrefix.Length..]);
+            }
         }
 
-        return valid;
+        return valid ? TokenCheck.Valid : offered ? TokenCheck.Invalid : TokenCheck.Deferred;
     }
 }
 

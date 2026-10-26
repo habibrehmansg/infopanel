@@ -6,13 +6,15 @@ namespace InfoPanel.Tests;
 
 /// <summary>
 /// The engine on a <c>TestServer</c>, with a temp data folder, a temp web root holding an <c>index.html</c>,
-/// a fixed token, port and dev origin, and seeded mock sensors.
+/// a fixed token, port, dev origin and cross origin, and seeded mock sensors.
 /// </summary>
-public sealed class EngineFactory : WebApplicationFactory<Program>
+public class EngineFactory : WebApplicationFactory<Program>
 {
     public const string Token = "test-token_0123456789";
     public const int Port = 47123;
     public const string DevOrigin = "http://localhost:5180";
+    /// <summary>A web client served from another origin (<c>--allow-origin</c>).</summary>
+    public const string CrossOrigin = "https://client.example";
     public const string IndexMarker = "client-test-index";
 
     public EngineFactory()
@@ -40,6 +42,7 @@ public sealed class EngineFactory : WebApplicationFactory<Program>
         builder.UseSetting("Engine:NoBrowser", "true");
         builder.UseSetting("Engine:MockSeed", "42");
         builder.UseSetting("Engine:DevOrigins:0", DevOrigin);
+        builder.UseSetting("Engine:AllowOrigins:0", CrossOrigin);
     }
 
     /// <summary>A client that doesn't follow redirects or keep cookies.</summary>

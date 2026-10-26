@@ -32,6 +32,7 @@ public class EngineOptionsTests
         Assert.False(options.Fresh);
         Assert.Null(options.MockSeed);
         Assert.Empty(options.DevOrigins);
+        Assert.Empty(options.AllowOrigins);
         Assert.Matches("^[A-Za-z0-9_-]{43}$", options.Token);
         Assert.NotEqual(options.Token, Load([], out _)!.Token);
     }
@@ -82,6 +83,101 @@ public class EngineOptionsTests
     {
         Assert.Null(Load(["--dev-origin", origin], out var errors));
         Assert.Contains(errors, e => e.Contains("--dev-origin"));
+    }
+
+    [Fact]
+    public void AllowOrigin_IsRepeatableAndNormalised()
+    {
+        var options = Load(["--allow-origin", "https://Client.Example", "--allow-origin=http://localhost:5183/", "--allow-origin", "https://client.example:443",
+            "--allow-origin", "http://[::1]:8080"], out var errors);
+
+        Assert.Empty(errors);
+        Assert.Equal(["https://client.example", "http://localhost:5183", "http://[::1]:8080"], options!.AllowOrigins);
+        Assert.Empty(options.DevOrigins);
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("https://*")]
+    [InlineData("https://*.client.example")]
+    [InlineData("null")]
+    [InlineData("client.example")]
+    [InlineData("localhost:5183")]
+    [InlineData("ftp://client.example")]
+    [InlineData("ws://client.example")]
+    [InlineData("file:///tmp")]
+    [InlineData("https://client.example/path")]
+    [InlineData("https://client.example/./")]
+    [InlineData("https://client.example//")]
+    [InlineData("https://client.example?x=1")]
+    [InlineData("https://client.example#x")]
+    [InlineData("https://user@client.example")]
+    [InlineData("https://client\\.example")]
+    [InlineData("https://clïent.example")]
+    [InlineData("https://client example")]
+    [InlineData("https://cl%69ent.example")]
+    [InlineData("http://[fe80::1%25en0]:5183")]
+    [InlineData("http://[fe80::1%en0]:5183")]
+    public void AllowOrigin_MustBeAnExactOrigin(string origin)
+    {
+        Assert.Null(Load(["--allow-origin", origin], out var errors));
+        Assert.Contains(errors, e => e.Contains("--allow-origin"));
+    }
+
+    [Theory]
+    [InlineData("http://client.example")]
+    [InlineData("http://client.example:5183")]
+    [InlineData("http://192.168.1.10:5183")]
+    [InlineData("http://10.0.0.1")]
+    [InlineData("http://[2001:db8::1]:5183")]
+    [InlineData("http://[::ffff:192.168.1.10]")]
+    [InlineData("http://localhost.example")]
+    [InlineData("http://127.0.0.1.example")]
+    public void AllowOrigin_OverPlainHttp_MustBeLoopback(string origin)
+    {
+        Assert.Null(Load(["--allow-origin", origin], out var errors));
+        var error = Assert.Single(errors);
+        Assert.Contains("--allow-origin must use https unless the host is loopback", error);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:5183", "http://localhost:5183")]
+    [InlineData("http://127.0.0.1:5183", "http://127.0.0.1:5183")]
+    [InlineData("http://127.0.0.2", "http://127.0.0.2")]
+    [InlineData("http://[::1]:5183", "http://[::1]:5183")]
+    [InlineData("http://[0:0:0:0:0:0:0:1]:5183", "http://[::1]:5183")]
+    [InlineData("https://client.example", "https://client.example")]
+    [InlineData("https://192.168.1.10:8443", "https://192.168.1.10:8443")]
+    public void AllowOrigin_PlainHttpOnLoopback_OrHttps_IsAccepted(string origin, string expected)
+    {
+        var options = Load(["--allow-origin", origin], out var errors);
+        Assert.Empty(errors);
+        Assert.Equal([expected], options!.AllowOrigins);
+    }
+
+    /// <summary>IPv6 hosts are stored as browsers send them in <c>Origin</c> (the WHATWG URL serialisation).</summary>
+    [Theory]
+    [InlineData("http://[::ffff:127.0.0.1]:5183", "http://[::ffff:7f00:1]:5183")]
+    [InlineData("http://[::FFFF:7F00:1]:5183", "http://[::ffff:7f00:1]:5183")]
+    [InlineData("https://[::192.168.1.10]", "https://[::c0a8:10a]")]
+    [InlineData("https://[2001:db8:0:0:1:0:0:1]", "https://[2001:db8::1:0:0:1]")]
+    [InlineData("https://[2001:0db8:0000:0001:0000:0000:0000:0001]:443", "https://[2001:db8:0:1::1]")]
+    [InlineData("https://[2001:db8:1:2:3:4:5:6]", "https://[2001:db8:1:2:3:4:5:6]")]
+    [InlineData("https://[1:0:2:3:4:5:6:7]", "https://[1:0:2:3:4:5:6:7]")]
+    [InlineData("https://[::]", "https://[::]")]
+    public void AllowOrigin_IPv6_IsSerialisedLikeABrowser(string origin, string expected)
+    {
+        var options = Load(["--allow-origin", origin], out var errors);
+        Assert.Empty(errors);
+        Assert.Equal([expected], options!.AllowOrigins);
+    }
+
+    [Fact]
+    public void AllowOrigin_NeedsAValue()
+    {
+        Assert.Equal("--allow-origin needs a value.", EngineCommandLine.Parse(["--allow-origin"]).Error);
+        Assert.Equal("--allow-origin needs a value.", EngineCommandLine.Parse(["--allow-origin", "--no-browser"]).Error);
+        Assert.Contains("--allow-origin", EngineCommandLine.Usage);
     }
 
     [Fact]

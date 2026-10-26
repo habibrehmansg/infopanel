@@ -30,10 +30,12 @@ public class EngineStartupTests
         await WaitUntil(() =>
         {
             text = string.Join("\n", Directory.GetFiles(logs).Select(ReadShared));
-            return text.Contains("Open the editor");
+            return text.Contains("Open the editor") && text.Contains("Pair the client");
         });
 
         Assert.Contains("/auth/<token>", text);
+        // The pairing link for the cross origin is logged to the file redacted too.
+        Assert.Contains($"{EngineFactory.CrossOrigin}/#engine=http://127.0.0.1:{EngineFactory.Port}&token=<token>", text);
         Assert.DoesNotContain(EngineFactory.Token, text);
         if (!OperatingSystem.IsWindows())
         {

@@ -59,8 +59,8 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     }
 
     [Theory]
-    [InlineData("infopanel.v1")]
     [InlineData("infopanel.v1", "auth.wrong")]
+    [InlineData("infopanel.v1", "auth.wrong", "auth.")]
     [InlineData("auth." + EngineFactory.Token)]
     public async Task Connect_WithoutBothSubprotocols_IsRejected(params string[] protocols)
     {

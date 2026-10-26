@@ -177,7 +177,6 @@ public class SecurityTests(EngineFactory factory) : IClassFixture<EngineFactory>
 
     [Theory]
     [InlineData]
-    [InlineData("infopanel.v1")]
     [InlineData("infopanel.v1", "auth.wrong-token")]
     [InlineData("infopanel.v1", "auth.")]
     [InlineData("auth." + EngineFactory.Token)]

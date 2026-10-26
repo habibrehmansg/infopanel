@@ -1,5 +1,6 @@
 using InfoPanel.Persistence;
 using System.Globalization;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
@@ -33,6 +34,13 @@ public sealed partial class EngineOptions
 
     /// <summary>Extra allowed origins (a web client's dev server), normalised to <c>scheme://host[:port]</c>.</summary>
     public IReadOnlyList<string> DevOrigins { get; init; } = [];
+
+    /// <summary>
+    /// Origins of web clients served from elsewhere that may call the engine cross-origin (<c>--allow-origin</c>),
+    /// exact <c>scheme://host[:port]</c> origins: they get CORS on <c>/api</c> and <c>/healthz</c> and may open
+    /// <c>/ws</c>. Empty by default.
+    /// </summary>
+    public IReadOnlyList<string> AllowOrigins { get; init; } = [];
 
     /// <summary>A 1.x data folder to import at start-up.</summary>
     public string? ImportV1 { get; init; }
@@ -87,6 +95,17 @@ public sealed partial class EngineOptions
                 devOrigins.Add(normalized);
             else
                 problems.Add($"--dev-origin must be an http(s) origin such as http://localhost:5180 (got '{origin}').");
+        }
+
+        var allowOrigins = new List<string>();
+        foreach (var origin in section.GetSection("AllowOrigins").GetChildren().Select(c => c.Value).Where(v => !string.IsNullOrWhiteSpace(v)))
+        {
+            if (!TryNormalizeExactOrigin(origin!, out var normalized))
+                problems.Add($"--allow-origin must be an exact http or https origin, scheme://host[:port] with no path, wildcard, percent sign or IPv6 zone, such as https://client.example (got '{origin}').");
+            else if (!IsSecureOrLoopbackOrigin(normalized))
+                problems.Add($"--allow-origin must use https unless the host is loopback (localhost, 127.0.0.0/8 or [::1]): the pairing link hands the origin the token (got '{origin}').");
+            else
+                allowOrigins.Add(normalized);
         }
 
         var dataDir = Value(section, "DataDir");
@@ -148,6 +167,7 @@ public sealed partial class EngineOptions
             NoWindows = noWindows,
             Token = token ?? NewToken(),
             DevOrigins = devOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            AllowOrigins = allowOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             ImportV1 = importV1 == null ? null : Path.GetFullPath(importV1),
             Fresh = fresh,
             MockSeed = seed,
@@ -167,6 +187,87 @@ public sealed partial class EngineOptions
 
         origin = uri.GetLeftPart(UriPartial.Authority).ToLowerInvariant();
         return true;
+    }
+
+    /// <summary>
+    /// <see cref="TryNormalizeOrigin"/>, stricter, for origins that get cross-origin access: the value must already be
+    /// an origin as a browser sends it in <c>Origin</c> (ASCII, no wildcard, no path other than an optional trailing
+    /// <c>/</c>, no user info, query or fragment).
+    /// </summary>
+    public static bool TryNormalizeExactOrigin(string value, out string origin)
+    {
+        origin = "";
+        var text = value.Trim();
+        var authority = text.IndexOf("://", StringComparison.Ordinal);
+        if (authority < 0 || text.Contains('*') || text.Contains('\\') || text.Any(c => c <= 0x20 || c > 0x7E))
+            return false;
+
+        // Uri would quietly drop dot segments (http://host/./ is "http://host/"), so a path is refused before parsing.
+        var slash = text.IndexOf('/', authority + 3);
+        if (slash >= 0 && slash != text.Length - 1)
+            return false;
+
+        // A percent sign is either an escape a browser would decode or an IPv6 zone id, which browsers refuse.
+        if (text.Contains('%'))
+            return false;
+
+        if (!TryNormalizeOrigin(text, out var normalized) || !Uri.TryCreate(normalized, UriKind.Absolute, out var uri)
+            || uri.HostNameType is not (UriHostNameType.Dns or UriHostNameType.IPv4 or UriHostNameType.IPv6))
+        {
+            return false;
+        }
+
+        // Uri keeps an embedded IPv4 part dotted ([::ffff:127.0.0.1]); browsers send the WHATWG form ([::ffff:7f00:1]).
+        if (uri.HostNameType == UriHostNameType.IPv6)
+        {
+            if (!IPAddress.TryParse(uri.Host.Trim('[', ']'), out var address) || address.ScopeId != 0)
+                return false;
+            normalized = $"{uri.Scheme}://[{SerializeIPv6(address)}]" + (uri.IsDefaultPort ? "" : $":{uri.Port}");
+        }
+
+        origin = normalized;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether an origin from <see cref="TryNormalizeExactOrigin"/> may get the token: https, or http on a loopback
+    /// host (<c>localhost</c>, 127.0.0.0/8, <c>[::1]</c> and its IPv4-mapped forms), where no network sits in between.
+    /// </summary>
+    public static bool IsSecureOrLoopbackOrigin(string origin)
+    {
+        var uri = new Uri(origin);
+        if (uri.Scheme == Uri.UriSchemeHttps)
+            return true;
+        if (uri.HostNameType == UriHostNameType.Dns)
+            return uri.Host == "localhost";
+        if (!IPAddress.TryParse(uri.Host.Trim('[', ']'), out var address))
+            return false;
+        return IPAddress.IsLoopback(address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address);
+    }
+
+    /// <summary>An IPv6 address as the WHATWG URL serializer writes it: lower-case hex, the first longest run of two or more zero pieces as <c>::</c>.</summary>
+    private static string SerializeIPv6(IPAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+        var pieces = new int[8];
+        for (var i = 0; i < 8; i++)
+            pieces[i] = (bytes[2 * i] << 8) | bytes[2 * i + 1];
+
+        int bestStart = -1, bestLength = 1;
+        for (var i = 0; i < 8;)
+        {
+            var end = i;
+            while (end < 8 && pieces[end] == 0)
+                end++;
+            if (end - i > bestLength)
+                (bestStart, bestLength) = (i, end - i);
+            i = end == i ? i + 1 : end;
+        }
+
+        if (bestStart < 0)
+            return string.Join(':', pieces.Select(p => p.ToString("x", CultureInfo.InvariantCulture)));
+        string Join(int from, int to) => string.Join(':', pieces[from..to].Select(p => p.ToString("x", CultureInfo.InvariantCulture)));
+        return Join(0, bestStart) + "::" + Join(bestStart + bestLength, 8);
     }
 
     /// <summary>

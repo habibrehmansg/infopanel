@@ -24,12 +24,13 @@ public sealed class EngineRuntime
     private readonly byte[] _token;
     private volatile int _port;
 
-    public EngineRuntime(int port, string token, IReadOnlyList<string> devOrigins)
+    public EngineRuntime(int port, string token, IReadOnlyList<string> devOrigins, IReadOnlyList<string>? crossOrigins = null)
     {
         _port = port;
         Token = token;
         _token = Encoding.UTF8.GetBytes(token);
         DevOrigins = devOrigins;
+        CrossOrigins = crossOrigins ?? [];
     }
 
     public int Port
@@ -42,6 +43,12 @@ public sealed class EngineRuntime
 
     public IReadOnlyList<string> DevOrigins { get; }
 
+    /// <summary>
+    /// Origins of web clients served from elsewhere (<c>--allow-origin</c>): allowed like the others, and the only
+    /// ones that get CORS headers (<see cref="Security.CrossOrigin"/>).
+    /// </summary>
+    public IReadOnlyList<string> CrossOrigins { get; }
+
     public string BaseUrl => $"http://127.0.0.1:{Port}";
 
     /// <summary>Opening this redirects to the web client with the token in the URL fragment (<c>/#token=…</c>).</summary>
@@ -50,9 +57,29 @@ public sealed class EngineRuntime
     /// <param name="redacted">Show <see cref="RedactedToken"/> instead of the token (for the log file).</param>
     public string AuthUrlFor(string origin, bool redacted = false) => $"{origin}/auth/{(redacted ? RedactedToken : Token)}";
 
-    /// <summary><c>http://127.0.0.1:{port}</c>, <c>http://localhost:{port}</c> and every dev origin.</summary>
+    /// <summary>
+    /// The pairing link for a cross-origin client: its own origin with the engine's URL and the token in the fragment
+    /// (<c>{origin}/#engine={BaseUrl}&amp;token={token}</c>), which the browser never sends to that origin's server.
+    /// </summary>
+    /// <param name="redacted">Show <see cref="RedactedToken"/> instead of the token (for the log file).</param>
+    public string PairingUrlFor(string origin, bool redacted = false) =>
+        $"{origin}/#engine={BaseUrl}&token={(redacted ? RedactedToken : Token)}";
+
+    /// <summary><c>http://127.0.0.1:{port}</c>, <c>http://localhost:{port}</c>, every dev origin and every cross origin.</summary>
     public IReadOnlyList<string> AllowedOrigins =>
-        [$"http://127.0.0.1:{Port}", $"http://localhost:{Port}", .. DevOrigins];
+        [$"http://127.0.0.1:{Port}", $"http://localhost:{Port}", .. DevOrigins, .. CrossOrigins];
+
+    /// <summary>An origin given with <c>--allow-origin</c>, which gets CORS headers.</summary>
+    public bool IsCrossOrigin(string origin)
+    {
+        foreach (var allowed in CrossOrigins)
+        {
+            if (string.Equals(origin, allowed, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
 
     public bool IsAllowedOrigin(string origin)
     {

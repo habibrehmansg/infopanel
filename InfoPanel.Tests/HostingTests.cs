@@ -168,5 +168,23 @@ public sealed class HostingTests : IDisposable
         Assert.False(runtime.IsValidToken(null));
         Assert.Equal("http://127.0.0.1:5199/auth/secret", runtime.AuthUrl);
         Assert.Equal("http://localhost:5180/auth/<token>", runtime.AuthUrlFor("http://localhost:5180", redacted: true));
+        Assert.False(runtime.IsCrossOrigin("http://localhost:5180"));
+        Assert.Empty(runtime.CrossOrigins);
+    }
+
+    [Fact]
+    public void EngineRuntime_CrossOrigins_AreAllowed_AndGetPairingLinks()
+    {
+        var runtime = new EngineRuntime(5313, "secret", ["http://localhost:5180"], ["https://client.example"]);
+
+        Assert.True(runtime.IsAllowedOrigin("https://client.example"));
+        Assert.True(runtime.IsAllowedOrigin("HTTPS://CLIENT.EXAMPLE"));
+        Assert.True(runtime.IsCrossOrigin("https://client.example"));
+        Assert.False(runtime.IsCrossOrigin("http://localhost:5180"));
+        Assert.False(runtime.IsCrossOrigin("http://127.0.0.1:5313"));
+        Assert.False(runtime.IsAllowedOrigin("https://client.example:8443"));
+        Assert.Contains("https://client.example", runtime.AllowedOrigins);
+        Assert.Equal("https://client.example/#engine=http://127.0.0.1:5313&token=secret", runtime.PairingUrlFor("https://client.example"));
+        Assert.Equal("https://client.example/#engine=http://127.0.0.1:5313&token=<token>", runtime.PairingUrlFor("https://client.example", redacted: true));
     }
 }

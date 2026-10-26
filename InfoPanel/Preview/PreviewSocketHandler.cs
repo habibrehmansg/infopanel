@@ -9,10 +9,25 @@ using System.Threading.Channels;
 
 namespace InfoPanel.Preview;
 
+/// <summary>How long a <c>/ws</c> connection without an <c>auth.{token}</c> subprotocol has to send its <c>auth</c> message.</summary>
+public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
+{
+    public static readonly TimeSpan DefaultAuthTimeout = TimeSpan.FromSeconds(5);
+
+    public TimeSpan EffectiveAuthTimeout => AuthTimeout ?? DefaultAuthTimeout;
+}
+
 /// <summary>
 /// <c>/ws</c> (plan §6.4): the live preview stream and document events. <see cref="SecurityMiddleware"/> has already
-/// checked the Origin and the <c>infopanel.v1</c> + <c>auth.{token}</c> subprotocols; the socket is accepted with
-/// <c>infopanel.v1</c> only, so the token is never echoed.
+/// checked the Origin and the <c>infopanel.v1</c> subprotocol, and the token when it came as <c>auth.{token}</c>; the
+/// socket is accepted with <c>infopanel.v1</c> only, so the token is never echoed.
+/// <para>
+/// <b>First-message authentication.</b> A connection that offered no <c>auth.*</c> subprotocol is accepted and must
+/// send <c>{"type":"auth","token":"…"}</c> as its first message within <see cref="PreviewSocketOptions.AuthTimeout"/>
+/// (5 s by default). The server sends nothing before that; a valid token starts the session (<c>hello</c> first).
+/// Anything else (no message in time, a wrong token, another message, a binary or oversized one) closes the socket
+/// with <see cref="AuthFailedStatus"/> (1008, policy violation) and one of the <c>AuthFailed…</c> reasons.
+/// </para>
 /// <list type="bullet">
 /// <item>Client → server (JSON text, at most <see cref="MaxClientMessageBytes"/>): <c>subscribe {profileId, scale?, maxFps?}</c>,
 /// <c>view {scale?, maxFps?}</c>, <c>unsubscribe</c>.</item>
@@ -25,10 +40,20 @@ public static class PreviewSocketHandler
 {
     public const int MaxClientMessageBytes = 4096;
 
+    /// <summary>The close status for a failed first-message authentication.</summary>
+    public const WebSocketCloseStatus AuthFailedStatus = WebSocketCloseStatus.PolicyViolation;
+
+    public const string AuthFailedTimeout = "auth timeout";
+    public const string AuthFailedToken = "auth rejected";
+    public const string AuthFailedMessage = "auth expected";
+
+    /// <summary>How long the client has to answer a close frame before the connection is dropped.</summary>
+    private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(2);
+
     public static void MapPreviewSocket(this IEndpointRouteBuilder app) => app.Map("/ws", HandleAsync);
 
     private static async Task HandleAsync(HttpContext context, Workspace workspace, RenderService render,
-        IHostApplicationLifetime lifetime, ILoggerFactory loggers)
+        IHostApplicationLifetime lifetime, ILoggerFactory loggers, EngineRuntime runtime, PreviewSocketOptions options)
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
@@ -42,8 +67,136 @@ public static class PreviewSocketHandler
             KeepAliveInterval = TimeSpan.FromSeconds(30),
         });
 
-        var session = new PreviewSession(socket, workspace, render, loggers.CreateLogger("InfoPanel.Preview"));
+        var logger = loggers.CreateLogger("InfoPanel.Preview");
+        if (context.Items.ContainsKey(SecurityMiddleware.PendingWebSocketAuthItem)
+            && await AuthenticateFirstMessageAsync(socket, runtime, options.EffectiveAuthTimeout, context.RequestAborted) is { } failure)
+        {
+            logger.LogInformation("Closed a preview connection that did not authenticate ({Reason})", failure);
+            return;
+        }
+
+        var session = new PreviewSession(socket, workspace, render, logger);
         await session.RunAsync(context.RequestAborted, lifetime.ApplicationStopping);
+    }
+
+    /// <summary>
+    /// Reads the first message without cancelling the receive (a cancelled receive aborts the socket, and the client
+    /// would get no close status). Returns null when it is a valid <c>auth</c> message; otherwise closes the socket
+    /// with <see cref="AuthFailedStatus"/> and returns the reason.
+    /// </summary>
+    private static async Task<string?> AuthenticateFirstMessageAsync(WebSocket socket, EngineRuntime runtime, TimeSpan timeout, CancellationToken aborted)
+    {
+        var buffer = new byte[MaxClientMessageBytes + 1];
+        var length = 0;
+        var deadline = Task.Delay(timeout, aborted);
+        Task<ValueWebSocketReceiveResult>? pending = null;
+        string failure;
+        try
+        {
+            while (true)
+            {
+                // The deadline bounds the whole phase: a client streaming empty fragments completes every receive
+                // before the deadline is looked at in WhenAny, so it is also checked on every turn.
+                if (deadline.IsCompleted)
+                {
+                    failure = aborted.IsCancellationRequested ? "" : AuthFailedTimeout;
+                    break;
+                }
+
+                if (length == buffer.Length)
+                {
+                    failure = AuthFailedMessage;
+                    break;
+                }
+
+                pending = socket.ReceiveAsync(buffer.AsMemory(length), CancellationToken.None).AsTask();
+                if (await Task.WhenAny(pending, deadline) != pending)
+                {
+                    failure = aborted.IsCancellationRequested ? "" : AuthFailedTimeout;
+                    break;
+                }
+
+                var result = await pending;
+                pending = null;
+                if (result.MessageType == WebSocketMessageType.Close)
+                    return await CloseAsync(socket, WebSocketCloseStatus.NormalClosure, "", null, "closed by the client");
+
+                length += result.Count;
+                if (!result.EndOfMessage)
+                    continue;
+
+                failure = result.MessageType == WebSocketMessageType.Text && length <= MaxClientMessageBytes
+                    ? CheckAuthMessage(buffer.AsSpan(0, length), runtime)
+                    : AuthFailedMessage;
+                if (failure.Length == 0)
+                    return null;
+                break;
+            }
+        }
+        catch (Exception ex) when (ex is WebSocketException or OperationCanceledException)
+        {
+            return "connection lost";
+        }
+
+        if (aborted.IsCancellationRequested)
+        {
+            socket.Abort();
+            return "connection lost";
+        }
+
+        return await CloseAsync(socket, AuthFailedStatus, failure, pending, failure);
+    }
+
+    /// <summary>"" for <c>{"type":"auth","token":"…"}</c> with the engine's token, else the failure reason.</summary>
+    private static string CheckAuthMessage(ReadOnlySpan<byte> utf8, EngineRuntime runtime)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(utf8.ToArray());
+            var root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "auth"
+                || !root.TryGetProperty("token", out var token) || token.ValueKind != JsonValueKind.String)
+            {
+                return AuthFailedMessage;
+            }
+
+            return runtime.IsValidToken(token.GetString()) ? "" : AuthFailedToken;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            // InvalidOperationException: a string that isn't valid UTF-16 once unescaped, such as a lone "\uD800".
+            return AuthFailedMessage;
+        }
+    }
+
+    /// <summary>Sends a close frame and waits (at most <see cref="CloseTimeout"/>) for the client's, then drops the connection.</summary>
+    private static async Task<string> CloseAsync(WebSocket socket, WebSocketCloseStatus status, string description,
+        Task<ValueWebSocketReceiveResult>? pending, string reason)
+    {
+        try
+        {
+            if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                await socket.CloseOutputAsync(status, description, CancellationToken.None).WaitAsync(CloseTimeout);
+
+            var scratch = new byte[1024];
+            var until = Task.Delay(CloseTimeout);
+            while (socket.State == WebSocketState.CloseSent && !until.IsCompleted)
+            {
+                pending ??= socket.ReceiveAsync(scratch.AsMemory(), CancellationToken.None).AsTask();
+                if (await Task.WhenAny(pending, until) != pending)
+                    break;
+                await pending;
+                pending = null;
+            }
+        }
+        catch (Exception ex) when (ex is WebSocketException or OperationCanceledException or TimeoutException)
+        {
+        }
+
+        if (socket.State != WebSocketState.Closed)
+            socket.Abort();
+        return reason;
     }
 }
 

@@ -130,7 +130,7 @@ try
         Log.Information("Serving the web client from {WebRoot}", webRoot);
 
     var port = options.Port == 0 ? EngineRuntime.FindFreePort() : options.Port;
-    var runtime = new EngineRuntime(port, options.Token, options.DevOrigins);
+    var runtime = new EngineRuntime(port, options.Token, options.DevOrigins, options.AllowOrigins);
 
     builder.Services.AddSerilog(engineLogger);
     // Loopback only: endpoints from configuration (Kestrel:Endpoints from arguments, environment or appsettings)
@@ -191,6 +191,7 @@ try
         sp.GetRequiredService<ThumbnailRenderer>(),
         sp.GetRequiredService<TimeProvider>(),
         sp.GetService<RenderServiceOptions>()));
+    builder.Services.AddSingleton(new PreviewSocketOptions());
     builder.Services.AddSingleton<BrowserLauncher>();
     builder.Services.AddHostedService<SensorService>();
     builder.Services.AddHostedService<EngineLifetime>();

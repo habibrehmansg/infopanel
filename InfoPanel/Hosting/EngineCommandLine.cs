@@ -35,6 +35,7 @@ public static class EngineCommandLine
     };
 
     private const string DevOrigin = "--dev-origin";
+    private const string AllowOrigin = "--allow-origin";
 
     private static readonly HashSet<string> HostKeys = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -61,6 +62,9 @@ public static class EngineCommandLine
           --no-windows          Don't show active profiles as desktop windows
           --token <token>       Session token (default: random)
           --dev-origin <url>    Extra allowed origin, e.g. http://localhost:5180 (repeatable)
+          --allow-origin <url>  Exact origin of a web client served elsewhere that may call the
+                                engine cross-origin (CORS, /ws), e.g. https://client.example; http
+                                only on a loopback host (repeatable)
           --import-v1 <dir>     Import a 1.x data folder at start-up
           --fresh               Wipe the data folder first (needs --data-dir)
           --mock-seed <n>       Seed for the mock sensors
@@ -72,6 +76,7 @@ public static class EngineCommandLine
         var settings = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var hostArgs = new List<string>();
         var devOrigins = 0;
+        var allowOrigins = 0;
 
         Result Fail(string error) => new(settings, hostArgs, error, false);
 
@@ -96,7 +101,7 @@ public static class EngineCommandLine
                 continue;
             }
 
-            if (ValueOptions.TryGetValue(name, out var key) || name == DevOrigin)
+            if (ValueOptions.TryGetValue(name, out var key) || name is DevOrigin or AllowOrigin)
             {
                 string value;
                 if (inlineValue != null)
@@ -117,6 +122,8 @@ public static class EngineCommandLine
 
                 if (name == DevOrigin)
                     settings[$"{EngineOptions.Section}:DevOrigins:{devOrigins++}"] = value;
+                else if (name == AllowOrigin)
+                    settings[$"{EngineOptions.Section}:AllowOrigins:{allowOrigins++}"] = value;
                 else if (settings.ContainsKey($"{EngineOptions.Section}:{key}"))
                     return Fail($"{name} is given more than once.");
                 else
