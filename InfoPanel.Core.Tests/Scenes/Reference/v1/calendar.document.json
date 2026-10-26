@@ -1,0 +1,47 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "calendar",
+    "width": 400,
+    "height": 60,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g017",
+      "name": "Calendar",
+      "placement": {
+        "x": 10,
+        "y": 12
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": "#ffffffff",
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 29.260000228881836,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": {
+              "args": [
+                {
+                  "op": "formatTime",
+                  "pattern": "EEEE d MMMM yyyy"
+                }
+              ],
+              "op": "upper"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

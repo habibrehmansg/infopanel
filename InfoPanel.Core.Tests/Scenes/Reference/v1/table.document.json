@@ -1,0 +1,103 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "table",
+    "width": 260,
+    "height": 130,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g018",
+      "name": "Processes",
+      "placement": {
+        "x": 10,
+        "y": 8
+      },
+      "bindings": {
+        "t": {
+          "key": "plugin:/golden/processes"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Table",
+            "type": "table"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "columns": [
+                  {
+                    "column": 0,
+                    "w": 110
+                  },
+                  {
+                    "align": "end",
+                    "column": 1,
+                    "w": 60
+                  },
+                  {
+                    "align": "end",
+                    "column": 2,
+                    "w": 50
+                  }
+                ],
+                "fill": "#e0e0e0ff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 15.960000991821289,
+                  "weight": 400
+                },
+                "gap": 10,
+                "id": "table",
+                "input": "t",
+                "kind": "table",
+                "overflow": "ellipsis",
+                "rows": 4,
+                "visible": {
+                  "field": "available",
+                  "name": "t",
+                  "op": "input"
+                }
+              },
+              {
+                "align": "end",
+                "fill": "#e0e0e0ff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 15.960000991821289,
+                  "weight": 400
+                },
+                "id": "invalid",
+                "kind": "text",
+                "maxLines": 1,
+                "text": "Invalid sensor",
+                "visible": {
+                  "args": [
+                    {
+                      "field": "available",
+                      "name": "t",
+                      "op": "input"
+                    }
+                  ],
+                  "op": "not"
+                }
+              }
+            ],
+            "id": "body",
+            "kind": "group"
+          }
+        ]
+      }
+    }
+  ]
+}

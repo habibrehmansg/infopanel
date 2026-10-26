@@ -1,0 +1,984 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "gradients-all",
+    "width": 440,
+    "height": 220,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g052",
+      "name": "Linear",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "layout": {
+        "h": 96,
+        "w": 132
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": {
+              "stops": [
+                {
+                  "at": 0,
+                  "color": "#ff1744ff"
+                },
+                {
+                  "at": 0.5,
+                  "color": "#00e676ff"
+                },
+                {
+                  "at": 1,
+                  "color": "#2979ffff"
+                }
+              ],
+              "type": "linear",
+              "x1": {
+                "args": [
+                  66,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              90,
+                              {
+                                "name": "angle",
+                                "op": "value"
+                              }
+                            ],
+                            "op": "sub"
+                          }
+                        ],
+                        "op": "cos"
+                      },
+                      81.60882305241266
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              "x2": {
+                "args": [
+                  66,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              90,
+                              {
+                                "name": "angle",
+                                "op": "value"
+                              }
+                            ],
+                            "op": "sub"
+                          }
+                        ],
+                        "op": "cos"
+                      },
+                      81.60882305241266
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              "y1": {
+                "args": [
+                  48,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              90,
+                              {
+                                "name": "angle",
+                                "op": "value"
+                              }
+                            ],
+                            "op": "sub"
+                          }
+                        ],
+                        "op": "sin"
+                      },
+                      81.60882305241266
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              "y2": {
+                "args": [
+                  48,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              90,
+                              {
+                                "name": "angle",
+                                "op": "value"
+                              }
+                            ],
+                            "op": "sub"
+                          }
+                        ],
+                        "op": "sin"
+                      },
+                      81.60882305241266
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              }
+            },
+            "h": 96,
+            "id": "shape",
+            "kind": "rect",
+            "w": 132
+          }
+        ],
+        "values": {
+          "angle": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "elapsed",
+                        "op": "time"
+                      },
+                      300
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "floor"
+              },
+              360
+            ],
+            "op": "mod"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g053",
+      "name": "Sweep",
+      "placement": {
+        "x": 154,
+        "y": 10
+      },
+      "layout": {
+        "h": 96,
+        "w": 132
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": {
+              "cx": 66,
+              "cy": 48,
+              "start": {
+                "args": [
+                  {
+                    "name": "angle",
+                    "op": "value"
+                  },
+                  90
+                ],
+                "op": "sub"
+              },
+              "stops": [
+                {
+                  "at": 0,
+                  "color": "#ff1744ff"
+                },
+                {
+                  "at": 0.33,
+                  "color": "#00e676ff"
+                },
+                {
+                  "at": 0.67,
+                  "color": "#2979ffff"
+                },
+                {
+                  "at": 1,
+                  "color": "#ff1744ff"
+                }
+              ],
+              "type": "sweep"
+            },
+            "h": 96,
+            "id": "shape",
+            "kind": "rect",
+            "w": 132
+          }
+        ],
+        "values": {
+          "angle": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "elapsed",
+                        "op": "time"
+                      },
+                      300
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "floor"
+              },
+              360
+            ],
+            "op": "mod"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g054",
+      "name": "Radial",
+      "placement": {
+        "x": 298,
+        "y": 10
+      },
+      "layout": {
+        "h": 96,
+        "w": 132
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": {
+              "cx": 66,
+              "cy": 48,
+              "r": {
+                "args": [
+                  132,
+                  {
+                    "args": [
+                      0.8,
+                      {
+                        "args": [
+                          0.5,
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  {
+                                    "args": [
+                                      {
+                                        "name": "angle",
+                                        "op": "value"
+                                      }
+                                    ],
+                                    "op": "sin"
+                                  },
+                                  1
+                                ],
+                                "op": "add"
+                              },
+                              2
+                            ],
+                            "op": "div"
+                          }
+                        ],
+                        "op": "mul"
+                      }
+                    ],
+                    "op": "add"
+                  }
+                ],
+                "op": "mul"
+              },
+              "stops": [
+                {
+                  "at": 0,
+                  "color": "#ff1744ff"
+                },
+                {
+                  "at": {
+                    "args": [
+                      {
+                        "args": [
+                          0.36,
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  {
+                                    "args": [
+                                      {
+                                        "name": "angle",
+                                        "op": "value"
+                                      }
+                                    ],
+                                    "op": "sin"
+                                  },
+                                  1
+                                ],
+                                "op": "add"
+                              },
+                              2
+                            ],
+                            "op": "div"
+                          }
+                        ],
+                        "op": "mul"
+                      },
+                      1
+                    ],
+                    "op": "min"
+                  },
+                  "color": "#00e676ff"
+                },
+                {
+                  "at": {
+                    "args": [
+                      {
+                        "args": [
+                          0.66,
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  {
+                                    "args": [
+                                      {
+                                        "name": "angle",
+                                        "op": "value"
+                                      }
+                                    ],
+                                    "op": "sin"
+                                  },
+                                  1
+                                ],
+                                "op": "add"
+                              },
+                              2
+                            ],
+                            "op": "div"
+                          }
+                        ],
+                        "op": "mul"
+                      },
+                      1
+                    ],
+                    "op": "min"
+                  },
+                  "color": "#2979ffff"
+                },
+                {
+                  "at": 1,
+                  "color": "#2979ffff"
+                }
+              ],
+              "type": "radial"
+            },
+            "h": 96,
+            "id": "shape",
+            "kind": "rect",
+            "w": 132
+          }
+        ],
+        "values": {
+          "angle": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "elapsed",
+                        "op": "time"
+                      },
+                      300
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "floor"
+              },
+              360
+            ],
+            "op": "mod"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g055",
+      "name": "Diamond",
+      "placement": {
+        "x": 10,
+        "y": 114
+      },
+      "layout": {
+        "h": 96,
+        "w": 132
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": {
+              "blend": "multiply",
+              "dst": {
+                "stops": [
+                  {
+                    "at": 0,
+                    "color": "#2979ffff"
+                  },
+                  {
+                    "at": 0.25,
+                    "color": "#00e676ff"
+                  },
+                  {
+                    "at": 0.5,
+                    "color": "#ff1744ff"
+                  },
+                  {
+                    "at": 0.75,
+                    "color": "#00e676ff"
+                  },
+                  {
+                    "at": 1,
+                    "color": "#2979ffff"
+                  }
+                ],
+                "type": "linear",
+                "x1": {
+                  "args": [
+                    66,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "angle",
+                              "op": "value"
+                            }
+                          ],
+                          "op": "cos"
+                        },
+                        81.60882305241266
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "x2": {
+                  "args": [
+                    66,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "angle",
+                              "op": "value"
+                            }
+                          ],
+                          "op": "cos"
+                        },
+                        81.60882305241266
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                "y1": {
+                  "args": [
+                    48,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "angle",
+                              "op": "value"
+                            }
+                          ],
+                          "op": "sin"
+                        },
+                        81.60882305241266
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y2": {
+                  "args": [
+                    48,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "angle",
+                              "op": "value"
+                            }
+                          ],
+                          "op": "sin"
+                        },
+                        81.60882305241266
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
+              },
+              "src": {
+                "stops": [
+                  {
+                    "at": 0,
+                    "color": "#2979ffff"
+                  },
+                  {
+                    "at": 0.25,
+                    "color": "#00e676ff"
+                  },
+                  {
+                    "at": 0.5,
+                    "color": "#ff1744ff"
+                  },
+                  {
+                    "at": 0.75,
+                    "color": "#00e676ff"
+                  },
+                  {
+                    "at": 1,
+                    "color": "#2979ffff"
+                  }
+                ],
+                "type": "linear",
+                "x1": {
+                  "args": [
+                    66,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "angle",
+                                  "op": "value"
+                                },
+                                90
+                              ],
+                              "op": "add"
+                            }
+                          ],
+                          "op": "cos"
+                        },
+                        81.60882305241266
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "x2": {
+                  "args": [
+                    66,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "angle",
+                                  "op": "value"
+                                },
+                                90
+                              ],
+                              "op": "add"
+                            }
+                          ],
+                          "op": "cos"
+                        },
+                        81.60882305241266
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                "y1": {
+                  "args": [
+                    48,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "angle",
+                                  "op": "value"
+                                },
+                                90
+                              ],
+                              "op": "add"
+                            }
+                          ],
+                          "op": "sin"
+                        },
+                        81.60882305241266
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y2": {
+                  "args": [
+                    48,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "angle",
+                                  "op": "value"
+                                },
+                                90
+                              ],
+                              "op": "add"
+                            }
+                          ],
+                          "op": "sin"
+                        },
+                        81.60882305241266
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
+              },
+              "type": "compose"
+            },
+            "h": 96,
+            "id": "shape",
+            "kind": "rect",
+            "w": 132
+          }
+        ],
+        "values": {
+          "angle": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "elapsed",
+                        "op": "time"
+                      },
+                      300
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "floor"
+              },
+              360
+            ],
+            "op": "mod"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g056",
+      "name": "Reflected",
+      "placement": {
+        "x": 154,
+        "y": 114
+      },
+      "layout": {
+        "h": 96,
+        "w": 132
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": {
+              "stops": [
+                {
+                  "at": 0,
+                  "color": "#ff1744ff"
+                },
+                {
+                  "at": 0.25,
+                  "color": "#00e676ff"
+                },
+                {
+                  "at": 0.5,
+                  "color": "#2979ffff"
+                },
+                {
+                  "at": 0.75,
+                  "color": "#00e676ff"
+                },
+                {
+                  "at": 1,
+                  "color": "#ff1744ff"
+                }
+              ],
+              "type": "linear",
+              "x1": {
+                "args": [
+                  66,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "angle",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "cos"
+                      },
+                      81.60882305241266
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              "x2": {
+                "args": [
+                  66,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "angle",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "cos"
+                      },
+                      81.60882305241266
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              "y1": {
+                "args": [
+                  48,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "angle",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "sin"
+                      },
+                      81.60882305241266
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              "y2": {
+                "args": [
+                  48,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "angle",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "sin"
+                      },
+                      81.60882305241266
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              }
+            },
+            "h": 96,
+            "id": "shape",
+            "kind": "rect",
+            "w": 132
+          }
+        ],
+        "values": {
+          "angle": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "elapsed",
+                        "op": "time"
+                      },
+                      300
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "floor"
+              },
+              360
+            ],
+            "op": "mod"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g057",
+      "name": "Spiral",
+      "placement": {
+        "x": 298,
+        "y": 114
+      },
+      "layout": {
+        "h": 96,
+        "w": 132
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": {
+              "cx": 66,
+              "cy": 48,
+              "start": {
+                "name": "angle",
+                "op": "value"
+              },
+              "stops": [
+                {
+                  "at": 0,
+                  "color": "#ff1744ff"
+                },
+                {
+                  "at": 0.1111111111111111,
+                  "color": "#00e676ff"
+                },
+                {
+                  "at": 0.2222222222222222,
+                  "color": "#2979ffff"
+                },
+                {
+                  "at": 0.3333333333333333,
+                  "color": "#ff1744ff"
+                },
+                {
+                  "at": 0.4444444444444444,
+                  "color": "#00e676ff"
+                },
+                {
+                  "at": 0.5555555555555556,
+                  "color": "#2979ffff"
+                },
+                {
+                  "at": 0.6666666666666666,
+                  "color": "#ff1744ff"
+                },
+                {
+                  "at": 0.7777777777777778,
+                  "color": "#00e676ff"
+                },
+                {
+                  "at": 0.8888888888888888,
+                  "color": "#2979ffff"
+                },
+                {
+                  "at": 1,
+                  "color": "#ff1744ff"
+                }
+              ],
+              "type": "sweep"
+            },
+            "h": 96,
+            "id": "shape",
+            "kind": "rect",
+            "w": 132
+          }
+        ],
+        "values": {
+          "angle": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "elapsed",
+                        "op": "time"
+                      },
+                      300
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "floor"
+              },
+              360
+            ],
+            "op": "mod"
+          }
+        }
+      }
+    }
+  ]
+}

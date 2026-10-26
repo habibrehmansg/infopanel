@@ -1,0 +1,77 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "text-marquee-t0",
+    "width": 320,
+    "height": 60,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g008",
+      "name": "Box",
+      "placement": {
+        "x": 20,
+        "y": 10
+      },
+      "layout": {
+        "h": 40,
+        "w": 200
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "h": 40,
+            "id": "shape",
+            "kind": "rect",
+            "stroke": {
+              "paint": "#5c6370ff",
+              "width": 1
+            },
+            "w": 200
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g009",
+      "name": "A marquee that is much wider than its 200 px box",
+      "placement": {
+        "x": 20,
+        "y": 16
+      },
+      "layout": {
+        "h": 30,
+        "w": 200
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": "#f5f5f5ff",
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 26.600000381469727,
+              "weight": 400
+            },
+            "h": 30,
+            "id": "text",
+            "kind": "text",
+            "marquee": {
+              "gap": 40,
+              "speed": 50
+            },
+            "overflow": "marquee",
+            "text": "A marquee that is much wider than its 200 px box",
+            "w": 200
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "text-left",
+    "width": 320,
+    "height": 60,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g001",
+      "name": "Left aligned Inter 20",
+      "placement": {
+        "x": 10,
+        "y": 12
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": "#f5f5f5ff",
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 26.600000381469727,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": "Left aligned Inter 20"
+          }
+        ]
+      }
+    }
+  ]
+}

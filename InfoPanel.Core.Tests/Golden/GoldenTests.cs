@@ -25,9 +25,9 @@ public sealed class GoldenCollection
 [Trait("Category", "Golden")]
 public class GoldenTests
 {
-    private delegate (Profile Profile, List<DisplayItem> Items) Case();
+    internal delegate (Profile Profile, List<DisplayItem> Items) Case();
 
-    private static readonly Dictionary<string, Case> Cases = new()
+    internal static readonly Dictionary<string, Case> Cases = new()
     {
         ["text-left"] = () => Scene(320, 60, p => [Text(p, "Left aligned Inter 20", 10, 12)]),
         ["text-center-box"] = () => Scene(320, 60, p => [

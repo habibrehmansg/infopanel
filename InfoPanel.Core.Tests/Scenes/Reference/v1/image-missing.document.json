@@ -1,0 +1,72 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "image-missing",
+    "width": 260,
+    "height": 130,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g024",
+      "name": "does-not-exist.png",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "children": [
+              {
+                "id": "image",
+                "kind": "media",
+                "source": {
+                  "asset": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "id": "frame",
+            "kind": "group"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g025",
+      "name": "does-not-exist.png",
+      "placement": {
+        "x": 130,
+        "y": 10
+      },
+      "layout": {
+        "h": 60,
+        "w": 120
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "children": [
+              {
+                "h": 60,
+                "id": "image",
+                "kind": "media",
+                "source": {
+                  "asset": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                },
+                "w": 120
+              }
+            ],
+            "id": "frame",
+            "kind": "group"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "sensor-image-hidden",
+    "width": 120,
+    "height": 100,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g027",
+      "name": "Fan",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "layout": {
+        "h": 64,
+        "w": 64
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/fan/rpm"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "h": 64,
+                "id": "image",
+                "kind": "media",
+                "source": {
+                  "asset": "sha256:a734e9ea7e45149b532550ec7450468ae76ff813aef8ae6f6c51ae2733a4a169"
+                },
+                "w": 64
+              }
+            ],
+            "id": "frame",
+            "kind": "group",
+            "visible": {
+              "args": [
+                {
+                  "field": "available",
+                  "name": "v",
+                  "op": "input"
+                },
+                {
+                  "args": [
+                    {
+                      "name": "v",
+                      "op": "input"
+                    },
+                    0
+                  ],
+                  "op": "ge"
+                },
+                {
+                  "args": [
+                    {
+                      "name": "v",
+                      "op": "input"
+                    },
+                    500
+                  ],
+                  "op": "le"
+                }
+              ],
+              "op": "and"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

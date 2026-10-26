@@ -1,0 +1,45 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "image-gif-frame0",
+    "width": 120,
+    "height": 84,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g023",
+      "name": "blink.gif",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "layout": {
+        "h": 64,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "children": [
+              {
+                "h": 64,
+                "id": "image",
+                "kind": "media",
+                "source": {
+                  "asset": "sha256:e796ee98bcccd3a77b80d6c394435d1c460c3684c96c542b073150f0ba6eb354"
+                },
+                "w": 96
+              }
+            ],
+            "id": "frame",
+            "kind": "group"
+          }
+        ]
+      }
+    }
+  ]
+}

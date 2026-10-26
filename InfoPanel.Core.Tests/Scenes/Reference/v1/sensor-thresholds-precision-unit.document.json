@@ -1,0 +1,1301 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "sensor-thresholds-precision-unit",
+    "width": 360,
+    "height": 200,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g010",
+      "name": "CPU",
+      "placement": {
+        "x": 10,
+        "y": 8
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/cpu/load"
+        },
+        "t": {
+          "key": "plugin:/golden/cpu/load"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Text reading",
+            "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "fill": {
+              "name": "fill",
+              "op": "value"
+            },
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 23.940000534057617,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": {
+              "name": "label",
+              "op": "value"
+            }
+          }
+        ],
+        "values": {
+          "dp": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "unit",
+                    "op": "value"
+                  },
+                  "gb"
+                ],
+                "op": "eq"
+              },
+              1,
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "kb/s"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mb/s"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mbar/min"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mbar"
+                        ],
+                        "op": "eq"
+                      }
+                    ],
+                    "op": "or"
+                  },
+                  2,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "v"
+                        ],
+                        "op": "eq"
+                      },
+                      3,
+                      0
+                    ],
+                    "op": "if"
+                  }
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "fill": {
+            "args": [
+              {
+                "field": "available",
+                "name": "v",
+                "op": "input"
+              },
+              {
+                "at": [
+                  60,
+                  80
+                ],
+                "op": "steps",
+                "out": [
+                  "#e0e0e0ff",
+                  "#000000ff",
+                  "#000000ff"
+                ],
+                "value": {
+                  "name": "n",
+                  "op": "value"
+                }
+              },
+              "#e0e0e0ff"
+            ],
+            "op": "if"
+          },
+          "label": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "field": "text",
+                        "name": "t",
+                        "op": "input"
+                      },
+                      ""
+                    ],
+                    "op": "ne"
+                  }
+                ],
+                "op": "and"
+              },
+              {
+                "args": [
+                  "CPU ",
+                  {
+                    "field": "text",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "field": "unit",
+                    "name": "v",
+                    "op": "input"
+                  }
+                ],
+                "op": "concat"
+              },
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "v",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      "CPU ",
+                      {
+                        "name": "number",
+                        "op": "value"
+                      },
+                      {
+                        "field": "unit",
+                        "name": "v",
+                        "op": "input"
+                      }
+                    ],
+                    "op": "concat"
+                  },
+                  "-"
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "n": {
+            "args": [
+              {
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "abs"
+          },
+          "number": {
+            "decimals": {
+              "name": "dp",
+              "op": "value"
+            },
+            "op": "format",
+            "value": {
+              "name": "n",
+              "op": "value"
+            }
+          },
+          "unit": {
+            "args": [
+              {
+                "field": "unit",
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "lower"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g011",
+      "name": "/golden/cpu/temp",
+      "placement": {
+        "x": 10,
+        "y": 44
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/cpu/temp"
+        },
+        "t": {
+          "key": "plugin:/golden/cpu/temp"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Text reading",
+            "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "fill": {
+              "name": "fill",
+              "op": "value"
+            },
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 23.940000534057617,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": {
+              "name": "label",
+              "op": "value"
+            }
+          }
+        ],
+        "values": {
+          "dp": 2,
+          "fill": {
+            "args": [
+              {
+                "field": "available",
+                "name": "v",
+                "op": "input"
+              },
+              {
+                "at": [
+                  60,
+                  80
+                ],
+                "op": "steps",
+                "out": [
+                  "#e0e0e0ff",
+                  "#ffa000ff",
+                  "#ff1744ff"
+                ],
+                "value": {
+                  "name": "n",
+                  "op": "value"
+                }
+              },
+              "#e0e0e0ff"
+            ],
+            "op": "if"
+          },
+          "label": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "field": "text",
+                        "name": "t",
+                        "op": "input"
+                      },
+                      ""
+                    ],
+                    "op": "ne"
+                  }
+                ],
+                "op": "and"
+              },
+              {
+                "args": [
+                  {
+                    "field": "text",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "field": "unit",
+                    "name": "v",
+                    "op": "input"
+                  }
+                ],
+                "op": "concat"
+              },
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "v",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "name": "number",
+                        "op": "value"
+                      },
+                      {
+                        "field": "unit",
+                        "name": "v",
+                        "op": "input"
+                      }
+                    ],
+                    "op": "concat"
+                  },
+                  "-"
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "n": {
+            "args": [
+              {
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "abs"
+          },
+          "number": {
+            "decimals": {
+              "name": "dp",
+              "op": "value"
+            },
+            "op": "format",
+            "value": {
+              "name": "n",
+              "op": "value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g012",
+      "name": "/golden/gpu/clock",
+      "placement": {
+        "x": 10,
+        "y": 80
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/gpu/clock"
+        },
+        "t": {
+          "key": "plugin:/golden/gpu/clock"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Text reading",
+            "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "fill": {
+              "name": "fill",
+              "op": "value"
+            },
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 23.940000534057617,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": {
+              "name": "label",
+              "op": "value"
+            }
+          }
+        ],
+        "values": {
+          "dp": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "unit",
+                    "op": "value"
+                  },
+                  "gb"
+                ],
+                "op": "eq"
+              },
+              1,
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "kb/s"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mb/s"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mbar/min"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mbar"
+                        ],
+                        "op": "eq"
+                      }
+                    ],
+                    "op": "or"
+                  },
+                  2,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "v"
+                        ],
+                        "op": "eq"
+                      },
+                      3,
+                      0
+                    ],
+                    "op": "if"
+                  }
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "fill": {
+            "args": [
+              {
+                "field": "available",
+                "name": "v",
+                "op": "input"
+              },
+              {
+                "at": [
+                  1000,
+                  1500
+                ],
+                "op": "steps",
+                "out": [
+                  "#e0e0e0ff",
+                  "#ffa000ff",
+                  "#ff1744ff"
+                ],
+                "value": {
+                  "name": "n",
+                  "op": "value"
+                }
+              },
+              "#e0e0e0ff"
+            ],
+            "op": "if"
+          },
+          "label": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "field": "text",
+                        "name": "t",
+                        "op": "input"
+                      },
+                      ""
+                    ],
+                    "op": "ne"
+                  }
+                ],
+                "op": "and"
+              },
+              {
+                "args": [
+                  {
+                    "field": "text",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  " MHz (gpu)"
+                ],
+                "op": "concat"
+              },
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "v",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "name": "number",
+                        "op": "value"
+                      },
+                      " MHz (gpu)"
+                    ],
+                    "op": "concat"
+                  },
+                  "-"
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "n": {
+            "args": [
+              {
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "abs"
+          },
+          "number": {
+            "decimals": {
+              "name": "dp",
+              "op": "value"
+            },
+            "group": true,
+            "op": "format",
+            "value": {
+              "name": "n",
+              "op": "value"
+            }
+          },
+          "unit": {
+            "args": [
+              {
+                "field": "unit",
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "lower"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g013",
+      "name": "/golden/cpu/vcore",
+      "placement": {
+        "x": 10,
+        "y": 116
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/cpu/vcore"
+        },
+        "t": {
+          "key": "plugin:/golden/cpu/vcore"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Text reading",
+            "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "fill": {
+              "name": "fill",
+              "op": "value"
+            },
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 23.940000534057617,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": {
+              "name": "label",
+              "op": "value"
+            }
+          }
+        ],
+        "values": {
+          "dp": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "unit",
+                    "op": "value"
+                  },
+                  "gb"
+                ],
+                "op": "eq"
+              },
+              1,
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "kb/s"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mb/s"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mbar/min"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mbar"
+                        ],
+                        "op": "eq"
+                      }
+                    ],
+                    "op": "or"
+                  },
+                  2,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "v"
+                        ],
+                        "op": "eq"
+                      },
+                      3,
+                      0
+                    ],
+                    "op": "if"
+                  }
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "fill": "#e0e0e0ff",
+          "label": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "field": "text",
+                        "name": "t",
+                        "op": "input"
+                      },
+                      ""
+                    ],
+                    "op": "ne"
+                  }
+                ],
+                "op": "and"
+              },
+              {
+                "args": [
+                  {
+                    "field": "text",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "field": "unit",
+                    "name": "v",
+                    "op": "input"
+                  }
+                ],
+                "op": "concat"
+              },
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "v",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "name": "number",
+                        "op": "value"
+                      },
+                      {
+                        "field": "unit",
+                        "name": "v",
+                        "op": "input"
+                      }
+                    ],
+                    "op": "concat"
+                  },
+                  "-"
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "n": {
+            "args": [
+              {
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "abs"
+          },
+          "number": {
+            "decimals": {
+              "name": "dp",
+              "op": "value"
+            },
+            "op": "format",
+            "value": {
+              "name": "n",
+              "op": "value"
+            }
+          },
+          "unit": {
+            "args": [
+              {
+                "field": "unit",
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "lower"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g014",
+      "name": "/golden/cpu/load",
+      "placement": {
+        "x": 10,
+        "y": 152
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/cpu/load",
+          "stat": "max"
+        },
+        "t": {
+          "key": "plugin:/golden/cpu/load",
+          "stat": "max"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Text reading",
+            "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "fill": {
+              "name": "fill",
+              "op": "value"
+            },
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 23.940000534057617,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": {
+              "name": "label",
+              "op": "value"
+            }
+          }
+        ],
+        "values": {
+          "dp": 1,
+          "fill": "#e0e0e0ff",
+          "label": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "field": "text",
+                        "name": "t",
+                        "op": "input"
+                      },
+                      ""
+                    ],
+                    "op": "ne"
+                  }
+                ],
+                "op": "and"
+              },
+              {
+                "args": [
+                  {
+                    "field": "text",
+                    "name": "t",
+                    "op": "input"
+                  }
+                ],
+                "op": "concat"
+              },
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "v",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "name": "number",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "concat"
+                  },
+                  "-"
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "n": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "v",
+                    "op": "input"
+                  },
+                  10
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "abs"
+          },
+          "number": {
+            "decimals": {
+              "name": "dp",
+              "op": "value"
+            },
+            "op": "format",
+            "value": {
+              "name": "n",
+              "op": "value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g015",
+      "name": "/golden/missing",
+      "placement": {
+        "x": 250,
+        "y": 8
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/missing"
+        },
+        "t": {
+          "key": "plugin:/golden/missing"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Text reading",
+            "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "fill": {
+              "name": "fill",
+              "op": "value"
+            },
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 23.940000534057617,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": {
+              "name": "label",
+              "op": "value"
+            }
+          }
+        ],
+        "values": {
+          "dp": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "unit",
+                    "op": "value"
+                  },
+                  "gb"
+                ],
+                "op": "eq"
+              },
+              1,
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "kb/s"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mb/s"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mbar/min"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "mbar"
+                        ],
+                        "op": "eq"
+                      }
+                    ],
+                    "op": "or"
+                  },
+                  2,
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "unit",
+                            "op": "value"
+                          },
+                          "v"
+                        ],
+                        "op": "eq"
+                      },
+                      3,
+                      0
+                    ],
+                    "op": "if"
+                  }
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "fill": "#e0e0e0ff",
+          "label": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "field": "text",
+                        "name": "t",
+                        "op": "input"
+                      },
+                      ""
+                    ],
+                    "op": "ne"
+                  }
+                ],
+                "op": "and"
+              },
+              {
+                "args": [
+                  {
+                    "field": "text",
+                    "name": "t",
+                    "op": "input"
+                  },
+                  {
+                    "field": "unit",
+                    "name": "v",
+                    "op": "input"
+                  }
+                ],
+                "op": "concat"
+              },
+              {
+                "args": [
+                  {
+                    "field": "available",
+                    "name": "v",
+                    "op": "input"
+                  },
+                  {
+                    "args": [
+                      {
+                        "name": "number",
+                        "op": "value"
+                      },
+                      {
+                        "field": "unit",
+                        "name": "v",
+                        "op": "input"
+                      }
+                    ],
+                    "op": "concat"
+                  },
+                  "-"
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "if"
+          },
+          "n": {
+            "args": [
+              {
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "abs"
+          },
+          "number": {
+            "decimals": {
+              "name": "dp",
+              "op": "value"
+            },
+            "op": "format",
+            "value": {
+              "name": "n",
+              "op": "value"
+            }
+          },
+          "unit": {
+            "args": [
+              {
+                "field": "unit",
+                "name": "v",
+                "op": "input"
+              }
+            ],
+            "op": "lower"
+          }
+        }
+      }
+    }
+  ]
+}

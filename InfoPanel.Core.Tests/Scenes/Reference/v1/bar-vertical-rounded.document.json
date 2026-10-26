@@ -1,0 +1,249 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "bar-vertical-rounded",
+    "width": 100,
+    "height": 220,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g036",
+      "name": "Bar",
+      "placement": {
+        "x": 30,
+        "y": 10
+      },
+      "layout": {
+        "h": 200,
+        "w": 40
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/cpu/load"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "fill": "#2a2f3aff",
+                "h": 198,
+                "kind": "rect",
+                "r": 11,
+                "w": 38,
+                "x": 1,
+                "y": 1
+              },
+              {
+                "fill": "#2979ffff",
+                "h": {
+                  "name": "fill",
+                  "op": "value"
+                },
+                "id": "fill",
+                "kind": "rect",
+                "r": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "fill",
+                      "op": "value"
+                    },
+                    0
+                  ],
+                  "op": "gt"
+                },
+                "w": 38,
+                "x": 1,
+                "y": {
+                  "args": [
+                    199,
+                    {
+                      "name": "fill",
+                      "op": "value"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "h": 199,
+                "kind": "rect",
+                "r": 11.5,
+                "stroke": {
+                  "paint": "#b0bec5ff",
+                  "width": 1
+                },
+                "w": 39,
+                "x": 0.5,
+                "y": 0.5
+              }
+            ],
+            "id": "bar",
+            "kind": "group"
+          }
+        ],
+        "state": {
+          "shown": {
+            "init": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "v",
+                              "op": "input"
+                            },
+                            0,
+                            100
+                          ],
+                          "op": "norm"
+                        },
+                        0,
+                        1
+                      ],
+                      "op": "clamp"
+                    },
+                    200
+                  ],
+                  "op": "mul"
+                }
+              ],
+              "op": "round"
+            },
+            "next": {
+              "args": [
+                {
+                  "name": "shown",
+                  "op": "state"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "name": "v",
+                                          "op": "input"
+                                        },
+                                        0,
+                                        100
+                                      ],
+                                      "op": "norm"
+                                    },
+                                    0,
+                                    1
+                                  ],
+                                  "op": "clamp"
+                                },
+                                200
+                              ],
+                              "op": "mul"
+                            }
+                          ],
+                          "op": "round"
+                        },
+                        {
+                          "name": "shown",
+                          "op": "state"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "op": "dt"
+                                    }
+                                  ],
+                                  "op": "neg"
+                                },
+                                0.3
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "exp"
+                        }
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "mul"
+                }
+              ],
+              "op": "add"
+            }
+          }
+        },
+        "values": {
+          "fill": {
+            "args": [
+              {
+                "name": "shown",
+                "op": "state"
+              },
+              198
+            ],
+            "op": "min"
+          },
+          "half": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      1444,
+                      {
+                        "args": [
+                          {
+                            "name": "fill",
+                            "op": "value"
+                          },
+                          2
+                        ],
+                        "op": "pow"
+                      }
+                    ],
+                    "op": "add"
+                  }
+                ],
+                "op": "sqrt"
+              },
+              2
+            ],
+            "op": "div"
+          }
+        }
+      }
+    }
+  ]
+}

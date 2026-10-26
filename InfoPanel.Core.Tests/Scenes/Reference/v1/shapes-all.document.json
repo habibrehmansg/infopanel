@@ -1,0 +1,608 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "shapes-all",
+    "width": 440,
+    "height": 330,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g040",
+      "name": "Rectangle",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": "#3d5afeff",
+            "h": 96,
+            "id": "shape",
+            "kind": "rect",
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            },
+            "w": 96
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g041",
+      "name": "Capsule",
+      "placement": {
+        "x": 118,
+        "y": 10
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": "#3d5afeff",
+            "h": 96,
+            "id": "shape",
+            "kind": "rect",
+            "r": 20,
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            },
+            "w": 96
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g042",
+      "name": "Trapezoid",
+      "placement": {
+        "x": 226,
+        "y": 10
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                19.200000000000003,
+                0
+              ],
+              [
+                76.8,
+                0
+              ],
+              [
+                96,
+                96
+              ],
+              [
+                0,
+                96
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g043",
+      "name": "Parallelogram",
+      "placement": {
+        "x": 334,
+        "y": 10
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                24,
+                0
+              ],
+              [
+                96,
+                0
+              ],
+              [
+                72,
+                96
+              ],
+              [
+                0,
+                96
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g044",
+      "name": "Ellipse",
+      "placement": {
+        "x": 10,
+        "y": 118
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "cx": 48,
+            "cy": 48,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "ellipse",
+            "rx": 48,
+            "ry": 48,
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g045",
+      "name": "Triangle",
+      "placement": {
+        "x": 118,
+        "y": 118
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                48,
+                0
+              ],
+              [
+                0,
+                96
+              ],
+              [
+                96,
+                96
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g046",
+      "name": "Pentagon",
+      "placement": {
+        "x": 226,
+        "y": 118
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                48,
+                0
+              ],
+              [
+                93.65071278216737,
+                33.16718427000252
+              ],
+              [
+                76.2136921100387,
+                86.83281572999748
+              ],
+              [
+                19.786307889961293,
+                86.83281572999748
+              ],
+              [
+                2.349287217832625,
+                33.16718427000253
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g047",
+      "name": "Hexagon",
+      "placement": {
+        "x": 334,
+        "y": 118
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                48,
+                0
+              ],
+              [
+                89.56921938165306,
+                24.000000000000004
+              ],
+              [
+                89.56921938165306,
+                72
+              ],
+              [
+                48,
+                96
+              ],
+              [
+                6.430780618346944,
+                72
+              ],
+              [
+                6.430780618346944,
+                23.999999999999993
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g048",
+      "name": "Octagon",
+      "placement": {
+        "x": 10,
+        "y": 226
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                48,
+                0
+              ],
+              [
+                81.94112549695429,
+                14.058874503045722
+              ],
+              [
+                96,
+                48
+              ],
+              [
+                81.94112549695429,
+                81.94112549695427
+              ],
+              [
+                48,
+                96
+              ],
+              [
+                14.058874503045722,
+                81.94112549695429
+              ],
+              [
+                0,
+                48.00000000000001
+              ],
+              [
+                14.058874503045715,
+                14.058874503045722
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g049",
+      "name": "Star",
+      "placement": {
+        "x": 118,
+        "y": 226
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                48,
+                0
+              ],
+              [
+                58.77763038603479,
+                33.165864391140964
+              ],
+              [
+                93.65071278216737,
+                33.16718427000252
+              ],
+              [
+                65.43857228278793,
+                53.66613560885904
+              ],
+              [
+                76.2136921100387,
+                86.83281572999748
+              ],
+              [
+                48,
+                66.336
+              ],
+              [
+                19.786307889961293,
+                86.83281572999748
+              ],
+              [
+                30.561427717212066,
+                53.66613560885904
+              ],
+              [
+                2.349287217832625,
+                33.16718427000253
+              ],
+              [
+                37.22236961396521,
+                33.165864391140964
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g050",
+      "name": "Plus",
+      "placement": {
+        "x": 226,
+        "y": 226
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                32,
+                0
+              ],
+              [
+                64,
+                0
+              ],
+              [
+                64,
+                32
+              ],
+              [
+                96,
+                32
+              ],
+              [
+                96,
+                64
+              ],
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                96
+              ],
+              [
+                32,
+                96
+              ],
+              [
+                32,
+                64
+              ],
+              [
+                0,
+                64
+              ],
+              [
+                0,
+                32
+              ],
+              [
+                32,
+                32
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g051",
+      "name": "Arrow",
+      "placement": {
+        "x": 334,
+        "y": 226
+      },
+      "layout": {
+        "h": 96,
+        "w": 96
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "closed": true,
+            "fill": "#3d5afeff",
+            "id": "shape",
+            "kind": "polyline",
+            "points": [
+              [
+                48,
+                0
+              ],
+              [
+                96,
+                38.400000000000006
+              ],
+              [
+                72,
+                38.400000000000006
+              ],
+              [
+                72,
+                96
+              ],
+              [
+                24,
+                96
+              ],
+              [
+                24,
+                38.400000000000006
+              ],
+              [
+                0,
+                38.400000000000006
+              ]
+            ],
+            "stroke": {
+              "paint": "#ffffffff",
+              "width": 3
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

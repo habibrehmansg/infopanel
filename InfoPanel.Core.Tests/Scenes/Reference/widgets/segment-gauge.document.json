@@ -1,0 +1,2168 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-0000000000a1",
+  "profile": {
+    "name": "Segmented gauges",
+    "width": 360,
+    "height": 180,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "load",
+      "name": "CPU load",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "layout": {
+        "h": 160,
+        "w": 160
+      },
+      "bindings": {
+        "v": {
+          "key": "test:v"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-0",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 136,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-0",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        0
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 136,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    0
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-1",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 147.25,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-1",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 147.25,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    1
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-2",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 158.5,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-2",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        2
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 158.5,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    2
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-3",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 169.75,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-3",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        3
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 169.75,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    3
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-4",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 181,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-4",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        4
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 181,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    4
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-5",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 192.25,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-5",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        5
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 192.25,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    5
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-6",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 203.5,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-6",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        6
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 203.5,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    6
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-7",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 214.75,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-7",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        7
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 214.75,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    7
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-8",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 226,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-8",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        8
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 226,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    8
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-9",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 237.25,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-9",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        9
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 237.25,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    9
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-10",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 248.5,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-10",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        10
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 248.5,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    10
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-11",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 259.75,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-11",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        11
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 259.75,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    11
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-12",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 271,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-12",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        12
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 271,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    12
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-13",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 282.25,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-13",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        13
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 282.25,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    13
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-14",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 293.5,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-14",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        14
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 293.5,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    14
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-15",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 304.75,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-15",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        15
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 304.75,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    15
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-16",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 316,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-16",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        16
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 316,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    16
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-17",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 327.25,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#eab308ff",
+                "id": "on-17",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        17
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 327.25,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    17
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-18",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 338.5,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#eab308ff",
+                "id": "on-18",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        18
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 338.5,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    18
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-19",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 349.75,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#eab308ff",
+                "id": "on-19",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        19
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 349.75,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    19
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-20",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 361,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#eab308ff",
+                "id": "on-20",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        20
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 361,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    20
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-21",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 372.25,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#eab308ff",
+                "id": "on-21",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        21
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 372.25,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    21
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-22",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 383.5,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ef4444ff",
+                "id": "on-22",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        22
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 383.5,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    22
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff1f",
+                "id": "off-23",
+                "inner": 66,
+                "kind": "arc",
+                "r": 80,
+                "start": 394.75,
+                "sweep": 9.25
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ef4444ff",
+                "id": "on-23",
+                "inner": 66,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        23
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 394.75,
+                "sweep": 9.25,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    23
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "align": "center",
+                "fill": "#f5f5f5ff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 30,
+                  "weight": 600
+                },
+                "id": "value",
+                "kind": "text",
+                "text": {
+                  "args": [
+                    {
+                      "decimals": 0,
+                      "op": "format",
+                      "value": {
+                        "args": [
+                          0,
+                          100,
+                          {
+                            "name": "drawn",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "lerp"
+                      }
+                    },
+                    "%"
+                  ],
+                  "op": "concat"
+                },
+                "valign": "middle",
+                "visible": {
+                  "field": "available",
+                  "name": "v",
+                  "op": "input"
+                },
+                "x": 80,
+                "y": 80
+              },
+              {
+                "align": "center",
+                "fill": "#9ca3afff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 12.6,
+                  "weight": 400
+                },
+                "id": "label",
+                "kind": "text",
+                "text": "CPU",
+                "valign": "top",
+                "x": 80,
+                "y": 98.6
+              }
+            ],
+            "id": "gauge",
+            "kind": "group"
+          }
+        ],
+        "state": {
+          "level": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "name": "pct",
+              "op": "value"
+            }
+          },
+          "shown": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "args": [
+                {
+                  "name": "shown",
+                  "op": "state"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "level",
+                          "op": "state"
+                        },
+                        {
+                          "name": "shown",
+                          "op": "state"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "op": "dt"
+                                    }
+                                  ],
+                                  "op": "neg"
+                                },
+                                0.3
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "exp"
+                        }
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "mul"
+                }
+              ],
+              "op": "add"
+            }
+          }
+        },
+        "values": {
+          "drawn": {
+            "name": "shown",
+            "op": "state"
+          },
+          "lit": {
+            "args": [
+              {
+                "name": "drawn",
+                "op": "value"
+              },
+              24
+            ],
+            "op": "mul"
+          },
+          "pct": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "v",
+                    "op": "input"
+                  },
+                  0,
+                  100
+                ],
+                "op": "norm"
+              },
+              0,
+              1
+            ],
+            "op": "clamp"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "temp",
+      "name": "GPU temperature",
+      "placement": {
+        "x": 190,
+        "y": 10
+      },
+      "layout": {
+        "h": 160,
+        "w": 160
+      },
+      "bindings": {
+        "v": {
+          "key": "test:v"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-0",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 182,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-0",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        0
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 182,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    0
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-1",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 197,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-1",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 197,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    1
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-2",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 212,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-2",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        2
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 212,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    2
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-3",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 227,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-3",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        3
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 227,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    3
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-4",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 242,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-4",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        4
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 242,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    4
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-5",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 257,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-5",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        5
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 257,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    5
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-6",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 272,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-6",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        6
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 272,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    6
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-7",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 287,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#22c55eff",
+                "id": "on-7",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        7
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 287,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    7
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-8",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 302,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#eab308ff",
+                "id": "on-8",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        8
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 302,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    8
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-9",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 317,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#eab308ff",
+                "id": "on-9",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        9
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 317,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    9
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-10",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 332,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ef4444ff",
+                "id": "on-10",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        10
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 332,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    10
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ffffff14",
+                "id": "off-11",
+                "inner": 56,
+                "kind": "arc",
+                "r": 80,
+                "start": 347,
+                "sweep": 11
+              },
+              {
+                "cx": 80,
+                "cy": 80,
+                "fill": "#ef4444ff",
+                "id": "on-11",
+                "inner": 56,
+                "kind": "arc",
+                "opacity": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "lit",
+                          "op": "value"
+                        },
+                        11
+                      ],
+                      "op": "sub"
+                    },
+                    0,
+                    1
+                  ],
+                  "op": "clamp"
+                },
+                "r": 80,
+                "start": 347,
+                "sweep": 11,
+                "visible": {
+                  "args": [
+                    {
+                      "name": "lit",
+                      "op": "value"
+                    },
+                    11
+                  ],
+                  "op": "gt"
+                }
+              },
+              {
+                "align": "center",
+                "fill": "#f5f5f5ff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 26,
+                  "weight": 600
+                },
+                "id": "value",
+                "kind": "text",
+                "text": {
+                  "args": [
+                    {
+                      "decimals": 0,
+                      "op": "format",
+                      "value": {
+                        "args": [
+                          0,
+                          100,
+                          {
+                            "name": "drawn",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "lerp"
+                      }
+                    },
+                    "°C"
+                  ],
+                  "op": "concat"
+                },
+                "valign": "middle",
+                "visible": {
+                  "field": "available",
+                  "name": "v",
+                  "op": "input"
+                },
+                "x": 80,
+                "y": 80
+              },
+              {
+                "align": "center",
+                "fill": "#9ca3afff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 10.92,
+                  "weight": 400
+                },
+                "id": "label",
+                "kind": "text",
+                "text": "GPU",
+                "valign": "top",
+                "x": 80,
+                "y": 96.12
+              }
+            ],
+            "id": "gauge",
+            "kind": "group"
+          }
+        ],
+        "state": {
+          "level": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "name": "pct",
+              "op": "value"
+            }
+          },
+          "shown": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "args": [
+                {
+                  "name": "shown",
+                  "op": "state"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "level",
+                          "op": "state"
+                        },
+                        {
+                          "name": "shown",
+                          "op": "state"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "op": "dt"
+                                    }
+                                  ],
+                                  "op": "neg"
+                                },
+                                0.8
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "exp"
+                        }
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "mul"
+                }
+              ],
+              "op": "add"
+            }
+          }
+        },
+        "values": {
+          "drawn": {
+            "name": "shown",
+            "op": "state"
+          },
+          "lit": {
+            "args": [
+              {
+                "name": "drawn",
+                "op": "value"
+              },
+              12
+            ],
+            "op": "mul"
+          },
+          "pct": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "v",
+                    "op": "input"
+                  },
+                  0,
+                  100
+                ],
+                "op": "norm"
+              },
+              0,
+              1
+            ],
+            "op": "clamp"
+          }
+        }
+      }
+    }
+  ]
+}

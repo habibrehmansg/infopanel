@@ -1,0 +1,446 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-0000000000a1",
+  "profile": {
+    "name": "Sparkline cards",
+    "width": 240,
+    "height": 230,
+    "background": "#0f172aff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "load",
+      "name": "CPU load",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "layout": {
+        "h": 96,
+        "w": 220
+      },
+      "bindings": {
+        "v": {
+          "key": "test:v"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "fill": "#1e293bff",
+            "h": 96,
+            "id": "card",
+            "kind": "rect",
+            "r": 10,
+            "w": 220
+          },
+          {
+            "fill": "#94a3b8ff",
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 13,
+              "weight": 400
+            },
+            "id": "label",
+            "kind": "text",
+            "maxLines": 1,
+            "overflow": "ellipsis",
+            "text": "CPU load",
+            "w": 196,
+            "x": 12,
+            "y": 12
+          },
+          {
+            "align": "end",
+            "fill": "#f8fafcff",
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 22,
+              "weight": 600
+            },
+            "id": "value",
+            "kind": "text",
+            "text": {
+              "args": [
+                {
+                  "field": "available",
+                  "name": "v",
+                  "op": "input"
+                },
+                {
+                  "args": [
+                    {
+                      "decimals": 0,
+                      "op": "format",
+                      "value": {
+                        "name": "v",
+                        "op": "input"
+                      }
+                    },
+                    "%"
+                  ],
+                  "op": "concat"
+                },
+                "–"
+              ],
+              "op": "if"
+            },
+            "x": 208,
+            "y": 7.6
+          },
+          {
+            "fill": "#38bdf833",
+            "h": 40.1,
+            "id": "line",
+            "input": "v",
+            "kind": "series",
+            "max": {
+              "name": "hi",
+              "op": "value"
+            },
+            "min": {
+              "name": "lo",
+              "op": "value"
+            },
+            "mode": "area",
+            "pitch": 3,
+            "stroke": {
+              "cap": "round",
+              "join": "round",
+              "paint": "#38bdf8ff",
+              "width": 2
+            },
+            "w": 196,
+            "x": 12,
+            "y": 43.9
+          },
+          {
+            "cx": 208,
+            "cy": {
+              "name": "dotY",
+              "op": "value"
+            },
+            "fill": "#38bdf8ff",
+            "id": "newest",
+            "kind": "ellipse",
+            "rx": 3,
+            "ry": 3,
+            "visible": {
+              "args": [
+                {
+                  "name": "cnt",
+                  "op": "value"
+                },
+                0
+              ],
+              "op": "gt"
+            }
+          }
+        ],
+        "values": {
+          "cnt": {
+            "count": 1,
+            "fn": "count",
+            "input": "v",
+            "op": "history"
+          },
+          "dotY": {
+            "args": [
+              84,
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "hi",
+                            "op": "value"
+                          },
+                          {
+                            "name": "lo",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "gt"
+                      },
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              {
+                                "name": "last",
+                                "op": "value"
+                              },
+                              {
+                                "name": "lo",
+                                "op": "value"
+                              },
+                              {
+                                "name": "hi",
+                                "op": "value"
+                              }
+                            ],
+                            "op": "norm"
+                          },
+                          0,
+                          1
+                        ],
+                        "op": "clamp"
+                      },
+                      0
+                    ],
+                    "op": "if"
+                  },
+                  40.1
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "sub"
+          },
+          "hi": 100,
+          "last": {
+            "count": 1,
+            "fn": "last",
+            "input": "v",
+            "op": "history"
+          },
+          "lo": 0
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "auto",
+      "name": "CPU load, automatic range",
+      "placement": {
+        "x": 10,
+        "y": 118
+      },
+      "layout": {
+        "h": 102,
+        "w": 220
+      },
+      "bindings": {
+        "v": {
+          "key": "test:v"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "fill": "#1c1917ff",
+            "h": 102,
+            "id": "card",
+            "kind": "rect",
+            "r": 10,
+            "w": 220
+          },
+          {
+            "fill": "#94a3b8ff",
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 13,
+              "weight": 400
+            },
+            "id": "label",
+            "kind": "text",
+            "maxLines": 1,
+            "overflow": "ellipsis",
+            "text": "Load (auto range)",
+            "w": 196,
+            "x": 12,
+            "y": 12
+          },
+          {
+            "align": "end",
+            "fill": "#f8fafcff",
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 24,
+              "weight": 600
+            },
+            "id": "value",
+            "kind": "text",
+            "text": {
+              "args": [
+                {
+                  "field": "available",
+                  "name": "v",
+                  "op": "input"
+                },
+                {
+                  "args": [
+                    {
+                      "decimals": 1,
+                      "op": "format",
+                      "value": {
+                        "name": "v",
+                        "op": "input"
+                      }
+                    },
+                    "%"
+                  ],
+                  "op": "concat"
+                },
+                "–"
+              ],
+              "op": "if"
+            },
+            "x": 208,
+            "y": 7.199999999999999
+          },
+          {
+            "fill": "#f9731633",
+            "h": 43.2,
+            "id": "line",
+            "input": "v",
+            "kind": "series",
+            "max": {
+              "name": "hi",
+              "op": "value"
+            },
+            "min": {
+              "name": "lo",
+              "op": "value"
+            },
+            "mode": "area",
+            "pitch": 2,
+            "stroke": {
+              "cap": "round",
+              "join": "round",
+              "paint": "#f97316ff",
+              "width": 1.5
+            },
+            "w": 196,
+            "x": 12,
+            "y": 46.8
+          },
+          {
+            "cx": 208,
+            "cy": {
+              "name": "dotY",
+              "op": "value"
+            },
+            "fill": "#f97316ff",
+            "id": "newest",
+            "kind": "ellipse",
+            "rx": 2.5,
+            "ry": 2.5,
+            "visible": {
+              "args": [
+                {
+                  "name": "cnt",
+                  "op": "value"
+                },
+                0
+              ],
+              "op": "gt"
+            }
+          }
+        ],
+        "values": {
+          "cnt": {
+            "count": 1,
+            "fn": "count",
+            "input": "v",
+            "op": "history"
+          },
+          "dotY": {
+            "args": [
+              90,
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "hi",
+                            "op": "value"
+                          },
+                          {
+                            "name": "lo",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "gt"
+                      },
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              {
+                                "name": "last",
+                                "op": "value"
+                              },
+                              {
+                                "name": "lo",
+                                "op": "value"
+                              },
+                              {
+                                "name": "hi",
+                                "op": "value"
+                              }
+                            ],
+                            "op": "norm"
+                          },
+                          0,
+                          1
+                        ],
+                        "op": "clamp"
+                      },
+                      0
+                    ],
+                    "op": "if"
+                  },
+                  43.2
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "sub"
+          },
+          "hi": {
+            "count": 99,
+            "fn": "max",
+            "input": "v",
+            "op": "history"
+          },
+          "last": {
+            "count": 1,
+            "fn": "last",
+            "input": "v",
+            "op": "history"
+          },
+          "lo": {
+            "count": 99,
+            "fn": "min",
+            "input": "v",
+            "op": "history"
+          }
+        }
+      }
+    }
+  ]
+}

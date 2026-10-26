@@ -1,0 +1,70 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "text-glow",
+    "width": 320,
+    "height": 70,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g006",
+      "name": "Glowing text",
+      "placement": {
+        "x": 24,
+        "y": 16
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "fill": "#00e5ffff",
+                    "font": {
+                      "family": "Inter",
+                      "italic": false,
+                      "size": 34.58000183105469,
+                      "weight": 700
+                    },
+                    "id": "halo",
+                    "kind": "text",
+                    "maxLines": 1,
+                    "text": "Glowing text"
+                  }
+                ],
+                "effects": [
+                  {
+                    "sigma": 8,
+                    "type": "blur"
+                  }
+                ],
+                "id": "halo-blur",
+                "kind": "group"
+              },
+              {
+                "fill": "#ffffffff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 34.58000183105469,
+                  "weight": 700
+                },
+                "id": "text",
+                "kind": "text",
+                "maxLines": 1,
+                "text": "Glowing text"
+              }
+            ],
+            "id": "glow",
+            "kind": "group"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,902 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-0000000000a1",
+  "profile": {
+    "name": "Peak-hold bars",
+    "width": 260,
+    "height": 64,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "level",
+      "name": "Level",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "layout": {
+        "h": 18,
+        "w": 240
+      },
+      "bindings": {
+        "v": {
+          "key": "test:v"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "fill": "#ffffff1a",
+                "h": 18,
+                "id": "track",
+                "kind": "rect",
+                "w": 240
+              },
+              {
+                "fill": "#38bdf8ff",
+                "h": 18,
+                "id": "fill",
+                "kind": "rect",
+                "visible": {
+                  "args": [
+                    {
+                      "name": "drawn",
+                      "op": "value"
+                    },
+                    0
+                  ],
+                  "op": "gt"
+                },
+                "w": {
+                  "args": [
+                    {
+                      "name": "drawn",
+                      "op": "value"
+                    },
+                    240
+                  ],
+                  "op": "mul"
+                }
+              },
+              {
+                "fill": "#f8fafcff",
+                "h": 18,
+                "id": "peak",
+                "kind": "rect",
+                "visible": {
+                  "field": "available",
+                  "name": "v",
+                  "op": "input"
+                },
+                "w": 3,
+                "x": {
+                  "args": [
+                    {
+                      "name": "held",
+                      "op": "value"
+                    },
+                    237
+                  ],
+                  "op": "mul"
+                }
+              }
+            ],
+            "clip": {
+              "h": 18,
+              "kind": "rect",
+              "r": 4,
+              "w": 240
+            },
+            "id": "bar",
+            "kind": "group"
+          }
+        ],
+        "state": {
+          "level": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "name": "pct",
+              "op": "value"
+            }
+          },
+          "peak": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "name": "pct",
+                      "op": "value"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "since",
+                              "op": "state"
+                            },
+                            0
+                          ],
+                          "op": "lt"
+                        },
+                        {
+                          "name": "peak",
+                          "op": "state"
+                        },
+                        {
+                          "args": [
+                            {
+                              "name": "peak",
+                              "op": "state"
+                            },
+                            {
+                              "args": [
+                                0.5,
+                                {
+                                  "args": [
+                                    0,
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            {
+                                              "field": "elapsed",
+                                              "op": "time"
+                                            },
+                                            {
+                                              "name": "since",
+                                              "op": "state"
+                                            }
+                                          ],
+                                          "op": "sub"
+                                        },
+                                        1
+                                      ],
+                                      "op": "sub"
+                                    }
+                                  ],
+                                  "op": "max"
+                                }
+                              ],
+                              "op": "mul"
+                            }
+                          ],
+                          "op": "sub"
+                        }
+                      ],
+                      "op": "if"
+                    }
+                  ],
+                  "op": "ge"
+                },
+                {
+                  "name": "pct",
+                  "op": "value"
+                },
+                {
+                  "name": "peak",
+                  "op": "state"
+                }
+              ],
+              "op": "if"
+            }
+          },
+          "shown": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "args": [
+                {
+                  "name": "shown",
+                  "op": "state"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "level",
+                          "op": "state"
+                        },
+                        {
+                          "name": "shown",
+                          "op": "state"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "op": "dt"
+                                    }
+                                  ],
+                                  "op": "neg"
+                                },
+                                0.15
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "exp"
+                        }
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "mul"
+                }
+              ],
+              "op": "add"
+            }
+          },
+          "since": {
+            "init": -1,
+            "next": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "name": "pct",
+                      "op": "value"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "since",
+                              "op": "state"
+                            },
+                            0
+                          ],
+                          "op": "lt"
+                        },
+                        {
+                          "name": "peak",
+                          "op": "state"
+                        },
+                        {
+                          "args": [
+                            {
+                              "name": "peak",
+                              "op": "state"
+                            },
+                            {
+                              "args": [
+                                0.5,
+                                {
+                                  "args": [
+                                    0,
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            {
+                                              "field": "elapsed",
+                                              "op": "time"
+                                            },
+                                            {
+                                              "name": "since",
+                                              "op": "state"
+                                            }
+                                          ],
+                                          "op": "sub"
+                                        },
+                                        1
+                                      ],
+                                      "op": "sub"
+                                    }
+                                  ],
+                                  "op": "max"
+                                }
+                              ],
+                              "op": "mul"
+                            }
+                          ],
+                          "op": "sub"
+                        }
+                      ],
+                      "op": "if"
+                    }
+                  ],
+                  "op": "ge"
+                },
+                -1,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "since",
+                          "op": "state"
+                        },
+                        0
+                      ],
+                      "op": "lt"
+                    },
+                    {
+                      "field": "elapsed",
+                      "op": "time"
+                    },
+                    {
+                      "name": "since",
+                      "op": "state"
+                    }
+                  ],
+                  "op": "if"
+                }
+              ],
+              "op": "if"
+            }
+          }
+        },
+        "values": {
+          "drawn": {
+            "name": "shown",
+            "op": "state"
+          },
+          "held": {
+            "args": [
+              {
+                "name": "pct",
+                "op": "value"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "name": "since",
+                        "op": "state"
+                      },
+                      0
+                    ],
+                    "op": "lt"
+                  },
+                  {
+                    "name": "peak",
+                    "op": "state"
+                  },
+                  {
+                    "args": [
+                      {
+                        "name": "peak",
+                        "op": "state"
+                      },
+                      {
+                        "args": [
+                          0.5,
+                          {
+                            "args": [
+                              0,
+                              {
+                                "args": [
+                                  {
+                                    "args": [
+                                      {
+                                        "field": "elapsed",
+                                        "op": "time"
+                                      },
+                                      {
+                                        "name": "since",
+                                        "op": "state"
+                                      }
+                                    ],
+                                    "op": "sub"
+                                  },
+                                  1
+                                ],
+                                "op": "sub"
+                              }
+                            ],
+                            "op": "max"
+                          }
+                        ],
+                        "op": "mul"
+                      }
+                    ],
+                    "op": "sub"
+                  }
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "max"
+          },
+          "pct": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "v",
+                    "op": "input"
+                  },
+                  0,
+                  100
+                ],
+                "op": "norm"
+              },
+              0,
+              1
+            ],
+            "op": "clamp"
+          }
+        }
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "slow",
+      "name": "Level, slow peak",
+      "placement": {
+        "x": 10,
+        "y": 40
+      },
+      "layout": {
+        "h": 10,
+        "w": 240
+      },
+      "bindings": {
+        "v": {
+          "key": "test:v"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "fill": "#ffffff1a",
+                "h": 10,
+                "id": "track",
+                "kind": "rect",
+                "w": 240
+              },
+              {
+                "fill": "#a855f7ff",
+                "h": 10,
+                "id": "fill",
+                "kind": "rect",
+                "visible": {
+                  "args": [
+                    {
+                      "name": "drawn",
+                      "op": "value"
+                    },
+                    0
+                  ],
+                  "op": "gt"
+                },
+                "w": {
+                  "args": [
+                    {
+                      "name": "drawn",
+                      "op": "value"
+                    },
+                    240
+                  ],
+                  "op": "mul"
+                }
+              },
+              {
+                "fill": "#facc15ff",
+                "h": 10,
+                "id": "peak",
+                "kind": "rect",
+                "visible": {
+                  "field": "available",
+                  "name": "v",
+                  "op": "input"
+                },
+                "w": 4,
+                "x": {
+                  "args": [
+                    {
+                      "name": "held",
+                      "op": "value"
+                    },
+                    236
+                  ],
+                  "op": "mul"
+                }
+              }
+            ],
+            "clip": {
+              "h": 10,
+              "kind": "rect",
+              "r": 5,
+              "w": 240
+            },
+            "id": "bar",
+            "kind": "group"
+          }
+        ],
+        "state": {
+          "level": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "name": "pct",
+              "op": "value"
+            }
+          },
+          "peak": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "name": "pct",
+                      "op": "value"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "since",
+                              "op": "state"
+                            },
+                            0
+                          ],
+                          "op": "lt"
+                        },
+                        {
+                          "name": "peak",
+                          "op": "state"
+                        },
+                        {
+                          "args": [
+                            {
+                              "name": "peak",
+                              "op": "state"
+                            },
+                            {
+                              "args": [
+                                0.25,
+                                {
+                                  "args": [
+                                    0,
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            {
+                                              "field": "elapsed",
+                                              "op": "time"
+                                            },
+                                            {
+                                              "name": "since",
+                                              "op": "state"
+                                            }
+                                          ],
+                                          "op": "sub"
+                                        },
+                                        2
+                                      ],
+                                      "op": "sub"
+                                    }
+                                  ],
+                                  "op": "max"
+                                }
+                              ],
+                              "op": "mul"
+                            }
+                          ],
+                          "op": "sub"
+                        }
+                      ],
+                      "op": "if"
+                    }
+                  ],
+                  "op": "ge"
+                },
+                {
+                  "name": "pct",
+                  "op": "value"
+                },
+                {
+                  "name": "peak",
+                  "op": "state"
+                }
+              ],
+              "op": "if"
+            }
+          },
+          "shown": {
+            "init": {
+              "name": "pct",
+              "op": "value"
+            },
+            "next": {
+              "args": [
+                {
+                  "name": "shown",
+                  "op": "state"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "level",
+                          "op": "state"
+                        },
+                        {
+                          "name": "shown",
+                          "op": "state"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "op": "dt"
+                                    }
+                                  ],
+                                  "op": "neg"
+                                },
+                                0.4
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "exp"
+                        }
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "mul"
+                }
+              ],
+              "op": "add"
+            }
+          },
+          "since": {
+            "init": -1,
+            "next": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "name": "pct",
+                      "op": "value"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "since",
+                              "op": "state"
+                            },
+                            0
+                          ],
+                          "op": "lt"
+                        },
+                        {
+                          "name": "peak",
+                          "op": "state"
+                        },
+                        {
+                          "args": [
+                            {
+                              "name": "peak",
+                              "op": "state"
+                            },
+                            {
+                              "args": [
+                                0.25,
+                                {
+                                  "args": [
+                                    0,
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            {
+                                              "field": "elapsed",
+                                              "op": "time"
+                                            },
+                                            {
+                                              "name": "since",
+                                              "op": "state"
+                                            }
+                                          ],
+                                          "op": "sub"
+                                        },
+                                        2
+                                      ],
+                                      "op": "sub"
+                                    }
+                                  ],
+                                  "op": "max"
+                                }
+                              ],
+                              "op": "mul"
+                            }
+                          ],
+                          "op": "sub"
+                        }
+                      ],
+                      "op": "if"
+                    }
+                  ],
+                  "op": "ge"
+                },
+                -1,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "name": "since",
+                          "op": "state"
+                        },
+                        0
+                      ],
+                      "op": "lt"
+                    },
+                    {
+                      "field": "elapsed",
+                      "op": "time"
+                    },
+                    {
+                      "name": "since",
+                      "op": "state"
+                    }
+                  ],
+                  "op": "if"
+                }
+              ],
+              "op": "if"
+            }
+          }
+        },
+        "values": {
+          "drawn": {
+            "name": "shown",
+            "op": "state"
+          },
+          "held": {
+            "args": [
+              {
+                "name": "pct",
+                "op": "value"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "name": "since",
+                        "op": "state"
+                      },
+                      0
+                    ],
+                    "op": "lt"
+                  },
+                  {
+                    "name": "peak",
+                    "op": "state"
+                  },
+                  {
+                    "args": [
+                      {
+                        "name": "peak",
+                        "op": "state"
+                      },
+                      {
+                        "args": [
+                          0.25,
+                          {
+                            "args": [
+                              0,
+                              {
+                                "args": [
+                                  {
+                                    "args": [
+                                      {
+                                        "field": "elapsed",
+                                        "op": "time"
+                                      },
+                                      {
+                                        "name": "since",
+                                        "op": "state"
+                                      }
+                                    ],
+                                    "op": "sub"
+                                  },
+                                  2
+                                ],
+                                "op": "sub"
+                              }
+                            ],
+                            "op": "max"
+                          }
+                        ],
+                        "op": "mul"
+                      }
+                    ],
+                    "op": "sub"
+                  }
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "max"
+          },
+          "pct": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "name": "v",
+                    "op": "input"
+                  },
+                  0,
+                  100
+                ],
+                "op": "norm"
+              },
+              0,
+              1
+            ],
+            "op": "clamp"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,4875 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "graph-histogram",
+    "width": 320,
+    "height": 120,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g038",
+      "name": "Graph",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "layout": {
+        "h": 100,
+        "w": 300
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/cpu/load"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "fill": "#1f2430ff",
+                "h": 100,
+                "kind": "rect",
+                "w": 300
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 1,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar0",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    0
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            0
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 1,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 2,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar1",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    1
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 2,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 3,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar2",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    2
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            2
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 3,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 4,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar3",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    3
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            3
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 4,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 5,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar4",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    4
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            4
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 5,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 6,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar5",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    5
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            5
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 6,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 7,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar6",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    6
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            6
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 7,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 8,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar7",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    7
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            7
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 8,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 9,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar8",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    8
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            8
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 9,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 10,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar9",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    9
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            9
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 10,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 11,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar10",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    10
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            10
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 11,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 12,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar11",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    11
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            11
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 12,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 13,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar12",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    12
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            12
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 13,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 14,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar13",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    13
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            13
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 14,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 15,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar14",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    14
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            14
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 15,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 16,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar15",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    15
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            15
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 16,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 17,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar16",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    16
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            16
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 17,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 18,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar17",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    17
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            17
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 18,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 19,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar18",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    18
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            18
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 19,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 20,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar19",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    19
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            19
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 20,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 21,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar20",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    20
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            20
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 21,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 22,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar21",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    21
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            21
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 22,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 23,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar22",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    22
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            22
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 23,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 24,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar23",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    23
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            23
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 24,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 25,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar24",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    24
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            24
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 25,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 26,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar25",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    25
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            25
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 26,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 27,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar26",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    26
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            26
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 27,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 28,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar27",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    27
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            27
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 28,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 29,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar28",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    28
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            28
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 29,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 30,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar29",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    29
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            29
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 30,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 31,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar30",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    30
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            30
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 31,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 32,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar31",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    31
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            31
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 32,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 33,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar32",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    32
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            32
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 33,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 34,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar33",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    33
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            33
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 34,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 35,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar34",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    34
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            34
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 35,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 36,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar35",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    35
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            35
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 36,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 37,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar36",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    36
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            36
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 37,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "fill": "#40c4ff55",
+                "h": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "count": 38,
+                                      "fn": "first",
+                                      "input": "v",
+                                      "op": "history"
+                                    },
+                                    0
+                                  ],
+                                  "op": "sub"
+                                },
+                                0,
+                                100
+                              ],
+                              "op": "clamp"
+                            },
+                            100
+                          ],
+                          "op": "div"
+                        },
+                        97
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "round"
+                },
+                "id": "bar37",
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#40c4ffff",
+                  "width": 1
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "cnt",
+                      "op": "value"
+                    },
+                    37
+                  ],
+                  "op": "gt"
+                },
+                "w": 2,
+                "x": {
+                  "args": [
+                    296,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "name": "cnt",
+                                  "op": "value"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            37
+                          ],
+                          "op": "sub"
+                        },
+                        8
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "y": {
+                  "args": [
+                    99,
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "count": 38,
+                                          "fn": "first",
+                                          "input": "v",
+                                          "op": "history"
+                                        },
+                                        0
+                                      ],
+                                      "op": "sub"
+                                    },
+                                    0,
+                                    100
+                                  ],
+                                  "op": "clamp"
+                                },
+                                100
+                              ],
+                              "op": "div"
+                            },
+                            97
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "round"
+                    }
+                  ],
+                  "op": "sub"
+                }
+              },
+              {
+                "h": 99,
+                "kind": "rect",
+                "stroke": {
+                  "paint": "#5c6370ff",
+                  "width": 1
+                },
+                "w": 299,
+                "x": 0.5,
+                "y": 0.5
+              }
+            ],
+            "clip": {
+              "h": 100,
+              "kind": "rect",
+              "w": 300
+            },
+            "id": "graph",
+            "kind": "group",
+            "visible": {
+              "args": [
+                {
+                  "name": "cnt",
+                  "op": "value"
+                },
+                0
+              ],
+              "op": "gt"
+            }
+          }
+        ],
+        "values": {
+          "cnt": {
+            "count": 38,
+            "fn": "count",
+            "input": "v",
+            "op": "history"
+          }
+        }
+      }
+    }
+  ]
+}

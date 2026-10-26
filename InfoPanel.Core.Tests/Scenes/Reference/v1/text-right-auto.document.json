@@ -1,0 +1,68 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "text-right-auto",
+    "width": 320,
+    "height": 60,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g004",
+      "name": "Box",
+      "placement": {
+        "x": 309,
+        "y": 4
+      },
+      "layout": {
+        "h": 52,
+        "w": 2
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "h": 52,
+            "id": "shape",
+            "kind": "rect",
+            "stroke": {
+              "paint": "#5c6370ff",
+              "width": 1
+            },
+            "w": 2
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g005",
+      "name": "Right aligned, auto size",
+      "placement": {
+        "x": 310,
+        "y": 14
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "align": "end",
+            "fill": "#f5f5f5ff",
+            "font": {
+              "family": "Inter",
+              "italic": false,
+              "size": 26.600000381469727,
+              "weight": 400
+            },
+            "id": "text",
+            "kind": "text",
+            "maxLines": 1,
+            "text": "Right aligned, auto size"
+          }
+        ]
+      }
+    }
+  ]
+}

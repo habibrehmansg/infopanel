@@ -1,0 +1,58 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "http-image-placeholder",
+    "width": 140,
+    "height": 120,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g028",
+      "name": "Camera",
+      "placement": {
+        "x": 10,
+        "y": 10
+      },
+      "bindings": {
+        "t": {
+          "key": "plugin:/golden/camera"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Image URL",
+            "type": "text"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "id": "image",
+                "kind": "media",
+                "source": {
+                  "provider": "http",
+                  "ref": {
+                    "field": "text",
+                    "name": "t",
+                    "op": "input"
+                  }
+                }
+              }
+            ],
+            "id": "frame",
+            "kind": "group"
+          }
+        ],
+        "requires": [
+          "media.provider"
+        ]
+      }
+    }
+  ]
+}
