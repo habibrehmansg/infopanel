@@ -73,6 +73,13 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _turingPanelMultiDeviceMode = false;
 
+        private readonly ObservableCollection<LianLiPanelDevice> _lianLiPanelDevices = [];
+
+        public ObservableCollection<LianLiPanelDevice> LianLiPanelDevices => _lianLiPanelDevices;
+
+        [ObservableProperty]
+        private bool _lianLiPanelMultiDeviceMode = false;
+
         private readonly ObservableCollection<ThermalrightPanelDevice> _thermalrightPanelDevices = [];
 
         public ObservableCollection<ThermalrightPanelDevice> ThermalrightPanelDevices
@@ -158,6 +165,7 @@ namespace InfoPanel.Models
         {
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
             TuringPanelDevices.CollectionChanged += TuringPanelDevices_CollectionChanged;
+            LianLiPanelDevices.CollectionChanged += LianLiPanelDevices_CollectionChanged;
             ThermalrightPanelDevices.CollectionChanged += ThermalrightPanelDevices_CollectionChanged;
             ThermaltakePanelDevices.CollectionChanged += ThermaltakePanelDevices_CollectionChanged;
             JlPanelDevices.CollectionChanged += JlPanelDevices_CollectionChanged;
@@ -204,6 +212,27 @@ namespace InfoPanel.Models
         {
             if (e.PropertyName != nameof(TuringPanelDevice.RuntimeProperties))
                 OnPropertyChanged(nameof(TuringPanelDevices));
+        }
+
+        private void LianLiPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (LianLiPanelDevice device in e.OldItems)
+                    device.PropertyChanged -= LianLiDevice_PropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (LianLiPanelDevice device in e.NewItems)
+                    device.PropertyChanged += LianLiDevice_PropertyChanged;
+            }
+            OnPropertyChanged(nameof(LianLiPanelDevices));
+        }
+
+        private void LianLiDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(LianLiPanelDevice.RuntimeProperties))
+                OnPropertyChanged(nameof(LianLiPanelDevices));
         }
 
         private void ThermalrightPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

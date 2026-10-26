@@ -213,6 +213,18 @@ namespace InfoPanel.Services
                     }
                     break;
 
+                case "LianLi":
+                    foreach (var device in ConfigModel.Instance.Settings.LianLiPanelDevices)
+                    {
+                        if (device.DeviceId == binding.DeviceId)
+                        {
+                            device.ProfileGuid = binding.ProfileGuid;
+                            Logger.Information("Switched Lian Li device {Device} to profile {Profile}", device.DeviceId, profile.Name);
+                            return;
+                        }
+                    }
+                    break;
+
                 case "Thermalright":
                     foreach (var device in ConfigModel.Instance.Settings.ThermalrightPanelDevices)
                     {

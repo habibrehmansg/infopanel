@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
+using InfoPanel.LianLiPanel;
 using InfoPanel.TuringPanel;
 using Microsoft.Win32;
 using Microsoft.Win32.TaskScheduler;
@@ -444,6 +445,17 @@ namespace InfoPanel
                     await TuringPanelTask.Instance.StopAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.LianLiPanelMultiDeviceMode))
+            {
+                if (Settings.LianLiPanelMultiDeviceMode)
+                {
+                    await LianLiPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await LianLiPanelTask.Instance.StopAsync();
+                }
+            }
             else if (e.PropertyName == nameof(Settings.WebServer))
             {
                 if (Settings.WebServer)
@@ -714,9 +726,38 @@ namespace InfoPanel
                             Settings.TuringPanelMultiDeviceMode = settings.TuringPanelMultiDeviceMode;
 
                             Settings.TuringPanelDevices.Clear();
+                            Settings.LianLiPanelDevices.Clear();
                             foreach (var device in settings.TuringPanelDevices)
                             {
+                                var lianLiModelInfo = LianLiPanelModelDatabase.GetModelByDeviceId(device.DeviceId);
+                                if (lianLiModelInfo != null)
+                                {
+                                    Settings.LianLiPanelDevices.Add(new LianLiPanelDevice
+                                    {
+                                        DeviceId = device.DeviceId,
+                                        DeviceLocation = device.DeviceLocation,
+                                        Model = lianLiModelInfo.Model,
+                                        Enabled = device.Enabled,
+                                        ProfileGuid = device.ProfileGuid,
+                                        Rotation = device.Rotation,
+                                        Brightness = device.Brightness,
+                                        TargetFrameRate = device.TargetFrameRate,
+                                        JpegQuality = device.JpegQuality,
+                                    });
+                                    continue;
+                                }
+
                                 Settings.TuringPanelDevices.Add(device);
+                            }
+
+                            Settings.LianLiPanelMultiDeviceMode = settings.LianLiPanelMultiDeviceMode;
+
+                            foreach (var device in settings.LianLiPanelDevices)
+                            {
+                                if (!Settings.LianLiPanelDevices.Any(d => d.IsMatching(device.DeviceId)))
+                                {
+                                    Settings.LianLiPanelDevices.Add(device);
+                                }
                             }
 
                             // Load Thermalright panel settings

@@ -403,6 +403,7 @@ namespace InfoPanel
             {
                 await BeadaPanelTask.Instance.StopAsync(true);
                 await TuringPanelTask.Instance.StopAsync(true);
+                await LianLiPanelTask.Instance.StopAsync(true);
                 await ThermalrightPanelTask.Instance.StopAsync(true);
                 await ThermaltakePanelTask.Instance.StopAsync(true);
                 await JlPanelTask.Instance.StopAsync(true);
@@ -426,6 +427,7 @@ namespace InfoPanel
                     {
                         await BeadaPanelTask.Instance.StopAsync(true);
                         await TuringPanelTask.Instance.StopAsync(true);
+                        await LianLiPanelTask.Instance.StopAsync(true);
                         await ThermalrightPanelTask.Instance.StopAsync(true);
                         await ThermaltakePanelTask.Instance.StopAsync(true);
                         await JlPanelTask.Instance.StopAsync(true);
@@ -445,6 +447,11 @@ namespace InfoPanel
             if (ConfigModel.Instance.Settings.TuringPanelMultiDeviceMode)
             {
                 await TuringPanelTask.Instance.StartAsync();
+            }
+
+            if (ConfigModel.Instance.Settings.LianLiPanelMultiDeviceMode)
+            {
+                await LianLiPanelTask.Instance.StartAsync();
             }
 
             if (ConfigModel.Instance.Settings.ThermalrightPanelMultiDeviceMode)
@@ -478,6 +485,7 @@ namespace InfoPanel
         {
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelTask.Instance.StopAsync();
+            await LianLiPanelTask.Instance.StopAsync();
             await ThermalrightPanelTask.Instance.StopAsync();
             await ThermaltakePanelTask.Instance.StopAsync();
             await JlPanelTask.Instance.StopAsync();

@@ -1,4 +1,5 @@
 using InfoPanel.BeadaPanel;
+using InfoPanel.LianLiPanel;
 using InfoPanel.Models;
 using InfoPanel.Services;
 using InfoPanel.TuringPanel;
@@ -49,6 +50,7 @@ public partial class UsbPanelsPage : Page
         // Refresh device combo when device lists change
         ConfigModel.Instance.Settings.BeadaPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
         ConfigModel.Instance.Settings.TuringPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
+        ConfigModel.Instance.Settings.LianLiPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
         ConfigModel.Instance.Settings.ThermalrightPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
         ConfigModel.Instance.Settings.VmaxPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
     }
@@ -197,6 +199,63 @@ public partial class UsbPanelsPage : Page
         }
     }
 
+    private async void ButtonDiscoverLianLiDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateLianLiPanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private async Task UpdateLianLiPanelDeviceList()
+    {
+        var discoveredDevices = await LianLiPanelHelper.GetUsbDevices();
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.LianLiPanelDevices.FirstOrDefault(d => d.IsMatching(discoveredDevice.DeviceId));
+
+                if (device == null)
+                {
+                    discoveredDevice.ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
+                    settings.LianLiPanelDevices.Add(discoveredDevice);
+                    Logger.Information("LianLiPanel Discovery: Added new device with DeviceId '{DeviceId}'", discoveredDevice.DeviceId);
+                }
+                else
+                {
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+                    device.Model = discoveredDevice.Model;
+                    Logger.Information("LianLiPanel Discovery: Device with DeviceId '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+    }
+
+    private void ButtonRemoveLianLiPanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is LianLiPanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.LianLiPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (LianLiPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = LianLiPanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.LianLiPanelDevices.Remove(deviceConfig);
+                }
+            });
+        }
+    }
+
     private void ButtonRemoveTuringPanelDevice_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button button && button.Tag is TuringPanelDevice runtimeDevice)
@@ -248,6 +307,12 @@ public partial class UsbPanelsPage : Page
         {
             var name = d.Name ?? d.DeviceId;
             items.Add(Tuple.Create($"Turing|{d.DeviceId}|", name));
+        }
+
+        foreach (var d in ConfigModel.Instance.Settings.LianLiPanelDevices)
+        {
+            var name = d.Name ?? d.DeviceId;
+            items.Add(Tuple.Create($"LianLi|{d.DeviceId}|", name));
         }
 
         foreach (var d in ConfigModel.Instance.Settings.ThermalrightPanelDevices)

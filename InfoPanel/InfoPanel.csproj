@@ -262,6 +262,8 @@
 	  <ProjectReference Include="..\InfoPanel.Plugins.Loader\InfoPanel.Plugins.Loader.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Ipc\InfoPanel.Plugins.Ipc.csproj" />
 	  <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
+	  <!-- Include InfoPanel.Extras in the restore graph. BuildExtras below still copies it to the bundled plugins directory. -->
+	  <ProjectReference Include="..\InfoPanel.Extras\InfoPanel.Extras.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
 	</ItemGroup>
 	
 	<ItemGroup>
