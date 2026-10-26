@@ -146,6 +146,18 @@ namespace InfoPanel.Models
             }
         }
 
+        // Re-download interval for URL sources, in seconds. 0 = never (default).
+        // Lets webcams, rendered dashboards and other changing sources stay current.
+        private int _refreshInterval = 0;
+        public int RefreshInterval
+        {
+            get { return _refreshInterval; }
+            set
+            {
+                SetProperty(ref _refreshInterval, Math.Max(0, value));
+            }
+        }
+
         private bool _persistentCache = false;
         [System.Xml.Serialization.XmlIgnore]
         public bool PersistentCache

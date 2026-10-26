@@ -16,7 +16,7 @@ namespace InfoPanel.Models
         private Key _key = Key.None;
 
         /// <summary>
-        /// Device type: "Beada", "Turing", "LianLi", or "Thermalright"
+        /// Device type: "Beada", "Turing", "LianLi", "Thermalright", or "Vmax"
         /// </summary>
         [ObservableProperty]
         private string _deviceType = string.Empty;
@@ -28,7 +28,7 @@ namespace InfoPanel.Models
         private string _deviceId = string.Empty;
 
         /// <summary>
-        /// Device location (used with DeviceId to disambiguate Beada/Thermalright devices).
+        /// Device location (used with DeviceId to disambiguate USB panel devices).
         /// </summary>
         [ObservableProperty]
         private string _deviceLocation = string.Empty;
@@ -96,6 +96,10 @@ namespace InfoPanel.Models
                     "Thermalright" => ConfigModel.Instance.Settings.ThermalrightPanelDevices
                         .Where(d => d.DeviceId == DeviceId)
                         .Select(d => d.RuntimeProperties?.Name ?? d.DeviceId)
+                        .FirstOrDefault() ?? DeviceId,
+                    "Vmax" => ConfigModel.Instance.Settings.VmaxPanelDevices
+                        .Where(d => d.DeviceId == DeviceId)
+                        .Select(d => d.RuntimeProperties?.Name ?? d.ModelInfo?.Name ?? d.DeviceId)
                         .FirstOrDefault() ?? DeviceId,
                     _ => DeviceId
                 };

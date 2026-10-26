@@ -100,6 +100,19 @@ namespace InfoPanel
             // Check cache first
             if (ImageCache.TryGetValue(path, out LockedImage? cachedImage))
             {
+                // URL sources with a refresh interval get re-downloaded in the background;
+                // the current image keeps rendering until the replacement is ready.
+                if (cachedImage != null
+                    && imageDisplayItem?.RefreshInterval > 0
+                    && imageDisplayItem.Type != ImageDisplayItem.ImageType.RTSP
+                    && cachedImage.Type != LockedImage.ImageType.FFMPEG
+                    && path.IsUrl()
+                    && (DateTime.UtcNow - cachedImage.LoadedAtUtc).TotalSeconds >= imageDisplayItem.RefreshInterval
+                    && IsRefreshAttemptDue(path, imageDisplayItem.RefreshInterval))
+                {
+                    _ = Task.Run(() => RefreshImageSafe(path, imageDisplayItem));
+                }
+
                 return cachedImage;
             }
 
@@ -171,6 +184,69 @@ namespace InfoPanel
             ImageCache.Set(path, cachedImage, cacheOptions);
 
             Logger.Debug("Image '{Path}' loaded successfully (Persistent: {Persistent})", path, imageDisplayItem?.PersistentCache ?? false);
+        }
+
+        // Tracks the last refresh ATTEMPT per URL so a failing/slow source is retried at the
+        // configured interval instead of on every rendered frame.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _lastRefreshAttempt = new();
+
+        private static bool IsRefreshAttemptDue(string path, int intervalSeconds)
+        {
+            if (_lastRefreshAttempt.TryGetValue(path, out var last)
+                && (DateTime.UtcNow - last).TotalSeconds < intervalSeconds)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        private static void RefreshImageSafe(string path, ImageDisplayItem imageDisplayItem)
+        {
+            // Skip silently if a load/refresh for this path is already in flight.
+            using var semLock = _locks.LockOrNull(path, 0);
+            if (semLock == null)
+            {
+                return;
+            }
+
+            _lastRefreshAttempt[path] = DateTime.UtcNow;
+
+            try
+            {
+                var refreshedImage = new LockedImage(path, imageDisplayItem);
+
+                var cacheOptions = new MemoryCacheEntryOptions
+                {
+                    PostEvictionCallbacks = {
+                        new PostEvictionCallbackRegistration
+                        {
+                            EvictionCallback = (key, value, reason, state) =>
+                            {
+                                Logger.Debug("Cache entry '{Key}' evicted due to {Reason}", key, reason);
+                                if (value is LockedImage lockedImage)
+                                {
+                                    lockedImage.Dispose();
+                                }
+                            }
+                        }
+                    }
+                };
+
+                if (imageDisplayItem.PersistentCache != true)
+                {
+                    cacheOptions.SlidingExpiration = TimeSpan.FromSeconds(10);
+                }
+
+                // Replacing the entry evicts (and disposes) the previous image.
+                ImageCache.Set(path, refreshedImage, cacheOptions);
+
+                Logger.Debug("Image '{Path}' refreshed (interval {Interval}s)", path, imageDisplayItem.RefreshInterval);
+            }
+            catch (Exception e)
+            {
+                // Keep serving the old image; next attempt after the interval elapses again.
+                Logger.Debug(e, "Failed to refresh image '{Path}', keeping cached copy", path);
+            }
         }
 
         public static void TouchImage(ImageDisplayItem imageDisplayItem)

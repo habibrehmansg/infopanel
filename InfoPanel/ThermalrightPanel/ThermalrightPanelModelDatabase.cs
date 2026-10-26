@@ -78,10 +78,12 @@ namespace InfoPanel.ThermalrightPanel
         public const string IDENTIFIER_V3 = "SSCRM-V3"; // Wonder / Rainbow Vision 360 (2400x1080) — SUB byte differentiates
 
         // SUB byte (init response byte[28]) for SSCRM-V3 models
-        public const byte WONDER_360_SUB_BYTE  = 0x01; // Wonder Vision 360
-        public const byte RAINBOW_360_SUB_BYTE = 0x02; // Rainbow Vision 360
-        public const byte LEVITA_360_SUB_BYTE  = 0x03; // Levita Vision 360
+        public const byte WONDER_360_SUB_BYTE    = 0x01; // Wonder Vision 360
+        public const byte RAINBOW_360_SUB_BYTE   = 0x02; // Rainbow Vision 360
+        public const byte LEVITA_360_SUB_BYTE    = 0x03; // Levita Vision 360
+        public const byte WONDER_360_V2_SUB_BYTE = 0x20; // Wonder Vision 360 v2 (newer firmware batch, PM=0x07)
         public const string IDENTIFIER_V4 = "SSCRM-V4"; // TL-M10 Vision (1920x462)
+        public const string IDENTIFIER_SPI_V2 = "SPISCRM-V2"; // Elite Vision 360 ARGB Black (SPI 320x320, RGB565 LE)
 
         public static readonly Dictionary<ThermalrightPanelModel, ThermalrightPanelModelInfo> Models = new()
         {
@@ -109,6 +111,22 @@ namespace InfoPanel.ThermalrightPanel
                 VendorId = THERMALRIGHT_VENDOR_ID,
                 ProductId = THERMALRIGHT_PRODUCT_ID,
                 SubByte = WONDER_360_SUB_BYTE
+            },
+            // Wonder Vision 360 v2: same physical 6.67" 2400x1080 panel, newer firmware reports
+            // SSCRM-V3 with SUB=0x20 (and PM=0x07). The strict identifier+SUB detection pass picks
+            // this up before the PM+SUB table would mis-route PM=7 to the 640x480 Stream Vision entry.
+            [ThermalrightPanelModel.WonderVision360V2] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.WonderVision360V2,
+                Name = "Wonder Vision 360 6.67\" v2",
+                DeviceIdentifier = IDENTIFIER_V3,
+                Width = 2400,
+                Height = 1080,
+                RenderWidth = 1600,  // Same panel/render size as Wonder Vision 360
+                RenderHeight = 720,
+                VendorId = THERMALRIGHT_VENDOR_ID,
+                ProductId = THERMALRIGHT_PRODUCT_ID,
+                SubByte = WONDER_360_V2_SUB_BYTE
             },
             [ThermalrightPanelModel.RainbowVision360] = new ThermalrightPanelModelInfo
             {
@@ -217,10 +235,27 @@ namespace InfoPanel.ThermalrightPanel
                 Model = ThermalrightPanelModel.TrofeoVision916V2,
                 Name = "Trofeo Vision 9.16\" v2",
                 DeviceIdentifier = "",
+                // Same physical 9.16" panel as v1; firmware just reports 599 instead of 480.
+                // Render at the v1 default (480), Flicker Fix crops to 462 if the unit needs it.
                 Width = 1920,
-                Height = 462,
+                Height = 480,
                 RenderWidth = 1920,
-                RenderHeight = 462,
+                RenderHeight = 480,
+                TransportType = ThermalrightTransportType.WinUsb,
+                ProtocolType = ThermalrightProtocolType.TrofeoBulk
+            },
+            // 11.3" is NOT in the VID/PID lookup (same PID 0x5408 as 9.16").
+            // Detected at runtime by byte[20]=0x05 in the TrofeoBulk init response.
+            // Device firmware still reports 1920x480 but the actual panel is 1920x400.
+            [ThermalrightPanelModel.TrofeoVision113] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.TrofeoVision113,
+                Name = "Trofeo Vision 11.3\"",
+                DeviceIdentifier = "",
+                Width = 1920,
+                Height = 400,
+                RenderWidth = 1920,
+                RenderHeight = 400,
                 TransportType = ThermalrightTransportType.WinUsb,
                 ProtocolType = ThermalrightProtocolType.TrofeoBulk
             },
@@ -460,6 +495,27 @@ namespace InfoPanel.ThermalrightPanel
                 ProductId = THERMALRIGHT_PRODUCT_ID,
                 ProtocolType = ThermalrightProtocolType.ChiZhu,
                 PixelFormat = ThermalrightPixelFormat.Rgb565BigEndian
+            },
+            // SPISCRM-V2 identifier: Elite Vision 360 ARGB Black, Frozen Warframe PRO 360, etc.
+            // PM=0x20 / SUB=0x20. TRCC FormCZTV.cs maps PM=32 to myDeviceMode=4, which
+            // sends RGB565 big-endian frames (cmd=3 at offset 4) and packs RGB565 with
+            // high byte first (RRRRRGGG / GGGBBBBB). The matching frame-type byte at
+            // offset 56 is always 2 (SSCRM_CMD_TYPE_PICTURE) — see BuildDisplayHeader.
+            [ThermalrightPanelModel.EliteVision360] = new ThermalrightPanelModelInfo
+            {
+                Model = ThermalrightPanelModel.EliteVision360,
+                Name = "Thermalright 320x320 (SPISCRM-V2)",
+                DeviceIdentifier = IDENTIFIER_SPI_V2,
+                Width = 320,
+                Height = 320,
+                RenderWidth = 320,
+                RenderHeight = 320,
+                VendorId = THERMALRIGHT_VENDOR_ID,
+                ProductId = THERMALRIGHT_PRODUCT_ID,
+                ProtocolType = ThermalrightProtocolType.ChiZhu,
+                PixelFormat = ThermalrightPixelFormat.Rgb565BigEndian,
+                SubByte = 0x20  // Required for the strict identifier+SUB lookup to win over the
+                                // generic PM=0x20 ChiZhuVision320x320 PM+SUB entry.
             },
             [ThermalrightPanelModel.EliteVisionScsi] = new ThermalrightPanelModelInfo
             {
@@ -952,23 +1008,34 @@ namespace InfoPanel.ThermalrightPanel
         }
 
         /// <summary>
-        /// Get model info by device identifier string (e.g., "SSCRM-V1", "SSCRM-V3", "SSCRM-V4")
-        /// and optional SUB byte for disambiguation (e.g., SSCRM-V3 + SUB=0x01 = Wonder, SUB=0x02 = Rainbow).
+        /// Strict identifier+SUB lookup: only returns entries whose DeviceIdentifier matches AND
+        /// whose SubByte equals the device's SUB. Used as the first detection pass for ChiZhu
+        /// devices where the identifier alone isn't enough (e.g. SSCRM-V1 firmware ships on
+        /// both 480x480 Grand-family and 640x480 Stream Vision; only PM byte distinguishes them).
+        /// </summary>
+        public static ThermalrightPanelModelInfo? GetModelByIdentifierAndSub(string identifier, byte subByte)
+        {
+            foreach (var model in Models.Values)
+            {
+                if (model.DeviceIdentifier == identifier && model.SubByte.HasValue && model.SubByte.Value == subByte)
+                    return model;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Identifier-only fallback for legacy panels not covered by the PM+SUB switch
+        /// (e.g. PM=1 SUB=0 Grand Vision is not in GetModelByChiZhuPM). First match wins.
+        /// Callers should attempt PM+SUB first; only fall back to this when PM+SUB returns null.
         /// </summary>
         public static ThermalrightPanelModelInfo? GetModelByIdentifier(string identifier, byte? subByte = null)
         {
-            // If SUB byte provided, try exact match first (identifier + SUB)
             if (subByte.HasValue)
             {
-                foreach (var model in Models.Values)
-                {
-                    if (model.DeviceIdentifier == identifier && model.SubByte.HasValue && model.SubByte.Value == subByte.Value)
-                        return model;
-                }
+                var strict = GetModelByIdentifierAndSub(identifier, subByte.Value);
+                if (strict != null) return strict;
             }
 
-            // Fallback: match by identifier only (first match wins — for unique identifiers like V1/V4,
-            // or when SUB byte is unknown/not in database)
             foreach (var model in Models.Values)
             {
                 if (model.DeviceIdentifier == identifier)

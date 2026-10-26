@@ -30,7 +30,7 @@ public sealed class UndoManager
         typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem),
         typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem),
         typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem),
-        typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)
+        typeof(GaugeDisplayItem), typeof(ShapeDisplayItem), typeof(GuideDisplayItem)
     ];
 
     private static readonly XmlSerializer Serializer = new(typeof(List<DisplayItem>), DisplayItemTypes);

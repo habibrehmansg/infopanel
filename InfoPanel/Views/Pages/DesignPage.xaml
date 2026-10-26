@@ -509,6 +509,9 @@
                                     <components:ShapeProperties ShapeDisplayItem="{Binding}" />
                                 </StackPanel>
                             </DataTemplate>
+                            <DataTemplate DataType="{x:Type models:GuideDisplayItem}">
+                                <components:GuideProperties />
+                            </DataTemplate>
                         </ContentControl.Resources>
                     </ContentControl>
 

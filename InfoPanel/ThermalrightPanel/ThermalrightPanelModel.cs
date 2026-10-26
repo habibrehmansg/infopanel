@@ -7,6 +7,8 @@ namespace InfoPanel.ThermalrightPanel
         PeerlessVision360,
         // Wonder Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x01
         WonderVision360,
+        // Wonder Vision 360 v2 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x20, PM=0x07. Same panel, newer firmware batch.
+        WonderVision360V2,
         // Rainbow Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x02
         RainbowVision360,
         // Levita Vision 360 - 6.67" (2400x1080) - responds with SSCRM-V3, SUB=0x03
@@ -18,8 +20,10 @@ namespace InfoPanel.ThermalrightPanel
         TrofeoVision,
         // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5408, LY chipset)
         TrofeoVision916,
-        // Trofeo Vision 9.16" v2 - USB bulk (VID 0x0416 / PID 0x5408, reports 1920x599, renders at 1920x462)
+        // Trofeo Vision 9.16" v2 - USB bulk (VID 0x0416 / PID 0x5408, reports 1920x599, renders at 1920x480 + optional 462 flicker-fix crop, same as v1)
         TrofeoVision916V2,
+        // Trofeo Vision 11.3" - USB bulk (VID 0x0416 / PID 0x5408, byte[20]=0x05, reports 1920x480 but renders at 1920x400)
+        TrofeoVision113,
         // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5409, LY1 chipset)
         TrofeoVision916LY1,
 
@@ -52,6 +56,10 @@ namespace InfoPanel.ThermalrightPanel
 
         // ChiZhu bulk (87AD:70DB) PM=0x20 variant — 320x320, RGB565
         ChiZhuVision320x320,
+
+        // ChiZhu bulk (87AD:70DB) responding with SPISCRM-V2 identifier — Elite Vision 360 ARGB Black
+        // SPI-driven 320x320 panel, RGB565 little-endian (unlike the generic PM=0x20 entry which is BE)
+        EliteVision360,
 
         // SCSI pass-through — resolution detected at runtime from poll response
         EliteVisionScsi,      // VID 0x0402 / PID 0x3922 — Frozen Warframe, Elite Vision 360
