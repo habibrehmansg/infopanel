@@ -1,0 +1,65 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!-- Referenced by projects in InfoPanel.slnx -->
+  <ItemGroup>
+    <PackageVersion Include="AsyncKeyedLock" Version="8.0.2" />
+    <PackageVersion Include="ini-parser-netstandard" Version="2.5.3" />
+    <PackageVersion Include="NAudio.Wasapi" Version="2.3.0" />
+    <PackageVersion Include="OpenWeatherMap.Cache" Version="3.0.0" />
+    <PackageVersion Include="Sentry" Version="6.4.0" />
+    <PackageVersion Include="Serilog" Version="4.3.1" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageVersion Include="SkiaSharp" Version="3.119.2" />
+    <PackageVersion Include="StreamJsonRpc" Version="2.24.84" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.6" />
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.6" />
+    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.6.3" />
+  </ItemGroup>
+
+  <!-- Referenced only by the 1.x WPF projects (InfoPanel/, InfoPanel.Views.Skia/), which are
+       outside InfoPanel.slnx. M1 deletes those projects; prune whatever is left unused then. -->
+  <ItemGroup>
+    <PackageVersion Include="AutoMapper" Version="16.1.1" />
+    <PackageVersion Include="BouncyCastle.NetCore" Version="2.2.1" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Flurl.Http" Version="4.0.2" />
+    <PackageVersion Include="Flyleaf.FFmpeg.Bindings" Version="8.0.1" />
+    <PackageVersion Include="gong-wpf-dragdrop" Version="4.0.0" />
+    <PackageVersion Include="HidSharp" Version="2.6.4" />
+    <PackageVersion Include="LibreHardwareMonitorLib" Version="0.9.6" />
+    <PackageVersion Include="LibUsbDotNet" Version="2.2.75" />
+    <PackageVersion Include="MahApps.Metro" Version="2.4.11" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.6" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.6" />
+    <PackageVersion Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+    <PackageVersion Include="MinVer" Version="7.0.0" />
+    <PackageVersion Include="OpenTK.GLWpfControl" Version="4.3.6" />
+    <PackageVersion Include="SecureStore" Version="1.3.0" />
+    <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+    <PackageVersion Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+    <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Debug" Version="3.0.0" />
+    <PackageVersion Include="SkiaSharp.Views.Desktop.Common" Version="3.119.2" />
+    <PackageVersion Include="Svg.Skia" Version="4.3.0" />
+    <PackageVersion Include="System.IO.Ports" Version="10.0.6" />
+    <PackageVersion Include="System.Management" Version="10.0.6" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.6" />
+    <PackageVersion Include="TaskScheduler" Version="2.12.2" />
+    <PackageVersion Include="Topten.RichTextKit" Version="0.4.167" />
+    <PackageVersion Include="Vortice.D3DCompiler" Version="3.7.6-beta" />
+    <PackageVersion Include="Vortice.Direct3D11" Version="3.7.6-beta" />
+    <PackageVersion Include="Vortice.DirectComposition" Version="3.7.6-beta" />
+    <PackageVersion Include="Vortice.Mathematics" Version="1.9.3" />
+    <PackageVersion Include="Vortice.MediaFoundation" Version="3.7.6-beta" />
+    <PackageVersion Include="Vortice.XAudio2" Version="3.7.6-beta" />
+    <PackageVersion Include="WPF-UI" Version="4.2.0" />
+    <PackageVersion Include="WPF-UI.DependencyInjection" Version="4.2.0" />
+    <PackageVersion Include="WPF-UI.Tray" Version="4.2.0" />
+  </ItemGroup>
+
+</Project>

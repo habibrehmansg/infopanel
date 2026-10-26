@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="InfoPanel.Extras/InfoPanel.Extras.csproj" />
+  <Project Path="InfoPanel.Plugins.Graphics/InfoPanel.Plugins.Graphics.csproj" />
+  <Project Path="InfoPanel.Plugins.Host/InfoPanel.Plugins.Host.csproj" />
+  <Project Path="InfoPanel.Plugins.Ipc/InfoPanel.Plugins.Ipc.csproj" />
+  <Project Path="InfoPanel.Plugins.Loader/InfoPanel.Plugins.Loader.csproj" />
+  <Project Path="InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj" />
+  <Project Path="InfoPanel.Plugins/InfoPanel.Plugins.csproj" />
+</Solution>

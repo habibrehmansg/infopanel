@@ -4,27 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
+Branch `2.0.x` is InfoPanel 2.0: a cross-platform .NET engine (Windows + macOS) with a web editor. 1.x ships from `1.4.x`. Decisions for 2.0 are recorded in `docs/2.0/decisions.md`.
+
+- **SDK:** .NET 10, pinned by `global.json` (`10.0.403`, `rollForward: latestFeature`).
+- **Solution:** `InfoPanel.slnx`, Debug/Release, Any CPU. No platform or runtime identifier is forced; builds run on macOS (arm64) and Windows.
+- **Package versions** live in `Directory.Packages.props` (central package management). A `PackageReference` never carries a `Version`. There are no `packages.lock.json` files.
+- **Plugin SDK projects** (`InfoPanel.Plugins*`) target net8.0 so existing plugins keep loading. `InfoPanel.Extras` targets net8.0-windows and builds anywhere via `EnableWindowsTargeting`.
+- The 1.x WPF projects (`InfoPanel/`, `InfoPanel.Views.Skia/`) are still on disk but are **not** in the solution and do not build on 2.0.x.
+
 ```bash
-# Restore packages
-dotnet restore
-
-# Build Debug (x64 only — the solution does not support x86/AnyCPU)
-dotnet build InfoPanel.sln -c Debug
-
-# Build Release
-dotnet build InfoPanel.sln -c Release
-
-# Publish for deployment (Windows x64)
-dotnet publish InfoPanel/InfoPanel.csproj -c Release -r win-x64 --self-contained -p:PublishProfile=FolderProfile -p:Platform=x64
-
-# Run the main application
-dotnet run --project InfoPanel/InfoPanel.csproj
+# Build (Debug / Release)
+dotnet build InfoPanel.slnx -c Debug
+dotnet build InfoPanel.slnx -c Release
 
 # Run plugin simulator for testing plugins
 dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj
 ```
 
-> **Note:** InfoPanel.Extras is built automatically via custom MSBuild targets in `InfoPanel.csproj` (`BuildExtras` / `CopyExtrasToBuildOutput`). No separate build step is needed.
+> **Note:** Everything below this section still describes the 1.x WPF app. It is rewritten as the 2.0 engine replaces it.
 
 ## Architecture Overview
 
