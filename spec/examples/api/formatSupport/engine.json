@@ -1,0 +1,5 @@
+{
+  "document": {"formats": ["infopanel.document/1"], "version": "1.0", "capabilities": []},
+  "scene": {"formats": ["infopanel.scene/1"], "version": "1.0", "capabilities": []},
+  "limits": {"nodes": 2000, "exprDepth": 32, "sceneBytes": 1048576}
+}

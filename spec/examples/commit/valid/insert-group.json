@@ -1,0 +1,119 @@
+{
+  "opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10",
+  "ops": [
+    {
+      "op": "insert",
+      "parentId": null,
+      "index": 2,
+      "item": {
+        "kind": "group",
+        "id": "new-group",
+        "name": "Stats",
+        "placement": {"x": 20, "y": 300},
+        "children": [
+          {
+            "kind": "scene",
+            "id": "new-text",
+            "name": "Title",
+            "placement": {"x": 0, "y": 0},
+            "scene": {
+              "format": "infopanel.scene/1",
+              "nodes": [{"kind": "text", "font": {"family": "Inter", "size": 24}, "fill": "#ffffff", "text": "Hello"}]
+            }
+          },
+          {
+            "kind": "scene",
+            "id": "new-graph",
+            "placement": {"x": 0, "y": 40},
+            "layout": {"w": 240, "h": 80},
+            "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-load"}},
+            "scene": {
+              "format": "infopanel.scene/1",
+              "inputs": {"v": {"type": "number", "label": "Load"}},
+              "values": {
+                "lo": {"op": "history", "input": "v", "fn": "min", "count": 121},
+                "hi": {"op": "history", "input": "v", "fn": "max", "count": 121}
+              },
+              "state": {
+                "lo": {
+                  "init": {"op": "value", "name": "lo"},
+                  "next": {
+                    "op": "if",
+                    "args": [
+                      {"op": "lt", "args": [{"op": "value", "name": "lo"}, {"op": "state", "name": "lo"}]},
+                      {"op": "value", "name": "lo"},
+                      {
+                        "op": "lerp",
+                        "args": [
+                          {"op": "state", "name": "lo"},
+                          {"op": "value", "name": "lo"},
+                          {"op": "min", "args": [1, {"op": "mul", "args": [{"op": "dt"}, 2]}]}
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "hi": {
+                  "init": {"op": "value", "name": "hi"},
+                  "next": {
+                    "op": "if",
+                    "args": [
+                      {"op": "gt", "args": [{"op": "value", "name": "hi"}, {"op": "state", "name": "hi"}]},
+                      {"op": "value", "name": "hi"},
+                      {
+                        "op": "lerp",
+                        "args": [
+                          {"op": "state", "name": "hi"},
+                          {"op": "value", "name": "hi"},
+                          {"op": "min", "args": [1, {"op": "mul", "args": [{"op": "dt"}, 2]}]}
+                        ]
+                      }
+                    ]
+                  }
+                }
+              },
+              "nodes": [
+                {"kind": "rect", "w": 240, "h": 80, "fill": "#0b1220"},
+                {
+                  "kind": "series",
+                  "input": "v",
+                  "w": 240,
+                  "h": 80,
+                  "pitch": 2,
+                  "count": 121,
+                  "mode": "area",
+                  "min": {"op": "state", "name": "lo"},
+                  "max": {
+                    "op": "max",
+                    "args": [{"op": "state", "name": "hi"}, {"op": "add", "args": [{"op": "state", "name": "lo"}, 1]}]
+                  },
+                  "fill": {
+                    "type": "linear",
+                    "x1": 0,
+                    "y1": 0,
+                    "x2": 0,
+                    "y2": 80,
+                    "stops": [{"at": 0, "color": "#38bdf880"}, {"at": 1, "color": "#38bdf800"}]
+                  },
+                  "stroke": {"paint": "#38bdf8", "width": 2, "join": "round"}
+                },
+                {
+                  "kind": "series",
+                  "input": "v",
+                  "w": 240,
+                  "h": 80,
+                  "pitch": 2,
+                  "min": 0,
+                  "max": 100,
+                  "mode": "line",
+                  "opacity": 0.4,
+                  "stroke": {"paint": "#ffffff", "width": 1}
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"load": {"type": "number", "label": "Load"}},
+  "nodes": [
+    {
+      "kind": "group",
+      "clip": {"kind": "rect", "w": {"op": "box", "field": "w"}, "h": {"op": "box", "field": "h"}, "r": 6},
+      "children": [
+        {
+          "kind": "rect",
+          "w": {"op": "box", "field": "w"},
+          "h": {"op": "box", "field": "h"},
+          "fill": "#111827"
+        },
+        {
+          "kind": "series",
+          "input": "load",
+          "w": {"op": "box", "field": "w"},
+          "h": {"op": "box", "field": "h"},
+          "min": 0,
+          "max": 100,
+          "mode": "bars",
+          "pitch": 6,
+          "barWidth": 4,
+          "fill": "#f59e0b",
+          "stroke": {"paint": "#b45309", "width": 1}
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number", "label": "Temperature"}},
+  "values": {
+    "color": {
+      "op": "steps",
+      "value": {"op": "input", "name": "v"},
+      "at": [70, 85],
+      "out": ["#e5e7eb", "#f59e0b", "#ef4444"]
+    },
+    "number": {
+      "op": "if",
+      "args": [
+        {"op": "input", "name": "v", "field": "available"},
+        {"op": "format", "value": {"op": "input", "name": "v"}, "decimals": 1},
+        "-"
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "kind": "group",
+      "effects": [
+        {
+          "type": "glow",
+          "sigma": 4,
+          "color": {"op": "alpha", "args": [{"op": "value", "name": "color"}, 0.6]}
+        }
+      ],
+      "children": [
+        {
+          "kind": "text",
+          "font": {"family": "Inter", "size": 32, "weight": 600},
+          "fill": {"op": "value", "name": "color"},
+          "text": [
+            {"text": {"op": "value", "name": "number"}},
+            {"text": {"op": "input", "name": "v", "field": "unit"}, "font": {"size": 16, "weight": 400}}
+          ]
+        }
+      ]
+    }
+  ]
+}

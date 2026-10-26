@@ -1,0 +1,7 @@
+{
+  "title": "Conflict",
+  "status": 409,
+  "code": "conflict",
+  "rev": 47,
+  "conflicts": [{"op": 0, "id": "clock", "reason": "missing"}, {"op": 1, "id": "gauges", "reason": "missing"}]
+}

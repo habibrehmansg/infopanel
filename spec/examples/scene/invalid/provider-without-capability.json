@@ -1,0 +1,4 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [{"kind": "media", "source": {"provider": "now-playing", "ref": "art"}}]
+}

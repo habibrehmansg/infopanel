@@ -1,0 +1,77 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number", "label": "Level"}},
+  "values": {"pct": {"op": "clamp", "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]}},
+  "state": {
+    "peak": {
+      "init": {"op": "value", "name": "pct"},
+      "next": {
+        "op": "if",
+        "args": [
+          {"op": "ge", "args": [{"op": "value", "name": "pct"}, {"op": "state", "name": "peak"}]},
+          {"op": "value", "name": "pct"},
+          {
+            "op": "if",
+            "args": [
+              {"op": "lt", "args": [{"op": "state", "name": "age"}, 1.5]},
+              {"op": "state", "name": "peak"},
+              {
+                "op": "max",
+                "args": [
+                  {"op": "value", "name": "pct"},
+                  {
+                    "op": "sub",
+                    "args": [{"op": "state", "name": "peak"}, {"op": "mul", "args": [0.4, {"op": "dt"}]}]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "age": {
+      "init": 0,
+      "next": {
+        "op": "if",
+        "args": [
+          {"op": "ge", "args": [{"op": "value", "name": "pct"}, {"op": "state", "name": "peak"}]},
+          0,
+          {"op": "add", "args": [{"op": "state", "name": "age"}, {"op": "dt"}]}
+        ]
+      }
+    }
+  },
+  "nodes": [
+    {
+      "kind": "group",
+      "effects": [{"type": "shadow", "dx": 0, "dy": 2, "sigma": 3, "color": "#00000099"}],
+      "children": [
+        {"kind": "rect", "w": 24, "h": 160, "r": 3, "fill": "#1f2937"},
+        {
+          "kind": "rect",
+          "y": {"op": "sub", "args": [160, {"op": "mul", "args": [160, {"op": "value", "name": "pct"}]}]},
+          "w": 24,
+          "h": {"op": "mul", "args": [160, {"op": "value", "name": "pct"}]},
+          "r": 3,
+          "fill": {
+            "type": "linear",
+            "x1": 0,
+            "y1": 160,
+            "x2": 0,
+            "y2": 0,
+            "stops": [{"at": 0, "color": "#22c55e"}, {"at": 0.7, "color": "#eab308"}, {"at": 1, "color": "#ef4444"}]
+          }
+        },
+        {
+          "kind": "line",
+          "x1": 0,
+          "y1": {"op": "sub", "args": [160, {"op": "mul", "args": [160, {"op": "state", "name": "peak"}]}]},
+          "x2": 24,
+          "y2": {"op": "sub", "args": [160, {"op": "mul", "args": [160, {"op": "state", "name": "peak"}]}]},
+          "stroke": {"paint": "#ffffff", "width": 2}
+        }
+      ]
+    }
+  ]
+}

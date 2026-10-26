@@ -1,0 +1,39 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "group",
+      "transform": [{"type": "translate", "x": 10, "y": 10}],
+      "effects": [{"type": "blur", "sigma": 2}],
+      "children": [{"kind": "rect", "w": 40, "h": 40, "fill": "#60a5fa"}]
+    },
+    {
+      "kind": "group",
+      "blend": "screen",
+      "transform": [{"type": "scale", "x": -1, "y": 1, "cx": 100, "cy": 0}],
+      "clip": {"kind": "ellipse", "cx": 100, "cy": 30, "rx": 20, "ry": 20},
+      "children": [{"kind": "rect", "x": 70, "w": 60, "h": 60, "fill": "#f97316"}]
+    },
+    {
+      "kind": "group",
+      "blend": "plus",
+      "transform": [{"type": "skew", "x": 12}],
+      "clip": {"kind": "arc", "cx": 160, "cy": 30, "r": 30, "inner": 10, "start": -90, "sweep": 180},
+      "effects": [{"type": "glow", "sigma": 6, "color": "#fde047"}],
+      "children": [{"kind": "ellipse", "cx": 160, "cy": 30, "rx": 30, "ry": 30, "fill": "#facc15"}]
+    },
+    {
+      "kind": "group",
+      "transform": [{"type": "matrix", "m": [1, 0, 0.2, 1, 0, 0]}, {"type": "rotate", "angle": -10, "cx": 40, "cy": 100}],
+      "clip": {"kind": "path", "d": "M0 80 h80 v40 h-80 z", "fillRule": "nonzero"},
+      "effects": [{"type": "shadow", "dx": 3, "dy": 3, "sigma": 2, "color": "#000000aa"}, {"type": "blur", "sigma": 0.5}],
+      "children": [{"kind": "rect", "y": 80, "w": 80, "h": 40, "fill": "#a3e635"}]
+    },
+    {
+      "kind": "group",
+      "blend": "difference",
+      "visible": false,
+      "children": [{"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}]
+    }
+  ]
+}

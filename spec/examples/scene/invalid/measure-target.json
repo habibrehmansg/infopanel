@@ -1,0 +1,12 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": {"op": "measure", "node": "box", "field": "w"},
+      "h": 10,
+      "fill": "#ffffff",
+      "id": "box"
+    }
+  ]
+}

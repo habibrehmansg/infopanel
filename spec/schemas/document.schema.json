@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:infopanel:document:1",
+  "title": "Document",
+  "description": "One profile: its settings and a tree of items, each placed by the engine and drawn from its scene. Format infopanel.document/1; see docs/document.md. View state (selection, expansion, zoom) is never part of a document.",
+  "type": "object",
+  "required": ["format", "id", "profile", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "infopanel.document/1" },
+    "requires": {
+      "description": "Document capabilities beyond version 1.0. An engine that lacks one doesn't open the document for editing (see docs/versioning.md).",
+      "type": "array",
+      "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" },
+      "maxItems": 32,
+      "uniqueItems": true
+    },
+    "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+    "rev": {
+      "$ref": "urn:infopanel:common:1#/$defs/revision",
+      "description": "The document's revision: it goes up with every change (edits, undo, redo, revert).",
+      "readOnly": true
+    },
+    "profile": { "$ref": "#/$defs/profile" },
+    "items": {
+      "description": "Top-level items in drawing order: the first is at the back.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": ["name", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "rev": {
+          "$ref": "urn:infopanel:common:1#/$defs/revision",
+          "description": "The document revision at which a profile field last changed.",
+          "readOnly": true
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "width": { "description": "Canvas width in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "description": "Canvas height in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "background": {
+          "$ref": "urn:infopanel:common:1#/$defs/colorLiteral",
+          "description": "Every frame starts as this colour; a transparent one lets a desktop window show what is behind it.",
+          "default": "#ffffffff"
+        },
+        "statsOverlay": { "description": "Draw the engine's frame-rate overlay on every output.", "type": "boolean", "default": false },
+        "window": { "$ref": "#/$defs/windowSettings" },
+        "triggerApps": {
+          "description": "Applications (process names) whose being in front should bring this profile up. Stored; acted on by engines that support it.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 260 },
+          "maxItems": 32
+        },
+        "guides": {
+          "description": "Editor-only guide lines: saved with the document and undone like any edit, never drawn on any output.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/guide" },
+          "maxItems": 256
+        },
+        "editor": {
+          "$ref": "urn:infopanel:common:1#/$defs/opaque",
+          "description": "Client data kept with the document (for example defaults for new items); opaque to the engine. At most 64 KiB."
+        }
+      }
+    },
+    "windowSettings": {
+      "description": "The profile's desktop window (one per profile).",
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "description": "Show the profile in a desktop window.", "type": "boolean" },
+        "x": { "description": "Pixels from the left of the matched display.", "type": "integer", "minimum": -1000000, "maximum": 1000000, "default": 0 },
+        "y": { "description": "Pixels from the top of the matched display.", "type": "integer", "minimum": -1000000, "maximum": 1000000, "default": 0 },
+        "display": { "$ref": "#/$defs/displayMatch" },
+        "strict": { "description": "Hide the window when no display matches `display` exactly.", "type": "boolean", "default": false },
+        "topmost": { "type": "boolean", "default": false },
+        "draggable": { "type": "boolean", "default": true },
+        "resizable": { "type": "boolean", "default": true }
+      }
+    },
+    "displayMatch": {
+      "description": "The display the window belongs on, matched by name and size in pixels; x and y identify it among equals. Absent: the main display.",
+      "type": "object",
+      "required": ["name", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "maxLength": 256 },
+        "width": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "height": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "x": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "y": { "type": "integer", "minimum": -1000000, "maximum": 1000000 }
+      }
+    },
+    "guide": {
+      "description": "A guide line across the whole canvas: axis x is a vertical line at x = at, axis y a horizontal one at y = at.",
+      "type": "object",
+      "required": ["axis", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "axis": { "enum": ["x", "y"] },
+        "at": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+      }
+    },
+
+    "item": {
+      "oneOf": [
+        { "$ref": "#/$defs/sceneItem" },
+        { "$ref": "#/$defs/groupItem" }
+      ]
+    },
+    "sceneItem": {
+      "description": "An item that draws a scene, placed by `placement` in its parent's coordinates.",
+      "type": "object",
+      "required": ["kind", "id", "placement", "scene"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "scene" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "rev": { "$ref": "#/$defs/itemRev" },
+        "name": { "$ref": "#/$defs/itemName" },
+        "visible": { "type": "boolean", "default": true },
+        "locked": { "description": "Editors don't move or change a locked item; the engine doesn't enforce it.", "type": "boolean", "default": false },
+        "placement": { "$ref": "#/$defs/placement" },
+        "layout": { "$ref": "#/$defs/layout" },
+        "bindings": { "$ref": "#/$defs/bindings" },
+        "source": { "$ref": "#/$defs/source" },
+        "origin": { "$ref": "#/$defs/origin" },
+        "scene": { "$ref": "urn:infopanel:scene:1" }
+      }
+    },
+    "groupItem": {
+      "description": "An item that holds other items. Its children are placed in its coordinates: the group's placement moves and rotates them as one.",
+      "type": "object",
+      "required": ["kind", "id", "placement", "children"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "group" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "rev": { "$ref": "#/$defs/itemRev" },
+        "name": { "$ref": "#/$defs/itemName" },
+        "visible": { "description": "false hides the group and everything in it.", "type": "boolean", "default": true },
+        "locked": { "type": "boolean", "default": false },
+        "placement": { "$ref": "#/$defs/placement" },
+        "origin": { "$ref": "#/$defs/origin" },
+        "children": {
+          "description": "In drawing order: the first is at the back.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/item" }
+        }
+      }
+    },
+    "itemRev": {
+      "$ref": "urn:infopanel:common:1#/$defs/revision",
+      "description": "The document revision at which the item last changed. Ignored when a client inserts an item.",
+      "readOnly": true
+    },
+    "itemName": { "description": "A name for people (layer lists); not shown on outputs.", "type": "string", "maxLength": 256, "default": "" },
+    "placement": {
+      "description": "Where the engine puts the item: its local origin (0, 0) at (x, y) in the parent's coordinates, rotated clockwise by `rotation` degrees about `pivot` (local coordinates). See docs/geometry.md.",
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+        "y": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600, "default": 0 },
+        "pivot": {
+          "description": "Absent: half the layout box's size on each axis where it is set, 0 where it is automatic (and (0, 0) for groups).",
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+            { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+          ],
+          "items": false,
+          "minItems": 2
+        }
+      }
+    },
+    "layout": {
+      "description": "The item's layout box, (0, 0)–(w, h) in local coordinates; the scene reads it with {\"op\": \"box\"}. An absent dimension is automatic: the content decides it. A client that changes it usually sends a new scene too (setDesign).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "w": { "type": "number", "minimum": 0, "maximum": 16384 },
+        "h": { "type": "number", "minimum": 0, "maximum": 16384 }
+      }
+    },
+    "bindings": {
+      "description": "The sensor each scene input reads, by input name. Bindings for names the scene doesn't declare are kept and ignored.",
+      "type": "object",
+      "propertyNames": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+      "additionalProperties": { "$ref": "#/$defs/binding" }
+    },
+    "binding": {
+      "type": "object",
+      "required": ["key"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "description": "A sensor key as the engine lists them (GET /api/sensors).", "type": "string", "minLength": 1, "maxLength": 512 },
+        "stat": { "description": "The statistic an input's `value` reads.", "enum": ["now", "min", "max", "avg"], "default": "now" }
+      }
+    },
+    "source": {
+      "description": "How the client produced the scene, so it can produce it again. Opaque to the engine apart from this envelope: `format` names the client's own description in `data`; or `ref` is an opaque reference the engine never interprets, with the description kept elsewhere. `deps` lists stored blobs the description needs; the engine keeps them while any retained version of the document refers to them.",
+      "oneOf": [
+        { "$ref": "#/$defs/inlineSource" },
+        { "$ref": "#/$defs/refSource" }
+      ]
+    },
+    "inlineSource": {
+      "type": "object",
+      "required": ["format"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "data": true,
+        "deps": { "$ref": "#/$defs/sourceDeps" }
+      }
+    },
+    "refSource": {
+      "type": "object",
+      "required": ["ref"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "data": true,
+        "deps": { "$ref": "#/$defs/sourceDeps" }
+      }
+    },
+    "sourceDeps": {
+      "type": "array",
+      "items": { "$ref": "urn:infopanel:common:1#/$defs/blobId" },
+      "uniqueItems": true,
+      "maxItems": 256
+    },
+    "origin": {
+      "$ref": "urn:infopanel:common:1#/$defs/opaque",
+      "description": "Where the item came from, recorded by the client; opaque to the engine, kept on copy. At most 4 KiB."
+    }
+  }
+}

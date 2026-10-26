@@ -1,0 +1,11 @@
+{
+  "opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10",
+  "ops": [
+    {
+      "op": "setBindings",
+      "id": "cpu-bar",
+      "baseRev": 42,
+      "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "max"}}
+    }
+  ]
+}

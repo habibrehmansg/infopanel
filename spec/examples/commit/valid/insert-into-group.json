@@ -1,0 +1,18 @@
+{
+  "opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10",
+  "ops": [
+    {
+      "op": "insert",
+      "parentId": "gauges",
+      "item": {
+        "kind": "scene",
+        "id": "pasted",
+        "placement": {"x": 10, "y": 10},
+        "scene": {
+          "format": "infopanel.scene/1",
+          "nodes": [{"kind": "text", "font": {"family": "Inter", "size": 24}, "fill": "#ffffff", "text": "Hello"}]
+        }
+      }
+    }
+  ]
+}

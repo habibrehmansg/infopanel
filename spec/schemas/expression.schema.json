@@ -1,0 +1,494 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:infopanel:expression:1",
+  "description": "Typed expressions over a scene's inputs, the clock, the item's layout box, named values and state cells (see docs/expressions.md). A literal is a plain JSON value; anything else is an object whose `op` names the operation.",
+  "$defs": {
+    "numberExpr": {
+      "description": "An expression of type number.",
+      "oneOf": [
+        { "type": "number" },
+        { "$ref": "#/$defs/numberUnaryOp" },
+        { "$ref": "#/$defs/numberBinaryOp" },
+        { "$ref": "#/$defs/numberVariadicOp" },
+        { "$ref": "#/$defs/numberTernaryOp" },
+        { "$ref": "#/$defs/numberIfOp" },
+        { "$ref": "#/$defs/numberStepsOp" },
+        { "$ref": "#/$defs/numberInputOp" },
+        { "$ref": "#/$defs/historyOp" },
+        { "$ref": "#/$defs/timeOp" },
+        { "$ref": "#/$defs/boxOp" },
+        { "$ref": "#/$defs/measureOp" },
+        { "$ref": "#/$defs/dtOp" },
+        { "$ref": "#/$defs/valueRefOp" },
+        { "$ref": "#/$defs/stateRefOp" }
+      ]
+    },
+    "stringExpr": {
+      "description": "An expression of type string.",
+      "oneOf": [
+        { "type": "string", "maxLength": 4096 },
+        { "$ref": "#/$defs/concatOp" },
+        { "$ref": "#/$defs/caseOp" },
+        { "$ref": "#/$defs/formatOp" },
+        { "$ref": "#/$defs/formatTimeOp" },
+        { "$ref": "#/$defs/stringInputOp" },
+        { "$ref": "#/$defs/stringIfOp" },
+        { "$ref": "#/$defs/stringStepsOp" },
+        { "$ref": "#/$defs/valueRefOp" },
+        { "$ref": "#/$defs/stateRefOp" }
+      ]
+    },
+    "boolExpr": {
+      "description": "An expression of type bool.",
+      "oneOf": [
+        { "type": "boolean" },
+        { "$ref": "#/$defs/compareOp" },
+        { "$ref": "#/$defs/equalOp" },
+        { "$ref": "#/$defs/logicOp" },
+        { "$ref": "#/$defs/notOp" },
+        { "$ref": "#/$defs/boolInputOp" },
+        { "$ref": "#/$defs/boolIfOp" },
+        { "$ref": "#/$defs/valueRefOp" },
+        { "$ref": "#/$defs/stateRefOp" }
+      ]
+    },
+    "colorExpr": {
+      "description": "An expression of type color. A literal is #RRGGBB or #RRGGBBAA.",
+      "oneOf": [
+        { "$ref": "urn:infopanel:common:1#/$defs/colorLiteral" },
+        { "$ref": "#/$defs/rgbaOp" },
+        { "$ref": "#/$defs/alphaOp" },
+        { "$ref": "#/$defs/colorLerpOp" },
+        { "$ref": "#/$defs/colorIfOp" },
+        { "$ref": "#/$defs/colorStepsOp" },
+        { "$ref": "#/$defs/valueRefOp" },
+        { "$ref": "#/$defs/stateRefOp" }
+      ]
+    },
+    "anyExpr": {
+      "description": "An expression of any type. Its type is inferred (see docs/expressions.md); a string literal that is a colour literal is read as a colour where a colour is expected.",
+      "anyOf": [
+        { "$ref": "#/$defs/numberExpr" },
+        { "$ref": "#/$defs/stringExpr" },
+        { "$ref": "#/$defs/boolExpr" },
+        { "$ref": "#/$defs/colorExpr" }
+      ]
+    },
+
+    "numberUnaryOp": {
+      "description": "One number in, one number out: neg (−x), abs, floor, ceil, round (half away from zero), sqrt, exp, log (natural), sin and cos (of degrees).",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "enum": ["neg", "abs", "floor", "ceil", "round", "sqrt", "exp", "log", "sin", "cos"] },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/numberExpr" }],
+          "items": false,
+          "minItems": 1
+        }
+      }
+    },
+    "numberBinaryOp": {
+      "description": "sub (a − b), div (a ÷ b, 0 when b is 0), mod (floored: a − b·floor(a/b), 0 when b is 0), pow (a^b), atan2 (angle of the point (b, a) in degrees, args [y, x]).",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "enum": ["sub", "div", "mod", "pow", "atan2"] },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/numberExpr" }, { "$ref": "#/$defs/numberExpr" }],
+          "items": false,
+          "minItems": 2
+        }
+      }
+    },
+    "numberVariadicOp": {
+      "description": "add, mul, min and max of 2 to 16 numbers.",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "enum": ["add", "mul", "min", "max"] },
+        "args": { "type": "array", "items": { "$ref": "#/$defs/numberExpr" }, "minItems": 2, "maxItems": 16 }
+      }
+    },
+    "numberTernaryOp": {
+      "description": "clamp [x, lo, hi]; norm [x, lo, hi] = (x − lo) ÷ (hi − lo), 0 when hi = lo, not clamped; lerp [a, b, t] = a + (b − a)·t, not clamped.",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "enum": ["clamp", "norm", "lerp"] },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/numberExpr" }, { "$ref": "#/$defs/numberExpr" }, { "$ref": "#/$defs/numberExpr" }],
+          "items": false,
+          "minItems": 3
+        }
+      }
+    },
+    "compareOp": {
+      "description": "lt, le, gt, ge: compare two numbers.",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "enum": ["lt", "le", "gt", "ge"] },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/numberExpr" }, { "$ref": "#/$defs/numberExpr" }],
+          "items": false,
+          "minItems": 2
+        }
+      }
+    },
+    "equalOp": {
+      "description": "eq, ne: compare two values of the same type (numbers exactly, strings by code point, colours by their 8-digit form).",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "enum": ["eq", "ne"] },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/anyExpr" }, { "$ref": "#/$defs/anyExpr" }],
+          "items": false,
+          "minItems": 2
+        }
+      }
+    },
+    "logicOp": {
+      "description": "and, or of 2 to 16 bools.",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "enum": ["and", "or"] },
+        "args": { "type": "array", "items": { "$ref": "#/$defs/boolExpr" }, "minItems": 2, "maxItems": 16 }
+      }
+    },
+    "notOp": {
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "not" },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/boolExpr" }],
+          "items": false,
+          "minItems": 1
+        }
+      }
+    },
+    "concatOp": {
+      "description": "Joins 1 to 32 strings. The result is cut to its first 4,096 Unicode scalar values.",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "concat" },
+        "args": { "type": "array", "items": { "$ref": "#/$defs/stringExpr" }, "minItems": 1, "maxItems": 32 }
+      }
+    },
+    "caseOp": {
+      "description": "upper, lower: case conversion with invariant (locale-independent) rules. The result is cut to its first 4,096 Unicode scalar values.",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "enum": ["upper", "lower"] },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/stringExpr" }],
+          "items": false,
+          "minItems": 1
+        }
+      }
+    },
+    "formatOp": {
+      "description": "A number as text: rounded half away from zero to `decimals` places (0–6), with an optional group separator every three integer digits. The result is cut to its first 4,096 Unicode scalar values.",
+      "type": "object",
+      "required": ["op", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "format" },
+        "value": { "$ref": "#/$defs/numberExpr" },
+        "decimals": { "$ref": "#/$defs/numberExpr", "description": "Rounded to an integer and clamped to 0–6.", "default": 0 },
+        "group": { "$ref": "#/$defs/boolExpr", "description": "Insert `groupSeparator` between groups of three integer digits.", "default": false },
+        "decimalSeparator": { "type": "string", "maxLength": 4, "default": "." },
+        "groupSeparator": { "type": "string", "maxLength": 4, "default": "," }
+      }
+    },
+    "formatTimeOp": {
+      "description": "The tick's date and time as text, by a pattern (see docs/expressions.md, \"Time patterns\"). The result is cut to its first 4,096 Unicode scalar values.",
+      "type": "object",
+      "required": ["op", "pattern"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "formatTime" },
+        "pattern": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "locale": {
+          "description": "A BCP 47 language tag for month and day names and the AM/PM marker. Absent: the engine's locale.",
+          "type": "string",
+          "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,4}$"
+        },
+        "zone": { "$ref": "#/$defs/timeZone" }
+      }
+    },
+    "timeZone": {
+      "description": "An IANA time zone name such as Europe/Berlin. Absent: the engine's local zone.",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){0,3}$",
+      "maxLength": 64
+    },
+    "timeOp": {
+      "description": "A number from the tick's clock. elapsed: seconds since the engine started rendering the document (monotonic). epoch: seconds since 1970-01-01T00:00:00Z. dayTime: seconds since local midnight, with fraction. year, month (1–12), day (1–31), weekday (1 = Monday … 7 = Sunday), hour (0–23), minute, second (0–59), millisecond (0–999): local calendar fields.",
+      "type": "object",
+      "required": ["op", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "time" },
+        "field": { "enum": ["elapsed", "epoch", "dayTime", "year", "month", "day", "weekday", "hour", "minute", "second", "millisecond"] },
+        "zone": { "$ref": "#/$defs/timeZone" }
+      }
+    },
+    "boxOp": {
+      "description": "The item's layout box size in pixels; an automatic dimension reads as 0.",
+      "type": "object",
+      "required": ["op", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "box" },
+        "field": { "enum": ["w", "h"] }
+      }
+    },
+    "measureOp": {
+      "description": "The measured width or height of a text node of this scene (by id), laid out this tick. Not allowed in state cells, nor where it would affect the layout of a text node that is measured (see docs/expressions.md, \"Order of evaluation\").",
+      "type": "object",
+      "required": ["op", "node", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "measure" },
+        "node": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "field": { "enum": ["w", "h"] }
+      }
+    },
+    "dtOp": {
+      "description": "Seconds since the previous state update. Only inside a state cell's `next`.",
+      "type": "object",
+      "required": ["op"],
+      "additionalProperties": false,
+      "properties": { "op": { "const": "dt" } }
+    },
+    "historyOp": {
+      "description": "An aggregate over the last `count` history samples of a number input (newest last). No samples: 0.",
+      "type": "object",
+      "required": ["op", "input", "fn", "count"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "history" },
+        "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "fn": { "enum": ["min", "max", "avg", "first", "last", "count"] },
+        "count": { "type": "integer", "minimum": 1, "maximum": 4096 }
+      }
+    },
+    "numberInputOp": {
+      "description": "A number input's reading. value: the statistic the binding selects (now by default); now, min, max, avg: that statistic. An unbound or unavailable input reads 0.",
+      "type": "object",
+      "required": ["op", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "input" },
+        "name": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "field": { "enum": ["value", "now", "min", "max", "avg"], "default": "value" }
+      }
+    },
+    "stringInputOp": {
+      "description": "An input's text: text (a text input's reading, or a table input's summary), unit (a number input's unit), status (unbound, live, stale, unavailable or denied). Unavailable text reads \"\". The result is cut to its first 4,096 Unicode scalar values.",
+      "type": "object",
+      "required": ["op", "name", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "input" },
+        "name": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "field": { "enum": ["text", "unit", "status"] }
+      }
+    },
+    "boolInputOp": {
+      "description": "Whether an input has a reading (status live or stale).",
+      "type": "object",
+      "required": ["op", "name", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "input" },
+        "name": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "field": { "const": "available" }
+      }
+    },
+    "valueRefOp": {
+      "description": "A named value of the scene (`values`).",
+      "type": "object",
+      "required": ["op", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "value" },
+        "name": { "$ref": "urn:infopanel:common:1#/$defs/name" }
+      }
+    },
+    "stateRefOp": {
+      "description": "A state cell of the scene (`state`): its value this tick, or its previous value inside a cell's `next`.",
+      "type": "object",
+      "required": ["op", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "state" },
+        "name": { "$ref": "urn:infopanel:common:1#/$defs/name" }
+      }
+    },
+    "rgbaOp": {
+      "description": "A colour from red, green, blue (0–255) and alpha (0–1), each clamped.",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "rgba" },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/numberExpr" }, { "$ref": "#/$defs/numberExpr" }, { "$ref": "#/$defs/numberExpr" }, { "$ref": "#/$defs/numberExpr" }],
+          "items": false,
+          "minItems": 4
+        }
+      }
+    },
+    "alphaOp": {
+      "description": "The colour with its alpha replaced (0–1, clamped).",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "alpha" },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/colorExpr" }, { "$ref": "#/$defs/numberExpr" }],
+          "items": false,
+          "minItems": 2
+        }
+      }
+    },
+    "colorLerpOp": {
+      "description": "Mixes two colours per channel in sRGB, unpremultiplied: a + (b − a)·t, t clamped to 0–1.",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "lerp" },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/colorExpr" }, { "$ref": "#/$defs/colorExpr" }, { "$ref": "#/$defs/numberExpr" }],
+          "items": false,
+          "minItems": 3
+        }
+      }
+    },
+    "numberIfOp": {
+      "description": "args [condition, then, else].",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "if" },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/boolExpr" }, { "$ref": "#/$defs/numberExpr" }, { "$ref": "#/$defs/numberExpr" }],
+          "items": false,
+          "minItems": 3
+        }
+      }
+    },
+    "stringIfOp": {
+      "description": "args [condition, then, else].",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "if" },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/boolExpr" }, { "$ref": "#/$defs/stringExpr" }, { "$ref": "#/$defs/stringExpr" }],
+          "items": false,
+          "minItems": 3
+        }
+      }
+    },
+    "boolIfOp": {
+      "description": "args [condition, then, else].",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "if" },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/boolExpr" }, { "$ref": "#/$defs/boolExpr" }, { "$ref": "#/$defs/boolExpr" }],
+          "items": false,
+          "minItems": 3
+        }
+      }
+    },
+    "colorIfOp": {
+      "description": "args [condition, then, else].",
+      "type": "object",
+      "required": ["op", "args"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "if" },
+        "args": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/boolExpr" }, { "$ref": "#/$defs/colorExpr" }, { "$ref": "#/$defs/colorExpr" }],
+          "items": false,
+          "minItems": 3
+        }
+      }
+    },
+    "numberStepsOp": {
+      "description": "Piecewise constant: out[i], where i is the number of thresholds in `at` that `value` is at or above. `out` has one more entry than `at`.",
+      "type": "object",
+      "required": ["op", "value", "at", "out"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "steps" },
+        "value": { "$ref": "#/$defs/numberExpr" },
+        "at": { "type": "array", "items": { "$ref": "#/$defs/numberExpr" }, "minItems": 1, "maxItems": 32 },
+        "out": { "type": "array", "items": { "$ref": "#/$defs/numberExpr" }, "minItems": 2, "maxItems": 33 }
+      }
+    },
+    "stringStepsOp": {
+      "description": "Piecewise constant text; see numberStepsOp.",
+      "type": "object",
+      "required": ["op", "value", "at", "out"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "steps" },
+        "value": { "$ref": "#/$defs/numberExpr" },
+        "at": { "type": "array", "items": { "$ref": "#/$defs/numberExpr" }, "minItems": 1, "maxItems": 32 },
+        "out": { "type": "array", "items": { "$ref": "#/$defs/stringExpr" }, "minItems": 2, "maxItems": 33 }
+      }
+    },
+    "colorStepsOp": {
+      "description": "Piecewise constant colour (colour rules); see numberStepsOp.",
+      "type": "object",
+      "required": ["op", "value", "at", "out"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "steps" },
+        "value": { "$ref": "#/$defs/numberExpr" },
+        "at": { "type": "array", "items": { "$ref": "#/$defs/numberExpr" }, "minItems": 1, "maxItems": 32 },
+        "out": { "type": "array", "items": { "$ref": "#/$defs/colorExpr" }, "minItems": 2, "maxItems": 33 }
+      }
+    }
+  }
+}

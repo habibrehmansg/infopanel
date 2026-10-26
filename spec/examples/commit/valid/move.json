@@ -1,0 +1,14 @@
+{
+  "opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10",
+  "ops": [
+    {
+      "op": "move",
+      "id": "cpu-temp",
+      "baseRev": 41,
+      "parentId": "gauges",
+      "index": 0,
+      "placement": {"x": -350.3, "y": 83.1, "rotation": -15}
+    },
+    {"op": "move", "id": "clock", "index": 0}
+  ]
+}

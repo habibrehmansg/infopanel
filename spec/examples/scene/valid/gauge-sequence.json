@@ -1,0 +1,48 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number"}},
+  "values": {
+    "target": {
+      "op": "mul",
+      "args": [{"op": "clamp", "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]}, 4]
+    }
+  },
+  "state": {
+    "frame": {
+      "init": {"op": "value", "name": "target"},
+      "next": {
+        "op": "add",
+        "args": [
+          {"op": "state", "name": "frame"},
+          {
+            "op": "clamp",
+            "args": [
+              {"op": "sub", "args": [{"op": "value", "name": "target"}, {"op": "state", "name": "frame"}]},
+              {"op": "neg", "args": [{"op": "mul", "args": [8, {"op": "dt"}]}]},
+              {"op": "mul", "args": [8, {"op": "dt"}]}
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "nodes": [
+    {
+      "kind": "media",
+      "w": 128,
+      "h": 128,
+      "fit": "contain",
+      "source": {
+        "sequence": [
+          {"asset": "sha256:d33c05a7e4db5800d89782dde7346c7626b10180a3cbed024a1722af0db75138"},
+          {"asset": "sha256:95427add5133449258abbcc15ec375119871e09dade89b982e3a3aba6f55de57"},
+          {"asset": "sha256:ae9ce390b1c2157573406bef697fb380900709f68c1de19d4d75d69c77a71e56"},
+          {"asset": "sha256:d2bcfa5bab4a790f9fcfe40cae4003a117ee62283379646cafde55da0d19f3c1"},
+          {"asset": "sha256:dc12f6394ba94be0e7793081a10bedffd4c150a85d607dfc26a315dbe22c0969"}
+        ],
+        "index": {"op": "state", "name": "frame"},
+        "crossfade": true
+      }
+    }
+  ]
+}

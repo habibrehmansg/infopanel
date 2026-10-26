@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"s": {"type": "text"}},
+  "nodes": [{"kind": "series", "input": "s", "w": 10, "h": 10, "min": 0, "max": 1}]
+}

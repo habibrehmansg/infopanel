@@ -1,0 +1,33 @@
+{
+  "opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10",
+  "ops": [
+    {
+      "op": "insert",
+      "item": {
+        "kind": "group",
+        "id": "g",
+        "placement": {"x": 0, "y": 0},
+        "children": [
+          {
+            "kind": "scene",
+            "id": "x",
+            "placement": {"x": 0, "y": 0},
+            "scene": {
+              "format": "infopanel.scene/1",
+              "nodes": [{"kind": "text", "font": {"family": "Inter", "size": 24}, "fill": "#ffffff", "text": "Hello"}]
+            }
+          },
+          {
+            "kind": "scene",
+            "id": "x",
+            "placement": {"x": 0, "y": 0},
+            "scene": {
+              "format": "infopanel.scene/1",
+              "nodes": [{"kind": "text", "font": {"family": "Inter", "size": 24}, "fill": "#ffffff", "text": "Hello"}]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

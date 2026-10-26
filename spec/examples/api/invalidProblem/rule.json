@@ -1,0 +1,6 @@
+{
+  "title": "Invalid commit",
+  "status": 422,
+  "code": "invalid",
+  "errors": [{"path": "/ops/0/scene/nodes/0/w", "code": "ref.input", "message": "The scene declares no input 'v'."}]
+}

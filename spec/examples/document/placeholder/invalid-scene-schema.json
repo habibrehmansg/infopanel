@@ -1,0 +1,20 @@
+{
+  "format": "infopanel.document/1",
+  "id": "3dd19c0e-675a-4591-b096-83417853861f",
+  "profile": {"name": "Example", "width": 800, "height": 480},
+  "items": [
+    {
+      "kind": "group",
+      "id": "g",
+      "placement": {"x": 0, "y": 0},
+      "children": [
+        {
+          "kind": "scene",
+          "id": "a",
+          "placement": {"x": 0, "y": 0},
+          "scene": {"format": "infopanel.scene/1", "nodes": [{"kind": "rect"}]}
+        }
+      ]
+    }
+  ]
+}

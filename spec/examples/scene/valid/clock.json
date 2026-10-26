@@ -1,0 +1,96 @@
+{
+  "format": "infopanel.scene/1",
+  "values": {"t": {"op": "time", "field": "dayTime"}},
+  "nodes": [
+    {
+      "kind": "ellipse",
+      "cx": 100,
+      "cy": 100,
+      "rx": 90,
+      "ry": 90,
+      "fill": "#111827",
+      "stroke": {"paint": "#4b5563", "width": 2}
+    },
+    {
+      "kind": "group",
+      "transform": [
+        {
+          "type": "rotate",
+          "angle": {
+            "op": "mul",
+            "args": [
+              {"op": "mod", "args": [{"op": "value", "name": "t"}, 43200]},
+              {"op": "div", "args": [360, 43200]}
+            ]
+          },
+          "cx": 100,
+          "cy": 100
+        }
+      ],
+      "children": [
+        {
+          "kind": "line",
+          "x1": 100,
+          "y1": 100,
+          "x2": 100,
+          "y2": 50,
+          "stroke": {"paint": "#ffffff", "width": 5, "cap": "round"}
+        }
+      ]
+    },
+    {
+      "kind": "group",
+      "transform": [
+        {
+          "type": "rotate",
+          "angle": {"op": "mul", "args": [{"op": "mod", "args": [{"op": "value", "name": "t"}, 3600]}, 0.1]},
+          "cx": 100,
+          "cy": 100
+        }
+      ],
+      "children": [
+        {
+          "kind": "line",
+          "x1": 100,
+          "y1": 100,
+          "x2": 100,
+          "y2": 25,
+          "stroke": {"paint": "#ffffff", "width": 3, "cap": "round"}
+        }
+      ]
+    },
+    {
+      "kind": "group",
+      "transform": [
+        {
+          "type": "rotate",
+          "angle": {
+            "op": "mul",
+            "args": [{"op": "floor", "args": [{"op": "mod", "args": [{"op": "value", "name": "t"}, 60]}]}, 6]
+          },
+          "cx": 100,
+          "cy": 100
+        }
+      ],
+      "children": [
+        {
+          "kind": "line",
+          "x1": 100,
+          "y1": 110,
+          "x2": 100,
+          "y2": 20,
+          "stroke": {"paint": "#ef4444", "width": 1.5, "cap": "round"}
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "x": 100,
+      "y": 214,
+      "align": "center",
+      "font": {"family": "Inter", "size": 16},
+      "fill": "#ffffff",
+      "text": {"op": "upper", "args": [{"op": "formatTime", "pattern": "EEE d MMM HH:mm:ss", "locale": "en-GB"}]}
+    }
+  ]
+}

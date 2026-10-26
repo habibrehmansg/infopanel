@@ -1,0 +1,83 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"song": {"type": "text", "label": "Now playing"}},
+  "nodes": [
+    {
+      "kind": "text",
+      "id": "title",
+      "w": 200,
+      "h": 24,
+      "overflow": "marquee",
+      "marquee": {"speed": 40, "gap": 60},
+      "font": {"family": "Inter", "size": 18},
+      "fill": "#ffffff",
+      "text": {"op": "input", "name": "song", "field": "text"}
+    },
+    {
+      "kind": "text",
+      "y": 30,
+      "w": 200,
+      "h": 40,
+      "wrap": "word",
+      "maxLines": 2,
+      "overflow": "ellipsis",
+      "lineHeight": 1.1,
+      "letterSpacing": 0.5,
+      "align": "end",
+      "valign": "middle",
+      "underline": true,
+      "font": {"family": "Inter", "size": 14, "italic": true},
+      "fill": "#d1d5db",
+      "text": "A long caption that wraps onto two lines and then ends with an ellipsis"
+    },
+    {
+      "kind": "text",
+      "y": 76,
+      "w": 120,
+      "fit": {"min": 8},
+      "overflow": "clip",
+      "strike": true,
+      "font": {"family": "Inter", "size": 24},
+      "fill": "#9ca3af",
+      "text": "Shrinks to fit the box"
+    },
+    {
+      "kind": "rect",
+      "y": 110,
+      "w": {"op": "add", "args": [{"op": "measure", "node": "badge", "field": "w"}, 12]},
+      "h": {"op": "add", "args": [{"op": "measure", "node": "badge", "field": "h"}, 4]},
+      "r": 6,
+      "fill": "#2563eb"
+    },
+    {
+      "kind": "text",
+      "id": "badge",
+      "x": 6,
+      "y": 112,
+      "font": {"family": "Inter", "size": 12, "weight": 700},
+      "fill": "#ffffff",
+      "text": {"op": "upper", "args": ["live"]}
+    },
+    {
+      "kind": "text",
+      "x": {"op": "add", "args": [{"op": "measure", "node": "badge", "field": "w"}, 18]},
+      "y": 112,
+      "w": {"op": "sub", "args": [200, {"op": "measure", "node": "badge", "field": "w"}]},
+      "overflow": "ellipsis",
+      "font": {"family": "Inter", "size": 12},
+      "fill": "#ffffff",
+      "text": "laid out after the badge it follows"
+    },
+    {
+      "kind": "text",
+      "x": 200,
+      "y": 160,
+      "align": "end",
+      "valign": "baseline",
+      "font": {"family": "Inter", "size": 12},
+      "fill": "#6b7280",
+      "visible": {"op": "eq", "args": [{"op": "input", "name": "song", "field": "status"}, "stale"]},
+      "text": "stale"
+    }
+  ]
+}

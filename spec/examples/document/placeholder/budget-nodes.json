@@ -1,0 +1,37 @@
+{
+  "format": "infopanel.document/1",
+  "id": "3dd19c0e-675a-4591-b096-83417853861f",
+  "profile": {"name": "Example", "width": 800, "height": 480},
+  "items": [
+    {
+      "kind": "scene",
+      "id": "a",
+      "placement": {"x": 0, "y": 0},
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"},
+          {"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "b",
+      "placement": {"x": 0, "y": 0},
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"},
+          {"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "c",
+      "placement": {"x": 0, "y": 0},
+      "scene": {"format": "infopanel.scene/1", "nodes": [{"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}]}
+    }
+  ]
+}

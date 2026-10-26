@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:infopanel:common:1",
+  "$comment": "Shared building blocks; has no title, so it is only a $defs container.",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "description": "Stable identifier.",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "severity": {
+      "description": "How loud a message is.",
+      "enum": ["info", "warn", "error"]
+    },
+    "level": { "type": "integer", "enum": [0, 1, 2] },
+    "enabled": { "const": true },
+    "nothing": { "const": null },
+    "numberExpr": {
+      "description": "A number, or an expression that yields one.",
+      "oneOf": [{ "type": "number" }, { "$ref": "#/$defs/addExpr" }]
+    },
+    "addExpr": {
+      "type": "object",
+      "required": ["kind", "args"],
+      "properties": {
+        "kind": { "const": "add" },
+        "args": { "type": "array", "items": { "$ref": "#/$defs/numberExpr" }, "minItems": 2 }
+      },
+      "additionalProperties": false
+    },
+    "range": {
+      "description": "Start, end and an optional unit.",
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "string" }],
+      "minItems": 2,
+      "items": false
+    },
+    "tagged-list": {
+      "type": "array",
+      "prefixItems": [{ "type": "string" }],
+      "minItems": 1,
+      "items": { "type": "number" }
+    },
+    "labels": {
+      "description": "Free-form labels.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "opaque": {},
+    "anything": true,
+    "neverValue": false,
+    "nullableName": { "type": ["string", "null"] },
+    "sceneRef": { "$ref": "urn:infopanel:scene:1" },
+    "commit-request": {
+      "description": "Commit a batch of operations.\nLines keep their breaks and a stray */ is escaped.",
+      "type": "object",
+      "required": ["id", "ops"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "revision": {
+          "description": "Document revision.",
+          "type": "integer",
+          "readOnly": true,
+          "minimum": 0
+        },
+        "ops": {
+          "type": "array",
+          "items": { "$ref": "urn:infopanel:scene:1#/$defs/op" },
+          "minItems": 1,
+          "maxItems": 16
+        },
+        "content-type": { "type": "string", "default": "application/json" },
+        "x.y": { "type": "number", "minimum": 0, "maximum": 16384 },
+        "legacy": { "type": "boolean", "deprecated": true, "default": false },
+        "meta": {},
+        "extra": { "type": "object" },
+        "values": {
+          "type": "array",
+          "items": { "oneOf": [{ "type": "string" }, { "type": "number" }] },
+          "uniqueItems": true
+        },
+        "weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "mode": { "$ref": "#/$defs/severity", "description": "Which severity to use." },
+        "pick": { "$ref": "#/$defs/severity", "const": "warn" },
+        "window": {
+          "type": "object",
+          "required": ["size"],
+          "properties": {
+            "size": {
+              "type": "object",
+              "required": ["w", "h"],
+              "properties": { "w": { "type": "number" }, "h": { "type": "number" } }
+            },
+            "origin": { "$ref": "#/$defs/range" }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

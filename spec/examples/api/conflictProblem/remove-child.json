@@ -1,0 +1,7 @@
+{
+  "title": "Conflict",
+  "status": 409,
+  "code": "conflict",
+  "rev": 11,
+  "conflicts": [{"op": 0, "id": "gpu-gauge", "reason": "changed", "rev": 11, "fields": ["design"]}]
+}

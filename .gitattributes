@@ -3,3 +3,7 @@ InfoPanel.Core.Tests/Fixtures/** -text
 
 # Binary end-to-end fixtures (zip archives).
 InfoPanel.Core.Tests/Fixtures/e2e/** binary
+
+# The format specification: LF everywhere (generated types are compared byte for byte); example media are binary.
+spec/** text eol=lf
+spec/examples/media/** binary

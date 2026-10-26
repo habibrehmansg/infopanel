@@ -1,0 +1,6 @@
+{
+  "format": "infopanel.scene/1",
+  "values": {"twice": {"op": "mul", "args": [{"op": "state", "name": "a"}, 2]}},
+  "state": {"a": {"init": 1, "next": {"op": "value", "name": "twice"}}},
+  "nodes": [{"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}]
+}

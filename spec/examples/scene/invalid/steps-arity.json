@@ -1,0 +1,11 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": {"op": "steps", "value": 5, "at": [1, 2], "out": [1, 2]},
+      "h": 10,
+      "fill": "#ffffff"
+    }
+  ]
+}

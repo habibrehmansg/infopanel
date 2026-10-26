@@ -1,0 +1,64 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number", "label": "Value"}},
+  "values": {"pct": {"op": "clamp", "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]}},
+  "state": {
+    "shown": {
+      "init": {"op": "value", "name": "pct"},
+      "next": {
+        "op": "add",
+        "args": [
+          {"op": "state", "name": "shown"},
+          {
+            "op": "mul",
+            "args": [
+              {"op": "sub", "args": [{"op": "value", "name": "pct"}, {"op": "state", "name": "shown"}]},
+              {
+                "op": "sub",
+                "args": [
+                  1,
+                  {
+                    "op": "exp",
+                    "args": [{"op": "div", "args": [{"op": "neg", "args": [{"op": "dt"}]}, 0.25]}]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": {"op": "box", "field": "w"},
+      "h": {"op": "box", "field": "h"},
+      "r": 4,
+      "fill": "#1f2937"
+    },
+    {
+      "kind": "rect",
+      "w": {"op": "mul", "args": [{"op": "box", "field": "w"}, {"op": "state", "name": "shown"}]},
+      "h": {"op": "box", "field": "h"},
+      "r": 4,
+      "fill": {
+        "type": "linear",
+        "x1": 0,
+        "y1": 0,
+        "x2": {"op": "box", "field": "w"},
+        "y2": 0,
+        "stops": [{"at": 0, "color": "#22c55e"}, {"at": 1, "color": "#ef4444"}]
+      }
+    },
+    {
+      "kind": "rect",
+      "x": 0.5,
+      "y": 0.5,
+      "w": {"op": "sub", "args": [{"op": "box", "field": "w"}, 1]},
+      "h": {"op": "sub", "args": [{"op": "box", "field": "h"}, 1]},
+      "r": 3.5,
+      "stroke": {"paint": "#9ca3af", "width": 1}
+    }
+  ]
+}

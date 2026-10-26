@@ -1,0 +1,4 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [{"kind": "text", "overflow": "marquee", "font": {"family": "Inter", "size": 12}, "text": "scrolls"}]
+}

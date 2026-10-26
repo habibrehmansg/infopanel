@@ -1,0 +1,4 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [{"kind": "path", "d": "M0 0 L10 0 L10 10 L0 10 Z", "fill": "#ffffff"}]
+}

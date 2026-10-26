@@ -1,0 +1,8 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number"}},
+  "nodes": [
+    {"kind": "series", "input": "v", "w": 10, "h": 10, "min": 0, "max": 1},
+    {"kind": "series", "input": "v", "w": 10, "h": 10, "min": 0, "max": 1}
+  ]
+}

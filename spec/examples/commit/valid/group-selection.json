@@ -1,0 +1,12 @@
+{
+  "opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10",
+  "ops": [
+    {
+      "op": "insert",
+      "index": 1,
+      "item": {"kind": "group", "id": "sel", "placement": {"x": 40, "y": 40}, "children": []}
+    },
+    {"op": "move", "id": "cpu-temp", "parentId": "sel", "index": 0, "placement": {"x": 0, "y": 0}},
+    {"op": "move", "id": "cpu-bar", "parentId": "sel", "index": 1, "placement": {"x": 0, "y": 60}}
+  ]
+}

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">
+<defs>
+<rect id="d0" width="10" height="10"/>
+<g id="d1"><use href="#d0"/><use href="#d0"/></g>
+<g id="d2"><use href="#d1"/><use href="#d1"/></g>
+<g id="d3"><use href="#d2"/><use href="#d2"/></g>
+<g id="d4"><use href="#d3"/><use href="#d3"/></g>
+<g id="d5"><use href="#d4"/><use href="#d4"/></g>
+<g id="d6"><use href="#d5"/><use href="#d5"/></g>
+<g id="d7"><use href="#d6"/><use href="#d6"/></g>
+<g id="d8"><use href="#d7"/><use href="#d7"/></g>
+<g id="d9"><use href="#d8"/><use href="#d8"/></g>
+<g id="d10"><use href="#d9"/><use href="#d9"/></g>
+<g id="d11"><use href="#d10"/><use href="#d10"/></g>
+<g id="d12"><use href="#d11"/><use href="#d11"/></g>
+<g id="d13"><use href="#d12"/><use href="#d12"/></g>
+<g id="d14"><use href="#d13"/><use href="#d13"/></g>
+<g id="d15"><use href="#d14"/><use href="#d14"/></g>
+<g id="d16"><use href="#d15"/><use href="#d15"/></g>
+<g id="d17"><use href="#d16"/><use href="#d16"/></g>
+<g id="d18"><use href="#d17"/><use href="#d17"/></g>
+<g id="d19"><use href="#d18"/><use href="#d18"/></g>
+<g id="d20"><use href="#d19"/><use href="#d19"/></g>
+</defs>
+<use href="#d20"/>
+</svg>

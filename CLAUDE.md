@@ -13,9 +13,10 @@ Every decision made while building 2.0 is in `docs/2.0/decisions.md`, newest las
 
 | Project | TFM | Role |
 |---|---|---|
-| `InfoPanel.Core` | net10.0 | Models (the 14 1.x item kinds, `Profile`), renderer (`Drawing/`), sensors (`Sensors/`: `SensorHub`, status, mock source, `PolledSensorSource`, history; `Sensors/MacOS/`: the macOS source through IOKit, CoreFoundation, libSystem and IOReport), persistence (`Persistence/`: 1.x XML, `.infopanel` archives, 1.x folder import), editing (`Editing/`: `Workspace`, `ProfileDocument`, undo, kind manifest), output (`Output/`: `RenderService` render loops, `IFrameSink`) |
+| `InfoPanel.Core` | net10.0 | Models (the 14 1.x item kinds, `Profile`), renderer (`Drawing/`), sensors (`Sensors/`: `SensorHub`, status, mock source, `PolledSensorSource`, history; `Sensors/MacOS/`: the macOS source through IOKit, CoreFoundation, libSystem and IOReport), persistence (`Persistence/`: 1.x XML, `.infopanel` archives, 1.x folder import), editing (`Editing/`: `Workspace`, `ProfileDocument`, undo, kind manifest), output (`Output/`: `RenderService` render loops, `IFrameSink`), the formats (`Spec/`: the embedded `spec/schemas`, a validator for their JSON Schema subset, the data-only model, the rule and limit validators, `MediaProbe`; nothing renders it yet) |
 | `InfoPanel` | net10.0, `Microsoft.NET.Sdk.Web` | The engine executable: hosting and command line (`Hosting/`), REST API (`Api/`), `/ws` preview (`Preview/`), security (`Security/`), desktop windows (`Desktop/`: `DisplayWindowManager`, the platform seam, AppKit through libobjc in `Desktop/MacOS/`), serves the web root (`Hosting/StaticSite.cs`) |
-| `InfoPanel.Core.Tests`, `InfoPanel.Tests` | net10.0 | xUnit v3 (VSTest). Core: models, persistence, goldens, render loop, the kind manifest snapshot (`Snapshots/kinds.json`) and the e2e archive (`Fixtures/e2e/`). Host: API, security, `/ws`, static files, preview parity |
+| `InfoPanel.Core.Tests`, `InfoPanel.Tests` | net10.0 | xUnit v3 (VSTest). Core: models, persistence, goldens, render loop, the kind manifest snapshot (`Snapshots/kinds.json`), the e2e archive (`Fixtures/e2e/`), the formats (`Spec/`: every `spec/examples` file, the model against the schemas). Host: API, security, `/ws`, static files, preview parity |
+| `spec/` | JSON, Node 22+ | The document, scene and engine API formats: JSON Schemas (`schemas/`), generated TypeScript types (`types/`), docs (`docs/`), examples (`examples/`, with `expected.json`), dependency-free tools (`tools/`). `package.json` is `@infopanel/spec`, private; clients use it by path. Licensed by `spec/LICENSE`; see `spec/README.md` |
 | `InfoPanel.Plugins*`, `InfoPanel.Extras` | net8.0 | 1.x plugin SDK, host, loader and simulator, kept on net8.0 so existing plugins keep working. The engine doesn't load plugins yet. `InfoPanel.Extras` is net8.0-windows (builds on macOS with `EnableWindowsTargeting`) |
 
 Package versions are central (`Directory.Packages.props`); `global.json` pins SDK 10.0.403 (`latestFeature`). Ask before adding any NuGet dependency.
@@ -40,7 +41,17 @@ dotnet run --project InfoPanel -- --help                       # all flags
 
 Engine flags: `--port`, `--data-dir`, `--web-root`, `--token`, `--dev-origin` (repeatable), `--allow-origin <origin>` (repeatable; an exact `scheme://host[:port]` origin of a web client served elsewhere, `https` unless the host is loopback, see the security model), `--import-v1 <1.x folder>`, `--fresh`, `--mock`, `--mock-seed` (implies `--mock`), `--no-browser`, `--no-windows` (no desktop windows). `--fresh` is a dev and test flag that wipes the whole data folder before start-up: it needs `--data-dir`; it refuses a filesystem root, the home folder or a folder above it (checked on the path as given and on its real path, links resolved) and a folder with any top-level entry the engine doesn't write (`profiles.xml`, `profiles/`, `assets/`, `fonts/`, `logs/`, `runtime.json`, `engine.lock`, their write temp files); otherwise it deletes everything in the folder except `engine.lock`, including whatever is inside those engine folders (user-added fonts too), removing links without following them. The web root is `--web-root <dir>` as given, else `{BaseDirectory}/wwwroot` when it has an `index.html`; with neither the engine serves the API and `/ws`, and a plain-text "no web client installed" page on unmatched non-file paths outside `/api`, `/ws` and `/auth` (file-like paths such as `/index.html` or `/missing.js` return 404). `--mock` is mock mode: the mock sensors instead of the platform's real ones, and simulated values for well-formed keys no source handles; without it unknown keys are `unavailable` (the `dev` launch profile and every test host pass it). Exit codes: 0 clean, 1 fatal, 2 bad arguments, 3 data folder in use. The sign-in link (`/auth/<token>`) and each `--allow-origin`'s pairing link go to the console only (the file log gets them with `<token>`).
 
-The step-1 check that everything is green, from the repo root: `dotnet build InfoPanel.slnx && dotnet test InfoPanel.slnx`.
+From `spec/` (Node.js 22+, no dependencies):
+
+```bash
+npm run gen                                    # regenerate types/index.d.ts from schemas/
+npm run check                                  # types current + the generator's tests
+TSC=path/to/tsc npm run check                  # also type-check every valid example against the types
+```
+
+`dotnet test InfoPanel.slnx --filter "FullyQualifiedName~InfoPanel.Core.Tests.Spec"` runs the format tests: every example against the schemas and the engine's rules (expectations in `spec/examples/expected.json`), the `InfoPanel.Spec` model against the schemas, and `spec/tools/check.mjs` when `node` is on the PATH (skipped otherwise).
+
+The check that everything is green, from the repo root: `dotnet build InfoPanel.slnx && dotnet test InfoPanel.slnx`, and `npm run check` in `spec/`.
 
 ### Regenerating committed outputs (only on purpose; review the diff)
 
@@ -49,6 +60,7 @@ The step-1 check that everything is green, from the repo root: `dotnet build Inf
 | Renderer goldens `InfoPanel.Core.Tests/Golden/{osx,win,linux}/*.png` | `UPDATE_GOLDENS=1 dotnet test InfoPanel.slnx --filter Category=Golden` | Rendering changed on purpose; look at every rewritten PNG. Only out-of-tolerance or missing goldens are rewritten. macOS is the reference OS |
 | Kind manifest snapshot `InfoPanel.Core.Tests/Snapshots/kinds.json` | `UPDATE_SNAPSHOTS=1 dotnet test InfoPanel.slnx --filter KindManifest` | Models or `PropertyMap` changed. It is the contract a client's schemas are checked against: a changed snapshot is an API change, and clients copy the new file |
 | E2E archive `InfoPanel.Core.Tests/Fixtures/e2e/all-kinds.infopanel` | `UPDATE_FIXTURES=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~E2eArchiveFixture` | The Core fixtures or their assets changed |
+| TypeScript types `spec/types/index.d.ts` | `npm run gen` in `spec/` | Any schema change; the types are never edited by hand |
 | Fixture images `InfoPanel.Core.Tests/Fixtures/assets/` | `GENERATE_FIXTURE_ASSETS=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~FixtureAssets` | Rarely; regenerate goldens and the e2e archive after |
 | Frozen 1.x XML `InfoPanel.Core.Tests/Fixtures/v1/` | `GENERATE_FIXTURES=1 …--filter FixtureGenerator` | Don't: they are 1.x's format, generated before 2.0 changed anything. Regenerating after a model change defeats them |
 
@@ -70,6 +82,8 @@ The step-1 check that everything is green, from the repo root: `dotnet build Inf
 - **1.x files load or fail loudly**: unknown item types (newer 1.4.x builds) and `xsi:nil` items are dropped with a warning; unreadable XML throws and is never overwritten.
 - **Undo, redo, dirty and save belong to the engine**; don't reintroduce client-side history.
 - **The kind manifest snapshot is the client contract**: `GET /api/kinds` equals `InfoPanel.Core.Tests/Snapshots/kinds.json` (`KindManifestTests`, `EditEndpointTests.Kinds_MatchSnapshot`); change it only with the models or `PropertyMap`, and treat the diff as an API change.
+- **The formats are a contract.** `spec/` (schemas, docs, examples) is versioned: a change to it is a contract change, made only as `spec/docs/versioning.md` allows (in draft until first shipped), with a decision entry, a regenerated `spec/types/index.d.ts`, examples for what changed (valid ones and an invalid one per new rule or limit, with `expected.json`) and the `InfoPanel.Spec` model and validators changed with it (`SpecSchemaAgreementTests`). The engine validates with the schema files themselves (embedded from `spec/schemas`), so there is one description of the formats. Public `spec/` text stays client-neutral: it specifies content and engine behaviour, never how a client produces it.
+- **Limits are fixed per major format version** (`InfoPanel.Spec.SpecLimits`, `spec/docs/limits.md`): an engine accepts everything within them.
 - Plugin SDK projects stay on net8.0.
 
 ## Security model

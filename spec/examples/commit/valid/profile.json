@@ -1,0 +1,20 @@
+{
+  "opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10",
+  "ops": [
+    {
+      "op": "profile",
+      "baseRev": 40,
+      "set": {
+        "name": "Desk (night)",
+        "width": 1024,
+        "height": 600,
+        "background": "#000000ff",
+        "statsOverlay": true,
+        "window": {"enabled": false},
+        "triggerApps": [],
+        "guides": [{"axis": "x", "at": 512}],
+        "editor": {}
+      }
+    }
+  ]
+}

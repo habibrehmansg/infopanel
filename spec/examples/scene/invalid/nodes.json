@@ -1,0 +1,14 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"},
+    {"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"},
+    {
+      "kind": "group",
+      "children": [
+        {"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"},
+        {"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}
+      ]
+    }
+  ]
+}

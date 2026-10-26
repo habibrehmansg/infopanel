@@ -1,0 +1,460 @@
+{
+  "format": "infopanel.document/1",
+  "id": "3dd19c0e-675a-4591-b096-83417853861f",
+  "rev": 42,
+  "profile": {
+    "rev": 40,
+    "name": "Desk",
+    "width": 800,
+    "height": 480,
+    "background": "#0b1220ff",
+    "statsOverlay": false,
+    "window": {
+      "enabled": true,
+      "x": 100,
+      "y": 50,
+      "display": {"name": "Built-in Retina Display", "width": 3024, "height": 1964, "x": 0, "y": 0},
+      "strict": false,
+      "topmost": true,
+      "draggable": true,
+      "resizable": false
+    },
+    "triggerApps": ["game.exe"],
+    "guides": [{"axis": "x", "at": 400}, {"axis": "y", "at": 240}],
+    "editor": {"newItems": {"font": "Inter", "size": 20.0, "color": "#ffffffff", "binding": null}}
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "bg",
+      "rev": 12,
+      "name": "Background",
+      "locked": true,
+      "placement": {"x": 0, "y": 0},
+      "origin": {"kind": "local"},
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "kind": "rect",
+            "w": 800,
+            "h": 480,
+            "fill": {
+              "type": "linear",
+              "x1": 0,
+              "y1": 0,
+              "x2": 0,
+              "y2": 480,
+              "stops": [{"at": 0, "color": "#111827"}, {"at": 1, "color": "#030712"}]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "cpu-temp",
+      "rev": 41,
+      "name": "CPU temperature",
+      "placement": {"x": 40, "y": 40},
+      "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "now"}},
+      "source": {"format": "example.widget/1", "data": {"widget": "number", "decimals": 1}},
+      "origin": {"kind": "local", "author": "me"},
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {"v": {"type": "number", "label": "Temperature"}},
+        "values": {
+          "color": {
+            "op": "steps",
+            "value": {"op": "input", "name": "v"},
+            "at": [70, 85],
+            "out": ["#e5e7eb", "#f59e0b", "#ef4444"]
+          },
+          "number": {
+            "op": "if",
+            "args": [
+              {"op": "input", "name": "v", "field": "available"},
+              {"op": "format", "value": {"op": "input", "name": "v"}, "decimals": 1},
+              "-"
+            ]
+          }
+        },
+        "nodes": [
+          {
+            "kind": "group",
+            "effects": [
+              {
+                "type": "glow",
+                "sigma": 4,
+                "color": {"op": "alpha", "args": [{"op": "value", "name": "color"}, 0.6]}
+              }
+            ],
+            "children": [
+              {
+                "kind": "text",
+                "font": {"family": "Inter", "size": 32, "weight": 600},
+                "fill": {"op": "value", "name": "color"},
+                "text": [
+                  {"text": {"op": "value", "name": "number"}},
+                  {"text": {"op": "input", "name": "v", "field": "unit"}, "font": {"size": 16, "weight": 400}}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "cpu-bar",
+      "rev": 42,
+      "name": "CPU load",
+      "placement": {"x": 40, "y": 100, "rotation": 0},
+      "layout": {"w": 240, "h": 20},
+      "bindings": {
+        "v": {"key": "plugin:/infopanel.mock/cpu/cpu-load"},
+        "spare": {"key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "max"}
+      },
+      "source": {
+        "format": "example.widget/1",
+        "data": {"widget": "bar"},
+        "deps": ["sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"]
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {"v": {"type": "number", "label": "Value"}},
+        "values": {
+          "pct": {"op": "clamp", "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]}
+        },
+        "state": {
+          "shown": {
+            "init": {"op": "value", "name": "pct"},
+            "next": {
+              "op": "add",
+              "args": [
+                {"op": "state", "name": "shown"},
+                {
+                  "op": "mul",
+                  "args": [
+                    {"op": "sub", "args": [{"op": "value", "name": "pct"}, {"op": "state", "name": "shown"}]},
+                    {
+                      "op": "sub",
+                      "args": [
+                        1,
+                        {
+                          "op": "exp",
+                          "args": [{"op": "div", "args": [{"op": "neg", "args": [{"op": "dt"}]}, 0.25]}]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "nodes": [
+          {
+            "kind": "rect",
+            "w": {"op": "box", "field": "w"},
+            "h": {"op": "box", "field": "h"},
+            "r": 4,
+            "fill": "#1f2937"
+          },
+          {
+            "kind": "rect",
+            "w": {"op": "mul", "args": [{"op": "box", "field": "w"}, {"op": "state", "name": "shown"}]},
+            "h": {"op": "box", "field": "h"},
+            "r": 4,
+            "fill": {
+              "type": "linear",
+              "x1": 0,
+              "y1": 0,
+              "x2": {"op": "box", "field": "w"},
+              "y2": 0,
+              "stops": [{"at": 0, "color": "#22c55e"}, {"at": 1, "color": "#ef4444"}]
+            }
+          },
+          {
+            "kind": "rect",
+            "x": 0.5,
+            "y": 0.5,
+            "w": {"op": "sub", "args": [{"op": "box", "field": "w"}, 1]},
+            "h": {"op": "sub", "args": [{"op": "box", "field": "h"}, 1]},
+            "r": 3.5,
+            "stroke": {"paint": "#9ca3af", "width": 1}
+          }
+        ]
+      }
+    },
+    {
+      "kind": "group",
+      "id": "gauges",
+      "rev": 30,
+      "name": "Gauges",
+      "placement": {"x": 400, "y": 40, "rotation": 15, "pivot": [120, 60]},
+      "origin": {"kind": "import", "from": "1.x"},
+      "children": [
+        {
+          "kind": "scene",
+          "id": "load-donut",
+          "rev": 30,
+          "name": "Load",
+          "placement": {"x": 0, "y": 0},
+          "layout": {"w": 120, "h": 120},
+          "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-load"}},
+          "scene": {
+            "format": "infopanel.scene/1",
+            "inputs": {"v": {"type": "number"}},
+            "values": {
+              "sweep": {
+                "op": "mul",
+                "args": [
+                  {
+                    "op": "clamp",
+                    "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]
+                  },
+                  270
+                ]
+              }
+            },
+            "nodes": [
+              {
+                "kind": "arc",
+                "cx": 60,
+                "cy": 60,
+                "r": 56,
+                "inner": 44,
+                "start": 135,
+                "sweep": 270,
+                "fill": "#1f2937"
+              },
+              {
+                "kind": "arc",
+                "cx": 60,
+                "cy": 60,
+                "r": 56,
+                "inner": 44,
+                "start": 135,
+                "sweep": {"op": "value", "name": "sweep"},
+                "fill": {
+                  "type": "sweep",
+                  "cx": 60,
+                  "cy": 60,
+                  "start": 135,
+                  "end": 405,
+                  "stops": [{"at": 0, "color": "#38bdf8"}, {"at": 1, "color": "#a855f7"}]
+                }
+              },
+              {
+                "kind": "arc",
+                "cx": 60,
+                "cy": 60,
+                "r": 36,
+                "start": 135,
+                "sweep": 270,
+                "close": "open",
+                "stroke": {
+                  "paint": "#374151",
+                  "width": 4,
+                  "cap": "round",
+                  "dash": [2, 6],
+                  "trimEnd": {
+                    "op": "clamp",
+                    "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]
+                  }
+                }
+              },
+              {
+                "kind": "text",
+                "x": 60,
+                "y": 60,
+                "align": "center",
+                "valign": "middle",
+                "font": {"family": "Inter", "size": 20, "weight": 700},
+                "fill": "#f9fafb",
+                "text": {"op": "concat", "args": [{"op": "format", "value": {"op": "input", "name": "v"}}, "%"]}
+              }
+            ]
+          }
+        },
+        {
+          "kind": "scene",
+          "id": "gauge",
+          "rev": 30,
+          "name": "Gauge",
+          "locked": true,
+          "placement": {"x": 130, "y": 0},
+          "layout": {"w": 128, "h": 128},
+          "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "avg"}},
+          "source": {"ref": "c1c2b7f0-opaque-reference", "data": null},
+          "scene": {
+            "format": "infopanel.scene/1",
+            "inputs": {"v": {"type": "number"}},
+            "values": {
+              "target": {
+                "op": "mul",
+                "args": [
+                  {
+                    "op": "clamp",
+                    "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]
+                  },
+                  4
+                ]
+              }
+            },
+            "state": {
+              "frame": {
+                "init": {"op": "value", "name": "target"},
+                "next": {
+                  "op": "add",
+                  "args": [
+                    {"op": "state", "name": "frame"},
+                    {
+                      "op": "clamp",
+                      "args": [
+                        {
+                          "op": "sub",
+                          "args": [{"op": "value", "name": "target"}, {"op": "state", "name": "frame"}]
+                        },
+                        {"op": "neg", "args": [{"op": "mul", "args": [8, {"op": "dt"}]}]},
+                        {"op": "mul", "args": [8, {"op": "dt"}]}
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "nodes": [
+              {
+                "kind": "media",
+                "w": 128,
+                "h": 128,
+                "fit": "contain",
+                "source": {
+                  "sequence": [
+                    {"asset": "sha256:d33c05a7e4db5800d89782dde7346c7626b10180a3cbed024a1722af0db75138"},
+                    {"asset": "sha256:95427add5133449258abbcc15ec375119871e09dade89b982e3a3aba6f55de57"},
+                    {"asset": "sha256:ae9ce390b1c2157573406bef697fb380900709f68c1de19d4d75d69c77a71e56"},
+                    {"asset": "sha256:d2bcfa5bab4a790f9fcfe40cae4003a117ee62283379646cafde55da0d19f3c1"},
+                    {"asset": "sha256:dc12f6394ba94be0e7793081a10bedffd4c150a85d607dfc26a315dbe22c0969"}
+                  ],
+                  "index": {"op": "state", "name": "frame"},
+                  "crossfade": true
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "scene",
+      "id": "clock",
+      "rev": 20,
+      "name": "Clock",
+      "visible": false,
+      "placement": {"x": 560, "y": 240},
+      "layout": {"w": 200, "h": 230},
+      "scene": {
+        "format": "infopanel.scene/1",
+        "values": {"t": {"op": "time", "field": "dayTime"}},
+        "nodes": [
+          {
+            "kind": "ellipse",
+            "cx": 100,
+            "cy": 100,
+            "rx": 90,
+            "ry": 90,
+            "fill": "#111827",
+            "stroke": {"paint": "#4b5563", "width": 2}
+          },
+          {
+            "kind": "group",
+            "transform": [
+              {
+                "type": "rotate",
+                "angle": {
+                  "op": "mul",
+                  "args": [
+                    {"op": "mod", "args": [{"op": "value", "name": "t"}, 43200]},
+                    {"op": "div", "args": [360, 43200]}
+                  ]
+                },
+                "cx": 100,
+                "cy": 100
+              }
+            ],
+            "children": [
+              {
+                "kind": "line",
+                "x1": 100,
+                "y1": 100,
+                "x2": 100,
+                "y2": 50,
+                "stroke": {"paint": "#ffffff", "width": 5, "cap": "round"}
+              }
+            ]
+          },
+          {
+            "kind": "group",
+            "transform": [
+              {
+                "type": "rotate",
+                "angle": {"op": "mul", "args": [{"op": "mod", "args": [{"op": "value", "name": "t"}, 3600]}, 0.1]},
+                "cx": 100,
+                "cy": 100
+              }
+            ],
+            "children": [
+              {
+                "kind": "line",
+                "x1": 100,
+                "y1": 100,
+                "x2": 100,
+                "y2": 25,
+                "stroke": {"paint": "#ffffff", "width": 3, "cap": "round"}
+              }
+            ]
+          },
+          {
+            "kind": "group",
+            "transform": [
+              {
+                "type": "rotate",
+                "angle": {
+                  "op": "mul",
+                  "args": [{"op": "floor", "args": [{"op": "mod", "args": [{"op": "value", "name": "t"}, 60]}]}, 6]
+                },
+                "cx": 100,
+                "cy": 100
+              }
+            ],
+            "children": [
+              {
+                "kind": "line",
+                "x1": 100,
+                "y1": 110,
+                "x2": 100,
+                "y2": 20,
+                "stroke": {"paint": "#ef4444", "width": 1.5, "cap": "round"}
+              }
+            ]
+          },
+          {
+            "kind": "text",
+            "x": 100,
+            "y": 214,
+            "align": "center",
+            "font": {"family": "Inter", "size": 16},
+            "fill": "#ffffff",
+            "text": {
+              "op": "upper",
+              "args": [{"op": "formatTime", "pattern": "EEE d MMM HH:mm:ss", "locale": "en-GB"}]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

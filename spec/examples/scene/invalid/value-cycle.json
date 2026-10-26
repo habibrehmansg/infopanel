@@ -1,0 +1,8 @@
+{
+  "format": "infopanel.scene/1",
+  "values": {
+    "a": {"op": "add", "args": [{"op": "value", "name": "b"}, 1]},
+    "b": {"op": "mul", "args": [{"op": "value", "name": "a"}, 2]}
+  },
+  "nodes": [{"kind": "rect", "w": {"op": "value", "name": "a"}, "h": 10, "fill": "#ffffff"}]
+}

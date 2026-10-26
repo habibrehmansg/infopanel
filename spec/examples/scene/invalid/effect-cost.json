@@ -1,0 +1,10 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "group",
+      "effects": [{"type": "blur", "sigma": 20}],
+      "children": [{"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}]
+    }
+  ]
+}

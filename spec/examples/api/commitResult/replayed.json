@@ -1,0 +1,16 @@
+{
+  "rev": 45,
+  "items": {"future": 45},
+  "dirty": true,
+  "canUndo": true,
+  "canRedo": false,
+  "replayed": true,
+  "warnings": [
+    {
+      "op": 0,
+      "id": "future",
+      "code": "unsupported",
+      "message": "This engine reads infopanel.scene/1, not infopanel.scene/2."
+    }
+  ]
+}

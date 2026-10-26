@@ -1,0 +1,7 @@
+{
+  "title": "Conflict",
+  "status": 409,
+  "code": "conflict",
+  "rev": 47,
+  "conflicts": [{"op": 0, "reason": "changed", "rev": 47, "fields": ["name", "width"]}]
+}

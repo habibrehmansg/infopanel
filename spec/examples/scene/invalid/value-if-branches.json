@@ -1,0 +1,9 @@
+{
+  "format": "infopanel.scene/1",
+  "values": {
+    "n": 10,
+    "s": "ten",
+    "x": {"op": "if", "args": [true, {"op": "value", "name": "n"}, {"op": "value", "name": "s"}]}
+  },
+  "nodes": [{"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}]
+}

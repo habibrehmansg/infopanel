@@ -1,0 +1,7 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "path", "d": "M0 0 L10 0 L10 10 Z", "fill": "#ffffff"},
+    {"kind": "polyline", "points": [[0, 0], [5, 5], [10, 0]], "stroke": {"paint": "#ffffff", "width": 1}}
+  ]
+}

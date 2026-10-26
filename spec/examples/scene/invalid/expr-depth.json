@@ -1,0 +1,11 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": {"op": "abs", "args": [{"op": "abs", "args": [{"op": "abs", "args": [{"op": "abs", "args": [1]}]}]}]},
+      "h": 10,
+      "fill": "#ffffff"
+    }
+  ]
+}

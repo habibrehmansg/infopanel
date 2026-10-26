@@ -1,0 +1,8 @@
+{
+  "type": "about:blank",
+  "title": "Conflict",
+  "status": 409,
+  "code": "conflict",
+  "rev": 47,
+  "conflicts": [{"op": 0, "id": "cpu-bar", "reason": "changed", "rev": 46, "fields": ["design"]}]
+}

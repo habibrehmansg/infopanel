@@ -1,0 +1,107 @@
+{
+  "format": "infopanel.scene/1",
+  "values": {
+    "pulse": {
+      "op": "div",
+      "args": [
+        {
+          "op": "add",
+          "args": [{"op": "sin", "args": [{"op": "mul", "args": [{"op": "time", "field": "elapsed"}, 90]}]}, 1]
+        },
+        2
+      ]
+    },
+    "turn": {"op": "mod", "args": [{"op": "mul", "args": [{"op": "time", "field": "elapsed"}, 45]}, 360]}
+  },
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": 100,
+      "h": 60,
+      "r": [12, 12, 0, 0],
+      "fill": {
+        "type": "radial",
+        "cx": 50,
+        "cy": 30,
+        "r": {
+          "op": "mul",
+          "args": [60, {"op": "add", "args": [0.8, {"op": "mul", "args": [0.5, {"op": "value", "name": "pulse"}]}]}]
+        },
+        "stops": [
+          {"at": 0, "color": "#f472b6"},
+          {"at": {"op": "mul", "args": [0.36, {"op": "value", "name": "pulse"}]}, "color": "#a78bfa"},
+          {"at": {"op": "mul", "args": [0.66, {"op": "value", "name": "pulse"}]}, "color": "#60a5fa"},
+          {"at": 1, "color": "#60a5fa"}
+        ]
+      }
+    },
+    {
+      "kind": "ellipse",
+      "cx": 160,
+      "cy": 30,
+      "rx": 40,
+      "ry": 25,
+      "fill": {
+        "type": "compose",
+        "blend": "multiply",
+        "dst": {
+          "type": "linear",
+          "x1": 120,
+          "y1": 5,
+          "x2": 200,
+          "y2": 55,
+          "spread": "reflect",
+          "stops": [{"at": 0, "color": "#ffffff"}, {"at": 0.5, "color": "#f59e0b"}, {"at": 1, "color": "#ffffff"}]
+        },
+        "src": {
+          "type": "linear",
+          "x1": 200,
+          "y1": 5,
+          "x2": 120,
+          "y2": 55,
+          "stops": [{"at": 0, "color": "#ffffff"}, {"at": 0.5, "color": "#f59e0b"}, {"at": 1, "color": "#ffffff"}]
+        }
+      }
+    },
+    {
+      "kind": "path",
+      "d": "M50 70 L61 104 L97 104 L68 125 L79 159 L50 138 L21 159 L32 125 L3 104 L39 104 Z",
+      "fillRule": "evenodd",
+      "fill": {
+        "type": "sweep",
+        "cx": 50,
+        "cy": 115,
+        "start": {"op": "value", "name": "turn"},
+        "end": {"op": "add", "args": [{"op": "value", "name": "turn"}, 120]},
+        "spread": "repeat",
+        "stops": [{"at": 0, "color": "#22d3ee"}, {"at": 0.5, "color": "#e879f9"}, {"at": 1, "color": "#22d3ee"}]
+      },
+      "stroke": {"paint": "#ffffff", "width": 1.5, "join": "miter", "miterLimit": 8}
+    },
+    {
+      "kind": "polyline",
+      "points": [
+        [120, 150],
+        [140, {"op": "sub", "args": [150, {"op": "mul", "args": [40, {"op": "value", "name": "pulse"}]}]}],
+        [160, 130],
+        [180, 145]
+      ],
+      "stroke": {
+        "paint": "#34d399",
+        "width": 2,
+        "cap": "square",
+        "join": "bevel",
+        "dash": [6, 3],
+        "dashOffset": {"op": "mul", "args": [{"op": "time", "field": "elapsed"}, 12]}
+      }
+    },
+    {
+      "kind": "polyline",
+      "points": [[120, 70], [200, 70], [160, 120]],
+      "closed": true,
+      "fillRule": "nonzero",
+      "fill": "#f87171",
+      "stroke": {"paint": "#7f1d1d", "width": 1, "trimStart": 0.1, "trimEnd": 0.9}
+    }
+  ]
+}

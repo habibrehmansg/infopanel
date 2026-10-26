@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "state": {"c": {"init": "#000000", "next": "not-a-color"}},
+  "nodes": [{"kind": "rect", "w": 10, "h": 10, "fill": {"op": "state", "name": "c"}}]
+}

@@ -1,0 +1,10 @@
+{
+  "title": "Conflict",
+  "status": 409,
+  "code": "conflict",
+  "rev": 52,
+  "conflicts": [
+    {"op": 0, "id": "gauges", "reason": "changed", "rev": 50, "fields": ["children"]},
+    {"op": 0, "id": "gpu-gauge", "reason": "changed", "rev": 51, "fields": ["design", "position"]}
+  ]
+}

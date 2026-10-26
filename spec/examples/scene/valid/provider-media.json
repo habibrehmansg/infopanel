@@ -1,0 +1,14 @@
+{
+  "format": "infopanel.scene/1",
+  "requires": ["media.provider"],
+  "inputs": {"art": {"type": "text", "label": "Album art"}},
+  "nodes": [
+    {
+      "kind": "media",
+      "w": 96,
+      "h": 96,
+      "fit": "cover",
+      "source": {"provider": "now-playing", "ref": {"op": "input", "name": "art", "field": "text"}}
+    }
+  ]
+}

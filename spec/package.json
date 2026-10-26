@@ -1,0 +1,20 @@
+{
+  "name": "@infopanel/spec",
+  "version": "0.1.0",
+  "private": true,
+  "description": "InfoPanel document, scene and engine API formats: JSON Schemas, TypeScript types, docs and examples.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": { "types": "./types/index.d.ts" },
+    "./schemas/*": "./schemas/*",
+    "./examples/*": "./examples/*"
+  },
+  "files": ["schemas", "types", "docs", "examples", "LICENSE", "README.md"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "gen": "node tools/gen-types.mjs --schemas schemas --out types/index.d.ts",
+    "check": "node tools/check.mjs && node --test tools/*.test.mjs"
+  }
+}

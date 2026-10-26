@@ -1,0 +1,16 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "media",
+      "source": {
+        "sequence": [
+          {"asset": "sha256:d33c05a7e4db5800d89782dde7346c7626b10180a3cbed024a1722af0db75138"},
+          {"asset": "sha256:95427add5133449258abbcc15ec375119871e09dade89b982e3a3aba6f55de57"},
+          {"asset": "sha256:ae9ce390b1c2157573406bef697fb380900709f68c1de19d4d75d69c77a71e56"}
+        ],
+        "index": 0
+      }
+    }
+  ]
+}

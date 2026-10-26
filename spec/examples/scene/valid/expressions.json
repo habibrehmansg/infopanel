@@ -1,0 +1,168 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number", "label": "Value"}, "label": {"type": "text"}, "t": {"type": "table"}},
+  "values": {
+    "sum": {"op": "add", "args": [{"op": "input", "name": "v"}, {"op": "input", "name": "v", "field": "now"}, 1]},
+    "spread": {
+      "op": "sub",
+      "args": [{"op": "input", "name": "v", "field": "max"}, {"op": "input", "name": "v", "field": "min"}]
+    },
+    "scaled": {"op": "mul", "args": [{"op": "input", "name": "v", "field": "avg"}, 1.8]},
+    "ratio": {"op": "div", "args": [{"op": "input", "name": "v"}, 0]},
+    "wrapped": {"op": "mod", "args": [-7, 3]},
+    "negated": {"op": "neg", "args": [{"op": "input", "name": "v"}]},
+    "magnitude": {"op": "abs", "args": [{"op": "value", "name": "negated"}]},
+    "smallest": {"op": "min", "args": [1, 2, 3]},
+    "largest": {"op": "max", "args": [1, 2]},
+    "clamped": {"op": "clamp", "args": [{"op": "input", "name": "v"}, 0, 100]},
+    "rounded": {
+      "op": "add",
+      "args": [{"op": "floor", "args": [1.5]}, {"op": "ceil", "args": [1.5]}, {"op": "round", "args": [-2.5]}]
+    },
+    "roots": {
+      "op": "add",
+      "args": [
+        {"op": "sqrt", "args": [16]},
+        {"op": "pow", "args": [2, 10]},
+        {"op": "exp", "args": [1]},
+        {"op": "log", "args": [10]}
+      ]
+    },
+    "wave": {"op": "add", "args": [{"op": "sin", "args": [30]}, {"op": "cos", "args": [60]}]},
+    "heading": {"op": "atan2", "args": [1, 1]},
+    "fraction": {"op": "norm", "args": [{"op": "input", "name": "v"}, 20, 90]},
+    "mixed": {"op": "lerp", "args": [0, 10, 0.25]},
+    "tint": {"op": "lerp", "args": ["#000000", "#ffffff", {"op": "value", "name": "fraction"}]},
+    "custom": {"op": "rgba", "args": [255, 128, 0, 0.5]},
+    "faded": {"op": "alpha", "args": [{"op": "value", "name": "tint"}, 0.3]},
+    "warm": {
+      "op": "and",
+      "args": [
+        {"op": "gt", "args": [{"op": "input", "name": "v"}, 50]},
+        {"op": "le", "args": [{"op": "input", "name": "v"}, 90]}
+      ]
+    },
+    "outside": {
+      "op": "or",
+      "args": [
+        {"op": "lt", "args": [{"op": "input", "name": "v"}, 0]},
+        {"op": "ge", "args": [{"op": "input", "name": "v"}, 100]}
+      ]
+    },
+    "calm": {"op": "not", "args": [{"op": "value", "name": "warm"}]},
+    "same": {
+      "op": "and",
+      "args": [
+        {"op": "eq", "args": [{"op": "input", "name": "label", "field": "text"}, "idle"]},
+        {"op": "ne", "args": [{"op": "input", "name": "v", "field": "status"}, "unavailable"]}
+      ]
+    },
+    "text": {
+      "op": "concat",
+      "args": [
+        {"op": "upper", "args": [{"op": "input", "name": "label", "field": "text"}]},
+        " ",
+        {"op": "lower", "args": ["MIXED Case"]}
+      ]
+    },
+    "number": {
+      "op": "format",
+      "value": {"op": "value", "name": "sum"},
+      "decimals": 2,
+      "group": true,
+      "decimalSeparator": ",",
+      "groupSeparator": "."
+    },
+    "when": {"op": "formatTime", "pattern": "yyyy-MM-dd HH:mm", "locale": "de-DE", "zone": "Europe/Berlin"},
+    "clock": {
+      "op": "add",
+      "args": [
+        {"op": "time", "field": "hour"},
+        {"op": "div", "args": [{"op": "time", "field": "minute"}, 60]},
+        {"op": "time", "field": "second", "zone": "UTC"}
+      ]
+    },
+    "date": {
+      "op": "add",
+      "args": [
+        {"op": "time", "field": "year"},
+        {"op": "time", "field": "month"},
+        {"op": "time", "field": "day"},
+        {"op": "time", "field": "weekday"},
+        {"op": "time", "field": "millisecond"},
+        {"op": "time", "field": "epoch"}
+      ]
+    },
+    "area": {"op": "mul", "args": [{"op": "box", "field": "w"}, {"op": "box", "field": "h"}]},
+    "trend": {
+      "op": "sub",
+      "args": [
+        {"op": "history", "input": "v", "fn": "last", "count": 60.0},
+        {"op": "history", "input": "v", "fn": "first", "count": 6e1}
+      ]
+    },
+    "mean": {
+      "op": "div",
+      "args": [
+        {"op": "history", "input": "v", "fn": "avg", "count": 60},
+        {"op": "max", "args": [1, {"op": "history", "input": "v", "fn": "count", "count": 60}]}
+      ]
+    },
+    "summary": {"op": "input", "name": "t", "field": "text"},
+    "size": {"op": "if", "args": [{"op": "value", "name": "warm"}, 20, 16]},
+    "word": {"op": "if", "args": [{"op": "value", "name": "calm"}, "calm", "busy"]},
+    "flag": {
+      "op": "if",
+      "args": [{"op": "value", "name": "outside"}, true, {"op": "input", "name": "v", "field": "available"}]
+    },
+    "fill": {"op": "if", "args": [{"op": "value", "name": "warm"}, "#f59e0b", {"op": "value", "name": "tint"}]},
+    "band": {"op": "steps", "value": {"op": "input", "name": "v"}, "at": [25, 75], "out": [0, 1, 2]},
+    "bandName": {"op": "steps", "value": {"op": "input", "name": "v"}, "at": [25, 75], "out": ["low", "mid", "high"]},
+    "bandColor": {
+      "op": "steps",
+      "value": {"op": "input", "name": "v"},
+      "at": [50],
+      "out": ["#22c55e", {"op": "value", "name": "custom"}]
+    }
+  },
+  "state": {"ticks": {"init": 0, "next": {"op": "add", "args": [{"op": "state", "name": "ticks"}, {"op": "dt"}]}}},
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": {"op": "add", "args": [{"op": "measure", "node": "line1", "field": "w"}, 16]},
+      "h": 48,
+      "r": 8,
+      "fill": {"op": "value", "name": "faded"}
+    },
+    {
+      "kind": "text",
+      "id": "line1",
+      "x": 8,
+      "y": 8,
+      "font": {"family": "Inter", "size": {"op": "value", "name": "size"}},
+      "fill": {"op": "value", "name": "fill"},
+      "text": {
+        "op": "concat",
+        "args": [
+          {"op": "value", "name": "text"},
+          " ",
+          {"op": "value", "name": "number"},
+          " ",
+          {"op": "value", "name": "word"},
+          " ",
+          {"op": "value", "name": "bandName"}
+        ]
+      }
+    },
+    {
+      "kind": "text",
+      "x": 8,
+      "y": 30,
+      "font": {"family": "Inter", "size": 12},
+      "fill": {"op": "value", "name": "bandColor"},
+      "visible": {"op": "value", "name": "flag"},
+      "opacity": {"op": "add", "args": [0.5, {"op": "mul", "args": [0.1, {"op": "value", "name": "band"}]}]},
+      "text": {"op": "concat", "args": [{"op": "value", "name": "when"}, " ", {"op": "value", "name": "summary"}]}
+    }
+  ]
+}

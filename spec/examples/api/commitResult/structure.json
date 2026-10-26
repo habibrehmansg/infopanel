@@ -1,0 +1,9 @@
+{
+  "rev": 44,
+  "items": {"sel": 44, "cpu-temp": 44, "cpu-bar": 44},
+  "removed": ["clock"],
+  "profileRev": 44,
+  "dirty": true,
+  "canUndo": true,
+  "canRedo": false
+}

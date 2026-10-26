@@ -1,0 +1,7 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "text", "font": {"family": "Inter", "size": 12}, "text": "x"},
+    {"kind": "text", "font": {"family": "Inter", "size": 12}, "text": "x"}
+  ]
+}

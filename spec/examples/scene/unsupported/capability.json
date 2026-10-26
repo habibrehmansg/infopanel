@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "requires": ["paint.mesh"],
+  "nodes": [{"kind": "rect", "w": 10, "h": 10, "fill": "#ffffff"}]
+}

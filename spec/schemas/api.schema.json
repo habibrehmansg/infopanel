@@ -1,0 +1,338 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:infopanel:api:1",
+  "description": "Engine API bodies that carry the document format: commits and their results, problems, item bounds and what the engine supports. See docs/commit.md and docs/geometry.md.",
+  "$defs": {
+    "commitRequest": {
+      "description": "POST /api/profiles/{id}/commit. The ops apply in order, all or none, as one undo step (or merged into the previous one, see coalesceKey).",
+      "type": "object",
+      "required": ["opId", "ops"],
+      "additionalProperties": false,
+      "properties": {
+        "opId": {
+          "description": "Unique per commit, chosen by the client (a UUID, say). Retrying with the same opId and the same body returns the first result without applying anything again.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+        },
+        "instance": {
+          "description": "The engine instance the client's revisions came from (GET /api/session). A different one: 409 with reason \"instance\".",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "coalesceKey": {
+          "description": "Merge this commit's undo step into the previous one when that had the identical key and the key starts with \"gesture:\" or less than 1 s passed. A key names one gesture of one client: it includes a random part chosen once per client instance (\"gesture:5b0e8f0c-3c1d-4b8e-a7f2-1d9c6e4a2b7f:7\").",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "ops": { "type": "array", "items": { "$ref": "#/$defs/op" }, "minItems": 1 }
+      }
+    },
+    "op": {
+      "oneOf": [
+        { "$ref": "#/$defs/setPlacementOp" },
+        { "$ref": "#/$defs/setDesignOp" },
+        { "$ref": "#/$defs/setBindingsOp" },
+        { "$ref": "#/$defs/setAttributesOp" },
+        { "$ref": "#/$defs/insertOp" },
+        { "$ref": "#/$defs/removeOp" },
+        { "$ref": "#/$defs/moveOp" },
+        { "$ref": "#/$defs/profileOp" }
+      ]
+    },
+    "baseRev": {
+      "$ref": "urn:infopanel:common:1#/$defs/revision",
+      "description": "The document revision the change is based on: the document `rev` the client last read, for every kind of op (not the item's own `rev`). The op conflicts when a field group it writes (for `remove`, any field of the item or of anything in it) last changed at a revision greater than this. Absent: no check."
+    },
+    "setPlacementOp": {
+      "description": "Replaces the item's placement.",
+      "type": "object",
+      "required": ["op", "id", "placement"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "setPlacement" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "baseRev": { "$ref": "#/$defs/baseRev" },
+        "placement": { "$ref": "urn:infopanel:document:1#/$defs/placement" }
+      }
+    },
+    "setDesignOp": {
+      "description": "Replaces a scene item's design: layout, source and scene together (absent layout or source: none), and its origin when given.",
+      "type": "object",
+      "required": ["op", "id", "scene"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "setDesign" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "baseRev": { "$ref": "#/$defs/baseRev" },
+        "layout": { "$ref": "urn:infopanel:document:1#/$defs/layout" },
+        "source": { "$ref": "urn:infopanel:document:1#/$defs/source" },
+        "scene": { "$ref": "urn:infopanel:scene:1" },
+        "origin": { "$ref": "urn:infopanel:document:1#/$defs/origin" }
+      }
+    },
+    "setBindingsOp": {
+      "description": "Replaces a scene item's bindings.",
+      "type": "object",
+      "required": ["op", "id", "bindings"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "setBindings" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "baseRev": { "$ref": "#/$defs/baseRev" },
+        "bindings": { "$ref": "urn:infopanel:document:1#/$defs/bindings" }
+      }
+    },
+    "setAttributesOp": {
+      "description": "Sets the given attributes of an item (scene or group).",
+      "type": "object",
+      "required": ["op", "id", "set"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "setAttributes" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "baseRev": { "$ref": "#/$defs/baseRev" },
+        "set": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "name": { "$ref": "urn:infopanel:document:1#/$defs/itemName" },
+            "visible": { "type": "boolean" },
+            "locked": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "insertOp": {
+      "description": "Adds an item (with its children, for a group) to the top level (parentId absent or null) or to a group, at `index` (past the end of the list, or absent: the end, the front).",
+      "type": "object",
+      "required": ["op", "item"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "insert" },
+        "item": { "$ref": "urn:infopanel:document:1#/$defs/item" },
+        "parentId": { "$ref": "#/$defs/parentRef" },
+        "index": { "$ref": "#/$defs/itemIndex" }
+      }
+    },
+    "removeOp": {
+      "description": "Removes an item and everything in it.",
+      "type": "object",
+      "required": ["op", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "remove" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "baseRev": { "$ref": "#/$defs/baseRev" }
+      }
+    },
+    "moveOp": {
+      "description": "Moves an item to `index` (in the target list once the item has been taken out; past its end: the end) of the top level or a group. Its placement is kept as it is (local coordinates) unless `placement` is given.",
+      "type": "object",
+      "required": ["op", "id", "index"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "move" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "baseRev": { "$ref": "#/$defs/baseRev" },
+        "parentId": { "$ref": "#/$defs/parentRef" },
+        "index": { "$ref": "#/$defs/itemIndex" },
+        "placement": { "$ref": "urn:infopanel:document:1#/$defs/placement" }
+      }
+    },
+    "itemIndex": {
+      "description": "A position in a list of items, 0 first (at the back). At most 2,000, the document's item limit: a larger value is invalid, never clamped. An index past the end of the list means the end.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2000
+    },
+    "opIndex": {
+      "description": "The index of an op in its commit: below 1,000, the op limit.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 999
+    },
+    "parentRef": {
+      "description": "A group's item id, or null (or absent) for the top level.",
+      "oneOf": [
+        { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        { "type": "null" }
+      ]
+    },
+    "profileOp": {
+      "description": "Sets the given profile fields; each replaces the field whole.",
+      "type": "object",
+      "required": ["op", "set"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "profile" },
+        "baseRev": { "$ref": "#/$defs/baseRev" },
+        "set": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "width": { "type": "integer", "minimum": 1, "maximum": 16384 },
+            "height": { "type": "integer", "minimum": 1, "maximum": 16384 },
+            "background": { "$ref": "urn:infopanel:common:1#/$defs/colorLiteral" },
+            "statsOverlay": { "type": "boolean" },
+            "window": { "$ref": "urn:infopanel:document:1#/$defs/windowSettings" },
+            "triggerApps": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 260 }, "maxItems": 32 },
+            "guides": { "type": "array", "items": { "$ref": "urn:infopanel:document:1#/$defs/guide" }, "maxItems": 256 },
+            "editor": { "$ref": "urn:infopanel:common:1#/$defs/opaque" }
+          }
+        }
+      }
+    },
+
+    "commitResult": {
+      "description": "200 response to a commit.",
+      "type": "object",
+      "required": ["rev", "items", "dirty", "canUndo", "canRedo"],
+      "additionalProperties": false,
+      "properties": {
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's revision after the commit (unchanged when nothing changed)." },
+        "items": {
+          "description": "The new `rev` of every item the commit changed or added.",
+          "type": "object",
+          "propertyNames": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+          "additionalProperties": { "$ref": "urn:infopanel:common:1#/$defs/revision" }
+        },
+        "removed": { "type": "array", "items": { "$ref": "urn:infopanel:common:1#/$defs/itemId" } },
+        "profileRev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The profile's new `rev`, when the commit changed it." },
+        "dirty": { "type": "boolean" },
+        "canUndo": { "type": "boolean" },
+        "canRedo": { "type": "boolean" },
+        "replayed": { "description": "true when this is the stored result of an earlier commit with the same opId.", "type": "boolean", "default": false },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/commitWarning" } }
+      }
+    },
+    "commitWarning": {
+      "description": "Accepted, but not drawn as written: code \"unsupported\" (the scene needs a format or capability this engine lacks; it is kept as it is and drawn as a placeholder).",
+      "type": "object",
+      "required": ["op", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "$ref": "#/$defs/opIndex" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "code": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "message": { "type": "string" }
+      }
+    },
+    "conflictProblem": {
+      "description": "409 application/problem+json: nothing was applied. The client refetches, rebuilds its change on the current state and commits again with a new opId.",
+      "type": "object",
+      "required": ["status", "code", "rev", "conflicts"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 409 },
+        "code": { "const": "conflict" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's current revision." },
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/conflict" }, "minItems": 1 }
+      }
+    },
+    "conflict": {
+      "type": "object",
+      "required": ["op", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "$ref": "#/$defs/opIndex" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "reason": {
+          "description": "changed: a field the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field of the item or of anything in it, each listed with its own `id`). missing: the item or parent no longer exists. instance: the engine restarted since the client's `instance`.",
+          "enum": ["changed", "missing", "instance"]
+        },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The item's (or profile's) current rev." },
+        "fields": {
+          "description": "The fields that changed: placement, design, bindings, name, visible, locked, position (parent and index), children (a group's membership: an item added to it or taken out of it), or a profile field's name.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "invalidProblem": {
+      "description": "422 application/problem+json: the commit (or document) breaks the format, a rule or a limit; nothing was applied.",
+      "type": "object",
+      "required": ["status", "code", "errors"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 422 },
+        "code": { "const": "invalid" },
+        "errors": { "type": "array", "items": { "$ref": "#/$defs/validationError" }, "minItems": 1 }
+      }
+    },
+    "validationError": {
+      "type": "object",
+      "required": ["path", "code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "description": "JSON pointer into the request body.", "type": "string" },
+        "code": { "description": "A code from docs/limits.md and docs/validation.md (schema, limit.*, ref.*, type.*, ...).", "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+
+    "itemBounds": {
+      "description": "Where an item is drawn this frame, in profile pixels. `frame` is the layout box (automatic dimensions measured), `ink` what the item covers including effects; both are rectangles before rotation, each rotated by `rotation` degrees about its own centre.",
+      "type": "object",
+      "required": ["id", "frame", "ink", "rotation"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "frame": { "$ref": "#/$defs/rect" },
+        "ink": { "$ref": "#/$defs/rect" },
+        "rotation": { "type": "number" },
+        "problem": {
+          "description": "Set when the item is drawn as a placeholder: unsupported (needs a newer engine), invalid (breaks a rule or limit), budget (over a document or process budget).",
+          "enum": ["unsupported", "invalid", "budget"]
+        }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number", "minimum": 0 },
+        "h": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "formatSupport": {
+      "description": "What an engine supports (part of GET /api/session): the format strings it reads, the highest minor version of each, its optional capabilities and its limits.",
+      "type": "object",
+      "required": ["document", "scene", "limits"],
+      "additionalProperties": false,
+      "properties": {
+        "document": { "$ref": "#/$defs/formatVersion" },
+        "scene": { "$ref": "#/$defs/formatVersion" },
+        "limits": {
+          "description": "The limits in force, by name (docs/limits.md).",
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        }
+      }
+    },
+    "formatVersion": {
+      "type": "object",
+      "required": ["formats", "version", "capabilities"],
+      "additionalProperties": false,
+      "properties": {
+        "formats": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+        "capabilities": { "type": "array", "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" } }
+      }
+    }
+  }
+}

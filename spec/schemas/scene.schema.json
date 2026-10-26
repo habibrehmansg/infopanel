@@ -1,0 +1,772 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:infopanel:scene:1",
+  "title": "Scene",
+  "description": "What one item draws: a tree of nodes in the item's local coordinates (pixels, y down, angles in degrees clockwise), with typed expressions over the item's inputs, the clock, its layout box, named values and state cells. Format infopanel.scene/1; see docs/scene.md.",
+  "type": "object",
+  "required": ["format", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "infopanel.scene/1" },
+    "requires": {
+      "description": "Capabilities this scene needs beyond version 1.0 (see docs/versioning.md). An engine that lacks one shows the item as unsupported.",
+      "type": "array",
+      "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" },
+      "maxItems": 32,
+      "uniqueItems": true
+    },
+    "inputs": {
+      "description": "The inputs the scene reads, by name. An item binds each to a sensor (its `bindings`).",
+      "type": "object",
+      "propertyNames": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+      "additionalProperties": { "$ref": "#/$defs/inputDecl" }
+    },
+    "values": {
+      "description": "Named expressions, evaluated at most once per tick and read with {\"op\": \"value\"}.",
+      "type": "object",
+      "propertyNames": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+      "additionalProperties": { "$ref": "urn:infopanel:expression:1#/$defs/anyExpr" }
+    },
+    "state": {
+      "description": "State cells: values that carry over from tick to tick (smoothing, rate limits, peak hold). Each cell's name is its instance id (see docs/identity.md).",
+      "type": "object",
+      "propertyNames": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+      "additionalProperties": { "$ref": "#/$defs/stateCell" }
+    },
+    "nodes": {
+      "description": "Drawn in order: the first is at the back.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    }
+  },
+  "$defs": {
+    "inputDecl": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "description": "number: a numeric sensor (value, statistics, unit, history). text: a text sensor. table: a table sensor.",
+          "enum": ["number", "text", "table"]
+        },
+        "label": { "description": "A short human-readable name for a client to show.", "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "stateCell": {
+      "description": "On the first tick the cell takes `init`; on each later tick it takes `next`, evaluated with the previous values of all cells and {\"op\": \"dt\"}. The cell's type is the common type of `init` and `next` (they must have one), and every read of the cell is checked against it.",
+      "type": "object",
+      "required": ["init", "next"],
+      "additionalProperties": false,
+      "properties": {
+        "init": { "$ref": "urn:infopanel:expression:1#/$defs/anyExpr" },
+        "next": { "$ref": "urn:infopanel:expression:1#/$defs/anyExpr" }
+      }
+    },
+
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/groupNode" },
+        { "$ref": "#/$defs/rectNode" },
+        { "$ref": "#/$defs/ellipseNode" },
+        { "$ref": "#/$defs/arcNode" },
+        { "$ref": "#/$defs/lineNode" },
+        { "$ref": "#/$defs/pathNode" },
+        { "$ref": "#/$defs/polylineNode" },
+        { "$ref": "#/$defs/textNode" },
+        { "$ref": "#/$defs/seriesNode" },
+        { "$ref": "#/$defs/tableNode" },
+        { "$ref": "#/$defs/mediaNode" }
+      ]
+    },
+    "visible": {
+      "$ref": "urn:infopanel:expression:1#/$defs/boolExpr",
+      "description": "Whether the node is drawn this tick.",
+      "default": true
+    },
+    "opacity": {
+      "$ref": "urn:infopanel:expression:1#/$defs/numberExpr",
+      "description": "0–1, clamped. On a group it applies to the composited children as a whole.",
+      "default": 1
+    },
+
+    "groupNode": {
+      "description": "Children drawn in order, optionally transformed, clipped, blended and with effects. Order of application: transform, clip, children, effects, then opacity and blend when compositing onto what is below.",
+      "type": "object",
+      "required": ["kind", "children"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "group" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "transform": {
+          "description": "Applied as listed: the first step is outermost (as in an SVG transform list).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/transformStep" },
+          "maxItems": 8
+        },
+        "clip": { "$ref": "#/$defs/clipShape" },
+        "blend": { "$ref": "#/$defs/blendMode" },
+        "effects": {
+          "description": "Applied in order to the group's composited children.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/effect" },
+          "maxItems": 4
+        },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+      }
+    },
+    "rectNode": {
+      "type": "object",
+      "required": ["kind", "w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "rect" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Width; a negative value draws nothing." },
+        "h": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Height; a negative value draws nothing." },
+        "r": { "$ref": "#/$defs/cornerRadii" },
+        "fill": { "$ref": "#/$defs/paint" },
+        "stroke": { "$ref": "#/$defs/stroke" }
+      }
+    },
+    "cornerRadii": {
+      "description": "One radius for every corner, or [top-left, top-right, bottom-right, bottom-left]. Each is clamped to half the shorter side.",
+      "oneOf": [
+        { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        {
+          "type": "array",
+          "prefixItems": [
+            { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+            { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+            { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+            { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" }
+          ],
+          "items": false,
+          "minItems": 4
+        }
+      ]
+    },
+    "ellipseNode": {
+      "type": "object",
+      "required": ["kind", "rx", "ry"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "ellipse" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "cx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "cy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "rx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "ry": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "fill": { "$ref": "#/$defs/paint" },
+        "stroke": { "$ref": "#/$defs/stroke" }
+      }
+    },
+    "arcNode": {
+      "description": "A circular arc from `start` through `sweep` degrees (clockwise when positive; 0° points along +x). close \"sector\": the region between radius `inner` and `r` (a pie when `inner` is 0). close \"open\": the arc curve at radius `r` only, for stroking.",
+      "type": "object",
+      "required": ["kind", "r", "sweep"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "arc" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "cx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "cy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "r": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "inner": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "start": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "sweep": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Clamped to −360…360." },
+        "close": { "enum": ["sector", "open"], "default": "sector" },
+        "fill": { "$ref": "#/$defs/paint" },
+        "stroke": { "$ref": "#/$defs/stroke" }
+      }
+    },
+    "lineNode": {
+      "type": "object",
+      "required": ["kind", "x1", "y1", "x2", "y2", "stroke"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "line" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "x1": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "y1": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "x2": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "y2": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "stroke": { "$ref": "#/$defs/stroke" }
+      }
+    },
+    "pathNode": {
+      "description": "A static outline in SVG path syntax (M, L, H, V, C, S, Q, T, A, Z and their relative forms). Move it with a group's transform.",
+      "type": "object",
+      "required": ["kind", "d"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "path" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "d": { "type": "string", "minLength": 1, "maxLength": 65536 },
+        "fillRule": { "$ref": "#/$defs/fillRule" },
+        "fill": { "$ref": "#/$defs/paint" },
+        "stroke": { "$ref": "#/$defs/stroke" }
+      }
+    },
+    "polylineNode": {
+      "description": "Straight segments through points that may move with expressions; closed, it is a polygon.",
+      "type": "object",
+      "required": ["kind", "points"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "polyline" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "points": { "type": "array", "items": { "$ref": "#/$defs/point" }, "minItems": 2 },
+        "closed": { "type": "boolean", "default": false },
+        "fillRule": { "$ref": "#/$defs/fillRule" },
+        "fill": { "$ref": "#/$defs/paint" },
+        "stroke": { "$ref": "#/$defs/stroke" }
+      }
+    },
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" }
+      ],
+      "items": false,
+      "minItems": 2
+    },
+    "fillRule": { "enum": ["nonzero", "evenodd"], "default": "nonzero" },
+
+    "textNode": {
+      "description": "Shaped text. Without `w` it is one line (or its explicit lines) as wide as it measures, aligned on `x` by `align`; with `w` it is laid out in that box (wrap, ellipsis, marquee, fit). See docs/smart-nodes.md.",
+      "type": "object",
+      "required": ["kind", "text", "font"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "text" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Box width. Absent: automatic." },
+        "h": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Box height, used by valign, clip, ellipsis and fit. Absent: automatic." },
+        "text": {
+          "description": "The text, or runs of text with their own font and paint.",
+          "oneOf": [
+            { "$ref": "urn:infopanel:expression:1#/$defs/stringExpr" },
+            { "type": "array", "items": { "$ref": "#/$defs/textSpan" }, "minItems": 1, "maxItems": 32 }
+          ]
+        },
+        "font": { "$ref": "#/$defs/font" },
+        "fill": { "$ref": "#/$defs/paint", "default": "#000000" },
+        "stroke": { "$ref": "#/$defs/stroke" },
+        "align": { "enum": ["start", "center", "end"], "default": "start" },
+        "valign": {
+          "description": "With `h`: where the text sits in the box. Without: which part of the text block `y` names (baseline: the first line's baseline).",
+          "enum": ["top", "middle", "bottom", "baseline"],
+          "default": "top"
+        },
+        "wrap": { "enum": ["none", "word"], "default": "none" },
+        "maxLines": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "overflow": {
+          "description": "What happens when the text is larger than the box: visible (drawn past it), clip, ellipsis (the last line ends with …), marquee (one line scrolls left; needs `w`).",
+          "enum": ["visible", "clip", "ellipsis", "marquee"],
+          "default": "visible"
+        },
+        "marquee": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "speed": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Pixels per second, at least 1.", "default": 30 },
+            "gap": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Pixels between the end of the text and its next repeat.", "default": 40 }
+          }
+        },
+        "fit": {
+          "description": "Shrink the font (every span in proportion) until the text fits the box (`w`, and `h` when set), down to `min` pixels.",
+          "type": "object",
+          "required": ["min"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" }
+          }
+        },
+        "lineHeight": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Line height as a multiple of the font size. Absent: the font's own." },
+        "letterSpacing": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Extra pixels after each character.", "default": 0 },
+        "underline": { "type": "boolean", "default": false },
+        "strike": { "type": "boolean", "default": false }
+      }
+    },
+    "textSpan": {
+      "type": "object",
+      "required": ["text"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "$ref": "urn:infopanel:expression:1#/$defs/stringExpr" },
+        "font": { "$ref": "#/$defs/fontOverride" },
+        "fill": { "$ref": "#/$defs/paint" },
+        "underline": { "type": "boolean" },
+        "strike": { "type": "boolean" }
+      }
+    },
+    "font": {
+      "type": "object",
+      "required": ["family", "size"],
+      "additionalProperties": false,
+      "properties": {
+        "family": { "description": "A font family the engine has. A missing family falls back to the engine's default family and is reported.", "type": "string", "minLength": 1, "maxLength": 128 },
+        "size": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Pixels (the em size), clamped to 1–2048." },
+        "weight": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 400 },
+        "italic": { "type": "boolean", "default": false }
+      }
+    },
+    "fontOverride": {
+      "description": "Replaces the node's font fields that are present.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "size": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "weight": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "italic": { "type": "boolean" }
+      }
+    },
+
+    "seriesNode": {
+      "description": "A number input's history drawn in a box, newest sample at the right edge, one sample every `pitch` pixels to the left, clipped to the box. y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h. line: a polyline through the samples (stroke). area: the polyline closed down to the bottom (fill, then the line's stroke). bars: one bar per sample from the bottom, `barWidth` wide, right edge on the sample.",
+      "type": "object",
+      "required": ["kind", "input", "w", "h", "min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "series" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "h": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "min": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "max": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "mode": { "enum": ["line", "area", "bars"], "default": "line" },
+        "pitch": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Pixels between samples, at least 0.25.", "default": 1 },
+        "count": { "description": "At most this many samples. Absent: as many as fit (floor(w ÷ pitch) + 1).", "type": "integer", "minimum": 1, "maximum": 4096 },
+        "barWidth": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "bars only. Absent: pitch." },
+        "fill": { "$ref": "#/$defs/paint" },
+        "stroke": { "$ref": "#/$defs/stroke" }
+      }
+    },
+
+    "tableNode": {
+      "description": "Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows, one `rowHeight` apart. Columns sit side by side, `gap` apart. See docs/smart-nodes.md.",
+      "type": "object",
+      "required": ["kind", "input", "columns", "font"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "table" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/tableColumn" }, "minItems": 1, "maxItems": 16 },
+        "rows": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
+        "header": { "type": "boolean", "default": true },
+        "rowHeight": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Absent: the font's line height." },
+        "gap": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "font": { "$ref": "#/$defs/font" },
+        "fill": { "$ref": "#/$defs/paint", "default": "#000000" },
+        "stroke": { "$ref": "#/$defs/stroke" },
+        "headerFont": { "$ref": "#/$defs/fontOverride" },
+        "headerFill": { "$ref": "#/$defs/paint" },
+        "overflow": { "enum": ["visible", "clip", "ellipsis"], "default": "ellipsis" }
+      }
+    },
+    "tableColumn": {
+      "type": "object",
+      "required": ["column", "w"],
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "description": "The table's column by index (0 first) or by name. A missing column draws nothing but keeps its width.",
+          "oneOf": [
+            { "type": "integer", "minimum": 0, "maximum": 255 },
+            { "type": "string", "minLength": 1, "maxLength": 128 }
+          ]
+        },
+        "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "align": { "enum": ["start", "center", "end"], "default": "start" },
+        "title": { "$ref": "urn:infopanel:expression:1#/$defs/stringExpr", "description": "Header text. Absent: the column's name." }
+      }
+    },
+
+    "mediaNode": {
+      "description": "An image (still or animated) from an asset, a sequence of assets picked by an index (with optional cross-fade), or a configured provider. Animated media plays on the tick clock. See docs/smart-nodes.md.",
+      "type": "object",
+      "required": ["kind", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "media" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/nodeId" },
+        "visible": { "$ref": "#/$defs/visible" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Absent: the media's natural width (or kept in proportion to `h`)." },
+        "h": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Absent: the media's natural height (or kept in proportion to `w`)." },
+        "source": {
+          "oneOf": [
+            { "$ref": "#/$defs/assetSource" },
+            { "$ref": "#/$defs/providerSource" },
+            { "$ref": "#/$defs/sequenceSource" }
+          ]
+        },
+        "fit": {
+          "description": "fill: stretch to the box. contain, cover: scale keeping proportions. none: natural size.",
+          "enum": ["fill", "contain", "cover", "none"],
+          "default": "fill"
+        },
+        "align": {
+          "description": "Where contained, covered or natural-size media sits in the box, as fractions of the free space ([0.5, 0.5]: centred).",
+          "type": "array",
+          "prefixItems": [{ "type": "number", "minimum": 0, "maximum": 1 }, { "type": "number", "minimum": 0, "maximum": 1 }],
+          "items": false,
+          "minItems": 2
+        },
+        "playback": { "enum": ["loop", "once", "still"], "default": "loop" },
+        "speed": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Playback rate, clamped to 0–16.", "default": 1 },
+        "sampling": { "enum": ["linear", "nearest"], "default": "linear" }
+      }
+    },
+    "assetSource": {
+      "type": "object",
+      "required": ["asset"],
+      "additionalProperties": false,
+      "properties": { "asset": { "$ref": "urn:infopanel:common:1#/$defs/blobId" } }
+    },
+    "providerSource": {
+      "description": "Media from a provider configured on the engine (capability media.provider). `ref` is passed to the provider; the engine never fetches anything that isn't configured.",
+      "type": "object",
+      "required": ["provider", "ref"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+        "ref": { "$ref": "urn:infopanel:expression:1#/$defs/stringExpr" }
+      }
+    },
+    "sequenceSource": {
+      "description": "Frames picked by `index` (0 first, clamped to the range). With crossfade, a fractional index draws frame floor(index) and, over it, frame ceil(index) at opacity index − floor(index).",
+      "type": "object",
+      "required": ["sequence", "index"],
+      "additionalProperties": false,
+      "properties": {
+        "sequence": { "type": "array", "items": { "$ref": "#/$defs/assetSource" }, "minItems": 1 },
+        "index": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "crossfade": { "type": "boolean", "default": false }
+      }
+    },
+
+    "paint": {
+      "description": "A colour (literal or expression) or a gradient. Gradient geometry is in the node's local coordinates.",
+      "oneOf": [
+        { "$ref": "urn:infopanel:expression:1#/$defs/colorExpr" },
+        { "$ref": "#/$defs/linearPaint" },
+        { "$ref": "#/$defs/radialPaint" },
+        { "$ref": "#/$defs/sweepPaint" },
+        { "$ref": "#/$defs/composePaint" }
+      ]
+    },
+    "stops": {
+      "description": "2–16 colour stops; `at` is clamped to 0–1 and stops are used in the order given.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/stop" },
+      "minItems": 2,
+      "maxItems": 16
+    },
+    "stop": {
+      "type": "object",
+      "required": ["at", "color"],
+      "additionalProperties": false,
+      "properties": {
+        "at": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "color": { "$ref": "urn:infopanel:expression:1#/$defs/colorExpr" }
+      }
+    },
+    "spread": {
+      "description": "Outside 0–1: pad (extend the end colours), repeat, reflect.",
+      "enum": ["pad", "repeat", "reflect"],
+      "default": "pad"
+    },
+    "linearPaint": {
+      "type": "object",
+      "required": ["type", "x1", "y1", "x2", "y2", "stops"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "linear" },
+        "x1": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "y1": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "x2": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "y2": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "stops": { "$ref": "#/$defs/stops" },
+        "spread": { "$ref": "#/$defs/spread" }
+      }
+    },
+    "radialPaint": {
+      "type": "object",
+      "required": ["type", "cx", "cy", "r", "stops"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "radial" },
+        "cx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "cy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "r": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "stops": { "$ref": "#/$defs/stops" },
+        "spread": { "$ref": "#/$defs/spread" }
+      }
+    },
+    "sweepPaint": {
+      "description": "Colours around (cx, cy) from angle `start` (0° along +x, clockwise) to `end`.",
+      "type": "object",
+      "required": ["type", "cx", "cy", "stops"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "sweep" },
+        "cx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "cy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "start": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "end": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Absent: start + 360." },
+        "stops": { "$ref": "#/$defs/stops" },
+        "spread": { "$ref": "#/$defs/spread" }
+      }
+    },
+    "composePaint": {
+      "description": "Two paints combined per pixel: `src` blended onto `dst` with `blend`, then drawn as one paint.",
+      "type": "object",
+      "required": ["type", "blend", "dst", "src"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "compose" },
+        "blend": { "$ref": "#/$defs/blendMode" },
+        "dst": { "$ref": "#/$defs/paint" },
+        "src": { "$ref": "#/$defs/paint" }
+      }
+    },
+    "stroke": {
+      "type": "object",
+      "required": ["paint", "width"],
+      "additionalProperties": false,
+      "properties": {
+        "paint": { "$ref": "#/$defs/paint" },
+        "width": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Pixels, centred on the outline; 0 or less draws nothing." },
+        "cap": { "enum": ["butt", "round", "square"], "default": "butt" },
+        "join": { "enum": ["miter", "round", "bevel"], "default": "miter" },
+        "miterLimit": { "type": "number", "minimum": 1, "maximum": 100, "default": 4 },
+        "dash": {
+          "description": "Alternating dash and gap lengths in pixels.",
+          "type": "array",
+          "items": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+          "minItems": 2,
+          "maxItems": 16
+        },
+        "dashOffset": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "trimStart": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Draw only from this fraction of the outline's length (0–1).", "default": 0 },
+        "trimEnd": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Draw only up to this fraction of the outline's length (0–1).", "default": 1 }
+      }
+    },
+    "blendMode": {
+      "description": "How a group or paint combines with what is below (W3C Compositing and Blending; plus adds the colours).",
+      "enum": ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity", "plus"],
+      "default": "normal"
+    },
+
+    "transformStep": {
+      "oneOf": [
+        { "$ref": "#/$defs/translateStep" },
+        { "$ref": "#/$defs/rotateStep" },
+        { "$ref": "#/$defs/scaleStep" },
+        { "$ref": "#/$defs/skewStep" },
+        { "$ref": "#/$defs/matrixStep" }
+      ]
+    },
+    "translateStep": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "translate" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 }
+      }
+    },
+    "rotateStep": {
+      "description": "Rotation by `angle` degrees clockwise about (cx, cy).",
+      "type": "object",
+      "required": ["type", "angle"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "rotate" },
+        "angle": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "cx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "cy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 }
+      }
+    },
+    "scaleStep": {
+      "description": "Scale about (cx, cy); a negative factor mirrors.",
+      "type": "object",
+      "required": ["type", "x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "scale" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "cx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "cy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 }
+      }
+    },
+    "skewStep": {
+      "description": "Skew by angles in degrees along x and y (each clamped to −89…89).",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "skew" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 }
+      }
+    },
+    "matrixStep": {
+      "description": "An affine matrix [a, b, c, d, e, f]: x' = a·x + c·y + e, y' = b·x + d·y + f.",
+      "type": "object",
+      "required": ["type", "m"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matrix" },
+        "m": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number" }, { "type": "number" }, { "type": "number" },
+            { "type": "number" }, { "type": "number" }, { "type": "number" }
+          ],
+          "items": false,
+          "minItems": 6
+        }
+      }
+    },
+
+    "clipShape": {
+      "description": "Children are drawn only inside this shape (antialiased), in the group's coordinates after its transform.",
+      "oneOf": [
+        { "$ref": "#/$defs/rectClip" },
+        { "$ref": "#/$defs/ellipseClip" },
+        { "$ref": "#/$defs/arcClip" },
+        { "$ref": "#/$defs/pathClip" }
+      ]
+    },
+    "rectClip": {
+      "type": "object",
+      "required": ["kind", "w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "rect" },
+        "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "h": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "r": { "$ref": "#/$defs/cornerRadii" }
+      }
+    },
+    "ellipseClip": {
+      "type": "object",
+      "required": ["kind", "rx", "ry"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "ellipse" },
+        "cx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "cy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "rx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "ry": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" }
+      }
+    },
+    "arcClip": {
+      "description": "The sector region of an arc (see arcNode).",
+      "type": "object",
+      "required": ["kind", "r", "sweep"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "arc" },
+        "cx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "cy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "r": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "inner": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "start": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "sweep": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" }
+      }
+    },
+    "pathClip": {
+      "type": "object",
+      "required": ["kind", "d"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "path" },
+        "d": { "type": "string", "minLength": 1, "maxLength": 65536 },
+        "fillRule": { "$ref": "#/$defs/fillRule" }
+      }
+    },
+
+    "effect": {
+      "oneOf": [
+        { "$ref": "#/$defs/blurEffect" },
+        { "$ref": "#/$defs/shadowEffect" },
+        { "$ref": "#/$defs/glowEffect" }
+      ]
+    },
+    "blurEffect": {
+      "description": "Gaussian blur of the group's content.",
+      "type": "object",
+      "required": ["type", "sigma"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "blur" },
+        "sigma": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Standard deviation in pixels, clamped to 0–64. The blur reaches 3 sigma." }
+      }
+    },
+    "shadowEffect": {
+      "description": "The content's coverage, filled with `color`, offset by (dx, dy) and blurred, drawn under the content.",
+      "type": "object",
+      "required": ["type", "sigma", "color"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "shadow" },
+        "dx": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "dy": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
+        "sigma": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Clamped to 0–64." },
+        "color": { "$ref": "urn:infopanel:expression:1#/$defs/colorExpr" }
+      }
+    },
+    "glowEffect": {
+      "description": "A shadow with no offset: the content's coverage filled with `color`, blurred, drawn under the content.",
+      "type": "object",
+      "required": ["type", "sigma", "color"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "glow" },
+        "sigma": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Clamped to 0–64." },
+        "color": { "$ref": "urn:infopanel:expression:1#/$defs/colorExpr" }
+      }
+    }
+  }
+}

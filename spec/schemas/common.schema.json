@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:infopanel:common:1",
+  "description": "Shared definitions for the InfoPanel document, scene and engine API formats.",
+  "$defs": {
+    "capability": {
+      "description": "A capability id: a feature an engine may or may not support (see docs/versioning.md).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)*$",
+      "maxLength": 64
+    },
+    "name": {
+      "description": "The name of a scene input, value or state cell, or of an item's binding.",
+      "type": "string",
+      "pattern": "^[a-z][A-Za-z0-9_]{0,31}$"
+    },
+    "nodeId": {
+      "description": "A scene node's instance id, unique within its scene.",
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"
+    },
+    "itemId": {
+      "description": "An item's id, unique within its document. Chosen by whoever creates the item and never changed.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "documentId": {
+      "description": "A document's id: a UUID in lower case.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "blobId": {
+      "description": "A blob (asset or other stored file) named by the SHA-256 of its bytes.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "colorLiteral": {
+      "description": "An sRGB colour, #RRGGBB or #RRGGBBAA (alpha last, not premultiplied).",
+      "type": "string",
+      "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
+    },
+    "revision": {
+      "description": "A revision number, assigned by the engine.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "opaque": {
+      "description": "A JSON object the engine stores and returns unchanged and never interprets.",
+      "type": "object"
+    }
+  }
+}

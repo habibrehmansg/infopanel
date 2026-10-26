@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:infopanel:scene:1",
+  "title": "Scene",
+  "description": "A scene: items on a canvas.",
+  "type": "object",
+  "required": ["id", "items"],
+  "properties": {
+    "id": { "$ref": "urn:infopanel:common:1#/$defs/id" },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "labels": { "$ref": "urn:infopanel:common:1#/$defs/labels" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "textItem": {
+      "type": "object",
+      "required": ["kind", "text"],
+      "properties": {
+        "kind": { "const": "text" },
+        "text": { "type": "string", "not": { "const": "" } },
+        "size": { "$ref": "urn:infopanel:common:1#/$defs/numberExpr" }
+      },
+      "additionalProperties": false
+    },
+    "imageItem": {
+      "type": "object",
+      "required": ["kind", "src"],
+      "properties": {
+        "kind": { "const": "image" },
+        "src": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "item": {
+      "description": "Anything that can sit on a scene.",
+      "oneOf": [{ "$ref": "#/$defs/textItem" }, { "$ref": "#/$defs/imageItem" }]
+    },
+    "setPlacementOp": {
+      "type": "object",
+      "required": ["op", "item", "placement"],
+      "properties": {
+        "op": { "const": "setPlacement" },
+        "item": { "type": "string" },
+        "placement": {
+          "type": "object",
+          "required": ["at"],
+          "properties": {
+            "at": {
+              "type": "object",
+              "required": ["x", "y"],
+              "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+            },
+            "z": { "type": "integer" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "removeItemOp": {
+      "type": "object",
+      "required": ["op", "item"],
+      "properties": {
+        "op": { "const": "removeItem" },
+        "item": { "type": "string" }
+      }
+    },
+    "op": {
+      "description": "An edit, discriminated by `op`.",
+      "oneOf": [{ "$ref": "#/$defs/setPlacementOp" }, { "$ref": "#/$defs/removeItemOp" }]
+    },
+    "labelled": {
+      "description": "Properties plus a union.",
+      "type": "object",
+      "properties": { "label": { "type": "string" } },
+      "oneOf": [{ "$ref": "#/$defs/textItem" }, { "$ref": "#/$defs/imageItem" }]
+    },
+    "pinnedText": {
+      "description": "allOf plus a $ref with a sibling object part.",
+      "allOf": [
+        { "$ref": "#/$defs/textItem" },
+        { "type": "object", "required": ["pinned"], "properties": { "pinned": { "const": true } } }
+      ]
+    },
+    "withExtras": {
+      "$ref": "#/$defs/imageItem",
+      "properties": { "alt": { "type": "string" } }
+    }
+  }
+}

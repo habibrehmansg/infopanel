@@ -1,0 +1,45 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "media",
+      "id": "logo",
+      "w": {"op": "box", "field": "w"},
+      "h": {"op": "box", "field": "h"},
+      "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"},
+      "fit": "contain",
+      "align": [0.5, 1],
+      "sampling": "nearest"
+    },
+    {
+      "kind": "media",
+      "x": 8,
+      "y": 8,
+      "source": {"asset": "sha256:e796ee98bcccd3a77b80d6c394435d1c460c3684c96c542b073150f0ba6eb354"},
+      "fit": "none",
+      "playback": "loop",
+      "speed": 2
+    },
+    {
+      "kind": "media",
+      "x": 8,
+      "y": 40,
+      "w": 32,
+      "source": {"asset": "sha256:a734e9ea7e45149b532550ec7450468ae76ff813aef8ae6f6c51ae2733a4a169"},
+      "playback": "still"
+    },
+    {
+      "kind": "group",
+      "blend": "multiply",
+      "opacity": 0.5,
+      "children": [
+        {
+          "kind": "rect",
+          "w": {"op": "box", "field": "w"},
+          "h": {"op": "box", "field": "h"},
+          "fill": "#3b82f6"
+        }
+      ]
+    }
+  ]
+}

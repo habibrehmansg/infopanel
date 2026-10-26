@@ -1,0 +1,12 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number"}},
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": {"op": "history", "input": "v", "fn": "avg", "count": 4096},
+      "h": 10,
+      "fill": "#ffffff"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number"}},
+  "values": {
+    "sweep": {
+      "op": "mul",
+      "args": [{"op": "clamp", "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]}, 270]
+    }
+  },
+  "nodes": [
+    {"kind": "arc", "cx": 60, "cy": 60, "r": 56, "inner": 44, "start": 135, "sweep": 270, "fill": "#1f2937"},
+    {
+      "kind": "arc",
+      "cx": 60,
+      "cy": 60,
+      "r": 56,
+      "inner": 44,
+      "start": 135,
+      "sweep": {"op": "value", "name": "sweep"},
+      "fill": {
+        "type": "sweep",
+        "cx": 60,
+        "cy": 60,
+        "start": 135,
+        "end": 405,
+        "stops": [{"at": 0, "color": "#38bdf8"}, {"at": 1, "color": "#a855f7"}]
+      }
+    },
+    {
+      "kind": "arc",
+      "cx": 60,
+      "cy": 60,
+      "r": 36,
+      "start": 135,
+      "sweep": 270,
+      "close": "open",
+      "stroke": {
+        "paint": "#374151",
+        "width": 4,
+        "cap": "round",
+        "dash": [2, 6],
+        "trimEnd": {"op": "clamp", "args": [{"op": "norm", "args": [{"op": "input", "name": "v"}, 0, 100]}, 0, 1]}
+      }
+    },
+    {
+      "kind": "text",
+      "x": 60,
+      "y": 60,
+      "align": "center",
+      "valign": "middle",
+      "font": {"family": "Inter", "size": 20, "weight": 700},
+      "fill": "#f9fafb",
+      "text": {"op": "concat", "args": [{"op": "format", "value": {"op": "input", "name": "v"}}, "%"]}
+    }
+  ]
+}
