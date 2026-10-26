@@ -93,6 +93,16 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _thermaltakePanelMultiDeviceMode = false;
 
+        private readonly ObservableCollection<JlPanelDevice> _jlPanelDevices = [];
+
+        public ObservableCollection<JlPanelDevice> JlPanelDevices
+        {
+            get { return _jlPanelDevices; }
+        }
+
+        [ObservableProperty]
+        private bool _jlPanelMultiDeviceMode = false;
+
         private readonly ObservableCollection<VmaxPanelDevice> _vmaxPanelDevices = [];
 
         public ObservableCollection<VmaxPanelDevice> VmaxPanelDevices
@@ -150,6 +160,7 @@ namespace InfoPanel.Models
             TuringPanelDevices.CollectionChanged += TuringPanelDevices_CollectionChanged;
             ThermalrightPanelDevices.CollectionChanged += ThermalrightPanelDevices_CollectionChanged;
             ThermaltakePanelDevices.CollectionChanged += ThermaltakePanelDevices_CollectionChanged;
+            JlPanelDevices.CollectionChanged += JlPanelDevices_CollectionChanged;
             VmaxPanelDevices.CollectionChanged += VmaxPanelDevices_CollectionChanged;
         }
 
@@ -243,6 +254,27 @@ namespace InfoPanel.Models
         {
             if (e.PropertyName != nameof(ThermaltakePanelDevice.RuntimeProperties))
                 OnPropertyChanged(nameof(ThermaltakePanelDevices));
+        }
+
+        private void JlPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (JlPanelDevice device in e.OldItems)
+                    device.PropertyChanged -= JlDevice_PropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (JlPanelDevice device in e.NewItems)
+                    device.PropertyChanged += JlDevice_PropertyChanged;
+            }
+            OnPropertyChanged(nameof(JlPanelDevices));
+        }
+
+        private void JlDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(JlPanelDevice.RuntimeProperties))
+                OnPropertyChanged(nameof(JlPanelDevices));
         }
 
         private void VmaxPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

@@ -86,6 +86,14 @@ namespace InfoPanel.ThermalrightPanel
                             {
                                 modelInfo = ProbeWinUsbModel(deviceReg);
                             }
+                            // Trofeo 0x0416:0x5408 is also ambiguous — same PID for 9.16" v1, 9.16" v2, and 11.3".
+                            // Refine the VID/PID result by probing byte[20] of the TrofeoBulk init response.
+                            else if (vendorId == ThermalrightPanelModelDatabase.TROFEO_VENDOR_ID
+                                  && productId == ThermalrightPanelModelDatabase.TROFEO_PRODUCT_ID_916)
+                            {
+                                var refined = ProbeTrofeoBulkModel(deviceReg);
+                                if (refined != null) modelInfo = refined;
+                            }
                         }
                         else
                         {
@@ -371,6 +379,117 @@ namespace InfoPanel.ThermalrightPanel
             var identifier = Encoding.ASCII.GetString(response, 4, 8).TrimEnd('\0');
             Logger.Information("ThermalrightPanelHelper: Probe identifier: {Id}", identifier);
             return ThermalrightPanelModelDatabase.GetModelByIdentifier(identifier, sub);
+        }
+
+        /// <summary>
+        /// TrofeoBulk init probe for VID/PID 0x0416:0x5408. Sends the 2048-byte init packet,
+        /// reads the 512-byte response, and discriminates by byte[20]:
+        ///   0x01 → 9.16" v1, 0x02/0x03 → 9.16" v2, 0x05 → 11.3".
+        /// Returns null on any failure (device busy, wrong driver, timeout); caller keeps the
+        /// VID/PID-based default.
+        /// </summary>
+        private static ThermalrightPanelModelInfo? ProbeTrofeoBulkModel(UsbRegistry deviceReg)
+        {
+            const int PROBE_TIMEOUT_MS = 5000;
+            using var cts = new CancellationTokenSource(PROBE_TIMEOUT_MS);
+            try
+            {
+                var probeTask = Task.Run(() => ProbeTrofeoBulkModelInner(deviceReg, cts.Token), cts.Token);
+                probeTask.Wait(cts.Token);
+                return probeTask.Result;
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Warning("ThermalrightPanelHelper: TrofeoBulk probe timed out after {Timeout}ms", PROBE_TIMEOUT_MS);
+                return null;
+            }
+            catch (AggregateException ae) when (ae.InnerException is OperationCanceledException)
+            {
+                Logger.Warning("ThermalrightPanelHelper: TrofeoBulk probe timed out after {Timeout}ms", PROBE_TIMEOUT_MS);
+                return null;
+            }
+            catch (AggregateException ae)
+            {
+                Logger.Debug(ae.InnerException ?? ae, "ThermalrightPanelHelper: TrofeoBulk probe failed");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "ThermalrightPanelHelper: TrofeoBulk probe failed");
+                return null;
+            }
+        }
+
+        private static ThermalrightPanelModelInfo? ProbeTrofeoBulkModelInner(UsbRegistry deviceReg, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            using var usbDevice = deviceReg.Device;
+            if (usbDevice == null)
+            {
+                Logger.Debug("ThermalrightPanelHelper: TrofeoBulk probe could not open device");
+                return null;
+            }
+
+            if (usbDevice is IUsbDevice wholeUsbDevice)
+            {
+                wholeUsbDevice.SetConfiguration(1);
+                wholeUsbDevice.ClaimInterface(0);
+            }
+
+            // Trofeo 0x5408: write EP 0x09 OUT, read EP 0x81 IN (set in DeviceTask too).
+            WriteEndpointID writeEp = WriteEndpointID.Ep09;
+            ReadEndpointID readEp = ReadEndpointID.Ep01;
+            foreach (var config in usbDevice.Configs)
+            {
+                foreach (var iface in config.InterfaceInfoList)
+                {
+                    foreach (var ep in iface.EndpointInfoList)
+                    {
+                        var addr = (byte)ep.Descriptor.EndpointID;
+                        if ((addr & 0x80) == 0) writeEp = (WriteEndpointID)addr;
+                        else readEp = (ReadEndpointID)addr;
+                    }
+                }
+            }
+
+            using var writer = usbDevice.OpenEndpointWriter(writeEp);
+            using var reader = usbDevice.OpenEndpointReader(readEp);
+
+            // Build TrofeoBulk init: 2048 bytes, byte[0]=0x02, byte[1]=0xFF, byte[8]=0x01.
+            var initPacket = new byte[2048];
+            initPacket[0] = 0x02;
+            initPacket[1] = 0xFF;
+            initPacket[8] = 0x01;
+
+            var ec = writer.Write(initPacket, 3000, out _);
+            if (ec != ErrorCode.None)
+            {
+                Logger.Debug("ThermalrightPanelHelper: TrofeoBulk probe write failed: {Error}", ec);
+                return null;
+            }
+
+            var response = new byte[512];
+            ec = reader.Read(response, 3000, out int bytesRead);
+            if (ec != ErrorCode.None || bytesRead < 21)
+            {
+                Logger.Debug("ThermalrightPanelHelper: TrofeoBulk probe read failed: {Error}, bytes={Bytes}", ec, bytesRead);
+                return null;
+            }
+
+            byte b20 = response[20];
+            Logger.Information("ThermalrightPanelHelper: TrofeoBulk probe byte[20]=0x{B20:X2}", b20);
+
+            // 0x05 → 11.3". 0x02/0x03 → 9.16" v2. 0x01 (and anything else) → 9.16" v1 default.
+            var targetModel = b20 switch
+            {
+                0x05 => ThermalrightPanelModel.TrofeoVision113,
+                >= 0x02 and <= 0x03 => ThermalrightPanelModel.TrofeoVision916V2,
+                _ => ThermalrightPanelModel.TrofeoVision916,
+            };
+
+            if (ThermalrightPanelModelDatabase.Models.TryGetValue(targetModel, out var info))
+                return info;
+            return null;
         }
     }
 

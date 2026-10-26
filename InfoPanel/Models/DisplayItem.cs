@@ -87,6 +87,8 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
                     return "Donut";
                 case ShapeDisplayItem:
                     return "Shape";
+                case GuideDisplayItem:
+                    return "Guide";
                 default:
                     return "";
             }

@@ -52,5 +52,13 @@
             Content=""
             Icon="{ui:SymbolIcon Group20}"
             ToolTip="New Group" />
+
+        <ui:Button
+            x:Name="ButtonNewGuide"
+            Margin="10,0,0,0"
+            Appearance="Success"
+            Click="ButtonNewGuide_Click"
+            Icon="{ui:SymbolIcon SubGrid20}"
+            ToolTip="Add a guide line" />
     </StackPanel>
 </UserControl>

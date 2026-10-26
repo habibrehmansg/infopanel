@@ -261,6 +261,12 @@ namespace InfoPanel.Views.Components
 
         private void ButtonPushUp_Click(object sender, RoutedEventArgs e)
         {
+            if (SharedModel.Instance.SelectedItems.Count > 1)
+            {
+                SharedModel.Instance.MoveSelectedItemsBy(-1);
+                return;
+            }
+
             if (SelectedItem is DisplayItem item)
             {
                 _isHandlingSelection = true;
@@ -289,6 +295,12 @@ namespace InfoPanel.Views.Components
 
         private void ButtonPushDown_Click(object sender, RoutedEventArgs e)
         {
+            if (SharedModel.Instance.SelectedItems.Count > 1)
+            {
+                SharedModel.Instance.MoveSelectedItemsBy(1);
+                return;
+            }
+
             if (SelectedItem is DisplayItem item)
             {
                 _isHandlingSelection = true;
@@ -367,9 +379,23 @@ namespace InfoPanel.Views.Components
 
         private void ButtonDelete_Click(object sender, RoutedEventArgs e)
         {
+            if (SharedModel.Instance.SelectedItems.Count > 1)
+            {
+                SharedModel.Instance.RemoveSelectedItems();
+                return;
+            }
+
             if (SelectedItem != null)
             {
                 SharedModel.Instance.RemoveDisplayItem(SelectedItem);
+            }
+        }
+
+        private void MenuItemDeleteGroup_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: GroupDisplayItem group } } })
+            {
+                SharedModel.Instance.RemoveDisplayItem(group);
             }
         }
 
@@ -459,13 +485,7 @@ namespace InfoPanel.Views.Components
 
         private void ButtonDuplicate_Click(object sender, RoutedEventArgs e)
         {
-            if (SharedModel.Instance.SelectedItem is DisplayItem selectedItem)
-            {
-                var item = (DisplayItem)selectedItem.Clone();
-                SharedModel.Instance.AddDisplayItem(item);
-                SharedModel.Instance.PushDisplayItemTo(item, selectedItem);
-                item.Selected = true;
-            }
+            SharedModel.Instance.DuplicateSelectedItems();
         }
 
         private bool _isHandlingSelection;
@@ -704,194 +724,223 @@ namespace InfoPanel.Views.Components
             return result;
         }
 
+        /// <summary>
+        /// Normalizes drag data to a list of dragged items: GongSolutions passes a single
+        /// DisplayItem when one item is dragged, or a typed IEnumerable when multiple are dragged.
+        /// </summary>
+        private static List<DisplayItem> GetSourceItems(IDropInfo dropInfo)
+        {
+            if (dropInfo.Data is DisplayItem single)
+                return [single];
+
+            if (dropInfo.Data is System.Collections.IEnumerable multi)
+                return multi.OfType<DisplayItem>().ToList();
+
+            return [];
+        }
+
         void IDropTarget.DragOver(IDropInfo dropInfo)
         {
-            if (dropInfo.Data is DisplayItem sourceItem)
+            var sourceItems = GetSourceItems(dropInfo);
+            if (sourceItems.Count == 0)
             {
-                var targetItem = dropInfo.TargetItem as DisplayItem;
-
-                // Don't allow dropping an item onto itself
-                if (targetItem != null && sourceItem == targetItem)
-                {
-                    dropInfo.Effects = DragDropEffects.None;
-                    return;
-                }
-
-                // Get parent groups
-                var sourceParent = SharedModel.Instance.GetParent(sourceItem);
-                var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
-
-                // Check if source item is from a locked group
-                if (sourceParent is GroupDisplayItem sourceGroup && sourceGroup.IsLocked)
-                {
-                    // Allow reordering within the same locked group
-                    if (targetParentGroup == sourceGroup)
-                    {
-                        dropInfo.DropTargetAdorner = DropTargetAdorners.Insert;
-                        dropInfo.Effects = DragDropEffects.Move;
-                        return;
-                    }
-
-                    // Don't allow dragging items out of locked groups
-                    dropInfo.Effects = DragDropEffects.None;
-                    return;
-                }
-
-                // Check if target is in a locked group
-                if (targetParentGroup != null && targetParentGroup.IsLocked)
-                {
-                    // Don't allow dropping items into locked groups
-                    dropInfo.Effects = DragDropEffects.None;
-                    return;
-                }
-
-                // Check if we're dragging a group
-                if (sourceItem is GroupDisplayItem)
-                {
-                    // If target is also a group, prevent drop
-                    if (targetItem is GroupDisplayItem)
-                    {
-                        dropInfo.Effects = DragDropEffects.None;
-                        return;
-                    }
-
-                    // Check if the target collection is not the main collection
-                    // If it's not, then it must be a group's inner collection
-                    if (dropInfo.TargetCollection != null &&
-                        dropInfo.TargetCollection != SharedModel.Instance.DisplayItems &&
-                        !(dropInfo.TargetCollection is ListCollectionView view && view.SourceCollection == SharedModel.Instance.DisplayItems))
-                    {
-                        // We're trying to drop a group inside another group
-                        dropInfo.Effects = DragDropEffects.None;
-                        return;
-                    }
-                }
-                else
-                {
-                    // We're dragging a regular item (not a group)
-                    // Allow dropping into groups (even empty ones)
-                    if (targetItem is GroupDisplayItem groupItem)
-                    {
-                        // Check if the group is locked
-                        if (groupItem.IsLocked)
-                        {
-                            dropInfo.Effects = DragDropEffects.None;
-                            return;
-                        }
-
-                        // Allow dropping items into groups
-                        dropInfo.DropTargetAdorner = DropTargetAdorners.Highlight;
-                        dropInfo.Effects = DragDropEffects.Move;
-                        return;
-                    }
-                }
-
-                // Allow the drop for all other cases
-                dropInfo.DropTargetAdorner = DropTargetAdorners.Insert;
-                dropInfo.Effects = DragDropEffects.Move;
+                return;
             }
+
+            var targetItem = dropInfo.TargetItem as DisplayItem;
+
+            // Don't allow dropping an item onto itself
+            if (targetItem != null && sourceItems.Contains(targetItem))
+            {
+                dropInfo.Effects = DragDropEffects.None;
+                return;
+            }
+
+            // Get parent groups
+            var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
+            var lockedSourceGroups = sourceItems
+                .Select(SharedModel.Instance.GetParent)
+                .OfType<GroupDisplayItem>()
+                .Where(g => g.IsLocked)
+                .Distinct()
+                .ToList();
+
+            // Check if any dragged item is from a locked group
+            if (lockedSourceGroups.Count > 0)
+            {
+                // Allow reordering within the same locked group
+                if (lockedSourceGroups.Count == 1 && targetParentGroup == lockedSourceGroups[0])
+                {
+                    dropInfo.DropTargetAdorner = DropTargetAdorners.Insert;
+                    dropInfo.Effects = DragDropEffects.Move;
+                    return;
+                }
+
+                // Don't allow dragging items out of locked groups
+                dropInfo.Effects = DragDropEffects.None;
+                return;
+            }
+
+            // Check if target is in a locked group
+            if (targetParentGroup != null && targetParentGroup.IsLocked)
+            {
+                // Don't allow dropping items into locked groups
+                dropInfo.Effects = DragDropEffects.None;
+                return;
+            }
+
+            // Check if we're dragging a group
+            if (sourceItems.Any(item => item is GroupDisplayItem))
+            {
+                // Groups can't be combined with other items, dropped onto another group, or nested
+                if (sourceItems.Count > 1 || targetItem is GroupDisplayItem)
+                {
+                    dropInfo.Effects = DragDropEffects.None;
+                    return;
+                }
+
+                // Check if the target collection is not the main collection
+                // If it's not, then it must be a group's inner collection
+                if (dropInfo.TargetCollection != null &&
+                    dropInfo.TargetCollection != SharedModel.Instance.DisplayItems &&
+                    !(dropInfo.TargetCollection is ListCollectionView view && view.SourceCollection == SharedModel.Instance.DisplayItems))
+                {
+                    // We're trying to drop a group inside another group
+                    dropInfo.Effects = DragDropEffects.None;
+                    return;
+                }
+            }
+            else
+            {
+                // We're dragging regular item(s) (not a group)
+                // Allow dropping into groups (even empty ones)
+                if (targetItem is GroupDisplayItem groupItem)
+                {
+                    // Check if the group is locked
+                    if (groupItem.IsLocked)
+                    {
+                        dropInfo.Effects = DragDropEffects.None;
+                        return;
+                    }
+
+                    // Allow dropping items into groups
+                    dropInfo.DropTargetAdorner = DropTargetAdorners.Highlight;
+                    dropInfo.Effects = DragDropEffects.Move;
+                    return;
+                }
+            }
+
+            // Allow the drop for all other cases
+            dropInfo.DropTargetAdorner = DropTargetAdorners.Insert;
+            dropInfo.Effects = DragDropEffects.Move;
         }
 
         private readonly DefaultDropHandler dropHandler = new();
 
+        private static void PushDropUndo()
+        {
+            if (SharedModel.Instance.SelectedProfile is Profile profile)
+            {
+                var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile);
+                if (copy.Count > 0)
+                    InfoPanel.Services.UndoManager.Instance.PushUndo(profile, copy.ToList());
+            }
+        }
+
         void IDropTarget.Drop(IDropInfo dropInfo)
         {
-            if (dropInfo.Data is DisplayItem sourceItem)
+            var sourceItems = GetSourceItems(dropInfo);
+            if (sourceItems.Count == 0)
             {
-                var targetItem = dropInfo.TargetItem as DisplayItem;
-
-                // Don't allow dropping an item onto itself
-                if (targetItem != null && sourceItem == targetItem)
-                {
-                    return;
-                }
-
-                // Get parent groups and validate before pushing undo
-                var sourceParent = SharedModel.Instance.GetParent(sourceItem);
-                var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
-
-                // Check if source item is from a locked group
-                if (sourceParent is GroupDisplayItem sourceGroup && sourceGroup.IsLocked)
-                {
-                    // Allow reordering within the same locked group
-                    if (targetParentGroup == sourceGroup)
-                    {
-                        if (SharedModel.Instance.SelectedProfile is Profile p)
-                        {
-                            var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(p);
-                            if (copy.Count > 0)
-                                InfoPanel.Services.UndoManager.Instance.PushUndo(p, copy.ToList());
-                        }
-                        dropHandler.Drop(dropInfo);
-                        SharedModel.Instance.UpdateLastStateSnapshot();
-                        SharedModel.Instance.MarkDirty();
-                        return;
-                    }
-
-                    // Don't allow dragging items out of locked groups
-                    return;
-                }
-
-                // Check if target is in a locked group
-                if (targetParentGroup != null && targetParentGroup.IsLocked)
-                {
-                    // Don't allow dropping items into locked groups
-                    return;
-                }
-
-                // Check if we're dragging a group
-                if (sourceItem is GroupDisplayItem)
-                {
-                    // If target is also a group, prevent drop
-                    if (targetItem is GroupDisplayItem)
-                    {
-                        return;
-                    }
-
-                    // Check if the target collection is not the main collection
-                    // If it's not, then it must be a group's inner collection
-                    if (dropInfo.TargetCollection != null &&
-                        dropInfo.TargetCollection != SharedModel.Instance.DisplayItems &&
-                        !(dropInfo.TargetCollection is ListCollectionView view && view.SourceCollection == SharedModel.Instance.DisplayItems))
-                    {
-                        // We're trying to drop a group inside another group
-                        return;
-                    }
-                }
-                else
-                {
-                    // We're dragging a regular item (not a group)
-                    // Special handling for dropping into groups: move directly to avoid duplicate undo from RemoveDisplayItem
-                    if (targetItem is GroupDisplayItem groupItem)
-                    {
-                        if (groupItem.IsLocked)
-                            return;
-
-                        if (SharedModel.Instance.SelectedProfile is Profile profile)
-                        {
-                            var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile);
-                            if (copy.Count > 0)
-                                InfoPanel.Services.UndoManager.Instance.PushUndo(profile, copy.ToList());
-                        }
-                        SharedModel.Instance.GetParentCollection(sourceItem)?.Remove(sourceItem);
-                        groupItem.DisplayItems.Add(sourceItem);
-                        SharedModel.Instance.UpdateLastStateSnapshot();
-                        SharedModel.Instance.MarkDirty();
-                        return;
-                    }
-                }
-
-                // Push undo after validation, then perform drop
-                if (SharedModel.Instance.SelectedProfile is Profile profile2)
-                {
-                    var copy = SharedModel.Instance.GetProfileDisplayItemsCopy(profile2);
-                    if (copy.Count > 0)
-                        InfoPanel.Services.UndoManager.Instance.PushUndo(profile2, copy.ToList());
-                }
-                dropHandler.Drop(dropInfo);
-                SharedModel.Instance.UpdateLastStateSnapshot();
-                SharedModel.Instance.MarkDirty();
+                return;
             }
+
+            var targetItem = dropInfo.TargetItem as DisplayItem;
+
+            // Don't allow dropping an item onto itself
+            if (targetItem != null && sourceItems.Contains(targetItem))
+            {
+                return;
+            }
+
+            // Get parent groups and validate before pushing undo
+            var targetParentGroup = GetGroupFromCollection(dropInfo.TargetCollection);
+            var lockedSourceGroups = sourceItems
+                .Select(SharedModel.Instance.GetParent)
+                .OfType<GroupDisplayItem>()
+                .Where(g => g.IsLocked)
+                .Distinct()
+                .ToList();
+
+            // Check if any dragged item is from a locked group
+            if (lockedSourceGroups.Count > 0)
+            {
+                // Allow reordering within the same locked group
+                if (lockedSourceGroups.Count == 1 && targetParentGroup == lockedSourceGroups[0])
+                {
+                    PushDropUndo();
+                    dropHandler.Drop(dropInfo);
+                    SharedModel.Instance.UpdateLastStateSnapshot();
+                    SharedModel.Instance.MarkDirty();
+                }
+
+                // Don't allow dragging items out of locked groups
+                return;
+            }
+
+            // Check if target is in a locked group
+            if (targetParentGroup != null && targetParentGroup.IsLocked)
+            {
+                // Don't allow dropping items into locked groups
+                return;
+            }
+
+            // Check if we're dragging a group
+            if (sourceItems.Any(item => item is GroupDisplayItem))
+            {
+                // Groups can't be combined with other items, dropped onto another group, or nested
+                if (sourceItems.Count > 1 || targetItem is GroupDisplayItem)
+                {
+                    return;
+                }
+
+                // Check if the target collection is not the main collection
+                // If it's not, then it must be a group's inner collection
+                if (dropInfo.TargetCollection != null &&
+                    dropInfo.TargetCollection != SharedModel.Instance.DisplayItems &&
+                    !(dropInfo.TargetCollection is ListCollectionView view && view.SourceCollection == SharedModel.Instance.DisplayItems))
+                {
+                    // We're trying to drop a group inside another group
+                    return;
+                }
+            }
+            else
+            {
+                // We're dragging regular item(s) (not a group)
+                // Special handling for dropping into groups: move directly to avoid duplicate undo from RemoveDisplayItem
+                if (targetItem is GroupDisplayItem groupItem)
+                {
+                    if (groupItem.IsLocked)
+                        return;
+
+                    PushDropUndo();
+                    foreach (var item in sourceItems)
+                    {
+                        SharedModel.Instance.GetParentCollection(item)?.Remove(item);
+                        groupItem.DisplayItems.Add(item);
+                    }
+                    groupItem.IsExpanded = true;
+                    SharedModel.Instance.UpdateLastStateSnapshot();
+                    SharedModel.Instance.MarkDirty();
+                    return;
+                }
+            }
+
+            // Push undo after validation, then perform drop
+            PushDropUndo();
+            dropHandler.Drop(dropInfo);
+            SharedModel.Instance.UpdateLastStateSnapshot();
+            SharedModel.Instance.MarkDirty();
         }
     }
 }
