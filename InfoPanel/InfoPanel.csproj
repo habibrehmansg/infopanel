@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>InfoPanel</AssemblyName>
+    <RootNamespace>InfoPanel</RootNamespace>
+    <Version>2.0.0-dev</Version>
+    <IsPackable>false</IsPackable>
+    <!-- `dotnet run` starts in the project folder, so the launch profile's relative paths (../.data) resolve from here. -->
+    <RunWorkingDirectory>$(MSBuildProjectDirectory)</RunWorkingDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="InfoPanel.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <!-- M6 hashes rendered frames with XxHash3. -->
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InfoPanel.Core\InfoPanel.Core.csproj" />
+  </ItemGroup>
+
+</Project>

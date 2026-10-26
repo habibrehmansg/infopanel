@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "InfoPanel": {
+      "commandName": "Project",
+      "launchBrowser": false
+    },
+    "dev": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 5199 --dev-origin http://localhost:5180 --no-browser --data-dir ../.data",
+      "launchBrowser": false
+    }
+  }
+}

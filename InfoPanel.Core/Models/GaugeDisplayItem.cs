@@ -218,7 +218,6 @@ namespace InfoPanel.Models
             if (_images.Count == 1)
             {
                 imageA = Images[0];
-                imageA.Scale = _scale;
                 return;
             }
 
@@ -226,7 +225,6 @@ namespace InfoPanel.Models
             if (!sensorReading.HasValue)
             {
                 imageA = Images[0];
-                imageA.Scale = _scale;
                 return;
             }
 
@@ -279,12 +277,10 @@ namespace InfoPanel.Models
             idxCeil = Math.Clamp(idxCeil, 0, Images.Count - 1);
 
             imageA = Images[idxFloor];
-            imageA.Scale = _scale;
 
             if (idxCeil != idxFloor)
             {
                 imageB = Images[idxCeil];
-                imageB.Scale = _scale;
                 blend = (float)(currentImageIndex - idxFloor);
             }
         }
@@ -295,7 +291,6 @@ namespace InfoPanel.Models
             {
                 var currentImageIndex = Math.Clamp(ctx.State.Get<GaugeState>(Guid).CurrentImageIndex, 0, Images.Count - 1);
                 var imageDisplayItem = Images[(int)Math.Round(currentImageIndex)];
-                imageDisplayItem.Scale = _scale;
                 return imageDisplayItem;
             }
 
@@ -319,7 +314,8 @@ namespace InfoPanel.Models
 
             if(GetCurrentImage(ctx) is ImageDisplayItem currentImage)
             {
-                return currentImage.EvaluateSize(ctx);
+                // At the gauge's scale; the frame's own Scale is not used (1.x wrote the gauge's into it while drawing).
+                return currentImage.EvaluateSize(ctx, _scale);
             }
 
             return result;

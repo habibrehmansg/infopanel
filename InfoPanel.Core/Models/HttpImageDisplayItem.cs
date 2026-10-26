@@ -176,7 +176,7 @@ namespace InfoPanel.Models
             return SensorKeys.Read(this, sensors);
         }
 
-        public override SKSize EvaluateSize(RenderContext ctx)
+        public override SKSize EvaluateSize(RenderContext ctx, int scale)
         {
             var result = new SKSize(Width, Height);
 
@@ -199,12 +199,12 @@ namespace InfoPanel.Models
 
             if (result.Width != 0)
             {
-                result.Width *= Scale / 100.0f;
+                result.Width *= scale / 100.0f;
             }
 
             if (result.Height != 0)
             {
-                result.Height *= Scale / 100.0f;
+                result.Height *= scale / 100.0f;
             }
 
             return result;

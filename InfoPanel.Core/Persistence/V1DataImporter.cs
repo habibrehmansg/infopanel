@@ -126,12 +126,24 @@ public static class V1DataImporter
     /// </summary>
     private static void EnsureSeparateFolders(DataPaths v1, DataPaths store)
     {
-        if (v1.Root.IsSubdirectoryOf(store.Root)
+        if (FindOverlap(v1.Root, store.Root) is { } error)
+            throw new ArgumentException(error, nameof(store));
+    }
+
+    /// <summary>
+    /// The rule <see cref="ImportFolder(string, ProfileStore)"/> enforces, for callers that validate up front (the
+    /// engine checks it before <c>--fresh</c> deletes anything): the error message when importing
+    /// <paramref name="v1Root"/> into a store at <paramref name="storeRoot"/> would write into the 1.x data, else null.
+    /// </summary>
+    public static string? FindOverlap(string v1Root, string storeRoot)
+    {
+        var v1 = new DataPaths(v1Root);
+        var store = new DataPaths(storeRoot);
+        return v1.Root.IsSubdirectoryOf(store.Root)
             || store.Root.IsSubdirectoryOf(v1.ProfilesDirectory)
-            || store.Root.IsSubdirectoryOf(v1.AssetsDirectory))
-            throw new ArgumentException(
-                $"The 2.0 data folder {store.Root} must not be the 1.x folder {v1.Root}, contain it, or be inside its profiles or assets folder.",
-                nameof(store));
+            || store.Root.IsSubdirectoryOf(v1.AssetsDirectory)
+            ? $"The 2.0 data folder {store.Root} must not be the 1.x folder {v1.Root}, contain it, or be inside its profiles or assets folder."
+            : null;
     }
 
     /// <summary>Copies every file under <paramref name="source"/> (if it exists), keeping subfolders. Returns the file count.</summary>

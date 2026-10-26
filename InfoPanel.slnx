@@ -8,4 +8,6 @@
   <Project Path="InfoPanel.Plugins.Loader/InfoPanel.Plugins.Loader.csproj" />
   <Project Path="InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj" />
   <Project Path="InfoPanel.Plugins/InfoPanel.Plugins.csproj" />
+  <Project Path="InfoPanel.Tests/InfoPanel.Tests.csproj" />
+  <Project Path="InfoPanel/InfoPanel.csproj" />
 </Solution>
