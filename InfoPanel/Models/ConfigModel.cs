@@ -502,6 +502,17 @@ namespace InfoPanel
                     await ThermaltakePanelTask.Instance.StopAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.JlPanelMultiDeviceMode))
+            {
+                if (Settings.JlPanelMultiDeviceMode)
+                {
+                    await JlPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await JlPanelTask.Instance.StopAsync();
+                }
+            }
 
             await SaveSettingsAsync();
         }
@@ -711,6 +722,15 @@ namespace InfoPanel
                             foreach (var device in settings.ThermaltakePanelDevices)
                             {
                                 Settings.ThermaltakePanelDevices.Add(device);
+                            }
+
+                            // Load JL panel settings
+                            Settings.JlPanelMultiDeviceMode = settings.JlPanelMultiDeviceMode;
+
+                            Settings.JlPanelDevices.Clear();
+                            foreach (var device in settings.JlPanelDevices)
+                            {
+                                Settings.JlPanelDevices.Add(device);
                             }
 
                             // Load hotkey bindings
