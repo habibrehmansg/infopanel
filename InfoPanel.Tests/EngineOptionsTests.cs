@@ -28,6 +28,7 @@ public class EngineOptionsTests
         Assert.Null(options.DataDir);
         Assert.Null(options.WebRoot);
         Assert.False(options.NoBrowser);
+        Assert.False(options.NoWindows);
         Assert.False(options.Fresh);
         Assert.Null(options.MockSeed);
         Assert.Empty(options.DevOrigins);
@@ -39,11 +40,12 @@ public class EngineOptionsTests
     public void ValueLessFlags_DontSwallowTheNextOption()
     {
         var dir = TempDir();
-        var options = Load(["--no-browser", "--port", "5199", "--fresh", "--data-dir", dir, "--token", "t3st", "--mock-seed", "7"], out var errors);
+        var options = Load(["--no-browser", "--port", "5199", "--fresh", "--data-dir", dir, "--no-windows", "--token", "t3st", "--mock-seed", "7"], out var errors);
 
         Assert.Empty(errors);
         Assert.NotNull(options);
         Assert.True(options.NoBrowser);
+        Assert.True(options.NoWindows);
         Assert.True(options.Fresh);
         Assert.Equal(5199, options.Port);
         Assert.Equal(Path.GetFullPath(dir), options.DataDir);

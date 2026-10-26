@@ -25,6 +25,9 @@ public sealed partial class EngineOptions
 
     public bool NoBrowser { get; init; }
 
+    /// <summary>Don't show active profiles as desktop windows (<c>--no-windows</c>).</summary>
+    public bool NoWindows { get; init; }
+
     /// <summary>The session token (URL-safe characters only); generated when not given.</summary>
     public string Token { get; init; } = "";
 
@@ -70,6 +73,7 @@ public sealed partial class EngineOptions
         }
 
         var noBrowser = Flag(section, "NoBrowser", "--no-browser", problems);
+        var noWindows = Flag(section, "NoWindows", "--no-windows", problems);
         var fresh = Flag(section, "Fresh", "--fresh", problems);
 
         var token = Value(section, "Token");
@@ -141,6 +145,7 @@ public sealed partial class EngineOptions
             DataDir = fullDataDir,
             WebRoot = webRoot == null ? null : Path.GetFullPath(webRoot),
             NoBrowser = noBrowser,
+            NoWindows = noWindows,
             Token = token ?? NewToken(),
             DevOrigins = devOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             ImportV1 = importV1 == null ? null : Path.GetFullPath(importV1),

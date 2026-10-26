@@ -30,6 +30,7 @@ public static class EngineCommandLine
     private static readonly Dictionary<string, string> Flags = new(StringComparer.Ordinal)
     {
         ["--no-browser"] = "NoBrowser",
+        ["--no-windows"] = "NoWindows",
         ["--fresh"] = "Fresh",
     };
 
@@ -57,6 +58,7 @@ public static class EngineCommandLine
           --data-dir <dir>      Data folder (default: the per-user InfoPanel/v2 folder)
           --web-root <dir>      the web client's built files (default: wwwroot next to the engine, else client/dist)
           --no-browser          Don't open the browser
+          --no-windows          Don't show active profiles as desktop windows
           --token <token>       Session token (default: random)
           --dev-origin <url>    Extra allowed origin, e.g. http://localhost:5180 (repeatable)
           --import-v1 <dir>     Import a 1.x data folder at start-up

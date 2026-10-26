@@ -1,5 +1,6 @@
 using InfoPanel;
 using InfoPanel.Api;
+using InfoPanel.Desktop;
 using InfoPanel.Drawing;
 using InfoPanel.Editing;
 using InfoPanel.Hosting;
@@ -194,6 +195,12 @@ try
     builder.Services.AddHostedService<SensorService>();
     builder.Services.AddHostedService<EngineLifetime>();
 
+    // Desktop windows: on macOS the main thread runs AppKit and the host runs on a worker (DesktopHost).
+    var desktop = DesktopHost.Create(options);
+    builder.Services.AddSingleton(desktop.Platform);
+    builder.Services.AddSingleton<DisplayWindowManager>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<DisplayWindowManager>());
+
     var app = builder.Build();
 
     app.UseApiProblems();
@@ -212,7 +219,7 @@ try
     app.MapPreviewSocket();
     app.MapWebClientFallback(webRoot);
 
-    await app.RunAsync();
+    await desktop.RunAsync(() => app.RunAsync());
     return 0;
 }
 catch (Exception ex) when (ex is not HostAbortedException)

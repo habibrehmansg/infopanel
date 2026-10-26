@@ -40,6 +40,12 @@ public sealed record MutationResult(
 /// <summary>One item's property set in <see cref="ProfileDocument.PatchItems"/>.</summary>
 public sealed record ItemPatch(Guid Id, JsonObject Set);
 
+/// <summary>
+/// Where a profile's desktop window is (<see cref="ProfileDocument.PlaceWindow"/>): its position in pixels from the
+/// top-left of its display, and optionally that display (<see cref="TargetWindow"/>, copied) and a new size.
+/// </summary>
+public sealed record WindowPlacement(int WindowX, int WindowY, TargetWindow? TargetWindow = null, int? Width = null, int? Height = null);
+
 /// <summary>What caused a <see cref="ProfileDocument.Changed"/> event.</summary>
 public enum DocumentChange
 {
@@ -296,6 +302,34 @@ public sealed class ProfileDocument
             ItemJson.ApplyProfile(Profile, set);
             return null;
         });
+
+    /// <summary>
+    /// Places the profile's desktop window as one recorded profile change (<see cref="DocumentChange.Profile"/>):
+    /// <c>WindowX</c>/<c>WindowY</c>, and <c>TargetWindow</c>, <c>Width</c> and <c>Height</c> when given. This is how
+    /// the window's own moves and resizes reach the document (<c>TargetWindow</c> isn't patchable through
+    /// <see cref="PatchProfile"/>). The result carries the whole document.
+    /// </summary>
+    /// <exception cref="PatchException">A width or height outside 1–<see cref="Workspace.MaxDimension"/>. Nothing changes.</exception>
+    public MutationResult PlaceWindow(WindowPlacement placement)
+    {
+        if (placement.Width is < 1 or > Workspace.MaxDimension)
+            throw new PatchException("width", $"The width must be 1–{Workspace.MaxDimension}.");
+        if (placement.Height is < 1 or > Workspace.MaxDimension)
+            throw new PatchException("height", $"The height must be 1–{Workspace.MaxDimension}.");
+
+        return Mutate(DocumentChange.Profile, null, record: true, includeDoc: true, () =>
+        {
+            Profile.WindowX = placement.WindowX;
+            Profile.WindowY = placement.WindowY;
+            if (placement.TargetWindow is { } target)
+                Profile.TargetWindow = new TargetWindow(target.X, target.Y, target.Width, target.Height, target.DeviceName);
+            if (placement.Width is int width)
+                Profile.Width = width;
+            if (placement.Height is int height)
+                Profile.Height = height;
+            return null;
+        });
+    }
 
     /// <summary>Goes back one history entry (view state is kept). The result always carries the document.</summary>
     public MutationResult Undo() => Step(DocumentChange.Undo, _history.Undo);

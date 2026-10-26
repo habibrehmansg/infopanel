@@ -542,4 +542,52 @@ public class ProfileDocumentTests
         Assert.Contains("<Radius>60</Radius>", System.Text.Encoding.UTF8.GetString(file.ToArray()));
         Assert.DoesNotContain("<Radius>", doc.Snapshot.ItemsXml);
     }
+
+    [Fact]
+    public void PlaceWindow_IsOneRecordedProfileChange_WithACopyOfTheTarget()
+    {
+        var doc = NewDocument(out _);
+        var changes = new List<DocumentChange>();
+        doc.Changed += (_, e) => changes.Add(e.Change);
+        var target = new TargetWindow(-408, -1440, 2560, 1440, "External");
+
+        var result = doc.PlaceWindow(new WindowPlacement(120, 64, target, Width: 800, Height: 480));
+
+        Assert.Equal(2, result.Revision);
+        Assert.True(result.Dirty && result.CanUndo);
+        Assert.NotNull(result.Doc);
+        Assert.Equal([DocumentChange.Profile], changes);
+        lock (doc.SyncRoot)
+        {
+            var p = doc.Profile;
+            Assert.Equal((120, 64, 800, 480), (p.WindowX, p.WindowY, p.Width, p.Height));
+            Assert.NotSame(target, p.TargetWindow);
+            Assert.Equal((-408, -1440, 2560, 1440, "External"), (p.TargetWindow!.X, p.TargetWindow.Y, p.TargetWindow.Width, p.TargetWindow.Height, p.TargetWindow.DeviceName));
+        }
+
+        // Without a target or size, only the position changes; the same placement again is a no-op.
+        doc.PlaceWindow(new WindowPlacement(5, 6));
+        Assert.Equal(3, doc.Revision);
+        Assert.Equal(3, doc.PlaceWindow(new WindowPlacement(5, 6)).Revision);
+        lock (doc.SyncRoot)
+            Assert.Equal(("External", 800), (doc.Profile.TargetWindow?.DeviceName, doc.Profile.Width));
+
+        // Undo restores the target too (it is in the profile's XML).
+        doc.Undo();
+        doc.Undo();
+        lock (doc.SyncRoot)
+            Assert.Equal((0, 0, null, 400), (doc.Profile.WindowX, doc.Profile.WindowY, doc.Profile.TargetWindow, doc.Profile.Width));
+        Assert.False(doc.Dirty);
+    }
+
+    [Theory]
+    [InlineData(0, 100, "width")]
+    [InlineData(100, 16385, "height")]
+    public void PlaceWindow_RefusesASizeOutOfRange(int width, int height, string key)
+    {
+        var doc = NewDocument(out _);
+        var error = Assert.Throws<PatchException>(() => doc.PlaceWindow(new WindowPlacement(1, 2, Width: width, Height: height)));
+        Assert.Equal(key, error.Key);
+        Assert.Equal(1, doc.Revision);
+    }
 }
