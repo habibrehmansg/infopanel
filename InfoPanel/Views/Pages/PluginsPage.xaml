@@ -67,20 +67,21 @@
             </ui:CardControl.Header>
         </ui:CardControl>
 
-        <Label
-            Margin="0,40,0,0"
-            Content="Bundled Plugins"
-            DockPanel.Dock="Top"
-            FontSize="14"
-            FontWeight="Medium"
-            Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding BundledPlugins}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <components:PluginProperties PluginDisplayModel="{Binding}" />
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <StackPanel DockPanel.Dock="Top">
+            <Label
+                Margin="0,40,0,0"
+                Content="Bundled Plugins"
+                FontSize="14"
+                FontWeight="Medium"
+                Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            <ItemsControl ItemsSource="{Binding BundledPlugins}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <components:PluginProperties PluginDisplayModel="{Binding}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
 
         <Label
             Margin="0,40,0,0"
