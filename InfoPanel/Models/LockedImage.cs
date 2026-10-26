@@ -659,6 +659,18 @@ namespace InfoPanel.Models
                         using var snapshot = _pluginImage.GetCurrentFrame();
                         if (snapshot != null)
                         {
+                            // Fast path: no resize needed (e.g. item at 100% scale). Hand the
+                            // frame straight through instead of allocating a full-size surface
+                            // and running a same-size cubic resample every frame — on large
+                            // plugin images (2650x720 spectrum) that resample alone kept the
+                            // display thread ~98% busy and starved WPF mouse input, which made
+                            // profile windows undraggable.
+                            if (snapshot.Width == targetWidth && snapshot.Height == targetHeight)
+                            {
+                                access(snapshot);
+                                return;
+                            }
+
                             var resizeInfo = new SKImageInfo(targetWidth, targetHeight);
                             using var surface = SKSurface.Create(resizeInfo);
                             if (surface != null)

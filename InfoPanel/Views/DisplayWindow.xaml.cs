@@ -384,13 +384,19 @@ namespace InfoPanel.Views.Common
             if (_renderInvalidationPending) return;
             _renderInvalidationPending = true;
 
+            // Post the invalidation BELOW input priority. The DisplayWindowThread is both the
+            // render loop and the WPF input dispatcher for the profile window; if frames are
+            // expensive (large plugin images, video) and get queued at Render priority they
+            // outrank mouse events indefinitely and the window becomes undraggable/unclickable.
+            // At Background priority a slow frame simply drops (via _renderInvalidationPending)
+            // and pending input is serviced first.
             if (!OpenGL)
             {
                 _dispatcher.BeginInvoke(() =>
                 {
                     _renderInvalidationPending = false;
                     _sKElement?.InvalidateVisual();
-                }, DispatcherPriority.Render);
+                }, DispatcherPriority.Background);
             }
             else
             {
@@ -398,7 +404,7 @@ namespace InfoPanel.Views.Common
                 {
                     _renderInvalidationPending = false;
                     _skGlElement?.InvalidateVisual();
-                }, DispatcherPriority.Render);
+                }, DispatcherPriority.Background);
             }
         }
 
