@@ -72,6 +72,13 @@ namespace InfoPanel.Views.Common
 
         private System.Windows.Threading.DispatcherTimer? _webViewRefreshTimer;
 
+        // A page that failed to load (server down, no network) is retried, sooner at first, then at most this far
+        // apart, for as long as it keeps failing: the panel runs unattended and the server usually comes back.
+        private static readonly TimeSpan WebViewLoadRetryFirst = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan WebViewLoadRetryMax = TimeSpan.FromMinutes(1);
+        private int _webViewLoadFailures;
+        private System.Windows.Threading.DispatcherTimer? _webViewLoadRetryTimer;
+
         // The daily reload runs once a local day, at or after this time.
         private static readonly TimeSpan WebViewDailyRefreshAt = TimeSpan.FromHours(4);
         private static readonly TimeSpan WebViewDailyRefreshCheck = TimeSpan.FromMinutes(1);
@@ -221,6 +228,7 @@ namespace InfoPanel.Views.Common
             // Hook ProcessFailed first, so a crash during the rest of start-up is still recovered.
             core.ProcessFailed += WebView_ProcessFailed;
             core.NavigationStarting += WebView_NavigationStarting;
+            core.NavigationCompleted += WebView_NavigationCompleted;
             core.NewWindowRequested += WebView_NewWindowRequested;
             core.PermissionRequested += WebView_PermissionRequested;
             core.DownloadStarting += WebView_DownloadStarting;
@@ -238,6 +246,7 @@ namespace InfoPanel.Views.Common
             {
                 core.ProcessFailed -= WebView_ProcessFailed;
                 core.NavigationStarting -= WebView_NavigationStarting;
+                core.NavigationCompleted -= WebView_NavigationCompleted;
                 core.NewWindowRequested -= WebView_NewWindowRequested;
                 core.PermissionRequested -= WebView_PermissionRequested;
                 core.DownloadStarting -= WebView_DownloadStarting;
@@ -308,6 +317,59 @@ namespace InfoPanel.Views.Common
             Logger.Warning("Blocked navigation to {Url} for profile {ProfileName}", e.Uri, Profile.Name);
             e.Cancel = true;
         }
+
+        /// <summary>
+        /// WebView2 shows its error page when a load fails and never tries again by itself, so a panel whose
+        /// server was down at start or at a refresh stays on that error after the server is back. Keep retrying
+        /// with a cache-bypassing reload until the page loads. A server error (5xx, as a proxy in front of a
+        /// stopped server returns) counts as a failure too.
+        /// </summary>
+        private void WebView_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (e.IsSuccess && e.HttpStatusCode < 500)
+            {
+                if (_webViewLoadFailures > 0)
+                {
+                    Logger.Information("Web page loaded again after {Failures} failed attempts for profile {ProfileName}", _webViewLoadFailures, Profile.Name);
+                }
+                _webViewLoadFailures = 0;
+                _webViewLoadRetryTimer?.Stop();
+                return;
+            }
+
+            // Replaced by another navigation, or blocked by NavigationStarting: nothing failed.
+            if (e.WebErrorStatus == CoreWebView2WebErrorStatus.OperationCanceled) return;
+
+            var delay = WebViewLoadRetryDelay(_webViewLoadFailures++);
+            if (_webViewLoadFailures == 1)
+            {
+                Logger.Warning("Web page failed to load ({Status}, HTTP {HttpStatus}) for profile {ProfileName}; retrying until it loads",
+                    e.WebErrorStatus, e.HttpStatusCode, Profile.Name);
+            }
+            else
+            {
+                Logger.Debug("Web page failed to load ({Status}, HTTP {HttpStatus}) for profile {ProfileName}; retrying in {Delay}",
+                    e.WebErrorStatus, e.HttpStatusCode, Profile.Name, delay);
+            }
+
+            if (_webViewLoadRetryTimer == null)
+            {
+                _webViewLoadRetryTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, _dispatcher);
+                _webViewLoadRetryTimer.Tick += (_, _) =>
+                {
+                    _webViewLoadRetryTimer.Stop();
+                    RefreshWebView();
+                };
+            }
+
+            _webViewLoadRetryTimer.Stop();
+            _webViewLoadRetryTimer.Interval = delay;
+            _webViewLoadRetryTimer.Start();
+        }
+
+        /// <summary>5s, 10s, 20s, 40s, then every minute.</summary>
+        private static TimeSpan WebViewLoadRetryDelay(int failures) =>
+            TimeSpan.FromTicks(Math.Min(WebViewLoadRetryFirst.Ticks << Math.Min(failures, 4), WebViewLoadRetryMax.Ticks));
 
         private void WebView_NewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
         {
@@ -950,6 +1012,8 @@ namespace InfoPanel.Views.Common
         {
             _webViewRefreshTimer?.Stop();
             _webViewDailyRefreshTimer?.Stop();
+            _webViewLoadRetryTimer?.Stop();
+            _webViewLoadFailures = 0;
             _webViewRetryTimer?.Stop();
             if (_webView == null) return;
 
