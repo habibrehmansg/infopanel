@@ -46,6 +46,11 @@
                             Grid.Column="0"
                             Background="#00FFFFFF"
                             PreviewMouseLeftButtonDown="Border_MouseDown">
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Click="MenuItemDeleteGroup_Click" Header="Delete Group and Children" />
+                                </ContextMenu>
+                            </Border.ContextMenu>
                             <Grid HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="auto" />
@@ -309,16 +314,16 @@
                     Click="ButtonPushUp_Click"
                     Content=""
                     Icon="{ui:SymbolIcon ArrowUp20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Push selected item up (overlapped by items below)" />
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    ToolTip="Move selected item(s) up (overlapped by items below)" />
                 <ui:Button
                     x:Name="ButtonPushDown"
                     Margin="0,10,0,0"
                     Click="ButtonPushDown_Click"
                     Content=""
                     Icon="{ui:SymbolIcon ArrowDown20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Bring selected item down (overlap items above)" />
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    ToolTip="Move selected item(s) down (overlap items above)" />
                 <ui:Button
                     x:Name="ButtonPushFront"
                     Margin="0,10,0,0"
@@ -333,8 +338,8 @@
                     Click="ButtonDuplicate_Click"
                     Content=""
                     Icon="{ui:SymbolIcon Copy20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Duplicate selected item" />
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    ToolTip="Duplicate selected item(s)" />
                 <ui:Button
                     x:Name="ButtonDelete"
                     Margin="0,10,0,0"
@@ -342,8 +347,8 @@
                     Click="ButtonDelete_Click"
                     Content=""
                     Icon="{ui:SymbolIcon Delete20}"
-                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsSingleItemSelected}"
-                    ToolTip="Delete selected item" />
+                    IsEnabled="{Binding Source={x:Static app:SharedModel.Instance}, Path=IsItemSelected}"
+                    ToolTip="Delete selected item(s)" />
             </StackPanel>
 
         </Grid>

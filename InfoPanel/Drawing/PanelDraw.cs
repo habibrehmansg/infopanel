@@ -46,6 +46,7 @@ namespace InfoPanel.Drawing
                 Draw(g, preview, scale, cache, cacheHint, displayItem, selectedRectangles);
             }
 
+
             if (!preview && SharedModel.Instance.SelectedProfile == profile && selectedRectangles.Count != 0)
             {
                 if (ConfigModel.Instance.Settings.ShowGridLines)
@@ -96,6 +97,20 @@ namespace InfoPanel.Drawing
                 else
                 {
                     Logger.Warning("Failed to parse selected item color: {Color}", ConfigModel.Instance.Settings.SelectedItemColor);
+                }
+            }
+
+            if (!preview && SharedModel.Instance.SelectedProfile == profile && SharedModel.Instance.DragHoverGroup is GroupDisplayItem dragHoverGroup)
+            {
+                var hoverBounds = SharedModel.Instance.GetGroupBounds(dragHoverGroup);
+                if (hoverBounds is SKRect hb)
+                {
+                    using var path = RectToPath(hb, 0, profile.Width, profile.Height, 3);
+
+                    if (path != null)
+                    {
+                        g.DrawPath(path, SKColor.Parse("#FFFFA500"), 3);
+                    }
                 }
             }
 
@@ -632,6 +647,21 @@ namespace InfoPanel.Drawing
                             }
                         }
 
+                        break;
+                    }
+                case GuideDisplayItem guideDisplayItem:
+                    {
+                        if (SKColor.TryParse(guideDisplayItem.Color, out _))
+                        {
+                            var centerX = guideDisplayItem.X * scale;
+                            var centerY = guideDisplayItem.Y * scale;
+                            var halfLength = guideDisplayItem.Length * scale / 2f;
+                            var radians = guideDisplayItem.Rotation * Math.PI / 180.0;
+                            var dx = (float)(Math.Cos(radians) * halfLength);
+                            var dy = (float)(Math.Sin(radians) * halfLength);
+
+                            g.DrawLine(centerX - dx, centerY - dy, centerX + dx, centerY + dy, guideDisplayItem.Color, 1);
+                        }
                         break;
                     }
             }

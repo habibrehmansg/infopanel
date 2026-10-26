@@ -7,6 +7,7 @@ using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
 using System;
 using Serilog;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Timers;
@@ -48,6 +49,18 @@ namespace InfoPanel.Views.Common
 
         private bool dragStart = false;
         private System.Windows.Point startPosition = new System.Windows.Point();
+        private System.Windows.Point dragOrigin = new System.Windows.Point();
+        private AxisLock _axisLock = AxisLock.None;
+        private const double AxisLockThreshold = 4.0;
+
+        private enum AxisLock
+        {
+            None,
+            Horizontal,
+            Vertical
+        }
+
+        private const double GuideSnapThreshold = 5.0;
 
         public DisplayWindow(Profile profile)
         {
@@ -379,6 +392,41 @@ namespace InfoPanel.Views.Common
             return point;
         }
 
+        /// <summary>
+        /// Snaps a candidate drag position to nearby guide lines (any rotation) by projecting
+        /// onto each guide's perpendicular within threshold and summing the corrections.
+        /// For axis-aligned guides (0°/90°) this only affects the matching axis, so independent
+        /// horizontal+vertical snapping composes correctly; for arbitrary angles it's an approximation.
+        /// </summary>
+        private System.Windows.Point ApplyGuideSnap(System.Windows.Point point, DisplayItem draggedItem)
+        {
+            double dx = 0, dy = 0;
+
+            foreach (var guide in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile).OfType<GuideDisplayItem>())
+            {
+                if (guide == draggedItem || guide.Hidden)
+                {
+                    continue;
+                }
+
+                var radians = guide.Rotation * Math.PI / 180.0;
+                var nx = -Math.Sin(radians);
+                var ny = Math.Cos(radians);
+
+                var vx = point.X - guide.X;
+                var vy = point.Y - guide.Y;
+                var dist = vx * nx + vy * ny;
+
+                if (Math.Abs(dist) <= GuideSnapThreshold)
+                {
+                    dx += -dist * nx;
+                    dy += -dist * ny;
+                }
+            }
+
+            return new System.Windows.Point(point.X + dx, point.Y + dy);
+        }
+
         private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
         {
             if (_renderInvalidationPending) return;
@@ -616,6 +664,19 @@ namespace InfoPanel.Views.Common
 
         private void Window_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
         {
+            if (e.Key == Key.Delete)
+            {
+                if (SharedModel.Instance.SelectedItems.Count > 1)
+                {
+                    SharedModel.Instance.RemoveSelectedItems();
+                }
+                else if (SharedModel.Instance.SelectedItem is DisplayItem selectedItem)
+                {
+                    SharedModel.Instance.RemoveDisplayItem(selectedItem);
+                }
+                return;
+            }
+
             if (SharedModel.Instance.SelectedVisibleItems != null)
             {
                 foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
@@ -641,7 +702,125 @@ namespace InfoPanel.Views.Common
 
         private void Window_MouseUp(object sender, MouseButtonEventArgs e)
         {
+            if (dragStart)
+            {
+                ApplyDragGroupTarget();
+            }
+
             dragStart = false;
+            _axisLock = AxisLock.None;
+            SharedModel.Instance.DragHoverGroup = null;
+        }
+
+        /// <summary>
+        /// Leaf (non-group) selected items eligible for canvas drag-to-group. Excludes items whose
+        /// containing group is itself selected, since that means the whole group is being moved as a
+        /// rigid unit rather than the user re-parenting individual items.
+        /// </summary>
+        private static List<DisplayItem> GetDraggableLeafItems()
+        {
+            var result = new List<DisplayItem>();
+            foreach (var item in SharedModel.Instance.SelectedVisibleItems)
+            {
+                if (item is GroupDisplayItem || !item.Selected || item.IsLocked) continue;
+                var parent = SharedModel.Instance.GetParent(item);
+                if (parent != null && parent.Selected) continue;
+                result.Add(item);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Recomputes which group (if any) the currently dragged item(s) are hovering over, so
+        /// PanelDraw can render a highlight around it. Only top-level, unlocked groups are
+        /// considered, and a group's own bounds exclude the items being dragged so dragging within
+        /// a group's own area doesn't spuriously self-match.
+        /// </summary>
+        private void UpdateDragHoverGroup()
+        {
+            var draggedItems = GetDraggableLeafItems();
+            if (draggedItems.Count == 0)
+            {
+                SharedModel.Instance.DragHoverGroup = null;
+                return;
+            }
+
+            SKRect? draggedBounds = null;
+            foreach (var item in draggedItems)
+            {
+                var bounds = item.EvaluateBounds();
+                draggedBounds = draggedBounds is SKRect existing ? SKRect.Union(existing, bounds) : bounds;
+            }
+
+            if (draggedBounds is not SKRect combined)
+            {
+                SharedModel.Instance.DragHoverGroup = null;
+                return;
+            }
+
+            GroupDisplayItem? match = null;
+            foreach (var group in SharedModel.Instance.GetProfileDisplayItemsCopy(Profile).OfType<GroupDisplayItem>())
+            {
+                if (group.Hidden || group.IsLocked) continue;
+
+                var groupBounds = SharedModel.Instance.GetGroupBounds(group, draggedItems);
+                if (groupBounds is SKRect gb && gb.IntersectsWith(combined))
+                {
+                    match = group;
+                }
+            }
+
+            SharedModel.Instance.DragHoverGroup = match;
+        }
+
+        /// <summary>
+        /// On mouse-up, re-parents dragged items based on where they were dropped: into the hovered
+        /// group if one was found, out to the root level if dragged clear of their own group's
+        /// bounds, or left untouched otherwise (including items in a locked group, which never move).
+        /// </summary>
+        private void ApplyDragGroupTarget()
+        {
+            var draggedItems = GetDraggableLeafItems();
+            if (draggedItems.Count == 0) return;
+
+            var hoverGroup = SharedModel.Instance.DragHoverGroup;
+            var moves = new List<(DisplayItem Item, GroupDisplayItem? TargetGroup)>();
+
+            foreach (var item in draggedItems)
+            {
+                var currentGroup = SharedModel.Instance.GetParent(item);
+
+                if (currentGroup != null && currentGroup.IsLocked)
+                {
+                    continue;
+                }
+
+                GroupDisplayItem? targetGroup;
+                if (hoverGroup != null)
+                {
+                    targetGroup = hoverGroup;
+                }
+                else if (currentGroup != null)
+                {
+                    var ownBounds = SharedModel.Instance.GetGroupBounds(currentGroup, draggedItems);
+                    var stillInside = ownBounds is SKRect ob && ob.IntersectsWith(item.EvaluateBounds());
+                    targetGroup = stillInside ? currentGroup : null;
+                }
+                else
+                {
+                    targetGroup = null;
+                }
+
+                if (targetGroup != currentGroup)
+                {
+                    moves.Add((item, targetGroup));
+                }
+            }
+
+            if (moves.Count > 0)
+            {
+                SharedModel.Instance.MoveItemsToGroup(moves);
+            }
         }
 
         private void SetWindowPositionRelativeToScreen()
@@ -762,6 +941,8 @@ namespace InfoPanel.Views.Common
                 else
                 {
                     startPosition = GetProfilePoint(e);
+                    dragOrigin = startPosition;
+                    _axisLock = AxisLock.None;
 
                     foreach (var item in SharedModel.Instance.SelectedVisibleItems)
                     {
@@ -867,6 +1048,33 @@ namespace InfoPanel.Views.Common
 
                 var currentPosition = GetProfilePoint(e);
 
+                if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+                {
+                    if (_axisLock == AxisLock.None)
+                    {
+                        var dx = currentPosition.X - dragOrigin.X;
+                        var dy = currentPosition.Y - dragOrigin.Y;
+
+                        if (Math.Abs(dx) >= AxisLockThreshold || Math.Abs(dy) >= AxisLockThreshold)
+                        {
+                            _axisLock = Math.Abs(dx) >= Math.Abs(dy) ? AxisLock.Horizontal : AxisLock.Vertical;
+                        }
+                    }
+
+                    if (_axisLock == AxisLock.Horizontal)
+                    {
+                        currentPosition.Y = dragOrigin.Y;
+                    }
+                    else if (_axisLock == AxisLock.Vertical)
+                    {
+                        currentPosition.X = dragOrigin.X;
+                    }
+                }
+                else
+                {
+                    _axisLock = AxisLock.None;
+                }
+
                 foreach (var displayItem in SharedModel.Instance.SelectedVisibleItems)
                 {
                     if (displayItem.Selected && !displayItem.IsLocked)
@@ -877,12 +1085,18 @@ namespace InfoPanel.Views.Common
                         x = (int)(Math.Round((double)x / gridSize) * gridSize);
                         y = (int)(Math.Round((double)y / gridSize) * gridSize);
 
+                        var snapped = ApplyGuideSnap(new System.Windows.Point(x, y), displayItem);
+                        x = (int)Math.Round(snapped.X);
+                        y = (int)Math.Round(snapped.Y);
+
                         displayItem.X = x;
                         displayItem.Y = y;
                     }
                 }
 
                 startPosition = currentPosition;
+
+                UpdateDragHoverGroup();
             }
         }
 

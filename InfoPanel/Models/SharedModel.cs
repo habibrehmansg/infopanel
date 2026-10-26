@@ -494,8 +494,44 @@ namespace InfoPanel
         public bool IsItemSelected => SelectedItem != null;
         public bool IsSingleItemSelected => SelectedItems.Count == 1;
 
+        /// <summary>
+        /// Topmost selected entities: a selected group counts as one unit (its children are not
+        /// also returned, even though they carry Selected=true for visual highlighting); children
+        /// individually selected within an unselected group are returned as their own units.
+        /// </summary>
+        private List<DisplayItem> GetSelectedRootItems()
+        {
+            var roots = new List<DisplayItem>();
+            AccessDisplayItems(items =>
+            {
+                foreach (var item in items)
+                {
+                    if (item is GroupDisplayItem group)
+                    {
+                        if (group.Selected)
+                            roots.Add(group);
+                        else
+                            roots.AddRange(group.DisplayItems.Where(child => child.Selected));
+                    }
+                    else if (item.Selected)
+                    {
+                        roots.Add(item);
+                    }
+                }
+            });
+            return roots;
+        }
+
         [ObservableProperty]
         private int _moveValue = 5;
+
+        /// <summary>
+        /// The group currently being hovered over as a drop target while dragging item(s) on the
+        /// design canvas. Set by <c>DisplayWindow</c> during a canvas drag so <c>PanelDraw</c> can
+        /// render a highlight around it.
+        /// </summary>
+        [ObservableProperty]
+        private GroupDisplayItem? _dragHoverGroup;
 
         private SharedModel() { }
 
@@ -572,6 +608,33 @@ namespace InfoPanel
             });
         }
 
+        /// <summary>
+        /// Removes all currently-selected items (or just SelectedItem if none/one are selected),
+        /// sharing one undo snapshot. A selected group is removed as a single unit together with all
+        /// its children; children individually selected within an unselected group are removed
+        /// individually instead.
+        /// </summary>
+        public void RemoveSelectedItems()
+        {
+            if (SelectedProfile is not Profile profile) return;
+            var roots = GetSelectedRootItems();
+            if (roots.Count == 0) return;
+
+            AccessDisplayItems(profile, displayItems =>
+            {
+                PushUndoSnapshot(profile, displayItems);
+
+                foreach (var item in roots)
+                {
+                    FindParentCollection(item, out _)?.Remove(item);
+                }
+
+                UpdateLastStateSnapshot();
+            });
+
+            SelectedItem = null;
+        }
+
         public GroupDisplayItem? GetParent(DisplayItem displayItem)
         {
             FindParentCollection(displayItem, out var result);
@@ -598,6 +661,116 @@ namespace InfoPanel
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Computes the union of the bounds of a group's visible children, for use as the group's
+        /// "drop zone" on the design canvas. Returns null for an empty/fully-excluded/hidden group,
+        /// since such a group has no canvas footprint to drop onto.
+        /// </summary>
+        public SKRect? GetGroupBounds(GroupDisplayItem group, IEnumerable<DisplayItem>? exclude = null)
+        {
+            HashSet<DisplayItem>? excludeSet = exclude != null ? new HashSet<DisplayItem>(exclude) : null;
+            SKRect? union = null;
+            foreach (var item in group.DisplayItemsCopy)
+            {
+                if (item.Hidden) continue;
+                if (excludeSet != null && excludeSet.Contains(item)) continue;
+                var bounds = item.EvaluateBounds();
+                union = union is SKRect existing ? SKRect.Union(existing, bounds) : bounds;
+            }
+            return union;
+        }
+
+        /// <summary>
+        /// Moves each item into its paired target group (or to the root level if null), removing it
+        /// from its current parent collection. Used for drag-and-drop grouping on the design canvas;
+        /// callers are expected to have already filtered out no-op moves.
+        /// </summary>
+        public void MoveItemsToGroup(IEnumerable<(DisplayItem Item, GroupDisplayItem? TargetGroup)> moves)
+        {
+            if (SelectedProfile is not Profile profile) return;
+            var moveList = moves.ToList();
+            if (moveList.Count == 0) return;
+
+            AccessDisplayItems(profile, displayItems =>
+            {
+                PushUndoSnapshot(profile, displayItems);
+
+                foreach (var (item, targetGroup) in moveList)
+                {
+                    var currentParent = FindParentCollection(item, out _);
+                    currentParent?.Remove(item);
+
+                    if (targetGroup != null)
+                    {
+                        targetGroup.DisplayItems.Add(item);
+                        targetGroup.IsExpanded = true;
+                    }
+                    else
+                    {
+                        displayItems.Add(item);
+                    }
+                }
+
+                UpdateLastStateSnapshot();
+            });
+        }
+
+        /// <summary>
+        /// Moves all currently-selected items one slot in the given direction (-1 = up, +1 = down),
+        /// keeping their relative order intact. Each selection root only moves within its own parent
+        /// collection (root or group) and is skipped once it's adjacent to another selected sibling in
+        /// the direction of travel, so a contiguous block of selected items moves together as one unit.
+        /// </summary>
+        public void MoveSelectedItemsBy(int direction)
+        {
+            if (SelectedProfile is not Profile profile) return;
+            var roots = GetSelectedRootItems();
+            if (roots.Count == 0) return;
+
+            AccessDisplayItems(profile, displayItems =>
+            {
+                PushUndoSnapshot(profile, displayItems);
+
+                var byParent = roots
+                    .Select(item => (item, parent: FindParentCollection(item, out _)))
+                    .Where(x => x.parent != null)
+                    .GroupBy(x => x.parent);
+
+                foreach (var group in byParent)
+                {
+                    var parentCollection = group.Key!;
+                    var ordered = group.Select(x => x.item)
+                        .OrderBy(parentCollection.IndexOf)
+                        .ToList();
+
+                    if (direction < 0)
+                    {
+                        foreach (var item in ordered)
+                        {
+                            int index = parentCollection.IndexOf(item);
+                            int newIndex = index - 1;
+                            if (newIndex < 0 || parentCollection[newIndex].Selected) continue;
+                            parentCollection.Move(index, newIndex);
+                        }
+                    }
+                    else
+                    {
+                        foreach (var item in ordered.AsEnumerable().Reverse())
+                        {
+                            int index = parentCollection.IndexOf(item);
+                            int newIndex = index + 1;
+                            if (newIndex >= parentCollection.Count || parentCollection[newIndex].Selected) continue;
+                            parentCollection.Move(index, newIndex);
+                        }
+                    }
+                }
+
+                UpdateLastStateSnapshot();
+            });
+
+            NotifySelectedItemChange();
         }
 
         public void PushDisplayItemBy(DisplayItem displayItem, int count)
@@ -656,6 +829,57 @@ namespace InfoPanel
                 }
                 UpdateLastStateSnapshot();
             });
+        }
+
+        /// <summary>
+        /// Duplicates all currently-selected items (or just SelectedItem if none/one are selected).
+        /// Each clone is inserted immediately after its original within the same parent collection
+        /// (root or group), offset by (10,10) so it's visibly distinct, and only the clones end up selected.
+        /// </summary>
+        public void DuplicateSelectedItems()
+        {
+            if (SelectedProfile is not Profile profile) return;
+            var roots = GetSelectedRootItems();
+            if (roots.Count == 0) return;
+
+            AccessDisplayItems(profile, displayItems =>
+            {
+                PushUndoSnapshot(profile, displayItems);
+
+                var clones = new List<DisplayItem>();
+                var byParent = roots
+                    .Select(item => (item, parent: FindParentCollection(item, out _)))
+                    .Where(x => x.parent != null)
+                    .GroupBy(x => x.parent);
+
+                foreach (var group in byParent)
+                {
+                    var parentCollection = group.Key!;
+                    var ordered = group.Select(x => x.item)
+                        .OrderBy(parentCollection.IndexOf)
+                        .ToList();
+
+                    foreach (var original in ordered)
+                    {
+                        var clone = (DisplayItem)original.Clone();
+                        clone.X = original.X + 10;
+                        clone.Y = original.Y + 10;
+                        clone.Selected = false;
+                        original.Selected = false;
+
+                        int insertIndex = parentCollection.IndexOf(original) + 1;
+                        parentCollection.Insert(insertIndex, clone);
+                        clones.Add(clone);
+                    }
+                }
+
+                foreach (var clone in clones)
+                    clone.Selected = true;
+
+                UpdateLastStateSnapshot();
+            });
+
+            NotifySelectedItemChange();
         }
 
         public void PushDisplayItemTo(DisplayItem displayItem, DisplayItem target)
@@ -772,7 +996,7 @@ namespace InfoPanel
             var fileName = Path.Combine(profileFolder, profile.Guid + ".xml");
             var tempFileName = fileName + ".tmp";
             var backupFileName = fileName + ".bak";
-            var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
+            var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem), typeof(GuideDisplayItem)]);
             var settings = new XmlWriterSettings() { Encoding = Encoding.UTF8, Indent = true };
             using (var wr = XmlWriter.Create(tempFileName, settings))
                 xs.Serialize(wr, displayItems.ToList());
@@ -836,7 +1060,7 @@ namespace InfoPanel
         private static List<DisplayItem> LoadDisplayItemsFromFilePath(Profile profile, string fullPathToXml)
         {
             if (!File.Exists(fullPathToXml)) return [];
-            var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)]);
+            var xs = new XmlSerializer(typeof(List<DisplayItem>), [typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem), typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem), typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem), typeof(GaugeDisplayItem), typeof(ShapeDisplayItem), typeof(GuideDisplayItem)]);
             using var rd = XmlReader.Create(fullPathToXml);
             try
             {
