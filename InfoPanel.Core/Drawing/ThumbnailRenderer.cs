@@ -22,9 +22,10 @@ public sealed class ProfileRenderStates
 /// Renders a profile to a PNG of a requested width with <see cref="ProfileRenderer"/> (the panel path), at
 /// <c>scale = width / profile.Width</c>.
 /// Ticks: with no render loop running for the profile (M4, or M6 with nobody subscribed) each thumbnail advances
-/// the profile's tick, so clocks and animations show the current time instead of the time frozen at the last
-/// tick; when a loop is running (M6's <c>RenderService.RenderOnce</c>) the caller passes
-/// <c>advanceTick: false</c> to render at the loop's current tick.
+/// the profile's tick and draws with <see cref="Options"/> (no smoothing), so clocks and animations show the current
+/// time instead of the time frozen at the last tick; when a loop is running (M6's <c>RenderService.RenderOnce</c>)
+/// the caller passes <c>advanceTick: false</c> and the loop's options, to redraw the loop's current tick exactly as
+/// the loop drew it.
 /// </summary>
 public sealed class ThumbnailRenderer(ProfileRenderer renderer, ProfileRenderStates states)
 {
@@ -57,20 +58,25 @@ public sealed class ThumbnailRenderer(ProfileRenderer renderer, ProfileRenderSta
     }
 
     /// <summary>
-    /// Thumbnails draw bar and donut values at their target: a smoothed render would start each thumbnail mid-way
-    /// from the last one, and unsmoothed renders leave the smoothing state alone (see <c>GraphDraw</c>).
+    /// The options of a thumbnail that advances the tick (no loop running): bar and donut values at their target,
+    /// since a smoothed render would start each thumbnail mid-way from the last one, and unsmoothed renders leave the
+    /// smoothing state alone (see <c>GraphDraw</c>).
     /// </summary>
     public static readonly RenderOptions Options = new(Smoothing: false);
 
-    public byte[] RenderPng(ProfileDocument document, int requestedWidth, bool advanceTick = true)
+    /// <param name="options">What to draw with; <see cref="Options"/> when null. A caller that passes
+    /// <c>advanceTick: false</c> to redraw a render loop's tick passes the loop's options, so the pixels are the loop's:
+    /// smoothing state is tick-gated (<c>ChartState.BeginTick</c>, <c>GaugeState.LastTick</c>), so a smoothed redraw of
+    /// a tick the loop already drew reads that tick's start values and leaves the loop's next tick unchanged.</param>
+    public byte[] RenderPng(ProfileDocument document, int requestedWidth, bool advanceTick = true, RenderOptions? options = null)
     {
-        using var bitmap = Render(document, requestedWidth, advanceTick);
+        using var bitmap = Render(document, requestedWidth, advanceTick, options ?? Options);
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         return data.ToArray();
     }
 
-    private SKBitmap Render(ProfileDocument document, int requestedWidth, bool advanceTick)
+    private SKBitmap Render(ProfileDocument document, int requestedWidth, bool advanceTick, RenderOptions options)
     {
         lock (document.SyncRoot)
         {
@@ -85,7 +91,7 @@ public sealed class ThumbnailRenderer(ProfileRenderer renderer, ProfileRenderSta
             {
                 using var canvas = new SKCanvas(bitmap);
                 canvas.Clear(SKColors.Transparent);
-                renderer.Draw(canvas, profile, document.Items, state, Options, scale);
+                renderer.Draw(canvas, profile, document.Items, state, options, scale);
                 canvas.Flush();
                 return bitmap;
             }

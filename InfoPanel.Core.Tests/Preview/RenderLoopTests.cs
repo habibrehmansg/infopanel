@@ -300,6 +300,53 @@ public class RenderLoopTests
     }
 
     [Fact]
+    public async Task RenderOnce_WhileALoopRuns_IsTheLoopsFrameAtItsTick_AndLeavesItsNextFrameUnchanged()
+    {
+        // Two identical services tick in step while a smoothed bar eases from 0 to 100; one also takes thumbnails at
+        // the profile's width after each tick. Each thumbnail is that tick's frame byte for byte (smoothing included),
+        // and the loop's following frames match the service that took none.
+        await using var h = Bars(smoothing: true);
+        await using var reference = Bars(smoothing: true);
+        var sink = h.Attach();
+        var referenceSink = reference.Attach();
+        h.Tick();
+        reference.Tick();
+        h.SetLoad(100);
+        reference.SetLoad(100);
+
+        for (var i = 0; i < 4; i++)
+        {
+            h.Tick();
+            reference.Tick();
+            Assert.Equal(referenceSink.Frames[^1].Pixels, sink.Frames[^1].Pixels);
+
+            var tick = h.State.Tick;
+            for (var repeat = 0; repeat < 2; repeat++)
+            {
+                using var thumbnail = SKBitmap.Decode(h.Service.RenderOnce(h.Document, 300),
+                    new SKImageInfo(300, 100, SKColorType.Rgba8888, SKAlphaType.Premul));
+                Assert.Equal(sink.Frames[^1].Pixels, thumbnail.GetPixelSpan().ToArray());
+            }
+
+            Assert.Equal(tick, h.State.Tick);
+        }
+
+        // The bar was mid-ease throughout: each frame differed from the last, and an unsmoothed draw (the bar at 100)
+        // differs from the last frame.
+        Assert.Equal(5, sink.Frames.Count);
+        Assert.Equal(sink.Frames.Count, sink.Frames.Select(f => Convert.ToHexString(f.Pixels)).Distinct().Count());
+        await using var target = Bars();
+        target.SetLoad(100);
+        var targetSink = target.Attach();
+        target.Tick();
+        Assert.NotEqual(targetSink.Frames[^1].Pixels, sink.Frames[^1].Pixels);
+
+        h.Tick();
+        reference.Tick();
+        Assert.Equal(referenceSink.Frames[^1].Pixels, sink.Frames[^1].Pixels);
+    }
+
+    [Fact]
     public async Task TheLoop_Stops_WhenItsLastSinkDetaches()
     {
         await using var h = Bars();

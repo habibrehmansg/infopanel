@@ -74,6 +74,9 @@ public sealed class RenderLoop
 
     public Guid ProfileId => Document.Id;
 
+    /// <summary>What the loop draws with (<see cref="RenderService.RenderOnce"/> redraws its tick with the same).</summary>
+    internal RenderOptions Options => _options;
+
     public ProfileDocument Document { get; }
 
     public int SinkCount

@@ -1,2 +1,5 @@
 # Frozen 1.x fixtures: keep their bytes (CRLF, BOM) exactly as generated.
 InfoPanel.Core.Tests/Fixtures/** -text
+
+# Binary end-to-end fixtures (zip archives).
+client/e2e/fixtures/** binary

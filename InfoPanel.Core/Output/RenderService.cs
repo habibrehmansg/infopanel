@@ -167,13 +167,19 @@ public sealed class RenderService : IAsyncDisposable
 
     /// <summary>
     /// A PNG thumbnail <paramref name="width"/> pixels wide (<see cref="ThumbnailRenderer"/>). While a loop renders the
-    /// profile it is drawn at the loop's current tick without advancing it, so animation never advances twice in a
-    /// tick; otherwise it advances the profile's tick, so clocks show the current time.
+    /// profile it is drawn at the loop's current tick, without advancing it and with the loop's
+    /// <see cref="RenderOptions"/> (smoothing included), so at the profile's width it is the loop's frame pixel for
+    /// pixel and the loop's next frame is unchanged; otherwise it advances the profile's tick, so clocks show the
+    /// current time, and draws values at their target (<see cref="ThumbnailRenderer.Options"/>).
     /// </summary>
     public byte[] RenderOnce(ProfileDocument document, int width)
     {
-        var rendering = IsRendering(document.Id);
-        return _thumbnails.RenderPng(document, width, advanceTick: !rendering);
+        RenderLoop? loop;
+        lock (_lock)
+            _loops.TryGetValue(document.Id, out loop);
+        return loop != null
+            ? _thumbnails.RenderPng(document, width, advanceTick: false, loop.Options)
+            : _thumbnails.RenderPng(document, width, advanceTick: true);
     }
 
     /// <summary>Stops every loop, closes their sinks (<see cref="FrameSinkClosedReason.Shutdown"/>) and waits for the loops to stop.</summary>

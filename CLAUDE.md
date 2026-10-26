@@ -1,107 +1,88 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) in this repository, for branch **`2.0.x`**: InfoPanel 2.0, one cross-platform .NET engine (Windows and macOS) that renders sensor dashboards with SkiaSharp and serves its editor to the browser on localhost. 1.x (the Windows-only WPF app) ships from branch `1.4.x`; its code is not on this branch (read it with `git show 1.4.x:<path>`; `PORTING.md` lists what still has to come over).
 
-## Build Commands
+Every decision made while building 2.0 is in `docs/2.0/decisions.md`, newest last. It overrides older plans and docs; add an entry (date, decision, reason) for any new one.
 
-Branch `2.0.x` is InfoPanel 2.0: a cross-platform .NET engine (Windows + macOS) with a web editor. 1.x ships from `1.4.x`. Decisions for 2.0 are recorded in `docs/2.0/decisions.md`.
+## Branch rules
 
-- **SDK:** .NET 10, pinned by `global.json` (`10.0.403`, `rollForward: latestFeature`).
-- **Solution:** `InfoPanel.slnx`, Debug/Release, Any CPU. No platform or runtime identifier is forced; builds run on macOS (arm64) and Windows.
-- **Package versions** live in `Directory.Packages.props` (central package management). A `PackageReference` never carries a `Version`. There are no `packages.lock.json` files.
-- **Plugin SDK projects** (`InfoPanel.Plugins*`) target net8.0 so existing plugins keep loading. `InfoPanel.Extras` targets net8.0-windows and builds anywhere via `EnableWindowsTargeting`. Core and tests target net10.0.
-- The 1.x WPF app is gone from this branch; `PORTING.md` lists what it did and where each part goes in 2.0.
+- Commit directly to `2.0.x`; no PRs until 2.0 is release-ready. No worktrees.
+- No CI on this branch: `.github/workflows/dotnet-desktop.yml` is 1.x's and doesn't trigger on `2.0.x`. Don't touch `.github/`. Run the checks below yourself.
+
+## Projects (`InfoPanel.slnx`, Debug/Release, Any CPU)
+
+| Project | TFM | Role |
+|---|---|---|
+| `InfoPanel.Core` | net10.0 | Models (the 14 1.x item kinds, `Profile`), renderer (`Drawing/`), sensors (`Sensors/`: `SensorHub`, mock source, history), persistence (`Persistence/`: 1.x XML, `.infopanel` archives, 1.x folder import), editing (`Editing/`: `Workspace`, `ProfileDocument`, undo, kind manifest), output (`Output/`: `RenderService` render loops, `IFrameSink`) |
+| `InfoPanel` | net10.0, `Microsoft.NET.Sdk.Web` | The engine executable: hosting and command line (`Hosting/`), REST API (`Api/`), `/ws` preview (`Preview/`), security (`Security/`), serves the editor |
+| `InfoPanel.Core.Tests`, `InfoPanel.Tests` | net10.0 | xUnit v3 (VSTest). Core: models, persistence, goldens, render loop. Host: API, security, `/ws`, preview parity |
+| `InfoPanel.Plugins*`, `InfoPanel.Extras` | net8.0 | 1.x plugin SDK, host, loader and simulator, kept on net8.0 so existing plugins keep working. The engine doesn't load plugins yet. `InfoPanel.Extras` is net8.0-windows (builds on macOS with `EnableWindowsTargeting`) |
+
+Package versions are central (`Directory.Packages.props`); `global.json` pins SDK 10.0.403 (`latestFeature`). Ask before adding any NuGet dependency.
+
+## Commands
+
+From the repo root:
 
 ```bash
-dotnet build InfoPanel.slnx            # -c Release for Release
-dotnet test InfoPanel.slnx             # xUnit v3, run through VSTest
-dotnet test InfoPanel.slnx --filter FullyQualifiedName~SensorKey
+dotnet build InfoPanel.slnx
+dotnet test InfoPanel.slnx
+dotnet test InfoPanel.slnx --filter Category=Golden            # renderer goldens only
+dotnet test InfoPanel.slnx --filter "FullyQualifiedName~Preview"
 
-# Run the engine as the product does (launch profile "InfoPanel": default data folder, opens the browser)
-dotnet run --project InfoPanel
-# Dev loop, from the repo root (launch profile "dev": --port 5199 --dev-origin http://localhost:5180 --no-browser --data-dir .data)
+# Engine for development: port 5199, data in ./.data, the editor's dev origin http://localhost:5180 allowed
 dotnet run --project InfoPanel --launch-profile dev
-# Run it on its own data folder, port and token
-dotnet run --project InfoPanel -- --data-dir /tmp/ip --port 5299 --token t3st --no-browser
-dotnet run --project InfoPanel -- --help
-
-# Run plugin simulator for testing plugins
-dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj
+# Engine as users run it: default data folder, opens the browser (serves the API; with `--web-root <built client>`, that client too)
+dotnet run --project InfoPanel -c Release
+dotnet run --project InfoPanel -- --help                       # all flags
 ```
 
-Engine options (flags, or `Engine:*` configuration): `--port` (0 = a free port), `--data-dir` (default `{LocalApplicationData}/InfoPanel/v2`), `--web-root` (default `wwwroot` next to the binary, else the editor's `dist` folder in a source checkout), `--no-browser`, `--token` (default random), `--dev-origin <url>` (repeatable), `--import-v1 <dir>` (import a 1.x data folder at start-up), `--fresh` (wipe the data folder first; needs `--data-dir`; refuses, by the folder's real path, a root, the home folder or a folder above it, and any folder holding something the engine didn't create), `--mock-seed`. Kestrel/URL settings (`--Kestrel:*`, `--urls`, …) are refused, and Kestrel endpoints from configuration or the environment are ignored. Every option, the `--import-v1` overlap rule included, is validated before anything is deleted. Unknown or invalid arguments exit with code 2; a second engine on the same data folder exits with code 3. The engine prints its sign-in link (`http://127.0.0.1:{port}/auth/{token}`, plus one per dev origin) to the console only (the log file gets it with the token redacted), creates the data folder and `logs/` owner-only (0700) on Unix, and writes `{data}/runtime.json` (`{pid, port, url}`).
+Engine flags: `--port`, `--data-dir`, `--web-root`, `--token`, `--dev-origin` (repeatable), `--import-v1 <1.x folder>`, `--fresh`, `--mock-seed`, `--no-browser`. `--fresh` is a dev and test flag that wipes the whole data folder before start-up: it needs `--data-dir`; it refuses a filesystem root, the home folder or a folder above it (checked on the path as given and on its real path, links resolved) and a folder with any top-level entry the engine doesn't write (`profiles.xml`, `profiles/`, `assets/`, `fonts/`, `logs/`, `runtime.json`, `engine.lock`, their write temp files); otherwise it deletes everything in the folder except `engine.lock`, including whatever is inside those engine folders (user-added fonts too), removing links without following them. Exit codes: 0 clean, 1 fatal, 2 bad arguments, 3 data folder in use. The sign-in link (`/auth/<token>`) goes to the console only.
 
-`dotnet run` starts the engine in the caller's folder (`EnableDefaultRunWorkingDirectory=false`), so relative `--data-dir`/`--web-root`/`--import-v1` resolve from where you run it.
+The step-1 check that everything is green, from the repo root: `dotnet build InfoPanel.slnx && dotnet test InfoPanel.slnx`.
 
-**Dev loop:**
-1. From the repo root: `dotnet run --project InfoPanel --launch-profile dev` (port 5199, data in `{repo}/.data`, gitignored).
-2. Run a client's dev server on `http://localhost:5180` (the allowed dev origin); a proxy from it to the engine must keep the Host header.
-3. Open the `http://localhost:5180/auth/{token}` link the engine prints (console only).
+### Regenerating committed outputs (only on purpose; review the diff)
 
-Without a dev server, open the engine's own `http://127.0.0.1:{port}/auth/{token}` link: it serves a built client from its web root itself.
+| What | Command | When |
+|---|---|---|
+| Renderer goldens `InfoPanel.Core.Tests/Golden/{osx,win,linux}/*.png` | `UPDATE_GOLDENS=1 dotnet test InfoPanel.slnx --filter Category=Golden` | Rendering changed on purpose; look at every rewritten PNG. Only out-of-tolerance or missing goldens are rewritten. macOS is the reference OS |
+| Kind manifest snapshot | `UPDATE_SNAPSHOTS=1 dotnet test InfoPanel.slnx --filter KindManifest` | Models or `PropertyMap` changed |
+| E2E archive `all-kinds.infopanel` | `UPDATE_FIXTURES=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~E2eArchiveFixture` | The Core fixtures or their assets changed |
+| Fixture images `InfoPanel.Core.Tests/Fixtures/assets/` | `GENERATE_FIXTURE_ASSETS=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~FixtureAssets` | Rarely; regenerate goldens and the e2e archive after |
+| Frozen 1.x XML `InfoPanel.Core.Tests/Fixtures/v1/` | `GENERATE_FIXTURES=1 …--filter FixtureGenerator` | Don't: they are 1.x's format, generated before 2.0 changed anything. Regenerating after a model change defeats them |
 
-## Architecture (2.0.x)
+## Architecture
 
-2.0 is one headless .NET engine that loads profiles, reads sensors, renders frames with SkiaSharp and serves the editor to the user's browser on localhost. The preview the editor shows is rendered by the engine with the same code that drives panels; a client draws only its own overlays, from the item bounds. The engine serves the read and editing API with undo/redo, save, import/export and thumbnails (M4, M5) and the live preview WebSocket `/ws` (M6); the editor works only through them (M7).
+- **One engine, browser UI.** The engine runs headless and serves the editor on `127.0.0.1:{port}`. The editor only edits through the API and only shows engine frames; it has no model or renderer of its own.
+- **REST** (`/api/...`): session, kinds manifest, fonts, sensors and values, profiles (CRUD, duplicate, save, revert, undo, redo, thumbnail, export, import), items (add, batch patch, delete, move, duplicate). Item properties travel under `props` with the C# names in camelCase, enums as strings. Errors are `application/problem+json`.
+- **`/ws`**: the client subscribes to a profile at a scale and fps; the server sends `hello`, `doc` events (revision, dirty, canUndo, canRedo after every change, from any tab), `profiles` events, and binary frames (`IPF1`, a JSON header with revision and item bounds, then a PNG). A frame is sent only when pixels, bounds or revision changed.
+- **Rendering**: `ProfileRenderer` (Core) draws a profile at `scale` through the canvas matrix. `RenderService` runs one loop per subscribed profile, renders each requested scale once per tick and hands the same `RenderedFrame` to every `IFrameSink` (the web preview now; panels and overlays later). A thumbnail (`RenderService.RenderOnce`, `GET .../thumbnail`) of a profile with a live loop redraws the loop's current tick with the loop's options (smoothing included) without advancing it, so at the profile's width it equals the live frame and leaves the loop's animation alone; with no loop it advances the tick and draws values at their target (`Smoothing = false`).
+- **Editing**: `Workspace` holds the profile list and open `ProfileDocument`s. Every edit runs under the document's `SyncRoot` as one transaction, bumps the revision only when the XML snapshot changed, and records undo (per-document XML snapshots, coalescing keys: `gesture:` always merges, other keys within 1 s). Dirty compares with the saved snapshot.
+- **Sensors**: `SensorHub` over `ISensorSource`s (only `MockSensorSource` in step 1); unknown well-formed keys get a deterministic simulated walk so imported Windows profiles still move. Values and history are frozen per render tick.
 
-| Project | Role |
-|---|---|
-| **InfoPanel** (net10.0, `Microsoft.NET.Sdk.Web`) | The engine host and product binary: ASP.NET Core on loopback, REST API, static editor files, hosting glue |
-| **InfoPanel.Tests** | xUnit v3 tests for the host (`WebApplicationFactory<Program>`) |
-| **InfoPanel.Core** (net10.0) | The 1.x model (14 display item kinds + `Profile`) and renderer, moved from the WPF app with history, behind cross-platform seams; mock sensors, sensor hub and history; editing (documents, undo/redo, workspace) |
-| **InfoPanel.Core.Tests** | xUnit v3 tests for Core |
-| **InfoPanel.Plugins**, **.Plugins.Graphics**, **.Plugins.Ipc**, **.Plugins.Host**, **.Plugins.Loader**, **.Plugins.Simulator** (net8.0) | Plugin SDK, out-of-process plugin host and simulator (see `PLUGINS.md`, `PLUGIN-ARCHITECTURE.md`) |
-| **InfoPanel.Extras** | Built-in plugins (Windows-only at runtime) |
+## Invariants (break one only with a decision entry)
 
-### InfoPanel.Core
+- **Preview = panel.** The editor never renders; frames come from `ProfileRenderer`, and `PreviewParityTests` (host) holds the WS frame to the panel path pixel for pixel.
+- **Model freeze.** Never add, remove or rename a public read/write property or public field on the models (`InfoPanel.Core/Models`); `DisplayItem.Guid` (`<Guid>`) was the one exception. The XML must stay readable by 1.x; `HttpImage.HttpUrl` serializing as null is the only whitelisted difference.
+- **Rendering never writes to the model**, and render time, sensors and history come only from `RenderContext` (per-tick memo), so goldens and parity stay deterministic. Per-item animation state lives in `ItemStateStore`.
+- **1.x files load or fail loudly**: unknown item types (newer 1.4.x builds) and `xsi:nil` items are dropped with a warning; unreadable XML throws and is never overwritten.
+- **Undo, redo, dirty and save belong to the engine**; don't reintroduce client-side history.
+- **The kind manifest snapshot moves with the models** (`KindManifestTests`).
+- Plugin SDK projects stay on net8.0.
 
-Root namespace `InfoPanel`. Files moved from 1.x keep their 1.x namespaces (`InfoPanel.Models`, `InfoPanel.Drawing`, ...).
+## Security model
 
-- `Models/` — `DisplayItem` and the 14 kinds (Text, Sensor, Clock, Calendar, Table, Image, SensorImage, HttpImage, Gauge, Graph, Bar, Donut, Shape, Group), `Profile`, `SensorReading`. These are the 1.x XML types.
-- `Sensors/` — `SensorKey` (`hwinfo:{remote}:{id}:{instance}:{entry}`, `libre:{id}`, `plugin:{id}`), `ISensorReader`, `ISensorSource`, `ISensorHistory`, `SensorKeys` (maps an item's sensor binding to a key).
-- `Images/` — `IImageSource` (non-blocking; null means "draw the placeholder"), `IRenderImage`, `IAssetLocator`, `IMediaPlayback`; `ImageCache` (local raster and SVG files; null for HTTP, RTSP, video and `plugin-image://` until providers exist) and `LockedImage`.
-- `Drawing/` — `RenderContext` (sensors, history, images, assets, `ItemStateStore`, `Tick`, `Now`, `Elapsed`, `RenderOptions`), `PanelDraw.Run(profile, items, graphics, ctx)`, `GraphDraw`, `SkiaGraphics` (all three internal), `FontDefaults`.
-- `Sensors/` also holds the engine's sensor runtime: `MockSensorSource` + `MockSensorCatalog` (mock sensors, keys `plugin:/infopanel.mock/{group}/{id}`, plus a process table and a text sensor), `SensorHub` (the engine's `ISensorReader`: sources in order, unknown well-formed keys simulated, status `live | simulated | missing`) and `SensorHistory` (samples requested keys every second, ≤4096, drops keys idle for 10 min).
-- `Editing/` — `ItemKinds` (the 14 kind ids and the `/api/kinds` manifest), `PropertyMap` (which properties the API exposes, camelCase, and strict JSON → CLR conversion), `ItemJson` (`ItemNode`, profile props, `Apply`/`ApplyProfile` property sets that throw `PatchException`), `ItemFactory` (new items as 1.x made them; creatable: the 8 editable kinds + `group`), `UndoHistory` (XML snapshots, ≤100, with coalescing), `ProfileDocument` (one open profile: `SyncRoot`, `Revision`, dirty, patch/add/remove/move/duplicate/undo/redo/revert/save returning `MutationResult`, `Changed` after the lock), `Workspace` (profile list as last saved, lazily opened documents, create/duplicate/delete/import/export/save, `ProfilesChanged`) and `ExampleProfiles.WideBar()` (the first-run profile). `EditException` errors map to 400/404/409.
-- `Drawing/ThumbnailRenderer.cs` — PNG thumbnails through `ProfileRenderer`; `ProfileRenderStates` keeps one render state per profile.
-- `Output/` — the preview/panel pipeline: `FrameRequest`, `IFrameSink` (`OnFrame` on the render thread, never blocking; `OnClosed` when the profile is deleted or can't be rendered, or the service stops, never during or before a frame under way, and no frame after it), `RenderedFrame` (`Image` and `GetPng()` only during `OnFrame`; the PNG, zlib 1 + Up filter, is encoded once and shared), `FrameScale` (requested scale → rendered scale: nearest 0.25, 0.1–4, and always ≤16 Mpx, below 0.1 if that's what fits; null when nothing fits), `RenderLoop` and `RenderService`. See "Preview pipeline" below.
-- `Persistence/` — `DataPaths`, `ProfileStore` (1.x XML layout), `.infopanel` archives and the 1.x data import (both refuse a profile wider or taller than 16384, `Workspace.MaxDimension`).
+- Kestrel binds 127.0.0.1 only and ignores configured URLs and endpoints. Host filtering allows `localhost`, `127.0.0.1` and `[::1]`; a request that carries an `Origin` (WebSocket upgrades included) must come from the engine's own origin or a `--dev-origin`.
+- `/api` needs `Authorization: Bearer {token}`; `/ws` needs the subprotocols `infopanel.v1` and `auth.{token}` (browsers can't set WebSocket headers). Everything else is public: the editor's static files, `/healthz` and `/auth/{token}`. No cookies (a `localhost` cookie reaches every local server) and no CORS.
+- `GET /auth/{token}` redirects to `/#token={token}`; a browser client keeps the token in `localStorage` (per origin, so per port) and out of the address bar. The token is random per start unless `--token` is given.
+- CSP, `X-Frame-Options: DENY`, `nosniff` and `Referrer-Policy: no-referrer` on every response; imports guard against zip-slip, entry-count and size bombs, and oversized profiles.
 
-### Preview pipeline (M6)
+## Data folder
 
-`RenderService` (a host singleton, disposed with the host) keeps one `RenderLoop` per profile that has sinks: created on the first `Attach(sink)`, stopped when the last sink detaches or the profile is deleted (`Workspace.ProfilesChanged`; sinks get `OnClosed(ProfileDeleted)`) or can't be drawn within 16 Mpx at any scale (`OnClosed(Unrenderable)`). Closing never waits for a sink: a sink in `OnFrame` gets `OnClosed` from the render thread right after it returns. A loop wakes on a `PeriodicTimer` at 1000 / max(sink `MaxFps`) ms (default 30, cap 60), early on `ProfileDocument.Changed`, a new sink or `RequestChanged`, never more than once per 16 ms. A tick serves the sinks that are due (new, changed request, or their own frame interval passed): `state.Tick++`, group by rendered scale, draw each group into its reused Rgba8888 bitmap and `MeasureBounds` once, all under the document's `SyncRoot`; then, outside it, XxHash3 the pixels and bounds and hand the group's `RenderedFrame` to each due sink that doesn't already have that hash at that revision. Thumbnails go through `RenderService.RenderOnce`, which renders at the loop's current tick without advancing it while a loop runs (and advances it otherwise), so animation advances once per tick however many scales and thumbnails render. Tests drive ticks by hand with `RenderServiceOptions(AutoTick: false)` and `RenderService.Tick(id)`.
+`{LocalApplicationData}/InfoPanel/v2`: `~/Library/Application Support/InfoPanel/v2` on macOS, `%LOCALAPPDATA%\InfoPanel\v2` on Windows (`--data-dir` overrides). Same layout as 1.x plus the engine's files: `profiles.xml`, `profiles/{guid}.xml`, `assets/{guid}/`, `fonts/` (user fonts; Inter is bundled), `logs/infopanel-*.log` (7 days), `runtime.json` (pid, port and URL while running), `engine.lock`. 1.x's own data (`%LOCALAPPDATA%\InfoPanel`) is only read, by `--import-v1`.
 
-**`/ws` protocol** (`InfoPanel/Preview/`): accepted with subprotocol `infopanel.v1` only. Server sends `{"type":"hello","protocol":1}` first. Client sends JSON text (≤4096 bytes; larger closes with 1009): `subscribe {profileId, scale?=1, maxFps?=30}`, `view {scale?, maxFps?}`, `unsubscribe`. Server sends `{"type":"doc",profileId,revision,dirty,canUndo,canRedo}` on subscribe and after every revision change or save of the subscribed profile (any cause), `{"type":"profiles","version"}` on every `ProfilesChanged`, `{"type":"error","message"}` for bad messages, unknown and deleted profiles, and binary frames: `IPF1`, uint32 LE header length, UTF-8 JSON header `{profileId,revision,frameId,encoding:"png",scale,pixelWidth,pixelHeight,profileWidth,profileHeight,bounds:[{id,x,y,w,h,r,g}]}` (bounds in profile coordinates, draw order, visible items), then the PNG (`FrameCodec`). Each subscription has its own `WebPreviewSink` with a one-slot `DropOldest` channel, retired when the subscription ends; the socket's single send loop reads only the current one's, so a slow socket skips frames and the render thread never waits. `doc` and `profiles` are overwrite slots, never evicted: `doc` is read from the document when sent, so the last one is always the current state; only `error` messages queue (64, oldest dropped). Engine shutdown closes sockets with 1001.
+## Conventions
 
-### InfoPanel (engine host)
-
-`Program.cs` parses the command line (`Hosting/EngineCommandLine`, `EngineOptions`), takes `{data}/engine.lock` (`InstanceLock`), sets up Serilog (console + `{data}/logs/infopanel-*.log`, 7 days; `LogTargets` routes an event to one sink), runs `--import-v1`, creates the example profile in an empty folder (`Workspace.EnsureExampleProfile`), registers Core services as singletons and builds the pipeline. `Hosting/` has `EngineRuntime` (port, token, allowed origins), `EngineLifetime` (confirms the port, writes/deletes `runtime.json`, logs the sign-in links, opens the browser), `SensorService` (starts sources, ticks the hub and history), `StaticSite` and `DataFolder`. `Api/ReadEndpoints.cs` maps `/api/session`, `/kinds`, `/fonts`, `/sensors`, `/sensors/values`, `/profiles`, `/profiles/{id}`, `/profiles/{id}/thumbnail` (through `RenderService.RenderOnce`); `Preview/PreviewSocketHandler.cs` maps `/ws`; `Api/EditEndpoints.cs` maps the writes (`POST /profiles`, `PATCH`/`DELETE /profiles/{id}`, `POST /profiles/{id}/{duplicate,save,revert,undo,redo}`, `GET /profiles/{id}/export`, `POST /import` (multipart, ≤256 MB), `POST`/`PATCH /profiles/{id}/items`, `DELETE /profiles/{id}/items/{itemId}`, `POST .../items/{itemId}/{move,duplicate}`). camelCase JSON, enums as strings, errors as `application/problem+json` (400 with the offending `key`, 404 unknown profile or item, 409 impossible edit).
-
-**Security model (local-only):** Kestrel listens on 127.0.0.1 only; host filtering accepts only `localhost`, `127.0.0.1` and `[::1]`; any request with an `Origin` header must come from `http://127.0.0.1:{port}`, `http://localhost:{port}` or a `--dev-origin` (403 otherwise, WebSocket upgrades included); `/api/*` needs `Authorization: Bearer {token}` and `/ws` needs the WebSocket subprotocols `infopanel.v1` + `auth.{token}` (401 otherwise, before any upgrade; `/ws` accepts with `infopanel.v1` only, never echoing the token). There is **no cookie**: browsers send loopback cookies to every port, so any other local server would get it. `GET /auth/{token}` redirects to `/#token={token}` (`Cache-Control: no-store`); a browser client reads the fragment, keeps the token in `localStorage` (per origin, so per port), removes it from the URL and sends it as a Bearer header, for images and thumbnails too. `/healthz`, `/auth/{token}` and the editor's files are public. No CORS. Every response carries the CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
-
-Rendering reads nothing global: time, sensor values, history, images and per-item animation state (gauge frames, chart smoothing) all come from the `RenderContext`, so the same inputs give the same pixels. Animation state advances at most once per `Tick`, and only render loops (or a thumbnail when no loop runs) advance the tick. Time, sensor readings and history are frozen per tick (`ProfileRenderState`), so every scale, the bounds and thumbnails of one tick agree. Selection, grid lines and other editor chrome are never drawn by Core.
-
-## Invariants
-
-- **The engine owns the model.** The editor sends patches only (property sets, structural operations) and never round-trips whole profiles or items through its own model. Undo/redo and dirty state live in the engine.
-- **Document edits** go through `ProfileDocument` under its `SyncRoot`: the revision rises only on a real change, `Changed` is raised after the lock, a refused edit changes nothing, item ids are stable across undo/redo, and view state (`isExpanded`, `record:false`) never enters history or dirty state. `profiles.xml` holds each profile as last saved. Lock order: document, then workspace, then store.
-- **1.x XML compatibility.** Profiles are `profiles.xml` + `profiles/{guid}.xml`, written with `XmlSerializer`, and 1.x must keep reading what 2.0 writes:
-  - Model freeze: never add, remove or rename a public read/write property or public field on `Profile` or any display item type, and never change the type of one that serializes. `[ObservableProperty]` fields count (it does not copy `[XmlIgnore]`, so those serialize). Members that do not serialize (get-only, `[XmlIgnore]`) may change.
-  - `HttpImageDisplayItem.HttpUrl` is kept but always serializes as null: the one whitelisted difference from 1.x output.
-  - `DisplayItem.Guid` is still `[XmlIgnore]`; M2 serializes it as a `<Guid>` element (1.x ignores unknown elements). That is the one planned model change.
-- **Preview = panel.** A preview frame is `ProfileRenderer.Draw` into a bitmap, nothing else: `PreviewParityTests` checks the decoded `/ws` frame is byte-identical to a direct `ProfileRenderer.Draw`, and to the pixels a panel-style `IFrameSink` on the same loop receives for the same `FrameId`. Preview tests: `dotnet test InfoPanel.slnx --filter "FullyQualifiedName~Preview"`; `PreviewPerformanceLog` writes render/encode timings to `InfoPanel.Core.Tests/TestResults/preview-performance.txt`.
-- **Goldens and snapshots** (from M3 and M5): rendering changes are guarded by golden images and the kind manifest by a snapshot. Regenerate only for an intended change, and review the diff:
-  - `UPDATE_GOLDENS=1 dotnet test InfoPanel.slnx --filter Category=Golden` (goldens are per OS in `InfoPanel.Core.Tests/Golden/{osx,win,linux}/`; only missing or out-of-tolerance files are rewritten; failures leave `*.actual.png`/`*.diff.png` in `InfoPanel.Core.Tests/TestResults/golden/`). Text in goldens uses the bundled Inter only.
-  - The images they draw are generated: `GENERATE_FIXTURE_ASSETS=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~FixtureAssets` rewrites `InfoPanel.Core.Tests/Fixtures/assets/`.
-  - `UPDATE_SNAPSHOTS=1 dotnet test InfoPanel.slnx --filter KindManifest` rewrites the kind manifest snapshot file (`/api/kinds` as JSON).
-- **1.x code** is read from the `1.4.x` branch with `git show 1.4.x:<path>` (no worktrees). Port from there, using `PORTING.md` as the backlog.
-- **No CI on 2.0.x** for now; `.github/workflows/dotnet-desktop.yml` is the 1.x workflow and is left untouched.
-
-## Related Documentation
-
-- `docs/2.0/decisions.md` — 2.0 decisions (date, decision, reason)
-- `PORTING.md` — 1.x components still to port, with their 1.4.x sources
-- `PLUGINS.md` — Plugin development guide (for plugin authors)
-- `PLUGIN-ARCHITECTURE.md` — Plugin system internals (for contributors; describes the 1.x host side)
-- `PANELS.md` — Hardware panel support and models (1.x)
-- `LoggingGuidelines.md` — Serilog usage standards and log levels
+- Logging: Serilog (see `LoggingGuidelines.md`).
+- Tests pin culture and time; goldens and other process-wide font state run in the non-parallel `Golden` collection.
+- Docs for 2.0 live in `docs/2.0/`; `PANELS.md`, `PLUGINS.md` and `PLUGIN-ARCHITECTURE.md` still describe 1.x.
