@@ -126,14 +126,14 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     }
 
     [Fact]
-    public async Task Profiles_ListsTheStarterProfile()
+    public async Task Profiles_ListsTheExampleProfile()
     {
         var profiles = (await GetJson("/api/profiles")).EnumerateArray().ToList();
 
         var profile = Assert.Single(profiles);
         Assert.True(Guid.TryParse(profile.GetProperty("id").GetString(), out _));
-        Assert.Equal("Welcome", profile.GetProperty("name").GetString());
-        Assert.Equal(800, profile.GetProperty("width").GetInt32());
+        Assert.Equal("Wide bar", profile.GetProperty("name").GetString());
+        Assert.Equal(1920, profile.GetProperty("width").GetInt32());
         Assert.Equal(480, profile.GetProperty("height").GetInt32());
         Assert.Equal(1, profile.GetProperty("revision").GetInt64());
         Assert.False(profile.GetProperty("dirty").GetBoolean());
@@ -152,11 +152,11 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.False(doc.GetProperty("canRedo").GetBoolean());
 
         var profile = doc.GetProperty("profile");
-        Assert.Equal("Welcome", profile.GetProperty("name").GetString());
-        Assert.Equal(800, profile.GetProperty("width").GetInt32());
+        Assert.Equal("Wide bar", profile.GetProperty("name").GetString());
+        Assert.Equal(1920, profile.GetProperty("width").GetInt32());
         Assert.False(profile.TryGetProperty("guid", out _));
 
-        var items = doc.GetProperty("items").EnumerateArray().ToList();
+        var items = Flatten(doc.GetProperty("items")).ToList();
         Assert.NotEmpty(items);
         foreach (var item in items)
         {
@@ -168,9 +168,22 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
 
         var sensor = items.First(i => i.GetProperty("kind").GetString() == "sensor");
         var meta = sensor.GetProperty("meta").GetProperty("sensor");
-        Assert.Equal("plugin:/infopanel.mock/cpu/cpu-temp", meta.GetProperty("key").GetString());
+        Assert.Equal("plugin:/infopanel.mock/gpu/gpu-load", meta.GetProperty("key").GetString());
         Assert.Equal("live", meta.GetProperty("status").GetString());
         Assert.Equal("Plugin", sensor.GetProperty("props").GetProperty("sensorType").GetString());
+    }
+
+    private static IEnumerable<JsonElement> Flatten(JsonElement nodes)
+    {
+        foreach (var node in nodes.EnumerateArray())
+        {
+            yield return node;
+            if (node.TryGetProperty("children", out var children))
+            {
+                foreach (var child in Flatten(children))
+                    yield return child;
+            }
+        }
     }
 
     [Theory]
@@ -187,10 +200,10 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     }
 
     [Theory]
-    [InlineData(320, 320, 192)]
-    [InlineData(100, 100, 60)]
-    [InlineData(1, 16, 10)]
-    [InlineData(100000, 4096, 2458)]
+    [InlineData(320, 320, 80)]
+    [InlineData(100, 100, 25)]
+    [InlineData(1, 16, 4)]
+    [InlineData(100000, 4096, 1024)]
     public async Task Thumbnail_IsAPngOfTheRequestedWidth(int requested, int width, int height)
     {
         var id = await FirstProfileId();

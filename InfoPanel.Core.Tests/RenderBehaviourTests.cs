@@ -1,7 +1,9 @@
+using System.Data;
 using System.Reflection;
 using InfoPanel.Drawing;
 using InfoPanel.Enums;
 using InfoPanel.Models;
+using InfoPanel.Plugins;
 using InfoPanel.Sensors;
 using SkiaSharp;
 using Xunit;
@@ -124,5 +126,84 @@ public class RenderBehaviourTests
 
         Assert.Equal(new SKSize(100, 100), ImagePlaceholder.Resolve(SKSize.Empty));
         Assert.Equal(new SKSize(50, 100), ImagePlaceholder.Resolve(new SKSize(50, 0)));
+    }
+
+    /// <summary>A text item whose evaluation always throws, as a model bug or bad data would.</summary>
+    private sealed class BrokenText : TextDisplayItem
+    {
+        public BrokenText(Profile profile) : base("Broken", profile) { }
+
+        public override string EvaluateText(RenderContext ctx) => throw new InvalidOperationException("broken");
+
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx) => throw new InvalidOperationException("broken");
+    }
+
+    [Fact]
+    public void BrokenItem_IsSkipped_AndTheRestOfTheFrameDraws()
+    {
+        var profile = new Profile("Broken", 300, 100) { BackgroundColor = "#FF000000" };
+        ShapeDisplayItem Square(int x, string color) => new("Square", profile)
+        {
+            X = x, Y = 10, Width = 50, Height = 50, CornerRadius = 0, ShowFrame = false, ShowGradient = false, FillColor = color,
+        };
+        var red = Square(10, "#FFFF0000");
+        var green = Square(100, "#FF00FF00");
+        var blue = Square(200, "#FF0000FF");
+        var broken = new BrokenText(profile) { Rotation = 30 };
+        var group = new GroupDisplayItem { Name = "Group" };
+        group.DisplayItems.Add(new BrokenText(profile));
+        group.DisplayItems.Add(blue);
+        DisplayItem[] items = [red, broken, green, group];
+
+        var ctx = TestContexts.Create();
+        using var bitmap = new SKBitmap(300, 100);
+        using (var g = SkiaGraphics.FromBitmap(bitmap, profile.FontScale))
+        {
+            PanelDraw.Run(profile, items, g, ctx);
+            PanelDraw.Run(profile, items, g, ctx); // a second frame: still drawn, logged only once
+            Assert.Equal(1, g.Canvas.SaveCount);
+        }
+
+        Assert.Equal(SKColors.Red, bitmap.GetPixel(35, 35));
+        Assert.Equal(SKColors.Lime, bitmap.GetPixel(125, 35));
+        Assert.Equal(SKColors.Blue, bitmap.GetPixel(225, 35));
+        Assert.False(ctx.State.ShouldLogFailure(broken.Guid, "draw", "System.InvalidOperationException: broken"));
+
+        // Measuring skips it the same way.
+        var renderer = new ProfileRenderer(new FakeSensorReader(), new FakeSensorHistory(), new FakeImageSource(),
+            new FakeAssetLocator(Path.GetTempPath()), TimeProvider.System);
+        var bounds = renderer.MeasureBounds(profile, items, new ProfileRenderState());
+        Assert.Equal([red.Guid, green.Guid, group.Guid, blue.Guid], bounds.Select(b => b.Id));
+    }
+
+    [Fact]
+    public void Histogram_WithHugeThicknessAndStep_DoesNotOverflow()
+    {
+        var graph = new GraphDisplayItem("Graph", new Profile(), GraphDisplayItem.GraphType.HISTOGRAM)
+        {
+            Width = 100, Height = 40, Thickness = int.MaxValue, Step = int.MaxValue, SensorType = SensorType.Plugin, PluginSensorId = "/test/load",
+        };
+        var history = new FakeSensorHistory();
+        history.Samples[SensorKey.Plugin("/test/load")] = [10, 50, 90];
+        var ctx = TestContexts.Create(history: history);
+
+        using var bitmap = new SKBitmap(100, 40);
+        using var g = SkiaGraphics.FromBitmap(bitmap, 1);
+        GraphDraw.Run(graph, g, ctx); // was a DivideByZeroException: Thickness + Step + 2 wrapped to 0
+    }
+
+    [Fact]
+    public void TableLayout_SkipsColumnsOutOfRange()
+    {
+        var table = new DataTable();
+        table.Columns.Add("Name", typeof(IPluginData));
+        table.Rows.Add(new PluginText("name", "first"));
+        var item = new TableSensorDisplayItem("Table", new Profile()) { MaxRows = 1, ShowHeader = true, TableFormat = "-1:100|0:50|1:20" };
+
+        var g = SkiaGraphics.FromEmpty(1);
+        var cells = PanelDraw.LayoutTable(g, item, 0, 0, 12, table).ToList();
+
+        Assert.Equal(["Name", "first"], cells.Select(c => c.Text));
+        Assert.All(cells, c => Assert.Equal((0, 50), (c.X, c.Width)));
     }
 }

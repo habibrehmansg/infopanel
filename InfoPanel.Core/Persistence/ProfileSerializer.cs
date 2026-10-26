@@ -36,6 +36,13 @@ public static class ProfileSerializer
     private static readonly HashSet<string> KnownItemTypeNames = [.. ItemTypes.Select(t => t.Name)];
 
     private static readonly XmlSerializer ItemsSerializer = new(typeof(List<DisplayItem>), [.. ItemTypes]);
+    /// <summary>
+    /// <see cref="ItemsSerializer"/> for internal snapshots only (undo history, dirty state, revert, duplication):
+    /// it leaves out <c>DonutDisplayItem.Radius</c>, a derived property whose setter forces <c>Width = Height = 2 ×
+    /// Radius</c> and so squares a non-square donut when 1.x XML is read back. Every other model setter only sets its
+    /// own field (or ignores a value), so this is the only override. Files keep the 1.x format, Radius included.
+    /// </summary>
+    private static readonly XmlSerializer SnapshotItemsSerializer = CreateSnapshotItemsSerializer();
     private static readonly XmlSerializer ProfilesSerializer = new(typeof(List<Profile>));
     private static readonly XmlSerializer SingleProfileSerializer = new(typeof(Profile));
 
@@ -197,14 +204,26 @@ public static class ProfileSerializer
         ItemsSerializer.Serialize(writer, AsList(items));
     }
 
-    /// <summary>The items as XML text, for undo snapshots and dirty checks. <see cref="ReadItems(TextReader)"/> reads it back.</summary>
+    /// <summary>
+    /// The items as XML text, for undo snapshots, dirty checks and deep copies; <see cref="ReadItems(TextReader)"/>
+    /// reads it back to the same values. Not the 1.x file format: it leaves out <c>DonutDisplayItem.Radius</c> (see
+    /// <see cref="SnapshotItemsSerializer"/>), so a donut keeps its width and height. Files use <see cref="WriteItems"/>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A string holds a character XML 1.0 can't carry.</exception>
     public static string SnapshotItems(IEnumerable<DisplayItem> items)
     {
         var settings = CreateWriterSettings();
         using var text = new StringWriter();
         using (var writer = XmlWriter.Create(text, settings))
-            ItemsSerializer.Serialize(writer, AsList(items));
+            SnapshotItemsSerializer.Serialize(writer, AsList(items));
         return text.ToString();
+    }
+
+    private static XmlSerializer CreateSnapshotItemsSerializer()
+    {
+        var overrides = new XmlAttributeOverrides();
+        overrides.Add(typeof(DonutDisplayItem), nameof(DonutDisplayItem.Radius), new XmlAttributes { XmlIgnore = true });
+        return new XmlSerializer(typeof(List<DisplayItem>), overrides, [.. ItemTypes], null, null);
     }
 
     /// <exception cref="InvalidDataException">The XML is malformed or not a profile list.</exception>
@@ -226,6 +245,31 @@ public static class ProfileSerializer
     {
         using var writer = XmlWriter.Create(stream, CreateWriterSettings());
         SingleProfileSerializer.Serialize(writer, profile);
+    }
+
+    /// <summary>The profile as XML text, for undo snapshots and dirty checks. <see cref="ReadProfileSnapshot"/> reads it back.</summary>
+    public static string SnapshotProfile(Profile profile)
+    {
+        using var text = new StringWriter();
+        using (var writer = XmlWriter.Create(text, CreateWriterSettings()))
+            SingleProfileSerializer.Serialize(writer, profile);
+        return text.ToString();
+    }
+
+    /// <summary>Reads a profile written by <see cref="SnapshotProfile"/>.</summary>
+    /// <exception cref="InvalidDataException">The XML is malformed or not a profile.</exception>
+    public static Profile ReadProfileSnapshot(string xml)
+    {
+        try
+        {
+            using var reader = XmlReader.Create(new StringReader(xml));
+            return SingleProfileSerializer.Deserialize(reader) as Profile
+                ?? throw new InvalidDataException("The profile XML is empty.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new InvalidDataException("The profile XML could not be read: " + (ex.InnerException ?? ex).Message, ex);
+        }
     }
 
     private static T Deserialize<T>(XmlSerializer serializer, Stream stream, string what) where T : class

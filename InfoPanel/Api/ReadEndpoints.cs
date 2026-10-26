@@ -63,8 +63,8 @@ public static class ReadEndpoints
 
         api.MapGet("/profiles", (Workspace workspace) => workspace.ListProfiles());
 
-        api.MapGet("/profiles/{id}", (string id, Workspace workspace, SensorHub hub) =>
-            Open(workspace, id) is { } doc ? Results.Ok(doc.ToDoc(hub)) : Problems.NotFound($"No profile '{id}'."));
+        api.MapGet("/profiles/{id}", (string id, Workspace workspace) =>
+            Open(workspace, id) is { } doc ? Results.Ok(doc.ToDoc()) : Problems.NotFound($"No profile '{id}'."));
 
         api.MapGet("/profiles/{id}/thumbnail", (string id, int? w, Workspace workspace, ThumbnailRenderer thumbnails, HttpContext context) =>
         {

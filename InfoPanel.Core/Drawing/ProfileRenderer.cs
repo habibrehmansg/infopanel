@@ -55,7 +55,7 @@ namespace InfoPanel.Drawing
             {
                 if (!item.Hidden)
                 {
-                    Measure(g, ctx, item, result);
+                    MeasureSafely(g, ctx, item, result);
                 }
             }
 
@@ -83,6 +83,27 @@ namespace InfoPanel.Drawing
         }
 
         /// <summary>
+        /// <see cref="Measure"/>, but an item that throws is left out (with what it added), logged once, and the
+        /// others are still measured, as <see cref="PanelDraw"/> skips an item that fails to draw.
+        /// </summary>
+        private static SKRect? MeasureSafely(SkiaGraphics g, RenderContext ctx, DisplayItem item, List<ItemBounds> result)
+        {
+            var count = result.Count;
+            try
+            {
+                var extent = Measure(g, ctx, item, result);
+                ctx.State.ClearFailure(item.Guid, "measure");
+                return extent;
+            }
+            catch (Exception ex)
+            {
+                result.RemoveRange(count, result.Count - count);
+                PanelDraw.LogFailure(ctx, item, ex, "measure");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Adds the bounds of <paramref name="item"/> (and, for a group, its visible children) to
         /// <paramref name="result"/>, and returns its axis-aligned extent, or null if it has none.
         /// Each case mirrors what <see cref="PanelDraw"/> draws for that kind.
@@ -99,7 +120,7 @@ namespace InfoPanel.Drawing
                         SKRect? union = null;
                         foreach (var child in group.DisplayItemsCopy)
                         {
-                            if (child.Hidden || Measure(g, ctx, child, result) is not SKRect extent)
+                            if (child.Hidden || MeasureSafely(g, ctx, child, result) is not SKRect extent)
                             {
                                 continue;
                             }
@@ -264,7 +285,7 @@ namespace InfoPanel.Drawing
             {
                 var split = part.Split(':');
                 if (split.Length == 2
-                    && int.TryParse(split[0], out var column) && column < dataTable.Columns.Count
+                    && int.TryParse(split[0], out var column) && column >= 0 && column < dataTable.Columns.Count
                     && int.TryParse(split[1], out var length))
                 {
                     width += length + 10;

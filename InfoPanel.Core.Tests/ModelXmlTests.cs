@@ -1,5 +1,5 @@
 using InfoPanel.Models;
-using InfoPanel.Services;
+using InfoPanel.Persistence;
 using Xunit;
 
 namespace InfoPanel.Core.Tests;
@@ -36,13 +36,11 @@ public class ModelXmlTests
             new ShapeDisplayItem("Shape", profile),
         ];
 
-        var xml = UndoManager.SerializeDisplayItemsForProfile(items);
+        var xml = ProfileSerializer.SnapshotItems(items);
         Assert.False(string.IsNullOrEmpty(xml));
 
-        UndoManager.Instance.PushUndoSnapshot(profile, xml);
-        var restored = UndoManager.Instance.Undo(profile);
+        var restored = ProfileSerializer.ReadItems(new StringReader(xml));
 
-        Assert.NotNull(restored);
         Assert.Equal(items.Select(i => i.GetType()), restored.Select(i => i.GetType()));
         Assert.Equal(items.Select(i => i.Name), restored.Select(i => i.Name));
         Assert.Equal("Inner", ((GroupDisplayItem)restored[0]).DisplayItems.Single().Name);

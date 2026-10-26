@@ -2,6 +2,7 @@ using InfoPanel.Extensions;
 using InfoPanel.Images;
 using InfoPanel.Models;
 using InfoPanel.Plugins;
+using Serilog;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
@@ -12,6 +13,8 @@ namespace InfoPanel.Drawing
 {
     internal class PanelDraw
     {
+        private static readonly ILogger Logger = Log.ForContext<PanelDraw>();
+
         /// <summary>
         /// Draws <paramref name="displayItems"/> (the profile's items, in draw order) onto <paramref name="g"/>.
         /// Output depends only on the arguments: the same profile, items and context give the same pixels.
@@ -28,7 +31,7 @@ namespace InfoPanel.Drawing
             foreach (var displayItem in displayItems)
             {
                 if (displayItem.Hidden) continue;
-                Draw(g, ctx, displayItem);
+                DrawSafely(g, ctx, displayItem);
             }
 
             var fpsCounter = ctx.Fps;
@@ -56,6 +59,35 @@ namespace InfoPanel.Drawing
             }
         }
 
+        /// <summary>
+        /// Draws one item; if it throws, the canvas is put back as it was before the item, the failure is logged once
+        /// (<see cref="ItemStateStore.ShouldLogFailure"/>) and the frame goes on with the next item, so one broken item
+        /// never breaks the frame.
+        /// </summary>
+        private static void DrawSafely(SkiaGraphics g, RenderContext ctx, DisplayItem displayItem)
+        {
+            var saveCount = g.Canvas.SaveCount;
+            try
+            {
+                Draw(g, ctx, displayItem);
+                ctx.State.ClearFailure(displayItem.Guid, "draw");
+            }
+            catch (Exception ex)
+            {
+                g.Canvas.RestoreToCount(saveCount);
+                LogFailure(ctx, displayItem, ex, "draw");
+            }
+        }
+
+        /// <summary>Logs an item's render failure the first time it happens (not every frame).</summary>
+        internal static void LogFailure(RenderContext ctx, DisplayItem item, Exception ex, string action)
+        {
+            if (ctx.State.ShouldLogFailure(item.Guid, action, $"{ex.GetType().FullName}: {ex.Message}"))
+            {
+                Logger.Error(ex, "Could not {Action} item {ItemName} ({ItemGuid}); it is skipped", action, item.Name, item.Guid);
+            }
+        }
+
         private static void Draw(SkiaGraphics g, RenderContext ctx, DisplayItem displayItem)
         {
             var x = displayItem.X;
@@ -68,7 +100,7 @@ namespace InfoPanel.Drawing
                         foreach (var item in groupDisplayItem.DisplayItemsCopy)
                         {
                             if (item.Hidden) continue;
-                            Draw(g, ctx, item);
+                            DrawSafely(g, ctx, item);
                         }
                         break;
                     }
@@ -735,7 +767,7 @@ namespace InfoPanel.Drawing
                 var split = formatParts[i].Split(':');
                 if (split.Length == 2 && 
                     int.TryParse(split[0], out var column) && 
-                    column < table.Columns.Count && 
+                    column >= 0 && column < table.Columns.Count && 
                     int.TryParse(split[1], out var length))
                 {
                     var rightAlign = i != 0 && tableSensorDisplayItem.RightAlign;

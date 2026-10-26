@@ -1,263 +1,109 @@
-using InfoPanel.Models;
-using Serilog;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Xml;
-using System.Xml.Serialization;
 
-namespace InfoPanel.Services;
+namespace InfoPanel.Editing;
+
+/// <summary>A document's full state as XML text: the profile and its items (<c>ProfileSerializer</c> snapshots).</summary>
+public sealed record DocumentSnapshot(string ProfileXml, string ItemsXml);
 
 /// <summary>
-/// Manages undo/redo stacks per profile using XML-serialized snapshots of display items.
+/// One document's undo and redo stacks of <see cref="DocumentSnapshot"/>s, with the web client's coalescing
+/// (<c>src/store/history.ts</c>, plan §6.3):
+/// <list type="bullet">
+/// <item>a key starting with <c>gesture:</c> always merges into the previous entry with the same key;</item>
+/// <item>any other key merges when it arrives less than <see cref="CoalesceWindow"/> after the previous
+/// record with the same key (each merged record restarts the window);</item>
+/// <item>a record without a key never merges.</item>
+/// </list>
+/// A merge keeps the older "before" snapshot, so one undo goes back to before the whole gesture or burst. Every
+/// record clears the redo stack; undo and redo end any merge. At most <see cref="Limit"/> undo entries are kept.
+/// Not thread-safe: the document calls it under its <c>SyncRoot</c>.
 /// </summary>
-public sealed class UndoManager
+public sealed class UndoHistory(TimeProvider time)
 {
-    private static readonly ILogger Logger = Log.ForContext<UndoManager>();
-    private const int MaxUndoDepth = 50;
+    public const int Limit = 100;
 
-    private static readonly Lazy<UndoManager> Lazy = new(() => new UndoManager());
-    public static UndoManager Instance => Lazy.Value;
+    public const string GesturePrefix = "gesture:";
 
-    private readonly object _lock = new();
-    private readonly Dictionary<Guid, Stack<string>> _undoStacks = new();
-    private readonly Dictionary<Guid, Stack<string>> _redoStacks = new();
+    public static readonly TimeSpan CoalesceWindow = TimeSpan.FromMilliseconds(1000);
 
-    private static readonly Type[] DisplayItemTypes =
-    [
-        typeof(GroupDisplayItem), typeof(BarDisplayItem), typeof(GraphDisplayItem), typeof(DonutDisplayItem),
-        typeof(TableSensorDisplayItem), typeof(SensorDisplayItem), typeof(ClockDisplayItem), typeof(CalendarDisplayItem),
-        typeof(TextDisplayItem), typeof(SensorImageDisplayItem), typeof(ImageDisplayItem), typeof(HttpImageDisplayItem),
-        typeof(GaugeDisplayItem), typeof(ShapeDisplayItem)
-    ];
+    private readonly LinkedList<DocumentSnapshot> _past = new();
+    private readonly Stack<DocumentSnapshot> _future = new();
+    private string? _lastKey;
+    private long _lastAt;
 
-    private static readonly XmlSerializer Serializer = new(typeof(List<DisplayItem>), DisplayItemTypes);
+    public bool CanUndo => _past.Count > 0;
 
-    private UndoManager() { }
+    public bool CanRedo => _future.Count > 0;
 
-    /// <summary>
-    /// Push a pre-serialized XML snapshot onto the undo stack. Used when we have the state-before-edit as XML.
-    /// </summary>
-    public void PushUndoSnapshot(Profile profile, string? snapshot)
+    public int UndoCount => _past.Count;
+
+    public int RedoCount => _future.Count;
+
+    /// <summary>The stacks and coalescing state, for <see cref="Restore"/>.</summary>
+    internal readonly record struct State(DocumentSnapshot[] Past, DocumentSnapshot[] Future, string? LastKey, long LastAt);
+
+    /// <summary>A copy of the whole history, so a failed edit can put it back (at most <see cref="Limit"/> references per stack).</summary>
+    internal State Save() => new([.. _past], _future.ToArray(), _lastKey, _lastAt);
+
+    /// <summary>Puts back a history taken with <see cref="Save"/>.</summary>
+    internal void Restore(State state)
     {
-        PushUndoSnapshotInternal(profile, snapshot, clearRedo: true);
+        _past.Clear();
+        foreach (var entry in state.Past)
+            _past.AddLast(entry);
+
+        // ToArray lists the top first; push from the bottom up.
+        _future.Clear();
+        for (var i = state.Future.Length - 1; i >= 0; i--)
+            _future.Push(state.Future[i]);
+
+        _lastKey = state.LastKey;
+        _lastAt = state.LastAt;
     }
 
-    /// <summary>
-    /// Push a snapshot onto the undo stack without clearing the redo stack. Used when redoing so undo becomes available again.
-    /// </summary>
-    public void PushUndoSnapshotWithoutClearingRedo(Profile profile, string? snapshot)
+    /// <summary>Records the state from before a change. Returns true when it merged into the previous entry.</summary>
+    public bool Record(DocumentSnapshot before, string? key)
     {
-        PushUndoSnapshotInternal(profile, snapshot, clearRedo: false);
-    }
+        var now = time.GetTimestamp();
+        var merge = key != null && key == _lastKey && _past.Count > 0
+            && (key.StartsWith(GesturePrefix, StringComparison.Ordinal) || time.GetElapsedTime(_lastAt, now) < CoalesceWindow);
 
-    private void PushUndoSnapshotInternal(Profile profile, string? snapshot, bool clearRedo)
-    {
-        if (profile == null || string.IsNullOrEmpty(snapshot)) return;
-        lock (_lock)
+        if (!merge)
         {
-            var guid = profile.Guid;
-            if (!_undoStacks.TryGetValue(guid, out var stack))
-            {
-                stack = new Stack<string>();
-                _undoStacks[guid] = stack;
-            }
-            TrimStack(stack);
-            stack.Push(snapshot);
-            if (clearRedo && _redoStacks.TryGetValue(guid, out var redoStack))
-                redoStack.Clear();
+            _past.AddLast(before);
+            while (_past.Count > Limit)
+                _past.RemoveFirst();
         }
+
+        _future.Clear();
+        _lastKey = key;
+        _lastAt = now;
+        return merge;
     }
 
-    /// <summary>
-    /// Push current display items state onto the undo stack for the given profile.
-    /// Call before performing a mutable operation.
-    /// </summary>
-    public void PushUndo(Profile profile, IList<DisplayItem> displayItems)
+    /// <summary>The state to restore, pushing <paramref name="current"/> onto the redo stack; null when there is nothing to undo.</summary>
+    public DocumentSnapshot? Undo(DocumentSnapshot current)
     {
-        if (profile == null || displayItems == null) return;
-
-        try
-        {
-            var snapshot = SerializeDisplayItems(displayItems);
-            if (string.IsNullOrEmpty(snapshot)) return;
-
-            lock (_lock)
-            {
-                var guid = profile.Guid;
-                if (!_undoStacks.TryGetValue(guid, out var stack))
-                {
-                    stack = new Stack<string>();
-                    _undoStacks[guid] = stack;
-                }
-
-                TrimStack(stack);
-                stack.Push(snapshot);
-
-                if (_redoStacks.TryGetValue(guid, out var redoStack))
-                    redoStack.Clear();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning(ex, "Failed to push undo snapshot for profile {ProfileName}", profile.Name);
-        }
-    }
-
-    /// <summary>
-    /// Trim undo stack to MaxUndoDepth by keeping the most recent entries.
-    /// </summary>
-    private static void TrimStack(Stack<string> stack)
-    {
-        if (stack.Count <= MaxUndoDepth) return;
-        var list = new List<string>();
-        for (int i = 0; i < MaxUndoDepth && stack.Count > 0; i++)
-            list.Add(stack.Pop());
-        list.Reverse();
-        foreach (var item in list)
-            stack.Push(item);
-    }
-
-    public bool CanUndo(Profile profile)
-    {
-        if (profile == null) return false;
-        lock (_lock)
-            return _undoStacks.TryGetValue(profile.Guid, out var stack) && stack.Count > 0;
-    }
-
-    public bool CanRedo(Profile profile)
-    {
-        if (profile == null) return false;
-        lock (_lock)
-            return _redoStacks.TryGetValue(profile.Guid, out var stack) && stack.Count > 0;
-    }
-
-    /// <summary>
-    /// Pop undo stack and return deserialized display items for the profile.
-    /// currentStateXmlForRedo: optional serialized current state (from SerializeDisplayItemsForProfile) to push onto redo stack.
-    /// </summary>
-    public List<DisplayItem>? Undo(Profile profile, string? currentStateXmlForRedo = null)
-    {
-        if (profile == null) return null;
-        lock (_lock)
-        {
-            if (!_undoStacks.TryGetValue(profile.Guid, out var stack) || stack.Count == 0)
-                return null;
-
-            var snapshot = stack.Peek();
-            var items = DeserializeDisplayItems(snapshot, profile);
-            if (items == null)
-                return null;
-
-            stack.Pop();
-
-            if (!string.IsNullOrEmpty(currentStateXmlForRedo))
-            {
-                if (!_redoStacks.TryGetValue(profile.Guid, out var redoStack))
-                {
-                    redoStack = new Stack<string>();
-                    _redoStacks[profile.Guid] = redoStack;
-                }
-                redoStack.Push(currentStateXmlForRedo);
-            }
-            return items;
-        }
-    }
-
-    /// <summary>
-    /// Serialize display items to XML (for passing current state to Undo for redo stack).
-    /// </summary>
-    public static string? SerializeDisplayItemsForProfile(IList<DisplayItem> displayItems)
-    {
-        return SerializeDisplayItems(displayItems);
-    }
-
-    /// <summary>
-    /// Pop redo stack and return deserialized display items for the profile.
-    /// </summary>
-    public List<DisplayItem>? Redo(Profile profile)
-    {
-        if (profile == null) return null;
-        lock (_lock)
-        {
-            if (!_redoStacks.TryGetValue(profile.Guid, out var redoStack) || redoStack.Count == 0)
-                return null;
-
-            var snapshot = redoStack.Pop();
-            return DeserializeDisplayItems(snapshot, profile);
-        }
-    }
-
-    /// <summary>
-    /// Clear undo/redo history for a profile (e.g. on load or profile switch).
-    /// </summary>
-    public void ClearHistory(Profile profile)
-    {
-        if (profile == null) return;
-        lock (_lock)
-        {
-            _undoStacks.Remove(profile.Guid);
-            _redoStacks.Remove(profile.Guid);
-        }
-    }
-
-    /// <summary>
-    /// Remove history when a profile is deleted.
-    /// </summary>
-    public void RemoveProfile(Guid profileGuid)
-    {
-        lock (_lock)
-        {
-            _undoStacks.Remove(profileGuid);
-            _redoStacks.Remove(profileGuid);
-        }
-    }
-
-    private static string? SerializeDisplayItems(IList<DisplayItem> displayItems)
-    {
-        if (displayItems == null || displayItems.Count == 0)
-            return string.Empty;
-
-        try
-        {
-            var list = displayItems.ToList();
-            using var ms = new MemoryStream();
-            var utf8NoBom = new System.Text.UTF8Encoding(false);
-            var settings = new XmlWriterSettings { Encoding = utf8NoBom, Indent = true, OmitXmlDeclaration = true };
-            using (var wr = XmlWriter.Create(ms, settings))
-                Serializer.Serialize(wr, list);
-            return utf8NoBom.GetString(ms.ToArray());
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning(ex, "Serialize display items failed");
+        if (_past.Last is not { } last)
             return null;
-        }
+
+        _past.RemoveLast();
+        _future.Push(current);
+        _lastKey = null;
+        return last.Value;
     }
 
-    private static List<DisplayItem>? DeserializeDisplayItems(string? xml, Profile profile)
+    /// <summary>The state to restore, pushing <paramref name="current"/> onto the undo stack; null when there is nothing to redo.</summary>
+    public DocumentSnapshot? Redo(DocumentSnapshot current)
     {
-        if (string.IsNullOrWhiteSpace(xml) || profile == null) return null;
-        if (xml.Length > 0 && xml[0] == '\uFEFF')
-            xml = xml[1..];
-
-        try
-        {
-            using var rd = XmlReader.Create(new StringReader(xml));
-            if (Serializer.Deserialize(rd) is not List<DisplayItem> items)
-                return null;
-
-            foreach (var item in items)
-                item.SetProfile(profile);
-
-            return items;
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning(ex, "Deserialize display items failed");
+        if (!_future.TryPop(out var next))
             return null;
-        }
+
+        _past.AddLast(current);
+        while (_past.Count > Limit)
+            _past.RemoveFirst();
+        _lastKey = null;
+        return next;
     }
 }

@@ -44,7 +44,7 @@ public class EngineStartupTests
     }
 
     [Fact]
-    public async Task ThumbnailThatFailsToDraw_Is500Problem()
+    public async Task ThumbnailWhoseItemsFailToDraw_StillRenders()
     {
         using var engine = new EngineFactory();
         using var factory = engine.WithWebHostBuilder(builder =>
@@ -56,9 +56,10 @@ public class EngineStartupTests
         var id = System.Text.Json.JsonDocument.Parse(await list.Content.ReadAsStringAsync(Ct))
             .RootElement[0].GetProperty("id").GetString();
 
+        // Every sensor-bound item throws while drawing: each is skipped, the frame still renders.
         using var response = await client.GetAsync($"/api/profiles/{id}/thumbnail", Ct);
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("image/png", response.Content.Headers.ContentType?.MediaType);
 
         // The document's lock was released: the profile still reads.
         using var doc = await client.GetAsync($"/api/profiles/{id}", Ct);

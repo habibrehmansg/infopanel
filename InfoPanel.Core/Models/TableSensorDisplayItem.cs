@@ -70,7 +70,7 @@ namespace InfoPanel.Models
                     var split = formatParts[i].Split(':');
                     if (split.Length == 2)
                     {
-                        if (int.TryParse(split[0], out var column) && column < table.Columns.Count && int.TryParse(split[1], out var length))
+                        if (int.TryParse(split[0], out var column) && column >= 0 && column < table.Columns.Count && int.TryParse(split[1], out var length))
                         {
                             sizeF.Width += length + 10;
                         }

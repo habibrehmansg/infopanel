@@ -182,9 +182,10 @@ namespace InfoPanel.Drawing
                                 case GraphDisplayItem.GraphType.HISTOGRAM:
                                     {
                                         var penSize = 1;
-                                        var size = (int)frameRect.Width / (graphDisplayItem.Thickness + Math.Max(graphDisplayItem.Step, 1) + penSize * 2);
+                                        // long: Thickness + Step can overflow int (and wrap to 0) for huge values.
+                                        var size = (int)((int)frameRect.Width / ((long)graphDisplayItem.Thickness + Math.Max(graphDisplayItem.Step, 1) + penSize * 2));
 
-                                        if (size * graphDisplayItem.Step != (int)frameRect.Width)
+                                        if ((long)size * graphDisplayItem.Step != (int)frameRect.Width)
                                         {
                                             size += 1;
                                         }
@@ -209,7 +210,7 @@ namespace InfoPanel.Drawing
                                             frameRect.Bottom - penSize * 2);
 
                                         var maxHeight = Math.Max(frameRect.Height - 3, 1); // Precalculate the drawable height range
-                                        var offset = graphDisplayItem.Thickness + Math.Max(graphDisplayItem.Step, 1) + penSize * 2; // Precalculate horizontal offset
+                                        var offset = (long)graphDisplayItem.Thickness + Math.Max(graphDisplayItem.Step, 1) + penSize * 2; // Precalculate horizontal offset
 
                                         for (int i = 0; i < size; i++)
                                         {

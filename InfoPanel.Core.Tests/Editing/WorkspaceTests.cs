@@ -19,35 +19,38 @@ public sealed class WorkspaceTests : IDisposable
     private ProfileStore NewStore() => new(new DataPaths(_temp.Path));
 
     [Fact]
-    public void EmptyFolder_GetsOneStarterProfile()
+    public void EmptyFolder_GetsTheExampleProfile()
     {
+        var store = NewStore();
+        Assert.True(Workspace.EnsureExampleProfile(store));
+        Assert.False(Workspace.EnsureExampleProfile(store));
+
         var workspace = new Workspace(NewStore());
-
-        Assert.True(workspace.EnsureStarterProfile());
-        Assert.False(workspace.EnsureStarterProfile());
-
         var summary = Assert.Single(workspace.ListProfiles());
-        Assert.Equal("Welcome", summary.Name);
+        Assert.Equal("Wide bar", summary.Name);
+        Assert.Equal((1920, 480), (summary.Width, summary.Height));
         Assert.Equal(1, summary.Revision);
         Assert.False(summary.Dirty);
-
-        // Persisted: a new workspace on the same folder sees it and adds nothing.
-        var reopened = new Workspace(NewStore());
-        Assert.False(reopened.EnsureStarterProfile());
-        Assert.Equal(summary.Id, Assert.Single(reopened.ListProfiles()).Id);
-        Assert.NotEmpty(reopened.Open(summary.Id)!.Items);
+        Assert.Equal(["GPU", "Clock", "Game", "System", "Fans"], workspace.Open(summary.Id)!.Items.Select(i => i.Name));
     }
 
     [Fact]
-    public void StarterProfile_BindsMockSensors()
+    public void ExampleProfile_BindsMockSensorsInInter()
     {
-        var (_, items) = Workspace.CreateStarterProfile();
+        var (profile, items) = ExampleProfiles.WideBar();
         using var mock = new MockSensorSource(1);
         var hub = new SensorHub([mock]);
 
-        var bound = items.Select(SensorKeys.Of).OfType<SensorKey>().ToList();
-        Assert.NotEmpty(bound);
+        var all = ItemTree.Walk(items).ToList();
+        var bound = all.Select(SensorKeys.Of).OfType<SensorKey>().ToList();
+        Assert.True(bound.Count >= 20);
         Assert.All(bound, key => Assert.Equal(SensorStatus.Live, hub.GetStatus(key)));
+        Assert.All(bound, key => Assert.StartsWith(MockSensorCatalog.KeyPrefix, key.Id));
+        Assert.Equal(FontDefaults.Family, profile.Font);
+        Assert.All(all.OfType<TextDisplayItem>(), t => Assert.Equal(FontDefaults.Family, t.Font));
+        Assert.All(all, i => Assert.Same(profile, i.Profile));
+        Assert.Equal(20, profile.FontSize); // the web client's pt(26) at font scale 1.33
+        Assert.True(((GroupDisplayItem)items[4]).Hidden);
     }
 
     [Fact]
@@ -68,7 +71,7 @@ public sealed class WorkspaceTests : IDisposable
         var item = Assert.Single(doc.Items);
         Assert.Same(doc.Profile, item.Profile);
 
-        var json = doc.ToDoc(new SensorHub([]));
+        var json = doc.ToDoc();
         Assert.Equal(profile.Guid.ToString(), json.Id);
         Assert.Equal(1, json.Revision);
         Assert.False(json.Dirty || json.CanUndo || json.CanRedo);
@@ -93,7 +96,7 @@ public sealed class WorkspaceTests : IDisposable
     [Fact]
     public void Thumbnail_IsAPngAndAdvancesTheTick()
     {
-        var (profile, items) = Workspace.CreateStarterProfile();
+        var (profile, items) = ExampleProfiles.WideBar();
         var doc = new ProfileDocument(profile, items);
         var states = new ProfileRenderStates();
         using var mock = new MockSensorSource(1);
@@ -105,7 +108,7 @@ public sealed class WorkspaceTests : IDisposable
         var png = thumbnails.RenderPng(doc, 400);
         using var bitmap = SKBitmap.Decode(png);
         Assert.Equal(400, bitmap.Width);
-        Assert.Equal(240, bitmap.Height);
+        Assert.Equal(100, bitmap.Height);
         Assert.Equal(1, states.Get(doc.Id).Tick);
 
         thumbnails.RenderPng(doc, 100);
@@ -156,8 +159,8 @@ public sealed class WorkspaceTests : IDisposable
         var gauge = new GaugeDisplayItem("Gauge", profile) { Scale = 50, SensorType = SensorType.Plugin, PluginSensorId = "/test/load" };
         gauge.Images.Add(new ImageDisplayItem("Frame 0", profile) { Scale = 100 });
         gauge.Images.Add(new ImageDisplayItem("Frame 1", profile) { Scale = 100 });
-        var (_, starterItems) = Workspace.CreateStarterProfile();
-        var doc = new ProfileDocument(profile, [gauge, .. starterItems]);
+        var (_, exampleItems) = ExampleProfiles.WideBar();
+        var doc = new ProfileDocument(profile, [gauge, .. exampleItems]);
         var sensors = new FakeSensorReader();
         sensors.Readings[SensorKey.Plugin("/test/load")] = new SensorReading(0, 100, 70, 70, "%");
         var states = new ProfileRenderStates();
@@ -179,14 +182,15 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [Fact]
-    public void Thumbnail_ThatFailsToDraw_ThrowsCleanly_AndReleasesTheDocument()
+    public void Thumbnail_WhoseItemsFailToDraw_StillRenders_AndReleasesTheDocument()
     {
-        var (profile, items) = Workspace.CreateStarterProfile();
+        var (profile, items) = ExampleProfiles.WideBar();
         var doc = new ProfileDocument(profile, items);
         var thumbnails = NewThumbnails(new ThrowingReader());
 
-        Assert.Throws<InvalidOperationException>(() => thumbnails.RenderPng(doc, 100));
-        Assert.Throws<InvalidOperationException>(() => thumbnails.RenderPng(doc, 100));
+        // Every sensor-bound item throws; each is skipped and the rest of the frame is drawn.
+        Assert.NotEmpty(thumbnails.RenderPng(doc, 100));
+        Assert.NotEmpty(thumbnails.RenderPng(doc, 100));
         Assert.True(Monitor.TryEnter(doc.SyncRoot));
         Monitor.Exit(doc.SyncRoot);
     }

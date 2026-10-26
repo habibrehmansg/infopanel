@@ -105,11 +105,10 @@ try
             Log.Warning("  skipped {Name} ({Guid}): {Reason}", skipped.Name, skipped.Guid, skipped.Reason);
     }
 
-    var workspace = new Workspace(store);
     try
     {
-        if (workspace.EnsureStarterProfile())
-            Log.Information("The data folder had no profiles; created a starter profile");
+        if (Workspace.EnsureExampleProfile(store))
+            Log.Information("The data folder had no profiles; created the example profile");
     }
     catch (InvalidDataException ex)
     {
@@ -159,12 +158,12 @@ try
     builder.Services.AddSingleton(runtime);
     builder.Services.AddSingleton(store);
     builder.Services.AddSingleton<IAssetLocator>(store);
-    builder.Services.AddSingleton(workspace);
     builder.Services.AddSingleton(TimeProvider.System);
     builder.Services.AddSingleton(sp => new MockSensorSource(options.MockSeed, sp.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton<ISensorSource>(sp => sp.GetRequiredService<MockSensorSource>());
     builder.Services.AddSingleton(sp => new SensorHub(sp.GetServices<ISensorSource>()));
     builder.Services.AddSingleton<ISensorReader>(sp => sp.GetRequiredService<SensorHub>());
+    builder.Services.AddSingleton(sp => new Workspace(store, sp.GetRequiredService<SensorHub>(), sp.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton(sp =>
     {
         var hub = sp.GetRequiredService<SensorHub>();
@@ -199,6 +198,7 @@ try
     app.MapGet("/healthz", () => Results.Text("ok", "text/plain"));
     app.MapAuth();
     app.MapReadEndpoints();
+    app.MapEditEndpoints();
     app.MapWebClientFallback(webRoot);
 
     await app.RunAsync();
