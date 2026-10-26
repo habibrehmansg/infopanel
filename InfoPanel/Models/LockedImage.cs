@@ -124,6 +124,9 @@ namespace InfoPanel.Models
 
         public bool Loaded { get; private set; } = false;
 
+        /// <summary>When this image was created/downloaded. Used for the URL refresh interval.</summary>
+        public readonly DateTime LoadedAtUtc = DateTime.UtcNow;
+
         /// <summary>
         /// Creates a LockedImage backed by a plugin image proxy (shared memory).
         /// </summary>
