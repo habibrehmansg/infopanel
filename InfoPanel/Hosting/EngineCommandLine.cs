@@ -56,7 +56,7 @@ public static class EngineCommandLine
 
           --port <n>            Loopback port to listen on (default 0: a free port)
           --data-dir <dir>      Data folder (default: the per-user InfoPanel/v2 folder)
-          --web-root <dir>      the web client's built files (default: wwwroot next to the engine, else client/dist)
+          --web-root <dir>      The web client's built files (default: wwwroot next to the engine)
           --no-browser          Don't open the browser
           --no-windows          Don't show active profiles as desktop windows
           --token <token>       Session token (default: random)

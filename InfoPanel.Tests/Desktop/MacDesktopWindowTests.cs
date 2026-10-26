@@ -69,7 +69,7 @@ public sealed class MacDesktopWindowTests
             var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetString();
             await Until(() => Task.FromResult(OnScreen(process.Id).Count == 2), "two windows");
 
-            // Moving it and putting it on top through the API (the web client's path).
+            // Moving it and putting it on top through the API (the editor's path).
             await PatchProfile(api, id!, new { windowX = 200, windowY = 120, topmost = true });
             await Until(() => Task.FromResult(OnScreen(process.Id).Any(w =>
                 w.Bounds == new PointRect(200 / scale, 120 / scale, 400 / scale, 200 / scale) && w.Layer == 3)), "the moved, floating window");

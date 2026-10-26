@@ -70,8 +70,8 @@ public sealed class EngineLifetime(
     private void LogSignInLinks(bool redacted)
     {
         using var scope = logger.BeginScope(LogTargets.Only(redacted ? LogTargets.File : LogTargets.Console));
-        logger.LogInformation("Open the web client: {AuthUrl}", runtime.AuthUrlFor(runtime.BaseUrl, redacted));
+        logger.LogInformation("Open the editor: {AuthUrl}", runtime.AuthUrlFor(runtime.BaseUrl, redacted));
         foreach (var origin in runtime.DevOrigins)
-            logger.LogInformation("Open the web client (dev server): {AuthUrl}", runtime.AuthUrlFor(origin, redacted));
+            logger.LogInformation("Open the editor (dev server): {AuthUrl}", runtime.AuthUrlFor(origin, redacted));
     }
 }

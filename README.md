@@ -16,18 +16,19 @@
 
 ## InfoPanel 2.0 (branch `2.0.x`, in development)
 
-This branch is InfoPanel 2.0: one cross-platform engine for Windows and macOS that renders your screens with the same Skia code that drives the panels, and its editor, which runs in your browser on localhost. The editor's preview is the engine's own output, so what you edit is what the panel shows. 2.0 reads 1.x profiles and `.infopanel` exports. It is not released yet: sensors are simulated (HWiNFO and LibreHardwareMonitor come back as Windows adapters), active screens show as desktop windows on macOS only so far, and panels and plugins are not connected yet.
+This branch is InfoPanel 2.0: one cross-platform engine for Windows and macOS that renders your screens with the same Skia code that drives the panels and serves an API and live preview on localhost for an editor in your browser. The editor's preview is the engine's own output, so what you edit is what the panel shows. 2.0 reads 1.x profiles and `.infopanel` exports. It is not released yet: sensors are simulated (HWiNFO and LibreHardwareMonitor come back as Windows adapters), active screens show as desktop windows on macOS only so far, and panels and plugins are not connected yet.
 
 InfoPanel 1.x, the Windows app described below, keeps shipping from branch [`1.4.x`](https://github.com/habibrehmansg/infopanel/tree/1.4.x).
 
 To run 2.0 from source on macOS or Windows, install the [.NET 10 SDK](https://dotnet.microsoft.com/download), then from the repo root:
 
 ```bash
-dotnet run --project InfoPanel -c Release                 # serves the API; with --web-root <built client>, opens it in your browser
+dotnet run --project InfoPanel -c Release                 # the API only: no web client is built from this repo
+dotnet run --project InfoPanel -c Release -- --web-root <folder>   # serves a built web client from <folder> and opens it in your browser
 dotnet run --project InfoPanel -c Release -- --import-v1 <folder>   # optional: bring over a copy of a 1.x data folder
 ```
 
-Screens are kept in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows, in the 1.x file format. The engine listens on 127.0.0.1 only. The API and live preview need the token in the sign-in link the engine prints (or opens); the editor's page itself, the sign-in link and the health check are open to local requests.
+Without `--web-root`, an engine serves the `wwwroot` folder next to it if that folder contains an `index.html`. Screens are kept in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows, in the 1.x file format. The engine listens on 127.0.0.1 only. The API and live preview need the token in the sign-in link the engine prints (or opens); the web client's files, the sign-in link and the health check are open to local requests.
 
 For development and tests, see [`CLAUDE.md`](CLAUDE.md). Design decisions are recorded in [`docs/2.0/decisions.md`](docs/2.0/decisions.md); what still has to come over from 1.x is in [`PORTING.md`](PORTING.md).
 

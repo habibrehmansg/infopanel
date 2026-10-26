@@ -12,7 +12,7 @@ public class StaticFileTests(EngineFactory factory) : IClassFixture<EngineFactor
     [InlineData("/index.html")]
     [InlineData("/profiles/abc")]
     [InlineData("/settings")]
-    public async Task WebClientRoutes_ServeIndexHtml_WithoutToken(string path)
+    public async Task ClientRoutes_ServeIndexHtml_WithoutToken(string path)
     {
         using var client = factory.CreateRawClient();
         using var response = await client.GetAsync(path, Ct);
@@ -30,7 +30,7 @@ public class StaticFileTests(EngineFactory factory) : IClassFixture<EngineFactor
         using var response = await client.GetAsync("/assets/app.js", Ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("web client", await response.Content.ReadAsStringAsync(Ct));
+        Assert.Contains("web-client", await response.Content.ReadAsStringAsync(Ct));
     }
 
     [Fact]

@@ -8,8 +8,7 @@ using System.Linq;
 namespace InfoPanel.Editing;
 
 /// <summary>
-/// Example screens for a data folder with no profiles: a port of the web client's <c>src/model/seed.ts</c> with the
-/// C# kinds and property names, bound to the mock sensors (<c>plugin:/infopanel.mock/...</c>) and set in Inter.
+/// Example screens for a data folder with no profiles, built from the C# kinds and property names, bound to the mock sensors (<c>plugin:/infopanel.mock/...</c>) and set in Inter.
 /// </summary>
 public static class ExampleProfiles
 {
@@ -22,7 +21,7 @@ public static class ExampleProfiles
 
     private enum Align { Left, Center, Right }
 
-    /// <summary>The 1920×480 "Wide bar": GPU, clock, game and system cards, as the web client's seed lays them out.</summary>
+    /// <summary>The 1920×480 "Wide bar": GPU, clock, game and system cards, as the original seed lays them out.</summary>
     public static (Profile Profile, List<DisplayItem> Items) WideBar()
     {
         var p = new Profile("Wide bar", 1920, 480)
@@ -191,7 +190,7 @@ public static class ExampleProfiles
         return (p, items);
     }
 
-    /// <summary>The web client's <c>pt</c>: the seed was laid out in pixels and InfoPanel scales font sizes by the font scale (JS rounding).</summary>
+    /// <summary>Pixels to points: the seed was laid out in pixels and InfoPanel scales font sizes by the font scale (JS rounding).</summary>
     private static int Pt(double px, float fontScale) => (int)Math.Floor(px / fontScale + 0.5);
 
     private static MockSensorDef Def(string mockId) =>

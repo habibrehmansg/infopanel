@@ -125,7 +125,7 @@ try
 
     var webRoot = DataFolder.FindWebRoot(options.WebRoot);
     if (webRoot == null)
-        Log.Warning("The web client isn't built (no wwwroot or client/dist); serving the API only");
+        Log.Warning("No web client installed (no wwwroot next to the engine and no --web-root); serving the API only");
     else
         Log.Information("Serving the web client from {WebRoot}", webRoot);
 
@@ -209,7 +209,7 @@ try
     foreach (var origin in runtime.AllowedOrigins)
         webSockets.AllowedOrigins.Add(origin);
     app.UseWebSockets(webSockets);
-    app.UseWebClientFiles(webRoot);
+    app.UseClientFiles(webRoot);
     app.UseRouting();
 
     app.MapGet("/healthz", () => Results.Text("ok", "text/plain"));
@@ -217,7 +217,7 @@ try
     app.MapReadEndpoints();
     app.MapEditEndpoints();
     app.MapPreviewSocket();
-    app.MapWebClientFallback(webRoot);
+    app.MapClientFallback(webRoot);
 
     await desktop.RunAsync(() => app.RunAsync());
     return 0;

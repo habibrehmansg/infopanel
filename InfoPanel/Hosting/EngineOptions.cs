@@ -20,7 +20,7 @@ public sealed partial class EngineOptions
     /// <summary>Data folder; null means <c>DataPaths.DefaultRoot()</c>.</summary>
     public string? DataDir { get; init; }
 
-    /// <summary>The web client's built files; null means <c>{BaseDirectory}/wwwroot</c>, else the nearest <c>client/dist</c> above it.</summary>
+    /// <summary>The web client's built files; null means <c>{BaseDirectory}/wwwroot</c> when it has an <c>index.html</c>.</summary>
     public string? WebRoot { get; init; }
 
     public bool NoBrowser { get; init; }
@@ -31,7 +31,7 @@ public sealed partial class EngineOptions
     /// <summary>The session token (URL-safe characters only); generated when not given.</summary>
     public string Token { get; init; } = "";
 
-    /// <summary>Extra allowed origins (the dev server), normalised to <c>scheme://host[:port]</c>.</summary>
+    /// <summary>Extra allowed origins (a web client's dev server), normalised to <c>scheme://host[:port]</c>.</summary>
     public IReadOnlyList<string> DevOrigins { get; init; } = [];
 
     /// <summary>A 1.x data folder to import at start-up.</summary>

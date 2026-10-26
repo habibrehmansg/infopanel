@@ -3,7 +3,8 @@ using System.Text;
 namespace InfoPanel.Sensors;
 
 /// <summary>
-/// The mulberry32 generator the web client's tests use: a 32-bit state, doubles in [0, 1). Not thread-safe.
+/// The mulberry32 generator: a 32-bit state, doubles in [0, 1).
+/// Not thread-safe.
 /// </summary>
 internal sealed class Mulberry32(uint seed)
 {

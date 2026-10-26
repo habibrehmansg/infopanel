@@ -11,8 +11,8 @@
     <!-- Desktop/MacOS calls objc_msgSend through typed function pointers. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- `dotnet run` keeps the caller's folder (the Web SDK would switch to this project folder), so relative data
-         folder, web root and 1.x import paths resolve as they do in the caller's shell: a web client's browser-test run passes
-         a data folder of .e2e-data and a web root of dist from client/. -->
+         folder, web root and 1.x import paths resolve as they do in the caller's shell (a test runner that starts the
+         engine from its own folder can pass a relative data folder and web root). -->
     <EnableDefaultRunWorkingDirectory>false</EnableDefaultRunWorkingDirectory>
   </PropertyGroup>
 

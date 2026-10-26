@@ -7,7 +7,7 @@ using Xunit;
 namespace InfoPanel.Core.Tests.Persistence;
 
 /// <summary>
-/// The web client's end-to-end fixture <c>e2e/fixtures/all-kinds.infopanel</c>: the frozen 1.x "Desk Overlay" profile
+/// The end-to-end fixture <c>InfoPanel.Core.Tests/Fixtures/e2e/all-kinds.infopanel</c>: the frozen 1.x "Desk Overlay" profile
 /// and its all-kinds items, packaged as 1.x's <c>ExportProfile</c> wrote them on Windows. Rewrite it with
 /// <c>UPDATE_FIXTURES=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~E2eArchiveFixture</c>; the other tests
 /// here check the committed file still matches and imports with every kind and its images. With UPDATE_FIXTURES=1
@@ -15,7 +15,7 @@ namespace InfoPanel.Core.Tests.Persistence;
 /// </summary>
 public class E2eArchiveFixture
 {
-    private const string ArchiveRelativePath = "client/e2e/fixtures/all-kinds.infopanel";
+    private const string ArchiveRelativePath = "InfoPanel.Core.Tests/Fixtures/e2e/all-kinds.infopanel";
 
     /// <summary>Fixed entry times, so regenerating an unchanged archive leaves its contents unchanged.</summary>
     private static readonly DateTimeOffset EntryTime = new(2026, 10, 26, 0, 0, 0, TimeSpan.Zero);
@@ -51,7 +51,7 @@ public class E2eArchiveFixture
     [Fact]
     public void Generate()
     {
-        Assert.SkipUnless(Updating, "Set UPDATE_FIXTURES=1 to rewrite client/e2e/fixtures/all-kinds.infopanel.");
+        Assert.SkipUnless(Updating, $"Set UPDATE_FIXTURES=1 to rewrite {ArchiveRelativePath}.");
         Assert.True(File.Exists(Archive()));
     }
 

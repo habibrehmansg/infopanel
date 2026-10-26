@@ -6,21 +6,23 @@ namespace InfoPanel.Hosting;
 /// <summary>
 /// Serves the web client's built files: <c>UseDefaultFiles</c> + <c>UseStaticFiles</c> over the web root, and
 /// <c>index.html</c> for every other non-file path except <c>/api</c>, <c>/ws</c> and <c>/auth</c>, which 404
-/// (<c>/api</c> as problem+json). Without a web root the API still works and pages say how to build the web client.
+/// (<c>/api</c> as problem+json). Without a web root the API still works and pages say how to point the engine at
+/// a built client.
 /// </summary>
 public static class StaticSite
 {
     public const string NotBuiltMessage = """
-        InfoPanel engine is running, but the web client isn't built.
+        InfoPanel engine is running, but no web client is installed.
 
-        Build it from a source checkout:
-          cd client && npm ci && npm run build
+        The API is available. To serve the editor, restart the engine with the folder
+        that holds a built web client (the one with its index.html):
+          InfoPanel --web-root <folder>
 
-        then restart the engine (it finds client/dist), or pass --web-root <folder>.
-        For development, run `npm run dev` in client/ and open the dev-server link the engine logs.
+        Without --web-root, the engine serves the wwwroot folder next to it
+        if that folder contains an index.html.
         """;
 
-    public static void UseWebClientFiles(this WebApplication app, string? webRoot)
+    public static void UseClientFiles(this WebApplication app, string? webRoot)
     {
         if (webRoot == null)
             return;
@@ -30,7 +32,7 @@ public static class StaticSite
         app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
     }
 
-    public static void MapWebClientFallback(this WebApplication app, string? webRoot)
+    public static void MapClientFallback(this WebApplication app, string? webRoot)
     {
         app.MapFallback("/api/{**rest}", (HttpContext context) =>
             Problems.NotFound($"No API endpoint {context.Request.Method} {context.Request.Path}."));

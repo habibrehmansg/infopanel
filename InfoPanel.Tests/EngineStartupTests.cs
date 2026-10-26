@@ -30,7 +30,7 @@ public class EngineStartupTests
         await WaitUntil(() =>
         {
             text = string.Join("\n", Directory.GetFiles(logs).Select(ReadShared));
-            return text.Contains("Open the web client");
+            return text.Contains("Open the editor");
         });
 
         Assert.Contains("/auth/<token>", text);

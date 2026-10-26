@@ -13,7 +13,7 @@ public sealed class EngineFactory : WebApplicationFactory<Program>
     public const string Token = "test-token_0123456789";
     public const int Port = 47123;
     public const string DevOrigin = "http://localhost:5180";
-    public const string IndexMarker = "web-client-test-index";
+    public const string IndexMarker = "client-test-index";
 
     public EngineFactory()
     {
@@ -22,7 +22,7 @@ public sealed class EngineFactory : WebApplicationFactory<Program>
         WebRoot = Path.Combine(Root, "web");
         Directory.CreateDirectory(Path.Combine(WebRoot, "assets"));
         File.WriteAllText(Path.Combine(WebRoot, "index.html"), $"<!doctype html><title>{IndexMarker}</title>");
-        File.WriteAllText(Path.Combine(WebRoot, "assets", "app.js"), "console.log('web client');");
+        File.WriteAllText(Path.Combine(WebRoot, "assets", "app.js"), "console.log('web-client');");
     }
 
     public string Root { get; }

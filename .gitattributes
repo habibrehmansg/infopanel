@@ -2,4 +2,4 @@
 InfoPanel.Core.Tests/Fixtures/** -text
 
 # Binary end-to-end fixtures (zip archives).
-client/e2e/fixtures/** binary
+InfoPanel.Core.Tests/Fixtures/e2e/** binary

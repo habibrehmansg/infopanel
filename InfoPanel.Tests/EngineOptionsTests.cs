@@ -237,7 +237,7 @@ public class EngineOptionsTests
     [Fact]
     public void RelativePaths_ResolveFromTheWorkingDirectory()
     {
-        // A web client's browser-test run starts the engine from client/ with `--data-dir .e2e-data --web-root dist`.
+        // A test runner may start the engine from its own folder with e.g. `--data-dir .e2e-data --web-root dist`.
         // A folder under the working directory: a temp folder on another Windows drive has no relative path.
         var relative = "infopanel-options-" + Guid.NewGuid().ToString("N");
         var dir = Path.Combine(Environment.CurrentDirectory, relative);

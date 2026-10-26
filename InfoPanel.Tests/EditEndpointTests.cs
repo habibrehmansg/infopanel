@@ -322,9 +322,9 @@ public class EditEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         var (forbiddenDelete, _) = await Send(HttpMethod.Delete, $"/api/profiles/{id}", null, foreign);
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenDelete);
 
-        using var webClient = factory.CreateApiClient();
-        webClient.DefaultRequestHeaders.Add("Origin", EngineFactory.DevOrigin);
-        var (allowed, _) = await Send(HttpMethod.Post, $"/api/profiles/{id}/items", new { kind = "text" }, webClient);
+        using var devClient = factory.CreateApiClient();
+        devClient.DefaultRequestHeaders.Add("Origin", EngineFactory.DevOrigin);
+        var (allowed, _) = await Send(HttpMethod.Post, $"/api/profiles/{id}/items", new { kind = "text" }, devClient);
         Assert.Equal(HttpStatusCode.OK, allowed);
 
         var (_, doc) = await Send(HttpMethod.Get, $"/api/profiles/{id}");
@@ -332,13 +332,13 @@ public class EditEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     }
 
     [Fact]
-    public async Task Kinds_MatchWebClientsSnapshot()
+    public async Task Kinds_MatchSnapshot()
     {
         var (_, kinds) = await Send(HttpMethod.Get, "/api/kinds");
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (!File.Exists(Path.Combine(root.FullName, "InfoPanel.slnx")))
             root = root.Parent!;
-        var snapshot = await File.ReadAllTextAsync(Path.Combine(root.FullName, "client", "src", "api", "kinds.generated.json"), Ct);
+        var snapshot = await File.ReadAllTextAsync(Path.Combine(root.FullName, "InfoPanel.Core.Tests", "Snapshots", "kinds.json"), Ct);
 
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(snapshot), JsonNode.Parse(kinds.GetRawText())));
     }

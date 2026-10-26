@@ -185,27 +185,16 @@ public static partial class DataFolder
     }
 
     /// <summary>
-    /// The web client's built files: <paramref name="configured"/> when given, else <c>{BaseDirectory}/wwwroot</c>, else the
-    /// nearest <c>client/dist</c> in or above the base directory (a source checkout). Null when none has an
-    /// <c>index.html</c>.
+    /// The web client's built files: <paramref name="configured"/> when given, else <c>{BaseDirectory}/wwwroot</c>
+    /// (where an installer puts the bundled client) when it has an <c>index.html</c>. Null otherwise: the engine
+    /// then serves the API only.
     /// </summary>
     public static string? FindWebRoot(string? configured)
     {
         if (configured != null)
             return configured;
 
-        var baseDirectory = AppContext.BaseDirectory;
-        var bundled = Path.Combine(baseDirectory, "wwwroot");
-        if (File.Exists(Path.Combine(bundled, "index.html")))
-            return bundled;
-
-        for (var dir = new DirectoryInfo(baseDirectory); dir != null; dir = dir.Parent)
-        {
-            var dist = Path.Combine(dir.FullName, "client", "dist");
-            if (File.Exists(Path.Combine(dist, "index.html")))
-                return dist;
-        }
-
-        return null;
+        var bundled = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        return File.Exists(Path.Combine(bundled, "index.html")) ? bundled : null;
     }
 }

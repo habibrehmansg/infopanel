@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace InfoPanel.Sensors;
 
 /// <summary>
-/// Mock sensors: a port of the web client's <c>src/sensors/mockSource.ts</c>. Each of the 35 catalog sensors does a
+/// Mock sensors. Each of the 35 catalog sensors does a
 /// mean-reverting random walk with occasional bursts for rate sensors, one step per <see cref="TickInterval"/>,
 /// and keeps now/min/max/avg and the last <see cref="HistoryLength"/> values. It starts with
 /// <see cref="BackfillSamples"/> steps already taken, so graphs aren't empty on load. It also provides a process
@@ -229,7 +229,7 @@ public sealed class MockSensorSource : ISensorSource, ISensorBackfill, IDisposab
         }
     }
 
-    /// <summary>One mean-reverting random-walk step, with occasional bursts for rate sensors (the web client's <c>nextValue</c>).</summary>
+    /// <summary>One mean-reverting random-walk step, with occasional bursts for rate sensors.</summary>
     internal static double NextValue(MockSensorDef def, double prev, Func<double> rng)
     {
         if (def.Jitter == 0)
@@ -243,7 +243,7 @@ public sealed class MockSensorSource : ISensorSource, ISensorBackfill, IDisposab
         return Math.Clamp(next, def.Min, def.Max);
     }
 
-    /// <summary>The web client's <c>step</c>: the next sample of one sensor.</summary>
+    /// <summary>The next sample of one sensor.</summary>
     private Sample Step(MockSensorDef def, Sample? prev)
     {
         var now = NextValue(def, prev?.Now ?? def.Base, _rng.NextDouble);

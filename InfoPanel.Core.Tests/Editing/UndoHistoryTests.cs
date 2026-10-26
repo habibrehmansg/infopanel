@@ -3,7 +3,7 @@ using Xunit;
 
 namespace InfoPanel.Core.Tests.Editing;
 
-/// <summary>The coalescing rules of <c>src/store/history.ts</c> (plan §6.3).</summary>
+/// <summary>The coalescing rules of <see cref="UndoHistory"/>.</summary>
 public class UndoHistoryTests
 {
     private readonly ManualTimeProvider _time = new();

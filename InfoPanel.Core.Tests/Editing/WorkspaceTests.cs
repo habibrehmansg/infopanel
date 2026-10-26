@@ -49,7 +49,7 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Equal(FontDefaults.Family, profile.Font);
         Assert.All(all.OfType<TextDisplayItem>(), t => Assert.Equal(FontDefaults.Family, t.Font));
         Assert.All(all, i => Assert.Same(profile, i.Profile));
-        Assert.Equal(20, profile.FontSize); // the web client's pt(26) at font scale 1.33
+        Assert.Equal(20, profile.FontSize); // the seed's 26 px at font scale 1.33
         Assert.True(((GroupDisplayItem)items[4]).Hidden);
     }
 

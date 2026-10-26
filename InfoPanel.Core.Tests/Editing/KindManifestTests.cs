@@ -7,13 +7,13 @@ using Xunit;
 namespace InfoPanel.Core.Tests.Editing;
 
 /// <summary>
-/// The kind manifest (<c>GET /api/kinds</c>) against the web client's committed snapshot
-/// <c>src/api/kinds.generated.json</c>, so the TypeScript inspector schemas and the engine stay in step.
+/// The kind manifest (<c>GET /api/kinds</c>) against the committed snapshot <c>InfoPanel.Core.Tests/Snapshots/kinds.json</c>,
+/// so a change to the kinds or their properties shows up as a reviewed diff (clients can check their property handling against it).
 /// <c>UPDATE_SNAPSHOTS=1 dotnet test InfoPanel.slnx --filter KindManifest</c> rewrites the snapshot.
 /// </summary>
 public class KindManifestTests
 {
-    public const string SnapshotPath = "client/src/api/kinds.generated.json";
+    public const string SnapshotPath = "InfoPanel.Core.Tests/Snapshots/kinds.json";
 
     /// <summary>The API's JSON shape (camelCase, enums as strings, nulls omitted outside <c>defaults</c>), indented with LF.</summary>
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
@@ -40,7 +40,7 @@ public class KindManifestTests
     }
 
     [Fact]
-    public void KindManifest_MatchesWebClientsSnapshot()
+    public void KindManifest_MatchesSnapshot()
     {
         var path = Path.Combine(RepoRoot(), SnapshotPath);
         var actual = Serialize();

@@ -15,7 +15,7 @@ public class MockSensorSourceTests
     }
 
     [Fact]
-    public void Catalog_MatchesWebClient()
+    public void Catalog_MatchesReferenceCatalog()
     {
         Assert.Equal(35, MockSensorCatalog.Sensors.Count);
         Assert.Equal(35, MockSensorCatalog.Sensors.Select(s => s.Key).Distinct().Count());
@@ -38,9 +38,9 @@ public class MockSensorSourceTests
         Assert.Contains(sensors, s => s.Key == MockSensorCatalog.NowPlayingKey);
     }
 
-    /// <summary>Reference values from the web client's own <c>step</c> with mulberry32(42), 120 then 125 steps.</summary>
+    /// <summary>Pinned reference values (now, min, max, avg) of the walk seeded with mulberry32(42), after 120 then 125 steps.</summary>
     [Fact]
-    public void Walk_IsAFaithfulPortOfWebClient()
+    public void Walk_MatchesReferenceValues()
     {
         using var source = new MockSensorSource(42);
 

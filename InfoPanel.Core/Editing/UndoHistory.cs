@@ -7,8 +7,7 @@ namespace InfoPanel.Editing;
 public sealed record DocumentSnapshot(string ProfileXml, string ItemsXml);
 
 /// <summary>
-/// One document's undo and redo stacks of <see cref="DocumentSnapshot"/>s, with the web client's coalescing
-/// (<c>src/store/history.ts</c>, plan §6.3):
+/// One document's undo and redo stacks of <see cref="DocumentSnapshot"/>s, with coalescing:
 /// <list type="bullet">
 /// <item>a key starting with <c>gesture:</c> always merges into the previous entry with the same key;</item>
 /// <item>any other key merges when it arrives less than <see cref="CoalesceWindow"/> after the previous

@@ -588,7 +588,7 @@ public sealed class ProfileDocument
         return copy;
     }
 
-    /// <summary>Moves an item, or every descendant of a group, as the web client's <c>translate</c> does.</summary>
+    /// <summary>Moves an item, or every descendant of a group (the group's own position is left alone).</summary>
     private static void Translate(DisplayItem item, int dx, int dy)
     {
         if (item is GroupDisplayItem group)

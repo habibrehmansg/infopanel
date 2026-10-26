@@ -1,0 +1,2615 @@
+[
+  {
+    "kind": "text",
+    "clrType": "TextDisplayItem",
+    "label": "Text",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "font",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "fontSize",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "bold",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "italic",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "underline",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "strikeout",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "uppercase",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowRadius",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "fontStyle",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "rightAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "centerAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "wrap",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "ellipsis",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marquee",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpeed",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpacing",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "glowEnabled",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "glowBlendMode",
+        "type": "string",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "font": "Inter",
+      "fontSize": 20,
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "strikeout": false,
+      "color": "#000000",
+      "uppercase": false,
+      "glowRadius": 8,
+      "fontStyle": "",
+      "rightAlign": false,
+      "centerAlign": false,
+      "wrap": true,
+      "ellipsis": true,
+      "width": 0,
+      "height": 0,
+      "marquee": false,
+      "marqueeSpeed": 50,
+      "marqueeSpacing": 40,
+      "glowEnabled": false,
+      "glowColor": "#000000",
+      "glowBlendMode": "SrcOver"
+    }
+  },
+  {
+    "kind": "sensor",
+    "clrType": "SensorDisplayItem",
+    "label": "Sensor",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "font",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "fontSize",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "bold",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "italic",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "underline",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "strikeout",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "uppercase",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowRadius",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "fontStyle",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "rightAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "centerAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "wrap",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "ellipsis",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marquee",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpeed",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpacing",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "glowEnabled",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "glowBlendMode",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorName",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorType",
+        "type": "enum",
+        "enumValues": [
+          "HwInfo",
+          "Libre",
+          "Plugin"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "hwInfoRemoteIndex",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "id",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "instance",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "entryId",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "libreSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "pluginSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "valueType",
+        "type": "enum",
+        "enumValues": [
+          "NOW",
+          "MIN",
+          "MAX",
+          "AVERAGE"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "threshold1",
+        "type": "double",
+        "readOnly": false
+      },
+      {
+        "name": "threshold1Color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "threshold2",
+        "type": "double",
+        "readOnly": false
+      },
+      {
+        "name": "threshold2Color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "showName",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "unit",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "overrideUnit",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "showUnit",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "overridePrecision",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "precision",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "showThousandsSeparator",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "additionModifier",
+        "type": "double",
+        "readOnly": false
+      },
+      {
+        "name": "absoluteAddition",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "multiplicationModifier",
+        "type": "double",
+        "readOnly": false
+      },
+      {
+        "name": "divisionToggle",
+        "type": "bool",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "font": "Inter",
+      "fontSize": 20,
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "strikeout": false,
+      "color": "#000000",
+      "uppercase": false,
+      "glowRadius": 8,
+      "fontStyle": "",
+      "rightAlign": false,
+      "centerAlign": false,
+      "wrap": true,
+      "ellipsis": true,
+      "width": 0,
+      "height": 0,
+      "marquee": false,
+      "marqueeSpeed": 50,
+      "marqueeSpacing": 40,
+      "glowEnabled": false,
+      "glowColor": "#000000",
+      "glowBlendMode": "SrcOver",
+      "sensorName": "",
+      "sensorType": "HwInfo",
+      "hwInfoRemoteIndex": -1,
+      "id": 0,
+      "instance": 0,
+      "entryId": 0,
+      "libreSensorId": "",
+      "pluginSensorId": "",
+      "valueType": "NOW",
+      "threshold1": 0,
+      "threshold1Color": "#000000",
+      "threshold2": 0,
+      "threshold2Color": "#000000",
+      "showName": false,
+      "unit": "",
+      "overrideUnit": false,
+      "showUnit": true,
+      "overridePrecision": false,
+      "precision": 0,
+      "showThousandsSeparator": false,
+      "additionModifier": 0,
+      "absoluteAddition": true,
+      "multiplicationModifier": 1,
+      "divisionToggle": false
+    }
+  },
+  {
+    "kind": "clock",
+    "clrType": "ClockDisplayItem",
+    "label": "Clock",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "font",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "fontSize",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "bold",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "italic",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "underline",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "strikeout",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "uppercase",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowRadius",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "fontStyle",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "rightAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "centerAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "wrap",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "ellipsis",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marquee",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpeed",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpacing",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "glowEnabled",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "glowBlendMode",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "format",
+        "type": "string",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "font": "Inter",
+      "fontSize": 20,
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "strikeout": false,
+      "color": "#000000",
+      "uppercase": false,
+      "glowRadius": 8,
+      "fontStyle": "",
+      "rightAlign": false,
+      "centerAlign": false,
+      "wrap": true,
+      "ellipsis": true,
+      "width": 0,
+      "height": 0,
+      "marquee": false,
+      "marqueeSpeed": 50,
+      "marqueeSpacing": 40,
+      "glowEnabled": false,
+      "glowColor": "#000000",
+      "glowBlendMode": "SrcOver",
+      "format": "hh:mm:ss tt"
+    }
+  },
+  {
+    "kind": "calendar",
+    "clrType": "CalendarDisplayItem",
+    "label": "Calendar",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "font",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "fontSize",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "bold",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "italic",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "underline",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "strikeout",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "uppercase",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowRadius",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "fontStyle",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "rightAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "centerAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "wrap",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "ellipsis",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marquee",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpeed",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpacing",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "glowEnabled",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "glowBlendMode",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "format",
+        "type": "string",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "font": "Inter",
+      "fontSize": 20,
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "strikeout": false,
+      "color": "#000000",
+      "uppercase": false,
+      "glowRadius": 8,
+      "fontStyle": "",
+      "rightAlign": false,
+      "centerAlign": false,
+      "wrap": true,
+      "ellipsis": true,
+      "width": 0,
+      "height": 0,
+      "marquee": false,
+      "marqueeSpeed": 50,
+      "marqueeSpacing": 40,
+      "glowEnabled": false,
+      "glowColor": "#000000",
+      "glowBlendMode": "SrcOver",
+      "format": "dd/MM/yyyy"
+    }
+  },
+  {
+    "kind": "bar",
+    "clrType": "BarDisplayItem",
+    "label": "Bar",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "sensorName",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorType",
+        "type": "enum",
+        "enumValues": [
+          "HwInfo",
+          "Libre",
+          "Plugin"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "hwInfoRemoteIndex",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "id",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "instance",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "entryId",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "libreSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "pluginSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "valueType",
+        "type": "enum",
+        "enumValues": [
+          "NOW",
+          "MIN",
+          "MAX",
+          "AVERAGE"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "minValue",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "maxValue",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "autoValue",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "flipX",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "frame",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "frameColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "background",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "backgroundColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "gradient",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "gradientColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "cornerRadius",
+        "type": "int",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "Bar",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "sensorName": "",
+      "sensorType": "HwInfo",
+      "hwInfoRemoteIndex": -1,
+      "id": 0,
+      "instance": 0,
+      "entryId": 0,
+      "libreSensorId": "",
+      "pluginSensorId": "",
+      "valueType": "NOW",
+      "minValue": 0,
+      "maxValue": 100,
+      "autoValue": false,
+      "width": 400,
+      "height": 50,
+      "flipX": false,
+      "frame": true,
+      "frameColor": "#000000",
+      "background": true,
+      "backgroundColor": "#FFFFFF",
+      "color": "#808080",
+      "gradient": true,
+      "gradientColor": "#3B3B3B",
+      "cornerRadius": 0
+    }
+  },
+  {
+    "kind": "graph",
+    "clrType": "GraphDisplayItem",
+    "label": "Graph",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "sensorName",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorType",
+        "type": "enum",
+        "enumValues": [
+          "HwInfo",
+          "Libre",
+          "Plugin"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "hwInfoRemoteIndex",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "id",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "instance",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "entryId",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "libreSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "pluginSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "valueType",
+        "type": "enum",
+        "enumValues": [
+          "NOW",
+          "MIN",
+          "MAX",
+          "AVERAGE"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "minValue",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "maxValue",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "autoValue",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "flipX",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "frame",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "frameColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "background",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "backgroundColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "type",
+        "type": "enum",
+        "enumValues": [
+          "LINE",
+          "HISTOGRAM"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "thickness",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "step",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "fill",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "fillColor",
+        "type": "string",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "Graph",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "sensorName": "",
+      "sensorType": "HwInfo",
+      "hwInfoRemoteIndex": -1,
+      "id": 0,
+      "instance": 0,
+      "entryId": 0,
+      "libreSensorId": "",
+      "pluginSensorId": "",
+      "valueType": "NOW",
+      "minValue": 0,
+      "maxValue": 100,
+      "autoValue": false,
+      "width": 400,
+      "height": 50,
+      "flipX": false,
+      "frame": true,
+      "frameColor": "#000000",
+      "background": true,
+      "backgroundColor": "#FFFFFF",
+      "color": "#808080",
+      "type": "LINE",
+      "thickness": 2,
+      "step": 4,
+      "fill": true,
+      "fillColor": "#3C888DFF"
+    }
+  },
+  {
+    "kind": "donut",
+    "clrType": "DonutDisplayItem",
+    "label": "Donut",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "sensorName",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorType",
+        "type": "enum",
+        "enumValues": [
+          "HwInfo",
+          "Libre",
+          "Plugin"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "hwInfoRemoteIndex",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "id",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "instance",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "entryId",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "libreSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "pluginSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "valueType",
+        "type": "enum",
+        "enumValues": [
+          "NOW",
+          "MIN",
+          "MAX",
+          "AVERAGE"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "minValue",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "maxValue",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "autoValue",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "flipX",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "frame",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "frameColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "background",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "backgroundColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "radius",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "thickness",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "span",
+        "type": "int",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "Donut",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 90,
+      "sensorName": "",
+      "sensorType": "HwInfo",
+      "hwInfoRemoteIndex": -1,
+      "id": 0,
+      "instance": 0,
+      "entryId": 0,
+      "libreSensorId": "",
+      "pluginSensorId": "",
+      "valueType": "NOW",
+      "minValue": 0,
+      "maxValue": 100,
+      "autoValue": false,
+      "width": 400,
+      "height": 50,
+      "flipX": false,
+      "frame": true,
+      "frameColor": "#000000",
+      "background": true,
+      "backgroundColor": "#FFFFFF",
+      "color": "#808080",
+      "radius": 200,
+      "thickness": 10,
+      "span": 360
+    }
+  },
+  {
+    "kind": "shape",
+    "clrType": "ShapeDisplayItem",
+    "label": "Shape",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "type",
+        "type": "enum",
+        "enumValues": [
+          "Rectangle",
+          "Capsule",
+          "Trapezoid",
+          "Parallelogram",
+          "Ellipse",
+          "Triangle",
+          "Pentagon",
+          "Hexagon",
+          "Octagon",
+          "Star",
+          "Plus",
+          "Arrow"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "cornerRadius",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "showFrame",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "frameThickness",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "frameColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "showFill",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "fillColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "showGradient",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "gradientColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "gradientColor2",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "gradientType",
+        "type": "enum",
+        "enumValues": [
+          "Linear",
+          "Sweep",
+          "Radial",
+          "Diamond",
+          "Reflected",
+          "Spiral"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "gradientAngle",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "gradientAnimationSpeed",
+        "type": "int",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "type": "Rectangle",
+      "width": 100,
+      "height": 100,
+      "cornerRadius": 25,
+      "showFrame": true,
+      "frameThickness": 5,
+      "frameColor": "#FFFF0000",
+      "showFill": true,
+      "fillColor": "#FFFF0000",
+      "showGradient": true,
+      "gradientColor": "#FF00FF00",
+      "gradientColor2": "#FF0000FF",
+      "gradientType": "Linear",
+      "gradientAngle": 0,
+      "gradientAnimationSpeed": 300
+    }
+  },
+  {
+    "kind": "group",
+    "clrType": "GroupDisplayItem",
+    "label": "Group",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "displayItemsCount",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "isExpanded",
+        "type": "bool",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "displayItemsCount": 0,
+      "isExpanded": true
+    }
+  },
+  {
+    "kind": "table",
+    "clrType": "TableSensorDisplayItem",
+    "label": "Table",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "font",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "fontSize",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "bold",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "italic",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "underline",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "strikeout",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "color",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "uppercase",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowRadius",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "fontStyle",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "rightAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "centerAlign",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "wrap",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "ellipsis",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marquee",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpeed",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "marqueeSpacing",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "glowEnabled",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "glowColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "glowBlendMode",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorName",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorType",
+        "type": "enum",
+        "enumValues": [
+          "HwInfo",
+          "Libre",
+          "Plugin"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "valueType",
+        "type": "enum",
+        "enumValues": [
+          "NOW",
+          "MIN",
+          "MAX",
+          "AVERAGE"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "pluginSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "maxRows",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "showHeader",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "tableFormat",
+        "type": "string",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "font": "Inter",
+      "fontSize": 20,
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "strikeout": false,
+      "color": "#000000",
+      "uppercase": false,
+      "glowRadius": 8,
+      "fontStyle": "",
+      "rightAlign": false,
+      "centerAlign": false,
+      "wrap": true,
+      "ellipsis": true,
+      "width": 0,
+      "height": 0,
+      "marquee": false,
+      "marqueeSpeed": 50,
+      "marqueeSpacing": 40,
+      "glowEnabled": false,
+      "glowColor": "#000000",
+      "glowBlendMode": "SrcOver",
+      "sensorName": "",
+      "sensorType": "Plugin",
+      "valueType": "NOW",
+      "pluginSensorId": "",
+      "maxRows": 10,
+      "showHeader": true,
+      "tableFormat": "0:10|1:10|2:10|3:10|4:10|5:10"
+    }
+  },
+  {
+    "kind": "image",
+    "clrType": "ImageDisplayItem",
+    "label": "Image",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "type",
+        "type": "enum",
+        "enumValues": [
+          "FILE",
+          "URL",
+          "RTSP"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "readOnly",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "filePath",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "relativePath",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rtspUrl",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "httpUrl",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "cache",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "scale",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "layer",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "layerColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "showPanel",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "volume",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "type": "FILE",
+      "readOnly": false,
+      "filePath": null,
+      "relativePath": false,
+      "rtspUrl": null,
+      "httpUrl": null,
+      "cache": true,
+      "scale": 100,
+      "layer": false,
+      "layerColor": "#77FFFFFF",
+      "showPanel": false,
+      "volume": 0,
+      "width": 0,
+      "height": 0
+    }
+  },
+  {
+    "kind": "sensorImage",
+    "clrType": "SensorImageDisplayItem",
+    "label": "Sensor Image",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "type",
+        "type": "enum",
+        "enumValues": [
+          "FILE",
+          "URL",
+          "RTSP"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "readOnly",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "filePath",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "relativePath",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rtspUrl",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "httpUrl",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "cache",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "scale",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "layer",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "layerColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "showPanel",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "volume",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "sensorName",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorType",
+        "type": "enum",
+        "enumValues": [
+          "HwInfo",
+          "Libre",
+          "Plugin"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "hwInfoRemoteIndex",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "id",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "instance",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "entryId",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "libreSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "pluginSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "valueType",
+        "type": "enum",
+        "enumValues": [
+          "NOW",
+          "MIN",
+          "MAX",
+          "AVERAGE"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "threshold1",
+        "type": "double",
+        "readOnly": false
+      },
+      {
+        "name": "threshold2",
+        "type": "double",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "type": "FILE",
+      "readOnly": false,
+      "filePath": null,
+      "relativePath": false,
+      "rtspUrl": null,
+      "httpUrl": null,
+      "cache": true,
+      "scale": 100,
+      "layer": false,
+      "layerColor": "#77FFFFFF",
+      "showPanel": false,
+      "volume": 0,
+      "width": 0,
+      "height": 0,
+      "sensorName": "",
+      "sensorType": "HwInfo",
+      "hwInfoRemoteIndex": -1,
+      "id": 0,
+      "instance": 0,
+      "entryId": 0,
+      "libreSensorId": "",
+      "pluginSensorId": "",
+      "valueType": "NOW",
+      "threshold1": 0,
+      "threshold2": 100
+    }
+  },
+  {
+    "kind": "httpImage",
+    "clrType": "HttpImageDisplayItem",
+    "label": "HTTP Image",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "type",
+        "type": "enum",
+        "enumValues": [
+          "FILE",
+          "URL",
+          "RTSP"
+        ],
+        "readOnly": true
+      },
+      {
+        "name": "readOnly",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "filePath",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "relativePath",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rtspUrl",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "httpUrl",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "cache",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "scale",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "layer",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "layerColor",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "showPanel",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "volume",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "sensorName",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorType",
+        "type": "enum",
+        "enumValues": [
+          "HwInfo",
+          "Libre",
+          "Plugin"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "hwInfoRemoteIndex",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "id",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "instance",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "entryId",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "libreSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "pluginSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "valueType",
+        "type": "enum",
+        "enumValues": [
+          "NOW",
+          "MIN",
+          "MAX",
+          "AVERAGE"
+        ],
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "DisplayItem",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "type": "URL",
+      "readOnly": true,
+      "filePath": null,
+      "relativePath": false,
+      "rtspUrl": null,
+      "httpUrl": null,
+      "cache": true,
+      "scale": 100,
+      "layer": false,
+      "layerColor": "#77FFFFFF",
+      "showPanel": false,
+      "volume": 0,
+      "width": 0,
+      "height": 0,
+      "sensorName": "",
+      "sensorType": "HwInfo",
+      "hwInfoRemoteIndex": -1,
+      "id": 0,
+      "instance": 0,
+      "entryId": 0,
+      "libreSensorId": "",
+      "pluginSensorId": "",
+      "valueType": "NOW"
+    }
+  },
+  {
+    "kind": "gauge",
+    "clrType": "GaugeDisplayItem",
+    "label": "Gauge",
+    "properties": [
+      {
+        "name": "name",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "hidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "x",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "y",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "isLocked",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "rotation",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "sensorName",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "sensorType",
+        "type": "enum",
+        "enumValues": [
+          "HwInfo",
+          "Libre",
+          "Plugin"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "hwInfoRemoteIndex",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "id",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "instance",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "entryId",
+        "type": "uint",
+        "readOnly": false
+      },
+      {
+        "name": "libreSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "pluginSensorId",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "flipX",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "valueType",
+        "type": "enum",
+        "enumValues": [
+          "NOW",
+          "MIN",
+          "MAX",
+          "AVERAGE"
+        ],
+        "readOnly": false
+      },
+      {
+        "name": "minValue",
+        "type": "double",
+        "readOnly": false
+      },
+      {
+        "name": "maxValue",
+        "type": "double",
+        "readOnly": false
+      },
+      {
+        "name": "scale",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "animationSpeed",
+        "type": "double",
+        "readOnly": false
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "readOnly": false
+      }
+    ],
+    "defaults": {
+      "name": "Gauge",
+      "hidden": false,
+      "x": 100,
+      "y": 100,
+      "isLocked": false,
+      "rotation": 0,
+      "sensorName": "",
+      "sensorType": "HwInfo",
+      "hwInfoRemoteIndex": -1,
+      "id": 0,
+      "instance": 0,
+      "entryId": 0,
+      "libreSensorId": "",
+      "pluginSensorId": "",
+      "flipX": false,
+      "valueType": "NOW",
+      "minValue": 0,
+      "maxValue": 100,
+      "scale": 100,
+      "animationSpeed": 0,
+      "width": 0,
+      "height": 0
+    }
+  }
+]

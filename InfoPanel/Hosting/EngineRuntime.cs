@@ -12,7 +12,7 @@ namespace InfoPanel.Hosting;
 /// </summary>
 public sealed class EngineRuntime
 {
-    /// <summary>The WebSocket subprotocol the web client asks for; the server answers with this one only.</summary>
+    /// <summary>The WebSocket subprotocol the client asks for; the server answers with this one only.</summary>
     public const string WebSocketProtocol = "infopanel.v1";
 
     /// <summary>Prefix of the subprotocol that carries the token (<c>auth.{token}</c>); never echoed back.</summary>

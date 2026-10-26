@@ -24,7 +24,7 @@ public sealed class BrowserLauncher(ILogger<BrowserLauncher> logger)
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Could not open the browser; open the web client link from the log instead");
+            logger.LogWarning(ex, "Could not open the browser; open the editor link from the log instead");
         }
     }
 }

@@ -4,8 +4,8 @@ using System.Linq;
 namespace InfoPanel.Sensors;
 
 /// <summary>
-/// One mock sensor: a C# port of a row of the web client's <c>src/sensors/catalog.ts</c>.
-/// <see cref="Id"/> is the web client id (<c>gpu.temp</c>); <see cref="Key"/> is
+/// One mock sensor: a row of <see cref="MockSensorCatalog"/> with its group, name, unit, range and walk parameters.
+/// <see cref="Id"/> is the short id (<c>gpu.temp</c>); <see cref="Key"/> is
 /// <c>plugin:/infopanel.mock/{GroupSlug}/{Id with '.' as '-'}</c>.
 /// </summary>
 public sealed record MockSensorDef(
@@ -25,8 +25,8 @@ public sealed record MockSensorDef(
 }
 
 /// <summary>
-/// The mock sensor catalog, laid out like HWiNFO's sensor tree: the same 35 sensors, groups, names, units,
-/// ranges and walk parameters as the web client's <c>catalog.ts</c>, plus a process table and a text sensor.
+/// The mock sensor catalog, laid out like HWiNFO's sensor tree: 35 sensors in groups, each with a name, unit,
+/// range and walk parameters, plus a process table and a text sensor.
 /// </summary>
 public static class MockSensorCatalog
 {
@@ -55,7 +55,7 @@ public static class MockSensorCatalog
     private static MockSensorDef[] Group(string slug, string name, params (string Id, string Name, string Unit, double Min, double Max, double Base, double Jitter, int Precision, bool Bursty)[] rows) =>
         rows.Select(r => new MockSensorDef(r.Id, slug, name, r.Name, r.Unit, r.Min, r.Max, r.Base, r.Jitter, r.Precision, r.Bursty)).ToArray();
 
-    /// <summary>The 35 numeric sensors in the web client's order (the walk consumes random numbers in this order).</summary>
+    /// <summary>The 35 numeric sensors in catalog order (the walk consumes random numbers in this order).</summary>
     public static IReadOnlyList<MockSensorDef> Sensors { get; } =
     [
         .. Group("cpu", "CPU [#0]: AMD Ryzen 9 7950X3D",
@@ -102,10 +102,10 @@ public static class MockSensorCatalog
             ("frametime", "Frame Time", "ms", 2, 40, 6.9, 0.5, 1, false)),
     ];
 
-    /// <summary>A sensor by its web client id (<c>gpu.temp</c>), or null.</summary>
+    /// <summary>A sensor by its short id (<c>gpu.temp</c>), or null.</summary>
     public static MockSensorDef? ById(string id) => Sensors.FirstOrDefault(s => s.Id == id);
 
-    /// <summary>The key of a numeric sensor by its web client id (<c>gpu.temp</c> → <c>plugin:/infopanel.mock/gpu/gpu-temp</c>).</summary>
+    /// <summary>The key of a numeric sensor by its short id (<c>gpu.temp</c> → <c>plugin:/infopanel.mock/gpu/gpu-temp</c>).</summary>
     public static SensorKey KeyOf(string id) =>
         ById(id)?.Key ?? throw new KeyNotFoundException($"No mock sensor '{id}'.");
 }
