@@ -24,6 +24,7 @@ using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
 using Timer = System.Threading.Timer;
 using InfoPanel.ThermalrightPanel;
+using InfoPanel.VmaxPanel;
 using HidSharp;
 
 namespace InfoPanel
@@ -272,6 +273,7 @@ namespace InfoPanel
         public void Initialize()
         {
             LoadProfiles();
+
             if (SharedModel.Instance.SelectedProfile is Profile p)
                 _currentSaveStateProfileGuid = p.Guid;
             if (Settings.AutosaveEnabled)
@@ -513,6 +515,17 @@ namespace InfoPanel
                     await JlPanelTask.Instance.StopAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.VmaxPanelMultiDeviceMode))
+            {
+                if (Settings.VmaxPanelMultiDeviceMode)
+                {
+                    await VmaxPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await VmaxPanelTask.Instance.StopAsync();
+                }
+            }
 
             await SaveSettingsAsync();
         }
@@ -731,6 +744,15 @@ namespace InfoPanel
                             foreach (var device in settings.JlPanelDevices)
                             {
                                 Settings.JlPanelDevices.Add(device);
+                            }
+
+                            // Load VMAX panel settings
+                            Settings.VmaxPanelMultiDeviceMode = settings.VmaxPanelMultiDeviceMode;
+
+                            Settings.VmaxPanelDevices.Clear();
+                            foreach (var device in settings.VmaxPanelDevices)
+                            {
+                                Settings.VmaxPanelDevices.Add(device);
                             }
 
                             // Load hotkey bindings

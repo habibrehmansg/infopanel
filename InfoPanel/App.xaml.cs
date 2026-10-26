@@ -406,6 +406,7 @@ namespace InfoPanel
                 await ThermalrightPanelTask.Instance.StopAsync(true);
                 await ThermaltakePanelTask.Instance.StopAsync(true);
                 await JlPanelTask.Instance.StopAsync(true);
+                await VmaxPanelTask.Instance.StopAsync(true);
             });
         }
 
@@ -428,6 +429,7 @@ namespace InfoPanel
                         await ThermalrightPanelTask.Instance.StopAsync(true);
                         await ThermaltakePanelTask.Instance.StopAsync(true);
                         await JlPanelTask.Instance.StopAsync(true);
+                        await VmaxPanelTask.Instance.StopAsync(true);
                     });
                     break;
             }
@@ -460,6 +462,11 @@ namespace InfoPanel
                 await JlPanelTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.VmaxPanelMultiDeviceMode)
+            {
+                await VmaxPanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.WebServer)
             {
                 await WebServerTask.Instance.StartAsync();
@@ -474,6 +481,7 @@ namespace InfoPanel
             await ThermalrightPanelTask.Instance.StopAsync();
             await ThermaltakePanelTask.Instance.StopAsync();
             await JlPanelTask.Instance.StopAsync();
+            await VmaxPanelTask.Instance.StopAsync();
         }
 
         private void App_Exit(object sender, ExitEventArgs e)

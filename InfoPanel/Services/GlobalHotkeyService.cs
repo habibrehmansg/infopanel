@@ -224,6 +224,18 @@ namespace InfoPanel.Services
                         }
                     }
                     break;
+
+                case "Vmax":
+                    foreach (var device in ConfigModel.Instance.Settings.VmaxPanelDevices)
+                    {
+                        if (device.DeviceId == binding.DeviceId)
+                        {
+                            device.ProfileGuid = binding.ProfileGuid;
+                            Logger.Information("Switched VMAX device {Device} to profile {Profile}", device.DeviceId, profile.Name);
+                            return;
+                        }
+                    }
+                    break;
             }
 
             Logger.Warning("Hotkey target device {DeviceType} {DeviceId} not found", binding.DeviceType, binding.DeviceId);
