@@ -18,8 +18,10 @@ namespace InfoPanel.ThermalrightPanel
         TrofeoVision,
         // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5408, LY chipset)
         TrofeoVision916,
-        // Trofeo Vision 9.16" v2 - USB bulk (VID 0x0416 / PID 0x5408, reports 1920x599, renders at 1920x462)
+        // Trofeo Vision 9.16" v2 - USB bulk (VID 0x0416 / PID 0x5408, reports 1920x599, renders at 1920x480 + optional 462 flicker-fix crop, same as v1)
         TrofeoVision916V2,
+        // Trofeo Vision 11.3" - USB bulk (VID 0x0416 / PID 0x5408, byte[20]=0x05, reports 1920x480 but renders at 1920x400)
+        TrofeoVision113,
         // Trofeo Vision 9.16" - USB bulk (VID 0x0416 / PID 0x5409, LY1 chipset)
         TrofeoVision916LY1,
 
