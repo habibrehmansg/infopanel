@@ -26,13 +26,13 @@
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.6" />
     <PackageVersion Include="Svg.Skia" Version="4.3.0" />
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />
     <PackageVersion Include="Topten.RichTextKit" Version="0.4.167" />
   </ItemGroup>
 
   <!-- InfoPanel (engine host) -->
   <ItemGroup>
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
-    <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />
   </ItemGroup>
 
   <!-- Test projects -->

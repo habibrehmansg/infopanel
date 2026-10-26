@@ -66,11 +66,12 @@ namespace InfoPanel.Drawing
         {
             var tick = state.Tick;
             var (now, elapsed) = state.GetFrameTime(tick, time);
+            var inputs = state.GetTickInputs(tick, sensors, history);
 
             return new RenderContext
             {
-                Sensors = sensors,
-                History = history,
+                Sensors = inputs,
+                History = inputs,
                 Images = images,
                 Assets = assets,
                 State = state.Items,

@@ -189,15 +189,19 @@ public class SecurityTests(EngineFactory factory) : IClassFixture<EngineFactory>
     }
 
     [Fact]
-    public async Task WebSocketConnect_WithTheAuthSubprotocol_PassesTheSecurityChecks()
+    public async Task WebSocketConnect_WithTheAuthSubprotocol_IsAcceptedWithoutEchoingTheToken()
     {
-        // There is no /ws endpoint until M6: getting past the middleware means a 404 instead of a 401/403.
-        var error = await ConnectWebSocket(EngineFactory.DevOrigin, EngineRuntime.WebSocketProtocol, "auth." + EngineFactory.Token);
+        var ws = factory.Server.CreateWebSocketClient();
+        ws.SubProtocols.Add(EngineRuntime.WebSocketProtocol);
+        ws.SubProtocols.Add("auth." + EngineFactory.Token);
+        ws.ConfigureRequest = request => request.Headers.Origin = EngineFactory.DevOrigin;
 
-        Assert.Contains("404", error);
+        using var socket = await ws.ConnectAsync(new Uri("ws://localhost/ws"), Ct);
+        Assert.Equal(EngineRuntime.WebSocketProtocol, socket.SubProtocol);
+        socket.Abort();
     }
 
-    /// <summary>Connects a WebSocket to <c>/ws</c> (which fails while there is no endpoint) and returns the error message.</summary>
+    /// <summary>Connects a WebSocket to <c>/ws</c>, expecting it to be refused, and returns the error message.</summary>
     private async Task<string> ConnectWebSocket(string origin, params string[] protocols)
     {
         var ws = factory.Server.CreateWebSocketClient();

@@ -16,6 +16,8 @@
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="SkiaSharp" />
+    <!-- RenderLoop hashes rendered frames with XxHash3. -->
+    <PackageReference Include="System.IO.Hashing" />
     <PackageReference Include="Svg.Skia" />
     <PackageReference Include="Topten.RichTextKit" />
   </ItemGroup>

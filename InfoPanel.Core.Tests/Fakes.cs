@@ -9,7 +9,15 @@ internal sealed class FakeSensorReader : ISensorReader
 {
     public Dictionary<SensorKey, SensorReading> Readings { get; } = [];
 
-    public bool TryRead(SensorKey key, out SensorReading reading) => Readings.TryGetValue(key, out reading);
+    /// <summary>Called after every read (tests use it to change a value between two reads).</summary>
+    public Action<SensorKey>? AfterRead { get; set; }
+
+    public bool TryRead(SensorKey key, out SensorReading reading)
+    {
+        var found = Readings.TryGetValue(key, out reading);
+        AfterRead?.Invoke(key);
+        return found;
+    }
 }
 
 internal sealed class FakeSensorHistory : ISensorHistory

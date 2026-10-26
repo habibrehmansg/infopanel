@@ -57,16 +57,16 @@ public class StaticFileTests(EngineFactory factory) : IClassFixture<EngineFactor
     }
 
     [Theory]
-    [InlineData("/ws")]
-    [InlineData("/ws/other")]
-    public async Task WsWithoutUpgrade_Is404_NotIndex(string path)
+    [InlineData("/ws", HttpStatusCode.BadRequest)]
+    [InlineData("/ws/other", HttpStatusCode.NotFound)]
+    public async Task WsWithoutUpgrade_IsAnError_NotIndex(string path, HttpStatusCode status)
     {
         using var client = factory.CreateRawClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Add("Sec-WebSocket-Protocol", $"infopanel.v1, auth.{EngineFactory.Token}");
         using var response = await client.SendAsync(request, Ct);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(status, response.StatusCode);
         Assert.DoesNotContain(EngineFactory.IndexMarker, await response.Content.ReadAsStringAsync(Ct));
     }
 

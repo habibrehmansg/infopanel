@@ -35,7 +35,9 @@ public sealed class ThumbnailRenderer(ProfileRenderer renderer, ProfileRenderSta
     /// <summary>
     /// The pixel size and scale for <paramref name="requestedWidth"/>: the width clamped to
     /// <see cref="MinWidth"/>..<see cref="MaxWidth"/>, the height proportional; a height over
-    /// <see cref="MaxHeight"/> is capped and the width shrunk to match.
+    /// <see cref="MaxHeight"/> is capped and the width shrunk to match. Both sides are bounded whatever the profile's
+    /// size (at most <see cref="MaxWidth"/> × <see cref="MaxHeight"/>, which is <c>FrameScale.MaxPixels</c>): the height
+    /// is compared in double before it becomes an int, so a huge profile can't overflow past the cap.
     /// </summary>
     public static (int Width, int Height, float Scale) Size(int profileWidth, int profileHeight, int requestedWidth)
     {
@@ -43,15 +45,15 @@ public sealed class ThumbnailRenderer(ProfileRenderer renderer, ProfileRenderSta
         var ph = Math.Max(1, profileHeight);
         var width = Math.Clamp(requestedWidth, MinWidth, MaxWidth);
         var scale = (float)width / pw;
-        var height = Math.Max(1, (int)Math.Round(ph * (double)scale));
-        if (height > MaxHeight)
+        var exactHeight = Math.Round(ph * (double)scale);
+        if (exactHeight > MaxHeight)
         {
-            height = MaxHeight;
-            scale = (float)height / ph;
-            width = Math.Max(1, (int)Math.Round(pw * (double)scale));
+            scale = (float)MaxHeight / ph;
+            width = (int)Math.Clamp(Math.Round(pw * (double)scale), 1, MaxWidth);
+            return (width, MaxHeight, scale);
         }
 
-        return (width, height, scale);
+        return (width, Math.Max(1, (int)exactHeight), scale);
     }
 
     /// <summary>

@@ -4,7 +4,9 @@ using InfoPanel.Drawing;
 using InfoPanel.Editing;
 using InfoPanel.Hosting;
 using InfoPanel.Images;
+using InfoPanel.Output;
 using InfoPanel.Persistence;
+using InfoPanel.Preview;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
 using Microsoft.AspNetCore.HostFiltering;
@@ -180,6 +182,14 @@ try
         sp.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton<ProfileRenderStates>();
     builder.Services.AddSingleton<ThumbnailRenderer>();
+    // Live frames for /ws (and later panels); disposed with the host, which stops every render loop.
+    builder.Services.AddSingleton(sp => new RenderService(
+        sp.GetRequiredService<Workspace>(),
+        sp.GetRequiredService<ProfileRenderer>(),
+        sp.GetRequiredService<ProfileRenderStates>(),
+        sp.GetRequiredService<ThumbnailRenderer>(),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetService<RenderServiceOptions>()));
     builder.Services.AddSingleton<BrowserLauncher>();
     builder.Services.AddHostedService<SensorService>();
     builder.Services.AddHostedService<EngineLifetime>();
@@ -199,6 +209,7 @@ try
     app.MapAuth();
     app.MapReadEndpoints();
     app.MapEditEndpoints();
+    app.MapPreviewSocket();
     app.MapWebClientFallback(webRoot);
 
     await app.RunAsync();

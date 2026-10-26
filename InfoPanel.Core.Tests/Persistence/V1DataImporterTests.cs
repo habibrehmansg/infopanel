@@ -85,6 +85,27 @@ public class V1DataImporterTests
         Assert.Equal([FixtureGenerator.PanelProfileGuid], store.LoadProfiles().Select(p => p.Guid));
     }
 
+    [Fact]
+    public void V1DataImporter_SkipsAProfileOverTheMaximumSize()
+    {
+        using var temp = new TempDirectory();
+        var v1 = new DataPaths(temp.Combine("v1"));
+        var huge = new Profile("Huge", 1_000_000, 1_000_000);
+        var fine = new Profile("Fine", 800, 480);
+        Directory.CreateDirectory(v1.ProfilesDirectory);
+        using (var writer = XmlWriter.Create(v1.ProfilesFile, V1Format.WriterSettings()))
+            V1Format.ProfilesSerializer.Serialize(writer, new List<Profile> { huge, fine });
+        File.Copy(ProfileSerializerTests.FixturePath(V1Format.ItemsFixture), v1.ProfileItemsFile(huge.Guid));
+        File.Copy(ProfileSerializerTests.FixturePath(V1Format.ItemsFixture), v1.ProfileItemsFile(fine.Guid));
+
+        var store = new ProfileStore(new DataPaths(temp.Combine("v2")));
+        var summary = V1DataImporter.ImportFolder(v1.Root, store);
+
+        var skipped = Assert.Single(summary.Skipped);
+        Assert.Equal((huge.Guid, "its size 1000000×1000000 is over the 16384×16384 maximum"), (skipped.Guid, skipped.Reason));
+        Assert.Equal([fine.Guid], store.LoadProfiles().Select(p => p.Guid));
+    }
+
     /// <summary>A 1.x folder with the fixture profiles (desk, panel), the fixture items for both, and two desk assets.</summary>
     private static DataPaths CreateV1Folder(string root)
     {

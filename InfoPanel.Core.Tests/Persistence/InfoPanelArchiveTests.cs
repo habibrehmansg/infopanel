@@ -141,6 +141,29 @@ public class InfoPanelArchiveTests
             Assert.StartsWith(assets + Path.DirectorySeparatorChar, resolved);
     }
 
+    [Theory]
+    [InlineData(1_000_000, 1_000_000)]
+    [InlineData(ProfileStore.MaxDimension + 1, 480)]
+    [InlineData(800, ProfileStore.MaxDimension + 1)]
+    public void Archive_Import_RefusesAProfileOverTheMaximumSize(int width, int height)
+    {
+        using var temp = new TempDirectory();
+        var (store, profile, items) = SeedStore(temp);
+        var archive = new MemoryStream();
+        InfoPanelArchive.Export(new Profile(profile.Name, width, height), items, store, archive);
+        archive.Position = 0;
+
+        var error = Assert.Throws<InvalidDataException>(() => InfoPanelArchive.Import(archive, store));
+        Assert.Contains($"{width}×{height} is over the 16384×16384 maximum", error.Message);
+        Assert.Equal([profile.Guid], store.LoadProfiles().Select(p => p.Guid));
+
+        // The largest allowed size imports.
+        archive = new MemoryStream();
+        InfoPanelArchive.Export(new Profile(profile.Name, ProfileStore.MaxDimension, ProfileStore.MaxDimension), items, store, archive);
+        archive.Position = 0;
+        Assert.Equal(ProfileStore.MaxDimension, InfoPanelArchive.Import(archive, store).Profile.Width);
+    }
+
     private static void Write(ZipArchive zip, string name, string content)
     {
         using var writer = new StreamWriter(zip.CreateEntry(name).Open());

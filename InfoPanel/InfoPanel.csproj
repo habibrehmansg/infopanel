@@ -20,8 +20,6 @@
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Serilog.Sinks.File" />
-    <!-- M6 hashes rendered frames with XxHash3. -->
-    <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
 
   <ItemGroup>

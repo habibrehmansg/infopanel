@@ -91,7 +91,8 @@ public static class InfoPanelArchive
     /// items file this import wrote are removed (best effort) and the exception is rethrown.
     /// </summary>
     /// <exception cref="InvalidDataException">
-    /// Not a zip, no <c>Profile.xml</c> or <c>DisplayItems.xml</c>, unreadable XML, more than <see cref="MaxEntries"/>
+    /// Not a zip, no <c>Profile.xml</c> or <c>DisplayItems.xml</c>, unreadable XML, a profile wider or taller than
+    /// <see cref="ProfileStore.MaxDimension"/>, more than <see cref="MaxEntries"/>
     /// entries or more than <see cref="MaxExtractedBytes"/> decompressed. Nothing is added to the store.
     /// </exception>
     public static ArchiveImportResult Import(Stream archiveStream, ProfileStore store) =>
@@ -133,6 +134,9 @@ public static class InfoPanelArchive
 
             var budget = maxExtractedBytes;
             var profile = ProfileSerializer.ReadProfile(ReadEntry(profileEntry, ref budget));
+            if (ProfileStore.ImportSizeError(profile) is { } sizeError)
+                throw new InvalidDataException($"The archive's profile can't be imported: {sizeError}.");
+
             var items = ProfileSerializer.ReadItems(ReadEntry(itemsEntry, ref budget));
 
             profile.Name = "[Import] " + profile.Name;

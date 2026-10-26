@@ -1,5 +1,6 @@
 using InfoPanel.Drawing;
 using InfoPanel.Editing;
+using InfoPanel.Output;
 using InfoPanel.Persistence;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
@@ -66,12 +67,13 @@ public static class ReadEndpoints
         api.MapGet("/profiles/{id}", (string id, Workspace workspace) =>
             Open(workspace, id) is { } doc ? Results.Ok(doc.ToDoc()) : Problems.NotFound($"No profile '{id}'."));
 
-        api.MapGet("/profiles/{id}/thumbnail", (string id, int? w, Workspace workspace, ThumbnailRenderer thumbnails, HttpContext context) =>
+        api.MapGet("/profiles/{id}/thumbnail", (string id, int? w, Workspace workspace, RenderService render, HttpContext context) =>
         {
             if (Open(workspace, id) is not { } doc)
                 return Problems.NotFound($"No profile '{id}'.");
 
-            var png = thumbnails.RenderPng(doc, w ?? DefaultThumbnailWidth);
+            // At the live preview's tick when one is running, so animation never advances twice in a tick.
+            var png = render.RenderOnce(doc, w ?? DefaultThumbnailWidth);
             context.Response.Headers.CacheControl = "no-store";
             return Results.File(png, "image/png");
         });

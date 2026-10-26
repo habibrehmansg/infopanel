@@ -23,6 +23,9 @@ public sealed class ProfileStore : IAssetLocator
     /// <summary>One lock per data root (full path, no trailing separator, case-insensitive), for every store on it.</summary>
     private static readonly ConcurrentDictionary<string, Lock> RootLocks = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The largest profile width or height 2.0 creates, edits or imports (<c>Workspace.MaxDimension</c>).</summary>
+    public const int MaxDimension = 16384;
+
     private readonly Lock _lock;
 
     public ProfileStore(DataPaths paths)
@@ -35,6 +38,15 @@ public sealed class ProfileStore : IAssetLocator
     public DataPaths Paths { get; }
 
     public string GetProfileAssetsDirectory(Guid profileId) => Paths.ProfileAssetsDirectory(profileId);
+
+    /// <summary>
+    /// Why an imported profile is refused for its size, or null: a width or height over <see cref="MaxDimension"/>.
+    /// Smaller sizes, 0 and negative ones included (1.x wrote them; rendering treats them as 1), are kept as they are.
+    /// </summary>
+    internal static string? ImportSizeError(Profile profile) =>
+        profile.Width > MaxDimension || profile.Height > MaxDimension
+            ? $"its size {profile.Width}×{profile.Height} is over the {MaxDimension}×{MaxDimension} maximum"
+            : null;
 
     /// <summary>The profile list, or an empty list when there is no <c>profiles.xml</c> yet.</summary>
     /// <exception cref="InvalidDataException"><c>profiles.xml</c> exists but can't be read. It is left untouched.</exception>

@@ -31,8 +31,8 @@ public static class V1DataImporter
     /// <summary>
     /// Imports every profile in <c>{v1Root}/profiles.xml</c> with its items (<c>profiles/{guid}.xml</c>) and assets
     /// (<c>assets/{guid}/</c>), in list order. Profiles keep their Guid unless the store already has it, in which case
-    /// they get a new one (the name is kept). A profile that fails for any reason (items file missing or unreadable,
-    /// assets that can't be copied, a failed write) is skipped and reported, with anything it left in the store removed
+    /// they get a new one (the name is kept). A profile that fails for any reason (wider or taller than
+    /// <see cref="ProfileStore.MaxDimension"/>, items file missing or unreadable, assets that can't be copied, a failed write) is skipped and reported, with anything it left in the store removed
     /// best effort. The 1.x folder is only read.
     /// </summary>
     /// <exception cref="ArgumentException">
@@ -67,6 +67,12 @@ public static class V1DataImporter
         foreach (var profile in profiles)
         {
             var originalGuid = profile.Guid;
+            if (ProfileStore.ImportSizeError(profile) is { } sizeError)
+            {
+                Skip(profile, sizeError);
+                continue;
+            }
+
             var itemsFile = v1.ProfileItemsFile(originalGuid);
             if (!File.Exists(itemsFile))
             {

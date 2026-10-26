@@ -32,7 +32,7 @@ public sealed class Workspace
 {
     private static readonly ILogger Logger = Log.ForContext<Workspace>();
 
-    public const int MaxDimension = 16384;
+    public const int MaxDimension = ProfileStore.MaxDimension;
     public const int MaxNameLength = 256;
 
     private readonly Lock _lock = new();
@@ -136,7 +136,7 @@ public sealed class Workspace
         AfterCapture?.Invoke();
         lock (_lock)
         {
-            if (!IsOpen(doc))
+            if (!IsOpenCore(doc))
                 return null;
             AddLocked(profile, items, assets: Store.GetProfileAssetsDirectory(profileId));
         }
@@ -149,8 +149,15 @@ public sealed class Workspace
     /// <summary>Test seam: runs in <see cref="Duplicate"/> and <see cref="Export"/> after the document is captured, before the workspace lock.</summary>
     internal Action? AfterCapture { get; set; }
 
+    /// <summary>True while <paramref name="doc"/> is the open document of a listed profile (false once it is deleted).</summary>
+    public bool IsOpen(ProfileDocument doc)
+    {
+        lock (_lock)
+            return IsOpenCore(doc);
+    }
+
     /// <summary>True while <paramref name="doc"/> is the open document of a listed profile. Under the workspace lock.</summary>
-    private bool IsOpen(ProfileDocument doc) =>
+    private bool IsOpenCore(ProfileDocument doc) =>
         _documents.TryGetValue(doc.Id, out var open) && open == doc && Entries().Exists(p => p.Guid == doc.Id);
 
     /// <summary>Deletes the profile for good: its list entry, items file and assets folder, and closes its document.</summary>
@@ -207,7 +214,7 @@ public sealed class Workspace
         AfterCapture?.Invoke();
         lock (_lock)
         {
-            if (!IsOpen(doc))
+            if (!IsOpenCore(doc))
                 return null;
             InfoPanelArchive.Export(profile, items, Store, destination);
         }
