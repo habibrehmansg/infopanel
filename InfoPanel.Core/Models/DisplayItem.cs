@@ -11,7 +11,10 @@ namespace InfoPanel.Models;
 [Serializable]
 public abstract partial class DisplayItem : ObservableObject, ICloneable
 {
-    [XmlIgnore]
+    /// <summary>
+    /// The item's id. Serialized as a <c>&lt;Guid&gt;</c> element since 2.0 (1.x ignored it and ignores the element);
+    /// files without it get fresh ids on load, and <c>ItemTree.EnsureUniqueIds</c> repairs empty or duplicate ones.
+    /// </summary>
     public Guid Guid { get; set; } = Guid.NewGuid();
 
     [XmlIgnore]

@@ -21,8 +21,25 @@ public class ImageSourceTests
     }
 
     [Theory]
+    [InlineData(@"icons\fan.svg")]
+    [InlineData("icons/fan.svg")]
+    public void RelativePath_AcceptsWindowsSeparators(string filePath)
+    {
+        var profile = new Profile();
+        var image = new ImageDisplayItem("Fan", profile, filePath, relativePath: true);
+        var ctx = TestContexts.Create();
+
+        var expected = Path.Combine(ctx.Assets.GetProfileAssetsDirectory(profile.Guid), "icons", "fan.svg");
+
+        Assert.Equal(Path.GetFullPath(expected), image.ResolveSource(ctx));
+        Assert.Equal(filePath, image.FilePath); // the stored value is not rewritten
+    }
+
+    [Theory]
     [InlineData("../other/logo.png")]
     [InlineData("../../../etc/passwd")]
+    [InlineData(@"..\other\logo.png")]
+    [InlineData(@"icons\..\..\other\logo.png")]
     public void RelativePath_OutsideProfileAssets_IsRejected(string filePath)
     {
         var profile = new Profile();

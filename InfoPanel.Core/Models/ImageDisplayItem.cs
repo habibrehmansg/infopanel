@@ -92,7 +92,8 @@ namespace InfoPanel.Models
 
         /// <summary>
         /// The image source to load: the RTSP or HTTP URL, or the file path. A relative path resolves
-        /// inside the profile's assets folder and gives null if it points outside it.
+        /// inside the profile's assets folder, with <c>\</c> and <c>/</c> both read as separators, and gives null
+        /// if it points outside it.
         /// </summary>
         public virtual string? ResolveSource(RenderContext ctx)
         {
@@ -118,8 +119,10 @@ namespace InfoPanel.Models
                     return null;
                 }
 
+                // 1.x on Windows stored relative paths with '\'; read either separator on every OS.
+                var relative = FilePath.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
                 var assetsDirectory = ctx.Assets.GetProfileAssetsDirectory(Profile.Guid);
-                var fullPath = Path.GetFullPath(Path.Combine(assetsDirectory, FilePath));
+                var fullPath = Path.GetFullPath(Path.Combine(assetsDirectory, relative));
 
                 return fullPath.IsSubdirectoryOf(assetsDirectory) ? fullPath : null;
             }

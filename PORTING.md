@@ -44,6 +44,7 @@ The 2.0 targets are the seams in `InfoPanel.Core` (`ISensorSource`, `IImageSourc
 | `SharedModel` item XML load/save, `.infopanel` import/export | `ProfileSerializer`, `ProfileStore`, `InfoPanelArchive` (M2) | `InfoPanel/Models/SharedModel.cs` |
 | `ConfigModel` profile list | `ProfileStore` (M2) | `InfoPanel/Models/ConfigModel.cs` |
 | `UndoManager` | `UndoHistory` rewrite per document (M5); the moved file compiles unchanged in `InfoPanel.Core/Editing/UndoHistory.cs` | `InfoPanel/Services/UndoManager.cs` |
+| 1.4.x model changes after `8a3062d`: `GuideDisplayItem` (15th item type, editor alignment guides; dropped on read today) and `ImageDisplayItem.RefreshInterval` (ignored on read) | sync into the Core models and the kind manifest, later | `InfoPanel/Models/GuideDisplayItem.cs`, `InfoPanel/Models/ImageDisplayItem.cs` |
 | `FontCache` (system font list for pickers) | `FontRegistry` + `/api/fonts` (M3/M4) | `InfoPanel/Utils/FontCache.cs` |
 
 ## Later
