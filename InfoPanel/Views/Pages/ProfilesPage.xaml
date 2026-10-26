@@ -698,6 +698,17 @@
                                                         SmallChange="5"
                                                         Value="{Binding WebViewMaxFps}" />
                                                 </ui:CardControl>
+
+                                                <ui:CardControl Margin="0,10,0,0" IsEnabled="{Binding WebViewEnabled}">
+                                                    <ui:CardControl.Header>
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                            Text="Reload the page once a day, from 4:00 (for panels left running for days; an interactive panel waits until you switch away from it)"
+                                                            TextWrapping="Wrap" />
+                                                    </ui:CardControl.Header>
+                                                    <ui:ToggleSwitch Margin="0,-5,0,-5" IsChecked="{Binding WebViewDailyRefresh}" />
+                                                </ui:CardControl>
                                             </StackPanel>
                                         </TabItem>
                                     </TabControl>

@@ -1,7 +1,9 @@
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -26,6 +28,17 @@ namespace InfoPanel.Views.Common
         private static Task<CoreWebView2Environment>? _webViewEnvironment;
         private static int _webViewCount;
         private string? _lastWebViewInitError;
+
+        // A WebView2 runtime update only takes effect in a new browser process, and the browser exits only once
+        // every page using it has closed. Panels run unattended for weeks, so they restart together on their own.
+        private static readonly HashSet<DisplayWindow> _webViewWindows = [];
+        private static CoreWebView2Environment? _watchedWebViewEnvironment;
+        private static bool _webViewRuntimeRestarting;
+        private static System.Windows.Threading.DispatcherTimer? _webViewRuntimeRestartTimer;
+        // While someone is using an interactive panel, check again this much later.
+        private static readonly TimeSpan WebViewRuntimeRestartRetry = TimeSpan.FromMinutes(1);
+        // How long to wait for the old browser process to exit before starting the new one anyway.
+        private static readonly TimeSpan WebViewBrowserExitTimeout = TimeSpan.FromSeconds(10);
 
         private WebView2? _webView;
         private TextBlock? _webViewMessage;
@@ -58,6 +71,13 @@ namespace InfoPanel.Views.Common
         private DateTime _lastWebViewUnresponsive;
 
         private System.Windows.Threading.DispatcherTimer? _webViewRefreshTimer;
+
+        // The daily reload runs once a local day, at or after this time.
+        private static readonly TimeSpan WebViewDailyRefreshAt = TimeSpan.FromHours(4);
+        private static readonly TimeSpan WebViewDailyRefreshCheck = TimeSpan.FromMinutes(1);
+        private System.Windows.Threading.DispatcherTimer? _webViewDailyRefreshTimer;
+        // The last day the daily reload ran, or counts as having run: a panel started after the reload time waits for the next day.
+        private DateTime _webViewDailyRefreshDay;
 
         /// <summary>
         /// The browser core, or null while it is starting or after its browser process crashed:
@@ -107,6 +127,7 @@ namespace InfoPanel.Views.Common
             _webView = webView;
             _webViewMessage = message;
             _webViewCount++;
+            _webViewWindows.Add(this);
 
             ApplyWebViewBackground();
         }
@@ -138,7 +159,9 @@ namespace InfoPanel.Views.Common
             try
             {
                 _webViewEnvironmentInUse = GetWebViewEnvironment();
-                await webView.EnsureCoreWebView2Async(await _webViewEnvironmentInUse);
+                var environment = await _webViewEnvironmentInUse;
+                WatchWebViewRuntime(environment);
+                await webView.EnsureCoreWebView2Async(environment);
             }
             catch (WebView2RuntimeNotFoundException ex)
             {
@@ -456,8 +479,14 @@ namespace InfoPanel.Views.Common
             })();
             """;
 
-        /// <summary>Starts, changes or stops the periodic hard refresh to match the profile setting.</summary>
+        /// <summary>Starts, changes or stops the periodic and daily refreshes to match the profile settings.</summary>
         private void UpdateWebViewAutoRefresh()
+        {
+            UpdateWebViewIntervalRefresh();
+            UpdateWebViewDailyRefresh();
+        }
+
+        private void UpdateWebViewIntervalRefresh()
         {
             var seconds = Profile.WebViewAutoRefreshSeconds;
             // Nothing to refresh while the page is off screen or a message shows instead.
@@ -484,6 +513,46 @@ namespace InfoPanel.Views.Common
             _webViewRefreshTimer.Interval = interval;
             _webViewRefreshTimer.Start();
         }
+
+        /// <summary>
+        /// A page left running for days can slowly grow its memory; reloading it once a day starts it afresh.
+        /// Checked once a minute rather than timed for the hour, so sleep and clock changes can't skip it.
+        /// </summary>
+        private void UpdateWebViewDailyRefresh()
+        {
+            // Nothing to refresh while the page is off screen or a message shows instead.
+            if (!Profile.WebViewDailyRefresh || _webView?.IsVisible != true)
+            {
+                _webViewDailyRefreshTimer?.Stop();
+                return;
+            }
+
+            if (_webViewDailyRefreshTimer == null)
+            {
+                var now = DateTime.Now;
+                _webViewDailyRefreshDay = now.TimeOfDay >= WebViewDailyRefreshAt ? now.Date : now.Date.AddDays(-1);
+
+                _webViewDailyRefreshTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, _dispatcher)
+                {
+                    Interval = WebViewDailyRefreshCheck,
+                };
+                _webViewDailyRefreshTimer.Tick += (_, _) =>
+                {
+                    var now = DateTime.Now;
+                    // Wait until nobody is working in an interactive page.
+                    if (!IsWebViewDailyRefreshDue(now, _webViewDailyRefreshDay) || (Profile.WebViewInteractive && IsActive)) return;
+
+                    _webViewDailyRefreshDay = now.Date;
+                    Logger.Information("Daily reload of the web page for profile {ProfileName}", Profile.Name);
+                    RefreshWebView();
+                };
+            }
+
+            if (!_webViewDailyRefreshTimer.IsEnabled) _webViewDailyRefreshTimer.Start();
+        }
+
+        private static bool IsWebViewDailyRefreshDue(DateTime now, DateTime lastDay) =>
+            now.Date > lastDay && now.TimeOfDay >= WebViewDailyRefreshAt;
 
         private void NavigateWebView()
         {
@@ -574,6 +643,7 @@ namespace InfoPanel.Views.Common
                     _dispatcher.BeginInvoke(ApplyWebViewCacheAsync);
                     break;
                 case nameof(Profile.WebViewAutoRefreshSeconds):
+                case nameof(Profile.WebViewDailyRefresh):
                     _dispatcher.BeginInvoke(UpdateWebViewAutoRefresh);
                     break;
                 case nameof(Profile.WebViewMaxFps):
@@ -734,9 +804,152 @@ namespace InfoPanel.Views.Common
             _webViewRetryTimer.Start();
         }
 
+        /// <summary>
+        /// Watches the environment panels start on for a newer runtime. Only the latest one matters: older ones
+        /// have no panels left by the time a new one is created.
+        /// </summary>
+        private static void WatchWebViewRuntime(CoreWebView2Environment environment)
+        {
+            if (ReferenceEquals(_watchedWebViewEnvironment, environment)) return;
+
+            UnwatchWebViewRuntime();
+            _watchedWebViewEnvironment = environment;
+            environment.NewBrowserVersionAvailable += WebViewEnvironment_NewBrowserVersionAvailable;
+        }
+
+        private static void UnwatchWebViewRuntime()
+        {
+            if (_watchedWebViewEnvironment is not CoreWebView2Environment environment) return;
+            _watchedWebViewEnvironment = null;
+
+            try
+            {
+                environment.NewBrowserVersionAvailable -= WebViewEnvironment_NewBrowserVersionAvailable;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or COMException)
+            {
+                // The browser is already gone, and its handlers went with it.
+            }
+        }
+
+        private static void WebViewEnvironment_NewBrowserVersionAvailable(object? sender, object e)
+        {
+            string? version = null;
+            try
+            {
+                version = CoreWebView2Environment.GetAvailableBrowserVersionString();
+            }
+            catch (Exception ex) when (ex is WebView2RuntimeNotFoundException or COMException)
+            {
+                Logger.Debug(ex, "Failed to read the new WebView2 runtime version");
+            }
+
+            Logger.Information("WebView2 runtime {Version} is installed; restarting web page panels to use it", version);
+            RestartWebViewsForNewRuntime();
+        }
+
+        /// <summary>
+        /// Restarts every web page panel on a new browser, unless someone is using an interactive one: then it
+        /// tries again a minute later. A display-only page loses nothing it can't load again.
+        /// </summary>
+        private static void RestartWebViewsForNewRuntime()
+        {
+            _webViewRuntimeRestartTimer?.Stop();
+            if (_webViewRuntimeRestarting || _webViewWindows.Count == 0) return;
+
+            if (_webViewWindows.Any(window => window.Profile.WebViewInteractive && window.IsActive))
+            {
+                if (_webViewRuntimeRestartTimer == null)
+                {
+                    _webViewRuntimeRestartTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background)
+                    {
+                        Interval = WebViewRuntimeRestartRetry,
+                    };
+                    _webViewRuntimeRestartTimer.Tick += (_, _) => RestartWebViewsForNewRuntime();
+                }
+
+                Logger.Debug("Web page panel in use; restarting for the new WebView2 runtime in {Delay}", WebViewRuntimeRestartRetry);
+                _webViewRuntimeRestartTimer.Start();
+                return;
+            }
+
+            _ = RestartWebViewsForNewRuntimeAsync();
+        }
+
+        private static async Task RestartWebViewsForNewRuntimeAsync()
+        {
+            _webViewRuntimeRestarting = true;
+            var environment = _watchedWebViewEnvironment;
+            var exited = new TaskCompletionSource();
+            void OnBrowserExited(object? sender, CoreWebView2BrowserProcessExitedEventArgs e) => exited.TrySetResult();
+
+            try
+            {
+                if (environment != null) environment.BrowserProcessExited += OnBrowserExited;
+
+                // Close every page first: the old browser keeps running, and new pages would join it, until all are gone.
+                var windows = _webViewWindows.ToList();
+                foreach (var window in windows) window.StopWebView();
+                _webViewEnvironment = null;
+
+                if (environment != null)
+                {
+                    await Task.WhenAny(exited.Task, Task.Delay(WebViewBrowserExitTimeout));
+                    if (!exited.Task.IsCompleted) Logger.Warning("Old WebView2 browser still running after {Timeout}; starting web page panels anyway", WebViewBrowserExitTimeout);
+                }
+
+                // A panel closed meanwhile stays closed.
+                foreach (var window in windows.Where(_webViewWindows.Contains)) window.StartWebView();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to restart web page panels for the new WebView2 runtime");
+            }
+            finally
+            {
+                if (environment != null)
+                {
+                    try
+                    {
+                        environment.BrowserProcessExited -= OnBrowserExited;
+                    }
+                    catch (Exception ex) when (ex is InvalidOperationException or COMException)
+                    {
+                    }
+                }
+                _webViewRuntimeRestarting = false;
+            }
+        }
+
+        /// <summary>Closes the page, leaving the panel showing its background until <see cref="StartWebView"/>.</summary>
+        private void StopWebView()
+        {
+            DisposeWebView();
+            if (FindName("SkiaContainer") is Panel container) container.Children.Clear();
+        }
+
+        /// <summary>Starts the page on a new control, with a fresh restart count.</summary>
+        private void StartWebView()
+        {
+            if (FindName("SkiaContainer") is not Panel container) return;
+
+            ResetWebViewRestarts();
+            container.Children.Clear();
+            InjectWebView(container);
+            _ = InitializeWebViewAsync();
+        }
+
+        /// <summary>The window is closing: dispose the page and leave it out of runtime restarts.</summary>
+        private void CloseWebView()
+        {
+            _webViewWindows.Remove(this);
+            DisposeWebView();
+        }
+
         private void DisposeWebView()
         {
             _webViewRefreshTimer?.Stop();
+            _webViewDailyRefreshTimer?.Stop();
             _webViewRetryTimer?.Stop();
             if (_webView == null) return;
 
@@ -756,7 +969,11 @@ namespace InfoPanel.Views.Common
                 _webViewNetworkEnabled = false;
 
                 // With no web page panel left, let the browser go; the next one creates a fresh environment.
-                if (--_webViewCount == 0) _webViewEnvironment = null;
+                if (--_webViewCount == 0)
+                {
+                    _webViewEnvironment = null;
+                    UnwatchWebViewRuntime();
+                }
             }
         }
 

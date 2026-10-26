@@ -329,6 +329,15 @@ namespace InfoPanel.Models
             set { SetProperty(ref _webViewMaxFps, Math.Clamp(value, 0, MaxWebViewMaxFps)); }
         }
 
+        /// <summary>When true, the web page reloads once a day from 4:00, for panels left running for days.</summary>
+        private bool _webViewDailyRefresh = false;
+
+        public bool WebViewDailyRefresh
+        {
+            get { return _webViewDailyRefresh; }
+            set { SetProperty(ref _webViewDailyRefresh, value); }
+        }
+
         public object Clone()
         {
             return MemberwiseClone();

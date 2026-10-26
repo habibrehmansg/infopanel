@@ -196,7 +196,7 @@ namespace InfoPanel.Views.Common
             LocationChanged -= DisplayWindow_LocationChanged;
             SizeChanged -= DisplayWindow_SizeChanged;
 
-            DisposeWebView();
+            CloseWebView();
 
             if (OpenGL)
             {
