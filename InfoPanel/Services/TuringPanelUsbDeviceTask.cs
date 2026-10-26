@@ -1,8 +1,6 @@
 using InfoPanel.Extensions;
 using InfoPanel.Models;
-using InfoPanel.TuringPanel;
 using InfoPanel.Utils;
-using InfoPanel.ViewModels;
 using LcdDriver.TuringSmartScreen;
 using LibUsbDotNet;
 using LibUsbDotNet.Main;
@@ -23,23 +21,8 @@ namespace InfoPanel.Services
         private readonly TuringPanelDevice _device;
         private readonly int _panelWidth;
         private readonly int _panelHeight;
+
         public TuringPanelDevice Device => _device;
-
-        private sealed class TuringUsbScreenDeviceAdapter : IUsbScreenDevice
-        {
-            private readonly ScreenDevice _inner;
-
-            public TuringUsbScreenDeviceAdapter(ScreenDevice inner)
-            {
-                _inner = inner;
-            }
-
-            public bool Sync() => _inner.Sync();
-            public bool StopMedia() => _inner.StopMedia();
-            public bool SetBrightness(byte value) => _inner.SetBrightness(value);
-            public bool DrawJpeg(byte[] imageBytes) => _inner.DrawJpeg(imageBytes);
-            public void Dispose() => _inner.Dispose();
-        }
 
         public TuringPanelUsbDeviceTask(TuringPanelDevice device)
         {
@@ -60,29 +43,17 @@ namespace InfoPanel.Services
 
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
-                var isLianLiDevice = _device.ModelInfo.Model == TuringPanelModel.LIANLI_88INCH_USB;
                 var rotation = _device.Rotation;
-
-                // The Lian Li 8.8" panel framebuffer is natively portrait
-                // (480x1920). Landscape profiles must be rotated 90 degrees into the
-                // portrait frame, matching the Linux driver's render path.
-                if (isLianLiDevice && rotation == LCD_ROTATION.RotateNone)
-                {
-                    rotation = LCD_ROTATION.Rotate90FlipNone;
-                }
-
                 using var bitmap = PanelDrawTask.RenderSK(profile, false);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
                 using var pixmap = resizedBitmap.PeekPixels();
-                var imageFormat = SKEncodedImageFormat.Jpeg;
-                var jpegQuality = isLianLiDevice ? 95 : _device.JpegQuality;
-                using var data = pixmap.Encode(imageFormat, jpegQuality);
+                using var data = pixmap.Encode(SKEncodedImageFormat.Jpeg, _device.JpegQuality);
 
                 if (data == null || data.IsEmpty)
                 {
-                    Logger.Error("TuringPanelDevice {Device}: Failed to encode bitmap to {Format}", _device, imageFormat);
+                    Logger.Error("TuringPanelDevice {Device}: Failed to encode bitmap to JPEG", _device);
                     return null;
                 }
 
@@ -90,56 +61,6 @@ namespace InfoPanel.Services
             }
 
             return null;
-        }
-
-        private static byte[] EncodeSolidFrame(int width, int height, SKColor color, SKEncodedImageFormat format, int quality)
-        {
-            using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
-            bitmap.Erase(color);
-
-            using var pixmap = bitmap.PeekPixels();
-            using var data = pixmap.Encode(format, quality);
-            return data?.ToArray() ?? Array.Empty<byte>();
-        }
-
-        private void PrepareLianLiImageLayers(LianLiUsbScreenDevice lianLiDevice)
-        {
-            try
-            {
-                // Match the vendor ApplyTemplate() prep sequence, but keep it isolated:
-                // SyncClock(true, onlySync: true), StopClock(), clear PNG layer, clear JPG layer.
-                var syncClockOk = lianLiDevice.SyncClockOnly();
-                Thread.Sleep(50);
-
-                var stopClockOk = lianLiDevice.StopClock();
-                Thread.Sleep(50);
-
-                var clearPng = EncodeSolidFrame(_panelWidth, _panelHeight, SKColors.Transparent, SKEncodedImageFormat.Png, 100);
-                var clearPngOk = clearPng.Length > 0 && lianLiDevice.DrawPngLayer(clearPng);
-                Thread.Sleep(50);
-
-                var clearJpeg = EncodeSolidFrame(_panelWidth, _panelHeight, SKColors.Black, SKEncodedImageFormat.Jpeg, 95);
-                var clearJpegOk = clearJpeg.Length > 0 && lianLiDevice.DrawJpegLayer(clearJpeg);
-                Thread.Sleep(50);
-
-                // Linux driver ends init with SetFrameRate(30) (cmd 15 / 0x0F).
-                var frameRateOk = lianLiDevice.SetFrameRate(30);
-
-                Logger.Information(
-                    "TuringPanelDevice {Device}: Lian Li prep sequence results: SyncClockOnly={SyncClockOk}, StopClock={StopClockOk}, ClearPng={ClearPngOk} ({ClearPngBytes} bytes), ClearJpeg={ClearJpegOk} ({ClearJpegBytes} bytes), SetFrameRate={FrameRateOk}",
-                    _device,
-                    syncClockOk,
-                    stopClockOk,
-                    clearPngOk,
-                    clearPng.Length,
-                    clearJpegOk,
-                    clearJpeg.Length,
-                    frameRateOk);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning(ex, "TuringPanelDevice {Device}: Lian Li prep sequence failed", _device);
-            }
         }
 
         private async Task<UsbRegistry?> FindTargetDeviceAsync()
@@ -195,10 +116,7 @@ namespace InfoPanel.Services
                     return;
                 }
 
-                var isLianLiDevice = _device.ModelInfo.Model == TuringPanelModel.LIANLI_88INCH_USB;
-                using IUsbScreenDevice screenDevice = isLianLiDevice
-                    ? new LianLiUsbScreenDevice(usbDevice)
-                    : new TuringUsbScreenDeviceAdapter(new ScreenDevice(usbDevice));
+                using var screenDevice = new ScreenDevice(usbDevice);
 
                 Logger.Information("TuringPanelDevice {Device}: Initialized successfully", _device);
                 _device.UpdateRuntimeProperties(isRunning: true);
@@ -225,12 +143,6 @@ namespace InfoPanel.Services
                     // Stop any video playback to prevent flickering
                     screenDevice.StopMedia();
                     Thread.Sleep(200);
-
-                    if (screenDevice is LianLiUsbScreenDevice lianLiDevice)
-                    {
-                        PrepareLianLiImageLayers(lianLiDevice);
-                        Thread.Sleep(200);
-                    }
 
                     // Set brightness
                     var brightness = _device.Brightness;
