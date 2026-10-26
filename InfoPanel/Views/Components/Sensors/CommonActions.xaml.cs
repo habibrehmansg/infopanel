@@ -93,5 +93,19 @@ namespace InfoPanel.Views.Components
                 SharedModel.Instance.PushDisplayItemTo(groupDisplayItem, selectedItem);
             }
         }
+
+        private void ButtonNewGuide_Click(object sender, RoutedEventArgs e)
+        {
+            if (SharedModel.Instance.SelectedProfile is Profile selectedProfile)
+            {
+                var item = new GuideDisplayItem("Guide", selectedProfile)
+                {
+                    X = selectedProfile.Width / 2,
+                    Y = selectedProfile.Height / 2,
+                    Length = System.Math.Min(selectedProfile.Width, selectedProfile.Height)
+                };
+                SharedModel.Instance.AddDisplayItem(item);
+            }
+        }
     }
 }

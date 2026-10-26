@@ -133,6 +133,18 @@ namespace InfoPanel.Views.Windows
                     SharedModel.Instance.Redo();
                 e.Handled = true;
             }
+            else if (e.Key == Key.Delete)
+            {
+                if (SharedModel.Instance.SelectedItems.Count > 1)
+                {
+                    SharedModel.Instance.RemoveSelectedItems();
+                }
+                else if (SharedModel.Instance.SelectedItem is DisplayItem selectedItem)
+                {
+                    SharedModel.Instance.RemoveDisplayItem(selectedItem);
+                }
+                e.Handled = true;
+            }
         }
 
         private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)

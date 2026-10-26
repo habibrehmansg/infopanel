@@ -6,6 +6,7 @@
 - [Display Types Comparison](#display-types-comparison)
 - [BeadaPanel Models](#beadapanel-models)
 - [Turing Smart Screen/TURZX Models](#turing-smart-screenturzx-models)
+- [Jungle Leopard / Hongtai Models](#jungle-leopard--hongtai-models)
 - [Connection and Setup](#connection-and-setup)
 - [Troubleshooting](#troubleshooting)
 - [Recommendations](#recommendations)
@@ -89,6 +90,29 @@ Turing Smart Screen (also known as TURZX) models are also supported by InfoPanel
 - Closed protocol with no official documentation (InfoPanel is compatible at best effort basis)
 - Turing's official software may provide better performance than third-party applications (e.g high FPS video backgrounds)
 
+## Jungle Leopard / Hongtai Models
+
+Jungle Leopard ("JL") cooler displays are produced by Dongguan Hongtai Technology Co. The same firmware/protocol is shared across roughly 80 white-label SKUs sold under brands such as MSI EZ Display, Thermaltake, ZOTAC, Jonsbo, and others. The reference platform is the **JL Chill Arc 360** (a 480×960 round-corner display embedded in CPU water blocks).
+
+| Model | Resolution | Connection | Performance | Notes |
+|-------|------------|------------|-------------|-------|
+| JL Chill Arc 360 | 480×960 | CDC Serial @ 2 Mbaud | ~30 FPS | Reference Hongtai 5" panel; same protocol as MSI EZ Display etc. |
+| JL Strip Display | 1920×462 | CDC Serial @ 2 Mbaud | ~60 FPS | Wide strip variant on the same firmware family |
+
+**Key Jungle Leopard Features**:
+- Enumerates as a **USB CDC ACM virtual COM port** (no special driver — Windows ships the inbox driver)
+- 2 Mbaud framed protocol with JPEG-encoded frames
+- Hardware brightness control (0–100)
+- Same protocol works across all OEM rebrands (MSI EZ Display, Thermaltake LCD, ZOTAC, Jonsbo, etc.) when the device exposes VID `0x33C3`
+- Open protocol: see [`JL-PROTOCOL.md`](./JL-PROTOCOL.md) for full wire format
+- Built-in keep-alive from InfoPanel ensures the live pipeline doesn't time out
+
+**Limitations**:
+- Single CDC channel for both image data and commands; brightness writes briefly interrupt streaming
+- If the protocol's keep-alive is missed for >1.5 s the firmware reverts to its built-in animation, requiring a reconnect
+- JPEG payload is capped at ~80 KB by the firmware — InfoPanel automatically lowers JPEG quality if a frame doesn't fit
+- The CH340/SPI variant (PID `0x7793`) uses a completely different transport (raw RGB565 over a CH340 USB-UART) and is **not** currently supported
+
 ## Connection and Setup
 
 > **Important Note**: Ensure no other software is actively using the panel when connecting with InfoPanel. Having multiple applications trying to control the display simultaneously can cause conflicts and unpredictable behavior.
@@ -117,6 +141,8 @@ Turing Smart Screen (also known as TURZX) models are also supported by InfoPanel
    - Turing Panel A (3.5")
    - Turing Panel C (5")
    - Turing Panel E (8.8" Rev 1.0)
+   - Thermaltake / ASRock LCD
+   - Jungle Leopard / Hongtai (Chill Arc 360, MSI EZ Display, etc.)
 4. Select a display profile for your panel
 5. Adjust rotation and brightness as needed
 

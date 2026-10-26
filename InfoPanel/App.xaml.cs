@@ -403,9 +403,12 @@ namespace InfoPanel
             {
                 await BeadaPanelTask.Instance.StopAsync(true);
                 await TuringPanelTask.Instance.StopAsync(true);
+                await LianLiPanelTask.Instance.StopAsync(true);
                 await ThermalrightPanelTask.Instance.StopAsync(true);
                 await ThermaltakePanelTask.Instance.StopAsync(true);
+                await JlPanelTask.Instance.StopAsync(true);
                 await JonsboPanelTask.Instance.StopAsync(true);
+                await VmaxPanelTask.Instance.StopAsync(true);
             });
         }
 
@@ -425,9 +428,12 @@ namespace InfoPanel
                     {
                         await BeadaPanelTask.Instance.StopAsync(true);
                         await TuringPanelTask.Instance.StopAsync(true);
+                        await LianLiPanelTask.Instance.StopAsync(true);
                         await ThermalrightPanelTask.Instance.StopAsync(true);
                         await ThermaltakePanelTask.Instance.StopAsync(true);
+                        await JlPanelTask.Instance.StopAsync(true);
                         await JonsboPanelTask.Instance.StopAsync(true);
+                        await VmaxPanelTask.Instance.StopAsync(true);
                     });
                     break;
             }
@@ -445,6 +451,11 @@ namespace InfoPanel
                 await TuringPanelTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.LianLiPanelMultiDeviceMode)
+            {
+                await LianLiPanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.ThermalrightPanelMultiDeviceMode)
             {
                 await ThermalrightPanelTask.Instance.StartAsync();
@@ -455,9 +466,19 @@ namespace InfoPanel
                 await ThermaltakePanelTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.JlPanelMultiDeviceMode)
+            {
+                await JlPanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.JonsboPanelMultiDeviceMode)
             {
                 await JonsboPanelTask.Instance.StartAsync();
+            }
+
+            if (ConfigModel.Instance.Settings.VmaxPanelMultiDeviceMode)
+            {
+                await VmaxPanelTask.Instance.StartAsync();
             }
 
             if (ConfigModel.Instance.Settings.WebServer)
@@ -471,9 +492,12 @@ namespace InfoPanel
         {
             await BeadaPanelTask.Instance.StopAsync();
             await TuringPanelTask.Instance.StopAsync();
+            await LianLiPanelTask.Instance.StopAsync();
             await ThermalrightPanelTask.Instance.StopAsync();
             await ThermaltakePanelTask.Instance.StopAsync();
+            await JlPanelTask.Instance.StopAsync();
             await JonsboPanelTask.Instance.StopAsync();
+            await VmaxPanelTask.Instance.StopAsync();
         }
 
         private void App_Exit(object sender, ExitEventArgs e)

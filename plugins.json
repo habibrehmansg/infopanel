@@ -101,6 +101,12 @@
       "name": "Windows 11 Now Playing",
       "description": "Displays currently playing media information from Windows 11's Global Media Transport Controls",
       "category": "media"
+    },
+    {
+      "repo": "cueebb/InfoPanel.OBS",
+      "name": "OBS Monitor",
+      "description": "Plugin that displays currently OBS status",
+      "category": "monitoring"
     }
   ]
 }

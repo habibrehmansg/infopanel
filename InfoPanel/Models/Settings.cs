@@ -73,6 +73,13 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _turingPanelMultiDeviceMode = false;
 
+        private readonly ObservableCollection<LianLiPanelDevice> _lianLiPanelDevices = [];
+
+        public ObservableCollection<LianLiPanelDevice> LianLiPanelDevices => _lianLiPanelDevices;
+
+        [ObservableProperty]
+        private bool _lianLiPanelMultiDeviceMode = false;
+
         private readonly ObservableCollection<ThermalrightPanelDevice> _thermalrightPanelDevices = [];
 
         public ObservableCollection<ThermalrightPanelDevice> ThermalrightPanelDevices
@@ -93,6 +100,16 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private bool _thermaltakePanelMultiDeviceMode = false;
 
+        private readonly ObservableCollection<JlPanelDevice> _jlPanelDevices = [];
+
+        public ObservableCollection<JlPanelDevice> JlPanelDevices
+        {
+            get { return _jlPanelDevices; }
+        }
+
+        [ObservableProperty]
+        private bool _jlPanelMultiDeviceMode = false;
+
         private readonly ObservableCollection<JonsboPanelDevice> _jonsboPanelDevices = [];
 
         public ObservableCollection<JonsboPanelDevice> JonsboPanelDevices
@@ -102,6 +119,16 @@ namespace InfoPanel.Models
 
         [ObservableProperty]
         private bool _jonsboPanelMultiDeviceMode = false;
+
+        private readonly ObservableCollection<VmaxPanelDevice> _vmaxPanelDevices = [];
+
+        public ObservableCollection<VmaxPanelDevice> VmaxPanelDevices
+        {
+            get { return _vmaxPanelDevices; }
+        }
+
+        [ObservableProperty]
+        private bool _vmaxPanelMultiDeviceMode = false;
 
         private readonly ObservableCollection<HotkeyBinding> _hotkeyBindings = [];
 
@@ -148,9 +175,12 @@ namespace InfoPanel.Models
         {
             BeadaPanelDevices.CollectionChanged += BeadaPanelDevices_CollectionChanged;
             TuringPanelDevices.CollectionChanged += TuringPanelDevices_CollectionChanged;
+            LianLiPanelDevices.CollectionChanged += LianLiPanelDevices_CollectionChanged;
             ThermalrightPanelDevices.CollectionChanged += ThermalrightPanelDevices_CollectionChanged;
             ThermaltakePanelDevices.CollectionChanged += ThermaltakePanelDevices_CollectionChanged;
+            JlPanelDevices.CollectionChanged += JlPanelDevices_CollectionChanged;
             JonsboPanelDevices.CollectionChanged += JonsboPanelDevices_CollectionChanged;
+            VmaxPanelDevices.CollectionChanged += VmaxPanelDevices_CollectionChanged;
         }
 
         private void BeadaPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -193,6 +223,27 @@ namespace InfoPanel.Models
         {
             if (e.PropertyName != nameof(TuringPanelDevice.RuntimeProperties))
                 OnPropertyChanged(nameof(TuringPanelDevices));
+        }
+
+        private void LianLiPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (LianLiPanelDevice device in e.OldItems)
+                    device.PropertyChanged -= LianLiDevice_PropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (LianLiPanelDevice device in e.NewItems)
+                    device.PropertyChanged += LianLiDevice_PropertyChanged;
+            }
+            OnPropertyChanged(nameof(LianLiPanelDevices));
+        }
+
+        private void LianLiDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(LianLiPanelDevice.RuntimeProperties))
+                OnPropertyChanged(nameof(LianLiPanelDevices));
         }
 
         private void ThermalrightPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -245,6 +296,27 @@ namespace InfoPanel.Models
                 OnPropertyChanged(nameof(ThermaltakePanelDevices));
         }
 
+        private void JlPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (JlPanelDevice device in e.OldItems)
+                    device.PropertyChanged -= JlDevice_PropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (JlPanelDevice device in e.NewItems)
+                    device.PropertyChanged += JlDevice_PropertyChanged;
+            }
+            OnPropertyChanged(nameof(JlPanelDevices));
+        }
+
+        private void JlDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(JlPanelDevice.RuntimeProperties))
+                OnPropertyChanged(nameof(JlPanelDevices));
+        }
+
         private void JonsboPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
             if (e.OldItems != null)
@@ -264,6 +336,27 @@ namespace InfoPanel.Models
         {
             if (e.PropertyName != nameof(JonsboPanelDevice.RuntimeProperties))
                 OnPropertyChanged(nameof(JonsboPanelDevices));
+        }
+
+        private void VmaxPanelDevices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (VmaxPanelDevice device in e.OldItems)
+                    device.PropertyChanged -= VmaxDevice_PropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (VmaxPanelDevice device in e.NewItems)
+                    device.PropertyChanged += VmaxDevice_PropertyChanged;
+            }
+            OnPropertyChanged(nameof(VmaxPanelDevices));
+        }
+
+        private void VmaxDevice_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(VmaxPanelDevice.RuntimeProperties))
+                OnPropertyChanged(nameof(VmaxPanelDevices));
         }
 
     }

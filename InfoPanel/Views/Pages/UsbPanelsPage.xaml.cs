@@ -1,10 +1,13 @@
 using InfoPanel.BeadaPanel;
+using InfoPanel.LianLiPanel;
 using InfoPanel.Models;
 using InfoPanel.Services;
 using InfoPanel.TuringPanel;
 using InfoPanel.ThermalrightPanel;
 using InfoPanel.ThermaltakePanel;
+using InfoPanel.JlPanel;
 using InfoPanel.JonsboPanel;
+using InfoPanel.VmaxPanel;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
 using LibUsbDotNet;
@@ -48,7 +51,9 @@ public partial class UsbPanelsPage : Page
         // Refresh device combo when device lists change
         ConfigModel.Instance.Settings.BeadaPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
         ConfigModel.Instance.Settings.TuringPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
+        ConfigModel.Instance.Settings.LianLiPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
         ConfigModel.Instance.Settings.ThermalrightPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
+        ConfigModel.Instance.Settings.VmaxPanelDevices.CollectionChanged += (_, _) => PopulateDeviceCombo();
     }
 
     private async Task UpdateBeadaPanelDeviceList()
@@ -195,6 +200,63 @@ public partial class UsbPanelsPage : Page
         }
     }
 
+    private async void ButtonDiscoverLianLiDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateLianLiPanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private async Task UpdateLianLiPanelDeviceList()
+    {
+        var discoveredDevices = await LianLiPanelHelper.GetUsbDevices();
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.LianLiPanelDevices.FirstOrDefault(d => d.IsMatching(discoveredDevice.DeviceId));
+
+                if (device == null)
+                {
+                    discoveredDevice.ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty;
+                    settings.LianLiPanelDevices.Add(discoveredDevice);
+                    Logger.Information("LianLiPanel Discovery: Added new device with DeviceId '{DeviceId}'", discoveredDevice.DeviceId);
+                }
+                else
+                {
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+                    device.Model = discoveredDevice.Model;
+                    Logger.Information("LianLiPanel Discovery: Device with DeviceId '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+    }
+
+    private void ButtonRemoveLianLiPanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is LianLiPanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.LianLiPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (LianLiPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = LianLiPanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.LianLiPanelDevices.Remove(deviceConfig);
+                }
+            });
+        }
+    }
+
     private void ButtonRemoveTuringPanelDevice_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button button && button.Tag is TuringPanelDevice runtimeDevice)
@@ -248,10 +310,22 @@ public partial class UsbPanelsPage : Page
             items.Add(Tuple.Create($"Turing|{d.DeviceId}|", name));
         }
 
+        foreach (var d in ConfigModel.Instance.Settings.LianLiPanelDevices)
+        {
+            var name = d.Name ?? d.DeviceId;
+            items.Add(Tuple.Create($"LianLi|{d.DeviceId}|", name));
+        }
+
         foreach (var d in ConfigModel.Instance.Settings.ThermalrightPanelDevices)
         {
             var name = d.RuntimeProperties?.Name ?? d.DeviceId;
             items.Add(Tuple.Create($"Thermalright|{d.DeviceId}|{d.DeviceLocation}", name));
+        }
+
+        foreach (var d in ConfigModel.Instance.Settings.VmaxPanelDevices)
+        {
+            var name = d.RuntimeProperties?.Name ?? d.ModelInfo?.Name ?? d.DeviceId;
+            items.Add(Tuple.Create($"Vmax|{d.DeviceId}|{d.DeviceLocation}", name));
         }
 
         HotkeyDeviceCombo.ItemsSource = items;
@@ -641,6 +715,89 @@ public partial class UsbPanelsPage : Page
         }
     }
 
+    // === JL (Jungle Leopard / Hongtai) Panel ===
+
+    private async void ButtonDiscoverJlPanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateJlPanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private Task UpdateJlPanelDeviceList()
+    {
+        var discoveredDevices = JlPanelHelper.ScanDevices();
+
+        Logger.Information("JlPanel Discovery: Found {Count} devices", discoveredDevices.Count);
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.JlPanelDevices.FirstOrDefault(d =>
+                    d.IsMatching(discoveredDevice.DeviceId, discoveredDevice.DeviceLocation, discoveredDevice.Model));
+
+                if (device == null)
+                {
+                    var newDevice = new JlPanelDevice()
+                    {
+                        DeviceId = discoveredDevice.DeviceId,
+                        DeviceLocation = discoveredDevice.DeviceLocation,
+                        Model = discoveredDevice.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty,
+                        TargetFrameRate = discoveredDevice.ModelInfo?.DefaultFrameRate ?? 30,
+                    };
+
+                    if (discoveredDevice.ModelInfo != null)
+                    {
+                        newDevice.RuntimeProperties.Name = discoveredDevice.ModelInfo.Name;
+                    }
+
+                    settings.JlPanelDevices.Add(newDevice);
+                    Logger.Information("JlPanel Discovery: Added new device '{DeviceId}' on {Port}",
+                        discoveredDevice.DeviceId, discoveredDevice.DeviceLocation);
+                }
+                else
+                {
+                    // COM port may have changed; refresh location.
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+
+                    if (device.ModelInfo != null)
+                    {
+                        device.RuntimeProperties.Name = device.ModelInfo.Name;
+                    }
+
+                    Logger.Information("JlPanel Discovery: Device '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ButtonRemoveJlPanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is JlPanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.JlPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (JlPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = JlPanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.JlPanelDevices.Remove(deviceConfig);
+                }
+            });
+        }
+    }
 
     // === Jonsbo Panel (DS916 / HLVMAX family) ===
 
@@ -721,6 +878,87 @@ public partial class UsbPanelsPage : Page
                     }
 
                     settings.JonsboPanelDevices.Remove(deviceConfig);
+                }
+            });
+        }
+    }
+
+    // === VMAX Panel ===
+
+    private async void ButtonDiscoverVmaxPanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateVmaxPanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private Task UpdateVmaxPanelDeviceList()
+    {
+        var discoveredDevices = VmaxPanelHelper.ScanDevices();
+
+        Logger.Information("VmaxPanel Discovery: Found {Count} devices", discoveredDevices.Count);
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.VmaxPanelDevices.FirstOrDefault(d =>
+                    d.IsMatching(discoveredDevice.DeviceId, discoveredDevice.DeviceLocation, discoveredDevice.Model));
+
+                if (device == null)
+                {
+                    var newDevice = new VmaxPanelDevice()
+                    {
+                        DeviceId = discoveredDevice.DeviceId,
+                        DeviceLocation = discoveredDevice.DeviceLocation,
+                        Model = discoveredDevice.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty
+                    };
+
+                    if (discoveredDevice.ModelInfo != null)
+                    {
+                        newDevice.RuntimeProperties.Name = discoveredDevice.ModelInfo.Name;
+                    }
+
+                    settings.VmaxPanelDevices.Add(newDevice);
+                    Logger.Information("VmaxPanel Discovery: Added new device '{DeviceId}'", discoveredDevice.DeviceId);
+                }
+                else
+                {
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+
+                    if (device.ModelInfo != null)
+                    {
+                        device.RuntimeProperties.Name = device.ModelInfo.Name;
+                    }
+
+                    Logger.Information("VmaxPanel Discovery: Device '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ButtonRemoveVmaxPanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is VmaxPanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.VmaxPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (VmaxPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = VmaxPanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.VmaxPanelDevices.Remove(deviceConfig);
                 }
             });
         }

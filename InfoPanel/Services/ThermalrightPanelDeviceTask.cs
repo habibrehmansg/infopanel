@@ -122,8 +122,10 @@ namespace InfoPanel.Services
 
             // Bytes 16-55: Zero padding (already zeroed)
 
-            // Bytes 56-59: Command repeated
-            BitConverter.GetBytes(cmd).CopyTo(header, 56);
+            // Bytes 56-59: Frame type (SSCRM_CMD_TYPE_PICTURE = 2). Constant regardless
+            // of pixel format — TRCC writes 2 here even when the data-format byte at offset
+            // 4 is 3 (RGB565). Without this, RGB565 panels (PM=0x20 / SPISCRM-V2) reject frames.
+            BitConverter.GetBytes(0x02).CopyTo(header, 56);
 
             // Bytes 60-63: Data size (little-endian)
             BitConverter.GetBytes(dataSize).CopyTo(header, 60);
@@ -251,10 +253,7 @@ namespace InfoPanel.Services
                         dimmed = ApplyBrightness(resizedBitmap);
                         convertBitmap = dimmed;
                     }
-                    using var rgb565Bitmap = convertBitmap.Copy(SKColorType.Rgb565);
-                    var bytes = rgb565Bitmap.Bytes;
-                    if (bigEndian) SwapRgb565Endianness(bytes);
-                    return bytes;
+                    return ConvertRgba8888ToRgb565(convertBitmap, bigEndian);
                 }
                 finally
                 {
@@ -342,13 +341,53 @@ namespace InfoPanel.Services
         }
 
         /// <summary>
-        /// Byte-swaps each 16-bit pixel in-place for big-endian RGB565.
-        /// Required for 320x320 panels.
+        /// Converts an RGBA8888 bitmap to RGB565 by truncation (no dithering).
+        /// SkiaSharp's Copy(SKColorType.Rgb565) applies ordered dithering, which produces
+        /// a fine mesh pattern visible on smooth gradients. TRCC's reference implementation
+        /// (FormCZTV.ImageTo565) drops the low bits with no dithering, so we match that.
+        /// Reads the bitmap row-by-row honoring RowBytes to avoid any row padding bleed.
         /// </summary>
-        private static void SwapRgb565Endianness(byte[] data)
+        private static byte[] ConvertRgba8888ToRgb565(SKBitmap bitmap, bool bigEndian)
         {
-            for (int i = 0; i < data.Length - 1; i += 2)
-                (data[i], data[i + 1]) = (data[i + 1], data[i]);
+            int width = bitmap.Width;
+            int height = bitmap.Height;
+            int srcRowBytes = bitmap.RowBytes;
+            byte[] dst = new byte[width * height * 2];
+
+            unsafe
+            {
+                byte* srcBase = (byte*)bitmap.GetPixels().ToPointer();
+                fixed (byte* dstBase = dst)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        byte* srcRow = srcBase + y * srcRowBytes;
+                        byte* dstRow = dstBase + y * width * 2;
+                        for (int x = 0; x < width; x++)
+                        {
+                            byte r = srcRow[x * 4];      // Rgba8888: R, G, B, A
+                            byte g = srcRow[x * 4 + 1];
+                            byte b = srcRow[x * 4 + 2];
+
+                            // Truncate to 5/6/5 — exact match to TRCC FormCZTV.ImageTo565
+                            byte hi = (byte)((r & 0xF8) | (g >> 5));        // RRRRR_GGG
+                            byte lo = (byte)(((g & 0x1C) << 3) | (b >> 3)); // GGG_BBBBB
+
+                            if (bigEndian)
+                            {
+                                dstRow[x * 2]     = hi;
+                                dstRow[x * 2 + 1] = lo;
+                            }
+                            else
+                            {
+                                dstRow[x * 2]     = lo;
+                                dstRow[x * 2 + 1] = hi;
+                            }
+                        }
+                    }
+                }
+            }
+            return dst;
         }
 
         private byte[]? _blackFrame;
@@ -716,8 +755,37 @@ namespace InfoPanel.Services
                 if (sub.HasValue)
                     Logger.Information("ThermalrightPanelDevice {Device}: ChiZhu SUB byte at [28]: 0x{SUB:X2} ({SUBDec})", _device, sub.Value, sub.Value);
 
-                // Try ChiZhu PM+SUB table first (covers ~35 SSCRM bulk models)
-                if (pm.HasValue && sub.HasValue)
+                // Three-pass ChiZhu detection. The identifier alone is not unique: SSCRM-V1
+                // firmware ships on both 480x480 (Grand/Hydro/Hyper/Peerless, PM=1/3/4) and
+                // 640x480 (Stream Vision, PM=7). PM+SUB resolves those. Identifier+SUB is only
+                // used to OVERRIDE a wrong PM+SUB entry (e.g. SPISCRM-V2 at PM=0x20 SUB=0x20
+                // overrides the legacy generic ChiZhuVision320x320).
+                string? deviceIdentifier = null;
+                if (bytesRead >= 12)
+                {
+                    // Identifier zone is bytes 4..19 (flags byte is at offset 20). Length varies:
+                    // SSCRM-V1/V3/V4 = 8 chars, SPISCRM-V2 = 10 chars, all null-padded.
+                    int idLen = Math.Min(16, bytesRead - 4);
+                    deviceIdentifier = System.Text.Encoding.ASCII.GetString(responseBuffer, 4, idLen).TrimEnd('\0');
+                    Logger.Information("ThermalrightPanelDevice {Device}: Device identifier: {Id}", _device, deviceIdentifier);
+                }
+
+                // Pass 1: strict identifier+SUB override (Wonder/Rainbow/Levita SSCRM-V3, SPISCRM-V2)
+                if (!string.IsNullOrEmpty(deviceIdentifier) && sub.HasValue)
+                {
+                    _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifierAndSub(deviceIdentifier, sub.Value);
+                    if (_detectedModel != null)
+                    {
+                        _panelWidth = _detectedModel.RenderWidth;
+                        _panelHeight = _detectedModel.RenderHeight;
+                        _device.Model = _detectedModel.Model;
+                        Logger.Information("ThermalrightPanelDevice {Device}: Identifier {Id}+SUB 0x{SUB:X2} -> {Model} ({Width}x{Height})",
+                            _device, deviceIdentifier, sub.Value, _detectedModel.Name, _panelWidth, _panelHeight);
+                    }
+                }
+
+                // Pass 2: PM+SUB table (covers most ChiZhu panels by hardware variant)
+                if (_detectedModel == null && pm.HasValue && sub.HasValue)
                 {
                     var chizhuModel = ThermalrightPanelModelDatabase.GetModelByChiZhuPM(pm.Value, sub.Value);
                     if (chizhuModel != null)
@@ -731,24 +799,22 @@ namespace InfoPanel.Services
                     }
                 }
 
-                // Fall back to identifier-based detection (SSCRM-V1/V3/V4)
-                if (_detectedModel == null && bytesRead >= 12)
+                // Pass 3: identifier-only catch-all for legacy panels not in the PM+SUB switch
+                // (e.g. PM=1 SUB=0 Grand Vision: identifier SSCRM-V1 routes to the 480x480 entry).
+                if (_detectedModel == null && !string.IsNullOrEmpty(deviceIdentifier))
                 {
-                    var deviceIdentifier = System.Text.Encoding.ASCII.GetString(responseBuffer, 4, 8).TrimEnd('\0');
-                    Logger.Information("ThermalrightPanelDevice {Device}: Device identifier: {Id}", _device, deviceIdentifier);
-
-                    _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifier(deviceIdentifier, sub);
+                    _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifier(deviceIdentifier);
                     if (_detectedModel != null)
                     {
                         _panelWidth = _detectedModel.RenderWidth;
                         _panelHeight = _detectedModel.RenderHeight;
                         _device.Model = _detectedModel.Model;
-                        Logger.Information("ThermalrightPanelDevice {Device}: Detected {Model} - using {Width}x{Height}",
-                            _device, _detectedModel.Name, _panelWidth, _panelHeight);
+                        Logger.Information("ThermalrightPanelDevice {Device}: Identifier {Id} (fallback) -> {Model} ({Width}x{Height})",
+                            _device, deviceIdentifier, _detectedModel.Name, _panelWidth, _panelHeight);
                     }
                     else
                     {
-                        Logger.Warning("ThermalrightPanelDevice {Device}: Unknown identifier '{Id}', using default {Width}x{Height}",
+                        Logger.Warning("ThermalrightPanelDevice {Device}: Unknown identifier '{Id}' and no PM+SUB match, using default {Width}x{Height}",
                             _device, deviceIdentifier, _panelWidth, _panelHeight);
                     }
                 }
@@ -996,10 +1062,35 @@ namespace InfoPanel.Services
                 Logger.Warning("ThermalrightPanelDevice {Device}: No TrofeoBulk response (ec={Error}), continuing anyway", _device, readEc);
             }
 
-            // Re-identify model variant based on device-reported resolution.
-            // v1 (480) and v2 (599) share the same VID/PID but have different panels.
-            // TRCC forces 462 for all 5408 variants (byte[20] <= 3 -> pm=65 -> 1920x462).
-            if (_panelHeight != 480 && _device.Model == ThermalrightPanelModel.TrofeoVision916
+            // Re-identify model variant based on byte[20] discriminator + reported resolution.
+            // All 0x5408 panels share the same VID/PID but report different byte[20] values:
+            //   byte[20]=0x01: 9.16" v1   (firmware reports 480, framebuffer is 462 — flicker fix crops)
+            //   byte[20]<=3:   9.16" v2   (firmware reports 599 — see TRCC pm=65 path)
+            //   byte[20]=0x05: 11.3"      (firmware reports 480, actual panel is 1920x400)
+            byte? trofeoB20 = readBytes >= 21 ? (byte?)responseBuffer[20] : null;
+
+            if (trofeoB20 == 0x05
+                && ThermalrightPanelModelDatabase.Models.TryGetValue(ThermalrightPanelModel.TrofeoVision113, out var v113Model))
+            {
+                _detectedModel = v113Model;
+                _device.Model = v113Model.Model;
+                _panelWidth = v113Model.RenderWidth;
+                _panelHeight = v113Model.RenderHeight;
+                Logger.Information("ThermalrightPanelDevice {Device}: byte[20]=0x05 detected as Trofeo Vision 11.3\" ({Width}x{Height})",
+                    _device, _panelWidth, _panelHeight);
+            }
+            // On restart, model is already 11.3" but device still reports 480. Override to model's render size.
+            else if (_device.Model == ThermalrightPanelModel.TrofeoVision113 && _device.ModelInfo != null)
+            {
+                _panelWidth = _device.ModelInfo.RenderWidth;
+                _panelHeight = _device.ModelInfo.RenderHeight;
+            }
+            // v1 (reports 480) and v2 (reports 599) share the same VID/PID but report
+            // different heights. They are the same physical 9.16" panel, so v2 renders at
+            // the same 1920x480 default as v1 (overriding the bogus 599 the firmware reports;
+            // sending 599-height JPEGs is stretched). Flicker fix then crops to 462 if the
+            // user's unit needs it — identical opt-in behavior to v1.
+            else if (_panelHeight != 480 && _device.Model == ThermalrightPanelModel.TrofeoVision916
                 && ThermalrightPanelModelDatabase.Models.TryGetValue(ThermalrightPanelModel.TrofeoVision916V2, out var v2Model))
             {
                 _detectedModel = v2Model;
@@ -1014,12 +1105,14 @@ namespace InfoPanel.Services
                 _panelHeight = _device.ModelInfo.RenderHeight;
             }
 
-            // TRCC sends 1920x462 JPEGs for v1, NOT 1920x480 as reported by the device.
-            // The JPEG SOF0 in USB captures confirms height=0x01CE=462.
-            // Some panel units have a 462-row framebuffer; sending 480-height JPEGs overflows
-            // by 18 rows, wrapping to the top of the display.
-            // Flicker fix is toggled live via _device.FlickerFix, checked each frame in GenerateJpegBuffer.
-            if (_panelHeight == 480)
+            // Both 9.16" v1 and v2 render at 1920x480 by default. Some units have a 462-row
+            // framebuffer; sending 480-height JPEGs overflows by 18 rows and wraps to the top
+            // of the display (TRCC works around this by always sending 462 — JPEG SOF0 in USB
+            // captures confirms height=0x01CE=462). We default to the full 480 and let the user
+            // enable the Flicker Fix toggle to crop to 462 if their unit shows the overflow.
+            // Flicker fix is checked live each frame in GenerateJpegBuffer.
+            // Skip for 11.3" — that panel has its own 400-row target, not a 462 crop.
+            if (_panelHeight == 480 && _device.Model != ThermalrightPanelModel.TrofeoVision113)
             {
                 _flickerFixCropHeight = 462;
             }
@@ -1720,6 +1813,18 @@ namespace InfoPanel.Services
                 var width = _panelWidth;
                 var height = _panelHeight;
                 var pixelFormat = _detectedModel?.PixelFormat ?? ThermalrightPixelFormat.Jpeg;
+
+                // Cap JPEG frame size like TRCC does. TRCC never sends a JPEG >= 450,000 bytes
+                // (FormCZTV.ImageToJpg drops the frame and reduces quality by 5); the panel
+                // firmware's receive buffer is sized accordingly. Without this cap, a bright,
+                // high-entropy theme at quality 95 can exceed the buffer and wedge the panel
+                // (issue #139: Trofeo Vision 6.86" shows a frame then goes black until replug,
+                // and dimming to brightness 50 "fixes" it only because darker frames compress
+                // smaller). GenerateFrameBuffer's adaptive-quality loop enforces the cap.
+                if (pixelFormat == ThermalrightPixelFormat.Jpeg)
+                {
+                    _maxJpegSize = 400_000;
+                }
 
                 try
                 {

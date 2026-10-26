@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Models;
 using InfoPanel.Monitors;
 using InfoPanel.Services;
+using InfoPanel.LianLiPanel;
 using InfoPanel.TuringPanel;
 using Microsoft.Win32;
 using Microsoft.Win32.TaskScheduler;
@@ -24,6 +25,7 @@ using System.Xml.Serialization;
 using Task = System.Threading.Tasks.Task;
 using Timer = System.Threading.Timer;
 using InfoPanel.ThermalrightPanel;
+using InfoPanel.VmaxPanel;
 using HidSharp;
 
 namespace InfoPanel
@@ -272,6 +274,7 @@ namespace InfoPanel
         public void Initialize()
         {
             LoadProfiles();
+
             if (SharedModel.Instance.SelectedProfile is Profile p)
                 _currentSaveStateProfileGuid = p.Guid;
             if (Settings.AutosaveEnabled)
@@ -442,6 +445,17 @@ namespace InfoPanel
                     await TuringPanelTask.Instance.StopAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.LianLiPanelMultiDeviceMode))
+            {
+                if (Settings.LianLiPanelMultiDeviceMode)
+                {
+                    await LianLiPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await LianLiPanelTask.Instance.StopAsync();
+                }
+            }
             else if (e.PropertyName == nameof(Settings.WebServer))
             {
                 if (Settings.WebServer)
@@ -502,6 +516,17 @@ namespace InfoPanel
                     await ThermaltakePanelTask.Instance.StopAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.JlPanelMultiDeviceMode))
+            {
+                if (Settings.JlPanelMultiDeviceMode)
+                {
+                    await JlPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await JlPanelTask.Instance.StopAsync();
+                }
+            }
             else if (e.PropertyName == nameof(Settings.JonsboPanelMultiDeviceMode))
             {
                 if (Settings.JonsboPanelMultiDeviceMode)
@@ -511,6 +536,17 @@ namespace InfoPanel
                 else
                 {
                     await JonsboPanelTask.Instance.StopAsync();
+                }
+            }
+            else if (e.PropertyName == nameof(Settings.VmaxPanelMultiDeviceMode))
+            {
+                if (Settings.VmaxPanelMultiDeviceMode)
+                {
+                    await VmaxPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await VmaxPanelTask.Instance.StopAsync();
                 }
             }
 
@@ -701,9 +737,38 @@ namespace InfoPanel
                             Settings.TuringPanelMultiDeviceMode = settings.TuringPanelMultiDeviceMode;
 
                             Settings.TuringPanelDevices.Clear();
+                            Settings.LianLiPanelDevices.Clear();
                             foreach (var device in settings.TuringPanelDevices)
                             {
+                                var lianLiModelInfo = LianLiPanelModelDatabase.GetModelByDeviceId(device.DeviceId);
+                                if (lianLiModelInfo != null)
+                                {
+                                    Settings.LianLiPanelDevices.Add(new LianLiPanelDevice
+                                    {
+                                        DeviceId = device.DeviceId,
+                                        DeviceLocation = device.DeviceLocation,
+                                        Model = lianLiModelInfo.Model,
+                                        Enabled = device.Enabled,
+                                        ProfileGuid = device.ProfileGuid,
+                                        Rotation = device.Rotation,
+                                        Brightness = device.Brightness,
+                                        TargetFrameRate = device.TargetFrameRate,
+                                        JpegQuality = device.JpegQuality,
+                                    });
+                                    continue;
+                                }
+
                                 Settings.TuringPanelDevices.Add(device);
+                            }
+
+                            Settings.LianLiPanelMultiDeviceMode = settings.LianLiPanelMultiDeviceMode;
+
+                            foreach (var device in settings.LianLiPanelDevices)
+                            {
+                                if (!Settings.LianLiPanelDevices.Any(d => d.IsMatching(device.DeviceId)))
+                                {
+                                    Settings.LianLiPanelDevices.Add(device);
+                                }
                             }
 
                             // Load Thermalright panel settings
@@ -724,6 +789,15 @@ namespace InfoPanel
                                 Settings.ThermaltakePanelDevices.Add(device);
                             }
 
+                            // Load JL panel settings
+                            Settings.JlPanelMultiDeviceMode = settings.JlPanelMultiDeviceMode;
+
+                            Settings.JlPanelDevices.Clear();
+                            foreach (var device in settings.JlPanelDevices)
+                            {
+                                Settings.JlPanelDevices.Add(device);
+                            }
+
                             // Load Jonsbo panel settings
                             Settings.JonsboPanelMultiDeviceMode = settings.JonsboPanelMultiDeviceMode;
 
@@ -731,6 +805,15 @@ namespace InfoPanel
                             foreach (var device in settings.JonsboPanelDevices)
                             {
                                 Settings.JonsboPanelDevices.Add(device);
+                            }
+
+                            // Load VMAX panel settings
+                            Settings.VmaxPanelMultiDeviceMode = settings.VmaxPanelMultiDeviceMode;
+
+                            Settings.VmaxPanelDevices.Clear();
+                            foreach (var device in settings.VmaxPanelDevices)
+                            {
+                                Settings.VmaxPanelDevices.Add(device);
                             }
 
                             // Load hotkey bindings
