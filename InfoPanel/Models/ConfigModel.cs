@@ -527,6 +527,17 @@ namespace InfoPanel
                     await JlPanelTask.Instance.StopAsync();
                 }
             }
+            else if (e.PropertyName == nameof(Settings.JonsboPanelMultiDeviceMode))
+            {
+                if (Settings.JonsboPanelMultiDeviceMode)
+                {
+                    await JonsboPanelTask.Instance.StartAsync();
+                }
+                else
+                {
+                    await JonsboPanelTask.Instance.StopAsync();
+                }
+            }
             else if (e.PropertyName == nameof(Settings.VmaxPanelMultiDeviceMode))
             {
                 if (Settings.VmaxPanelMultiDeviceMode)
@@ -785,6 +796,15 @@ namespace InfoPanel
                             foreach (var device in settings.JlPanelDevices)
                             {
                                 Settings.JlPanelDevices.Add(device);
+                            }
+
+                            // Load Jonsbo panel settings
+                            Settings.JonsboPanelMultiDeviceMode = settings.JonsboPanelMultiDeviceMode;
+
+                            Settings.JonsboPanelDevices.Clear();
+                            foreach (var device in settings.JonsboPanelDevices)
+                            {
+                                Settings.JonsboPanelDevices.Add(device);
                             }
 
                             // Load VMAX panel settings

@@ -407,6 +407,7 @@ namespace InfoPanel
                 await ThermalrightPanelTask.Instance.StopAsync(true);
                 await ThermaltakePanelTask.Instance.StopAsync(true);
                 await JlPanelTask.Instance.StopAsync(true);
+                await JonsboPanelTask.Instance.StopAsync(true);
                 await VmaxPanelTask.Instance.StopAsync(true);
             });
         }
@@ -431,6 +432,7 @@ namespace InfoPanel
                         await ThermalrightPanelTask.Instance.StopAsync(true);
                         await ThermaltakePanelTask.Instance.StopAsync(true);
                         await JlPanelTask.Instance.StopAsync(true);
+                        await JonsboPanelTask.Instance.StopAsync(true);
                         await VmaxPanelTask.Instance.StopAsync(true);
                     });
                     break;
@@ -469,6 +471,11 @@ namespace InfoPanel
                 await JlPanelTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.JonsboPanelMultiDeviceMode)
+            {
+                await JonsboPanelTask.Instance.StartAsync();
+            }
+
             if (ConfigModel.Instance.Settings.VmaxPanelMultiDeviceMode)
             {
                 await VmaxPanelTask.Instance.StartAsync();
@@ -489,6 +496,7 @@ namespace InfoPanel
             await ThermalrightPanelTask.Instance.StopAsync();
             await ThermaltakePanelTask.Instance.StopAsync();
             await JlPanelTask.Instance.StopAsync();
+            await JonsboPanelTask.Instance.StopAsync();
             await VmaxPanelTask.Instance.StopAsync();
         }
 

@@ -6,6 +6,7 @@ using InfoPanel.TuringPanel;
 using InfoPanel.ThermalrightPanel;
 using InfoPanel.ThermaltakePanel;
 using InfoPanel.JlPanel;
+using InfoPanel.JonsboPanel;
 using InfoPanel.VmaxPanel;
 using InfoPanel.ViewModels;
 using InfoPanel.Views.Windows;
@@ -793,6 +794,90 @@ public partial class UsbPanelsPage : Page
                     }
 
                     settings.JlPanelDevices.Remove(deviceConfig);
+                }
+            });
+        }
+    }
+
+    // === Jonsbo Panel (DS916 / HLVMAX family) ===
+
+    private async void ButtonDiscoverJonsboPanelDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+            await UpdateJonsboPanelDeviceList();
+            button.IsEnabled = true;
+        }
+    }
+
+    private Task UpdateJonsboPanelDeviceList()
+    {
+        var discoveredDevices = JonsboPanelHelper.ScanDevices();
+
+        Logger.Information("JonsboPanel Discovery: Found {Count} devices", discoveredDevices.Count);
+
+        foreach (var discoveredDevice in discoveredDevices)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var device = settings.JonsboPanelDevices.FirstOrDefault(d =>
+                    d.IsMatching(discoveredDevice.DeviceId, discoveredDevice.DeviceLocation, discoveredDevice.Model));
+
+                if (device == null)
+                {
+                    var newDevice = new JonsboPanelDevice()
+                    {
+                        DeviceId = discoveredDevice.DeviceId,
+                        DeviceLocation = discoveredDevice.DeviceLocation,
+                        Model = discoveredDevice.Model,
+                        ProfileGuid = ConfigModel.Instance.Profiles.FirstOrDefault()?.Guid ?? Guid.Empty,
+                        TargetFrameRate = discoveredDevice.ModelInfo?.DefaultFrameRate ?? 25,
+                    };
+
+                    if (discoveredDevice.ModelInfo != null)
+                    {
+                        newDevice.RuntimeProperties.Name = discoveredDevice.ModelInfo.Name;
+                    }
+
+                    settings.JonsboPanelDevices.Add(newDevice);
+                    Logger.Information("JonsboPanel Discovery: Added new device '{DeviceId}' on {Port}",
+                        discoveredDevice.DeviceId, discoveredDevice.DeviceLocation);
+                }
+                else
+                {
+                    // COM port may have changed; refresh location.
+                    device.DeviceLocation = discoveredDevice.DeviceLocation;
+
+                    if (device.ModelInfo != null)
+                    {
+                        device.RuntimeProperties.Name = device.ModelInfo.Name;
+                    }
+
+                    Logger.Information("JonsboPanel Discovery: Device '{DeviceId}' already exists", discoveredDevice.DeviceId);
+                }
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ButtonRemoveJonsboPanelDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is JonsboPanelDevice runtimeDevice)
+        {
+            ConfigModel.Instance.AccessSettings(settings =>
+            {
+                var deviceConfig = settings.JonsboPanelDevices.FirstOrDefault(c => c.Id == runtimeDevice.Id);
+
+                if (deviceConfig != null)
+                {
+                    if (JonsboPanelTask.Instance.IsDeviceRunning(deviceConfig.Id))
+                    {
+                        _ = JonsboPanelTask.Instance.StopDevice(deviceConfig.Id);
+                    }
+
+                    settings.JonsboPanelDevices.Remove(deviceConfig);
                 }
             });
         }
