@@ -122,8 +122,10 @@ namespace InfoPanel.Services
 
             // Bytes 16-55: Zero padding (already zeroed)
 
-            // Bytes 56-59: Command repeated
-            BitConverter.GetBytes(cmd).CopyTo(header, 56);
+            // Bytes 56-59: Frame type (SSCRM_CMD_TYPE_PICTURE = 2). Constant regardless
+            // of pixel format — TRCC writes 2 here even when the data-format byte at offset
+            // 4 is 3 (RGB565). Without this, RGB565 panels (PM=0x20 / SPISCRM-V2) reject frames.
+            BitConverter.GetBytes(0x02).CopyTo(header, 56);
 
             // Bytes 60-63: Data size (little-endian)
             BitConverter.GetBytes(dataSize).CopyTo(header, 60);
@@ -251,10 +253,7 @@ namespace InfoPanel.Services
                         dimmed = ApplyBrightness(resizedBitmap);
                         convertBitmap = dimmed;
                     }
-                    using var rgb565Bitmap = convertBitmap.Copy(SKColorType.Rgb565);
-                    var bytes = rgb565Bitmap.Bytes;
-                    if (bigEndian) SwapRgb565Endianness(bytes);
-                    return bytes;
+                    return ConvertRgba8888ToRgb565(convertBitmap, bigEndian);
                 }
                 finally
                 {
@@ -342,13 +341,53 @@ namespace InfoPanel.Services
         }
 
         /// <summary>
-        /// Byte-swaps each 16-bit pixel in-place for big-endian RGB565.
-        /// Required for 320x320 panels.
+        /// Converts an RGBA8888 bitmap to RGB565 by truncation (no dithering).
+        /// SkiaSharp's Copy(SKColorType.Rgb565) applies ordered dithering, which produces
+        /// a fine mesh pattern visible on smooth gradients. TRCC's reference implementation
+        /// (FormCZTV.ImageTo565) drops the low bits with no dithering, so we match that.
+        /// Reads the bitmap row-by-row honoring RowBytes to avoid any row padding bleed.
         /// </summary>
-        private static void SwapRgb565Endianness(byte[] data)
+        private static byte[] ConvertRgba8888ToRgb565(SKBitmap bitmap, bool bigEndian)
         {
-            for (int i = 0; i < data.Length - 1; i += 2)
-                (data[i], data[i + 1]) = (data[i + 1], data[i]);
+            int width = bitmap.Width;
+            int height = bitmap.Height;
+            int srcRowBytes = bitmap.RowBytes;
+            byte[] dst = new byte[width * height * 2];
+
+            unsafe
+            {
+                byte* srcBase = (byte*)bitmap.GetPixels().ToPointer();
+                fixed (byte* dstBase = dst)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        byte* srcRow = srcBase + y * srcRowBytes;
+                        byte* dstRow = dstBase + y * width * 2;
+                        for (int x = 0; x < width; x++)
+                        {
+                            byte r = srcRow[x * 4];      // Rgba8888: R, G, B, A
+                            byte g = srcRow[x * 4 + 1];
+                            byte b = srcRow[x * 4 + 2];
+
+                            // Truncate to 5/6/5 — exact match to TRCC FormCZTV.ImageTo565
+                            byte hi = (byte)((r & 0xF8) | (g >> 5));        // RRRRR_GGG
+                            byte lo = (byte)(((g & 0x1C) << 3) | (b >> 3)); // GGG_BBBBB
+
+                            if (bigEndian)
+                            {
+                                dstRow[x * 2]     = hi;
+                                dstRow[x * 2 + 1] = lo;
+                            }
+                            else
+                            {
+                                dstRow[x * 2]     = lo;
+                                dstRow[x * 2 + 1] = hi;
+                            }
+                        }
+                    }
+                }
+            }
+            return dst;
         }
 
         private byte[]? _blackFrame;
@@ -716,8 +755,37 @@ namespace InfoPanel.Services
                 if (sub.HasValue)
                     Logger.Information("ThermalrightPanelDevice {Device}: ChiZhu SUB byte at [28]: 0x{SUB:X2} ({SUBDec})", _device, sub.Value, sub.Value);
 
-                // Try ChiZhu PM+SUB table first (covers ~35 SSCRM bulk models)
-                if (pm.HasValue && sub.HasValue)
+                // Three-pass ChiZhu detection. The identifier alone is not unique: SSCRM-V1
+                // firmware ships on both 480x480 (Grand/Hydro/Hyper/Peerless, PM=1/3/4) and
+                // 640x480 (Stream Vision, PM=7). PM+SUB resolves those. Identifier+SUB is only
+                // used to OVERRIDE a wrong PM+SUB entry (e.g. SPISCRM-V2 at PM=0x20 SUB=0x20
+                // overrides the legacy generic ChiZhuVision320x320).
+                string? deviceIdentifier = null;
+                if (bytesRead >= 12)
+                {
+                    // Identifier zone is bytes 4..19 (flags byte is at offset 20). Length varies:
+                    // SSCRM-V1/V3/V4 = 8 chars, SPISCRM-V2 = 10 chars, all null-padded.
+                    int idLen = Math.Min(16, bytesRead - 4);
+                    deviceIdentifier = System.Text.Encoding.ASCII.GetString(responseBuffer, 4, idLen).TrimEnd('\0');
+                    Logger.Information("ThermalrightPanelDevice {Device}: Device identifier: {Id}", _device, deviceIdentifier);
+                }
+
+                // Pass 1: strict identifier+SUB override (Wonder/Rainbow/Levita SSCRM-V3, SPISCRM-V2)
+                if (!string.IsNullOrEmpty(deviceIdentifier) && sub.HasValue)
+                {
+                    _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifierAndSub(deviceIdentifier, sub.Value);
+                    if (_detectedModel != null)
+                    {
+                        _panelWidth = _detectedModel.RenderWidth;
+                        _panelHeight = _detectedModel.RenderHeight;
+                        _device.Model = _detectedModel.Model;
+                        Logger.Information("ThermalrightPanelDevice {Device}: Identifier {Id}+SUB 0x{SUB:X2} -> {Model} ({Width}x{Height})",
+                            _device, deviceIdentifier, sub.Value, _detectedModel.Name, _panelWidth, _panelHeight);
+                    }
+                }
+
+                // Pass 2: PM+SUB table (covers most ChiZhu panels by hardware variant)
+                if (_detectedModel == null && pm.HasValue && sub.HasValue)
                 {
                     var chizhuModel = ThermalrightPanelModelDatabase.GetModelByChiZhuPM(pm.Value, sub.Value);
                     if (chizhuModel != null)
@@ -731,24 +799,22 @@ namespace InfoPanel.Services
                     }
                 }
 
-                // Fall back to identifier-based detection (SSCRM-V1/V3/V4)
-                if (_detectedModel == null && bytesRead >= 12)
+                // Pass 3: identifier-only catch-all for legacy panels not in the PM+SUB switch
+                // (e.g. PM=1 SUB=0 Grand Vision: identifier SSCRM-V1 routes to the 480x480 entry).
+                if (_detectedModel == null && !string.IsNullOrEmpty(deviceIdentifier))
                 {
-                    var deviceIdentifier = System.Text.Encoding.ASCII.GetString(responseBuffer, 4, 8).TrimEnd('\0');
-                    Logger.Information("ThermalrightPanelDevice {Device}: Device identifier: {Id}", _device, deviceIdentifier);
-
-                    _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifier(deviceIdentifier, sub);
+                    _detectedModel = ThermalrightPanelModelDatabase.GetModelByIdentifier(deviceIdentifier);
                     if (_detectedModel != null)
                     {
                         _panelWidth = _detectedModel.RenderWidth;
                         _panelHeight = _detectedModel.RenderHeight;
                         _device.Model = _detectedModel.Model;
-                        Logger.Information("ThermalrightPanelDevice {Device}: Detected {Model} - using {Width}x{Height}",
-                            _device, _detectedModel.Name, _panelWidth, _panelHeight);
+                        Logger.Information("ThermalrightPanelDevice {Device}: Identifier {Id} (fallback) -> {Model} ({Width}x{Height})",
+                            _device, deviceIdentifier, _detectedModel.Name, _panelWidth, _panelHeight);
                     }
                     else
                     {
-                        Logger.Warning("ThermalrightPanelDevice {Device}: Unknown identifier '{Id}', using default {Width}x{Height}",
+                        Logger.Warning("ThermalrightPanelDevice {Device}: Unknown identifier '{Id}' and no PM+SUB match, using default {Width}x{Height}",
                             _device, deviceIdentifier, _panelWidth, _panelHeight);
                     }
                 }

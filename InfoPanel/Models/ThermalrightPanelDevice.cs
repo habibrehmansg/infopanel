@@ -87,6 +87,7 @@ namespace InfoPanel.Models
             get
             {
                 return Model == ThermalrightPanelModel.WonderVision360
+                    || Model == ThermalrightPanelModel.WonderVision360V2
                     || Model == ThermalrightPanelModel.RainbowVision360
                     || Model == ThermalrightPanelModel.LevitaVision360;
             }
