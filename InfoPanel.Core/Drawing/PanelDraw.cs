@@ -16,7 +16,7 @@ namespace InfoPanel.Drawing
         /// Draws <paramref name="displayItems"/> (the profile's items, in draw order) onto <paramref name="g"/>.
         /// Output depends only on the arguments: the same profile, items and context give the same pixels.
         /// </summary>
-        public static void Run(Profile profile, IReadOnlyList<DisplayItem> displayItems, SkiaGraphics g, RenderContext ctx, float scale = 1)
+        public static void Run(Profile profile, IReadOnlyList<DisplayItem> displayItems, SkiaGraphics g, RenderContext ctx)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -28,7 +28,7 @@ namespace InfoPanel.Drawing
             foreach (var displayItem in displayItems)
             {
                 if (displayItem.Hidden) continue;
-                Draw(g, ctx, scale, displayItem);
+                Draw(g, ctx, displayItem);
             }
 
             var fpsCounter = ctx.Fps;
@@ -56,10 +56,10 @@ namespace InfoPanel.Drawing
             }
         }
 
-        private static void Draw(SkiaGraphics g, RenderContext ctx, float scale, DisplayItem displayItem)
+        private static void Draw(SkiaGraphics g, RenderContext ctx, DisplayItem displayItem)
         {
-            var x = (int)Math.Floor(displayItem.X * scale);
-            var y = (int)Math.Floor(displayItem.Y * scale);
+            var x = displayItem.X;
+            var y = displayItem.Y;
 
             switch (displayItem)
             {
@@ -68,7 +68,7 @@ namespace InfoPanel.Drawing
                         foreach (var item in groupDisplayItem.DisplayItemsCopy)
                         {
                             if (item.Hidden) continue;
-                            Draw(g, ctx, scale, item);
+                            Draw(g, ctx, item);
                         }
                         break;
                     }
@@ -81,18 +81,18 @@ namespace InfoPanel.Drawing
                             && tableSensorDisplayItem.GetValue(ctx.Sensors) is SensorReading sensorReading
                             && sensorReading.ValueTable is DataTable table)
                         {
-                            DrawTableSensorDisplay(g, tableSensorDisplayItem, x, y, scale, color, table);
+                            DrawTableSensorDisplay(g, tableSensorDisplayItem, x, y, color, table);
                             break;
                         }
 
                         // Regular text display
                         if (textDisplayItem.Marquee && textDisplayItem.Width > 0)
                         {
-                            DrawMarqueeText(g, ctx, textDisplayItem, text, color, x, y, scale);
+                            DrawMarqueeText(g, ctx, textDisplayItem, text, color, x, y);
                         }
                         else
                         {
-                            DrawNormalText(g, textDisplayItem, text, color, x, y, scale);
+                            DrawNormalText(g, textDisplayItem, text, color, x, y);
                         }
 
                         break;
@@ -119,9 +119,6 @@ namespace InfoPanel.Drawing
 
                         var scaledWidth = (int)size.Width;
                         var scaledHeight = (int)size.Height;
-
-                        scaledWidth = (int)Math.Floor(scaledWidth * scale);
-                        scaledHeight = (int)Math.Floor(scaledHeight * scale);
 
                         if (scaledWidth <= 0 || scaledHeight <= 0)
                         {
@@ -235,8 +232,8 @@ namespace InfoPanel.Drawing
                             if (scaledWidth == 0) scaledWidth = cachedA.Width;
                             if (scaledHeight == 0) scaledHeight = cachedA.Height;
 
-                            scaledWidth = (int)Math.Floor(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
-                            scaledHeight = (int)Math.Floor(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
+                            scaledWidth = (int)Math.Floor(scaledWidth * gaugeDisplayItem.Scale / 100.0f);
+                            scaledHeight = (int)Math.Floor(scaledHeight * gaugeDisplayItem.Scale / 100.0f);
 
                             g.DrawImage(cachedA, x, y, scaledWidth, scaledHeight, ctx.Elapsed, gaugeDisplayItem.Rotation, 0, 0, flipX: gaugeDisplayItem.FlipX);
 
@@ -255,8 +252,8 @@ namespace InfoPanel.Drawing
                             var size = ImagePlaceholder.Resolve(new SKSize(
                                 gaugeDisplayItem.Width * gaugeDisplayItem.Scale / 100.0f,
                                 gaugeDisplayItem.Height * gaugeDisplayItem.Scale / 100.0f));
-                            var scaledWidth = (int)Math.Floor(size.Width * scale);
-                            var scaledHeight = (int)Math.Floor(size.Height * scale);
+                            var scaledWidth = (int)Math.Floor(size.Width);
+                            var scaledHeight = (int)Math.Floor(size.Height);
 
                             if (scaledWidth > 0 && scaledHeight > 0)
                             {
@@ -268,8 +265,8 @@ namespace InfoPanel.Drawing
                     }
                 case ChartDisplayItem chartDisplayItem:
                     {
-                        var width = scale == 1 ? (int)chartDisplayItem.Width : (int)Math.Floor(chartDisplayItem.Width * scale);
-                        var height = scale == 1 ? (int)chartDisplayItem.Height : (int)Math.Floor(chartDisplayItem.Height * scale);
+                        var width = chartDisplayItem.Width;
+                        var height = chartDisplayItem.Height;
 
                         using var graphBitmap = new SKBitmap(chartDisplayItem.Width, chartDisplayItem.Height);
                         using var canvas = new SKCanvas(graphBitmap);
@@ -291,8 +288,8 @@ namespace InfoPanel.Drawing
 
                 case ShapeDisplayItem shapeDisplayItem:
                     {
-                        var width = scale == 1 ? (int)shapeDisplayItem.Width : (int)Math.Floor(shapeDisplayItem.Width * scale);
-                        var height = scale == 1 ? (int)shapeDisplayItem.Height : (int)Math.Floor(shapeDisplayItem.Height * scale);
+                        var width = shapeDisplayItem.Width;
+                        var height = shapeDisplayItem.Height;
 
                         var centerX = x + width / 2;
                         var centerY = y + height / 2;
@@ -518,11 +515,11 @@ namespace InfoPanel.Drawing
                             {
                                 if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor) && SKColor.TryParse(shapeDisplayItem.GradientColor2, out var gradientColor2))
                                 {
-                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness * scale, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(ctx.Elapsed), shapeDisplayItem.GradientType);
+                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(ctx.Elapsed), shapeDisplayItem.GradientType);
                                 }
                                 else
                                 {
-                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness * scale);
+                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness);
                                 }
                             }
                         }
@@ -695,9 +692,9 @@ namespace InfoPanel.Drawing
         }
 
         private static void DrawTableSensorDisplay(SkiaGraphics g, TableSensorDisplayItem tableSensorDisplayItem, 
-            int x, int y, float scale, string color, DataTable table)
+            int x, int y, string color, DataTable table)
         {
-            var fontSize = (int)Math.Floor(tableSensorDisplayItem.FontSize * scale);
+            var fontSize = tableSensorDisplayItem.FontSize;
             var glowRadius = tableSensorDisplayItem.GlowEnabled ? tableSensorDisplayItem.GlowRadius : 0;
             var glowColor = tableSensorDisplayItem.GlowEnabled && !string.IsNullOrEmpty(tableSensorDisplayItem.GlowColor) ? tableSensorDisplayItem.GlowColor : null;
             var glowBlendMode = tableSensorDisplayItem.GlowEnabled ? tableSensorDisplayItem.GlowBlendMode : null;
@@ -764,14 +761,14 @@ namespace InfoPanel.Drawing
         }
 
         private static void DrawMarqueeText(SkiaGraphics g, RenderContext ctx, TextDisplayItem textDisplayItem, 
-            string text, string color, int x, int y, float scale)
+            string text, string color, int x, int y)
         {
-            var fontSize = (int)Math.Floor(textDisplayItem.FontSize * scale);
-            var drawWidth = (int)(textDisplayItem.Width * scale);
+            var fontSize = textDisplayItem.FontSize;
+            var drawWidth = textDisplayItem.Width;
             
             // Validate marquee speed to prevent division by zero
             var scrollSpeed = Math.Max(textDisplayItem.MarqueeSpeed, 1) * 1.0;
-            var padding = (int)(textDisplayItem.MarqueeSpacing * scale); // Apply scale to spacing
+            var padding = textDisplayItem.MarqueeSpacing;
             
             // Measure text once
             var (textWidth, textHeight) = g.MeasureString(text, textDisplayItem.Font, textDisplayItem.FontStyle,
@@ -781,7 +778,7 @@ namespace InfoPanel.Drawing
             if (textWidth <= drawWidth)
             {
                 // Text fits, draw normally without marquee
-                DrawNormalText(g, textDisplayItem, text, color, x, y, scale);
+                DrawNormalText(g, textDisplayItem, text, color, x, y);
                 return;
             }
 
@@ -794,7 +791,7 @@ namespace InfoPanel.Drawing
 
             // Calculate height for clipping
             var clipHeight = textDisplayItem.Height > 0 
-                ? (int)(textDisplayItem.Height * scale) 
+                ? textDisplayItem.Height
                 : (int)textHeight;
 
             // Set up clipping
@@ -821,15 +818,15 @@ namespace InfoPanel.Drawing
         }
 
         private static void DrawNormalText(SkiaGraphics g, TextDisplayItem textDisplayItem, 
-            string text, string color, int x, int y, float scale)
+            string text, string color, int x, int y)
         {
-            var fontSize = (int)Math.Floor(textDisplayItem.FontSize * scale);
-            var drawWidth = (int)(textDisplayItem.Width * scale);
+            var fontSize = textDisplayItem.FontSize;
+            var drawWidth = textDisplayItem.Width;
             var glowRadius = textDisplayItem.GlowEnabled ? textDisplayItem.GlowRadius : 0;
             var glowColor = textDisplayItem.GlowEnabled && !string.IsNullOrEmpty(textDisplayItem.GlowColor) ? textDisplayItem.GlowColor : null;
             var glowBlendMode = textDisplayItem.GlowEnabled ? textDisplayItem.GlowBlendMode : null;
 
-            var drawHeight = (int)(textDisplayItem.Height * scale);
+            var drawHeight = textDisplayItem.Height;
 
             g.DrawString(text, textDisplayItem.Font, textDisplayItem.FontStyle, fontSize, color,
                 x, y, textDisplayItem.RightAlign, textDisplayItem.CenterAlign,

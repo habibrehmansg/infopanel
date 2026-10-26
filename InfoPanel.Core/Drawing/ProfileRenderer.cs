@@ -32,7 +32,7 @@ namespace InfoPanel.Drawing
 
                 // Not disposed: disposing it would dispose the caller's canvas.
                 var g = new SkiaGraphics(canvas, profile.FontScale);
-                PanelDraw.Run(profile, items, g, ctx, scale: 1);
+                PanelDraw.Run(profile, items, g, ctx);
             }
             finally
             {
@@ -85,7 +85,7 @@ namespace InfoPanel.Drawing
         /// <summary>
         /// Adds the bounds of <paramref name="item"/> (and, for a group, its visible children) to
         /// <paramref name="result"/>, and returns its axis-aligned extent, or null if it has none.
-        /// Each case mirrors what <see cref="PanelDraw"/> draws for that kind at scale 1.
+        /// Each case mirrors what <see cref="PanelDraw"/> draws for that kind.
         /// </summary>
         private static SKRect? Measure(SkiaGraphics g, RenderContext ctx, DisplayItem item, List<ItemBounds> result)
         {
