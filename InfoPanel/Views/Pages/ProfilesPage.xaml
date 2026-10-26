@@ -242,17 +242,25 @@
                                                         </Grid.ColumnDefinitions>
 
                                                         <StackPanel>
-                                                            <TextBlock
-                                                                Margin="10,5,10,0"
+                                                            <!--  Display assignment: pick which monitor this profile's window lives on.
+                                                                  Selecting an entry sets Profile.TargetWindow and resets the window to that
+                                                                  display's top-left; a running panel moves immediately.  -->
+                                                            <ComboBox
+                                                                MinWidth="220"
+                                                                MaxWidth="340"
                                                                 HorizontalAlignment="Left"
-                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="{Binding TargetWindow.DeviceName, Mode=OneWay}"
-                                                                TextTrimming="CharacterEllipsis" />
+                                                                DisplayMemberPath="Label"
+                                                                ItemsSource="{Binding ViewModel.Displays, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                                DataContextChanged="ComboBoxDisplay_DataContextChanged"
+                                                                Loaded="ComboBoxDisplay_Loaded"
+                                                                SelectionChanged="ComboBoxDisplay_SelectionChanged"
+                                                                Tag="{Binding}"
+                                                                ToolTip="Display this panel is assigned to" />
                                                             <TextBlock
                                                                 Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="{Binding TargetWindow.Name, Mode=OneWay}" />
+                                                                Text="{Binding TargetWindow.Name, Mode=OneWay, StringFormat='Display  ({0})'}" />
                                                         </StackPanel>
 
                                                         <StackPanel
