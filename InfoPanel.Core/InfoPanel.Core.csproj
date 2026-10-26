@@ -21,6 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Bundled Inter (OFL, see Fonts/OFL.txt), registered by FontRegistry. Resource names: InfoPanel.Fonts.<file>. -->
+    <EmbeddedResource Include="Fonts\*.ttf" LogicalName="InfoPanel.Fonts.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
   </ItemGroup>
 

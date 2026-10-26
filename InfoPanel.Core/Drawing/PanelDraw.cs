@@ -698,16 +698,37 @@ namespace InfoPanel.Drawing
             int x, int y, float scale, string color, DataTable table)
         {
             var fontSize = (int)Math.Floor(tableSensorDisplayItem.FontSize * scale);
-            var format = tableSensorDisplayItem.TableFormat;
-            var maxRows = tableSensorDisplayItem.MaxRows;
-            var formatParts = format.Split('|');
             var glowRadius = tableSensorDisplayItem.GlowEnabled ? tableSensorDisplayItem.GlowRadius : 0;
             var glowColor = tableSensorDisplayItem.GlowEnabled && !string.IsNullOrEmpty(tableSensorDisplayItem.GlowColor) ? tableSensorDisplayItem.GlowColor : null;
             var glowBlendMode = tableSensorDisplayItem.GlowEnabled ? tableSensorDisplayItem.GlowBlendMode : null;
 
-            if (formatParts.Length == 0) return;
+            foreach (var cell in LayoutTable(g, tableSensorDisplayItem, x, y, fontSize, table))
+            {
+                g.DrawString(cell.Text,
+                    tableSensorDisplayItem.Font, tableSensorDisplayItem.FontStyle, fontSize, color,
+                    cell.X, cell.Y,
+                    cell.RightAlign, tableSensorDisplayItem.CenterAlign,
+                    tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic,
+                    tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout,
+                    tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, cell.Width, 0, glowRadius, glowColor, glowBlendMode);
+            }
+        }
 
-            (float fWidth, float fHeight) = g.MeasureString("A", tableSensorDisplayItem.Font, tableSensorDisplayItem.FontStyle, 
+        /// <summary>A table cell as <see cref="DrawTableSensorDisplay"/> draws it: text at (X, Y), Width wide, one line apart.</summary>
+        internal readonly record struct TableCell(string Text, int X, int Y, int Width, bool RightAlign);
+
+        /// <summary>
+        /// The cells of a table in draw order (per column: the header when shown, then up to MaxRows rows of
+        /// <see cref="IPluginData"/>). Columns are each format length + 10 apart; rows are one "A" line apart, whatever
+        /// a cell's own height. Shared by drawing and <see cref="ProfileRenderer.MeasureBounds"/>.
+        /// </summary>
+        internal static IEnumerable<TableCell> LayoutTable(SkiaGraphics g, TableSensorDisplayItem tableSensorDisplayItem,
+            int x, int y, int fontSize, DataTable table)
+        {
+            var maxRows = tableSensorDisplayItem.MaxRows;
+            var formatParts = tableSensorDisplayItem.TableFormat.Split('|');
+
+            (_, float fHeight) = g.MeasureString("A", tableSensorDisplayItem.Font, tableSensorDisplayItem.FontStyle, 
                 fontSize, tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic, 
                 tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout);
 
@@ -720,31 +741,20 @@ namespace InfoPanel.Drawing
                     column < table.Columns.Count && 
                     int.TryParse(split[1], out var length))
                 {
-                    // Draw header if enabled
+                    var rightAlign = i != 0 && tableSensorDisplayItem.RightAlign;
+
                     if (tableSensorDisplayItem.ShowHeader)
                     {
-                        g.DrawString(table.Columns[column].ColumnName, 
-                            tableSensorDisplayItem.Font, tableSensorDisplayItem.FontStyle, fontSize, color,
-                            x + tWidth, y,
-                            i != 0 && tableSensorDisplayItem.RightAlign, tableSensorDisplayItem.CenterAlign, 
-                            tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic, 
-                            tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout, 
-                            tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, length, 0, glowRadius, glowColor, glowBlendMode);
+                        yield return new TableCell(table.Columns[column].ColumnName, x + tWidth, y, length, rightAlign);
                     }
 
-                    // Draw rows
                     var rows = Math.Min(table.Rows.Count, maxRows);
                     for (int j = 0; j < rows; j++)
                     {
                         if (table.Rows[j][column] is IPluginData pluginData)
                         {
-                            g.DrawString(pluginData.ToString(), 
-                                tableSensorDisplayItem.Font, tableSensorDisplayItem.FontStyle, fontSize, color,
-                                x + tWidth, (int)(y + (fHeight * (j + (tableSensorDisplayItem.ShowHeader ? 1 : 0)))),
-                                i != 0 && tableSensorDisplayItem.RightAlign, tableSensorDisplayItem.CenterAlign, 
-                                tableSensorDisplayItem.Bold, tableSensorDisplayItem.Italic, 
-                                tableSensorDisplayItem.Underline, tableSensorDisplayItem.Strikeout, 
-                                tableSensorDisplayItem.Wrap, tableSensorDisplayItem.Ellipsis, length, 0, glowRadius, glowColor, glowBlendMode);
+                            yield return new TableCell(pluginData.ToString(), x + tWidth,
+                                (int)(y + (fHeight * (j + (tableSensorDisplayItem.ShowHeader ? 1 : 0)))), length, rightAlign);
                         }
                     }
 

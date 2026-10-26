@@ -151,12 +151,14 @@ namespace InfoPanel.Models
 
         private static bool IsSvgContent(Stream stream)
         {
-            if (stream.Length < 512)
+            // Sniff up to the first 512 bytes; a small SVG (under 512 bytes) is still an SVG.
+            var length = (int)Math.Min(512, stream.Length);
+            if (length == 0)
             {
                 return false;
             }
 
-            var buffer = new byte[512];
+            var buffer = new byte[length];
             stream.ReadExactly(buffer, 0, buffer.Length);
             stream.Position = 0;
 

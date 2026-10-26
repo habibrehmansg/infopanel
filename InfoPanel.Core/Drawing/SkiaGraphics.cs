@@ -212,7 +212,7 @@ namespace InfoPanel.Drawing
                 using var outerPaint = new SKPaint { BlendMode = blendMode };
                 Canvas.SaveLayer(outerPaint);
 
-                // Inner layer: draw blurred glow with normal compositing
+                // Inner layer: draw blurred glow with normal compositing. The radius is the blur's sigma; see GlowExtent.
                 using var blurFilter = SKImageFilter.CreateBlur(glowRadius, glowRadius);
                 using var glowPaint = new SKPaint { ImageFilter = blurFilter };
                 Canvas.SaveLayer(glowPaint);
@@ -231,6 +231,12 @@ namespace InfoPanel.Drawing
 
             Canvas.Restore();
         }
+
+        /// <summary>
+        /// How far beyond the text block a glow of <paramref name="glowRadius"/> reaches. <see cref="DrawString"/>
+        /// blurs with sigma = <paramref name="glowRadius"/>, and Skia's blur covers 3 sigma, rounded up to whole pixels.
+        /// </summary>
+        internal static int GlowExtent(int glowRadius) => glowRadius > 0 ? (int)Math.Ceiling(3.0 * glowRadius) : 0;
 
         private static bool TryParseBlendMode(string? value, out SKBlendMode mode)
         {
@@ -255,6 +261,7 @@ namespace InfoPanel.Drawing
         {
             var tb = new TextBlock
             {
+                FontMapper = InfoPanelFontMapper.Instance,
                 EllipsisEnabled = ellipsis,
                 MaxLines = wrap ? 1 : null,
                 MaxWidth = width > 0 ? width : null
@@ -293,8 +300,22 @@ namespace InfoPanel.Drawing
 
         private static readonly ConcurrentDictionary<string, SKTypeface> _typefaceCache = [];
 
+        /// <summary>
+        /// The typeface for a text item's font settings. A <see cref="FontRegistry"/> family wins over a
+        /// system font of the same name; a non-empty <paramref name="fontStyle"/> (a style name such as
+        /// "SemiBold Italic") replaces <paramref name="bold"/> and <paramref name="italic"/>, as in 1.x.
+        /// </summary>
         public static SKTypeface CreateTypeface(string fontName, string fontStyle, bool bold, bool italic)
         {
+            var (weight, slant) = string.IsNullOrEmpty(fontStyle)
+                ? (bold ? 700 : 400, italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright)
+                : FontRegistry.ParseStyleName(fontStyle);
+
+            if (FontRegistry.TryGet(fontName, weight, slant, out var registered))
+            {
+                return registered;
+            }
+
             string cacheKey = $"{fontName}-{fontStyle}-{bold}-{italic}";
 
             if (_typefaceCache.TryGetValue(cacheKey, out var cached))
@@ -851,6 +872,7 @@ namespace InfoPanel.Drawing
 
             var tb = new TextBlock
             {
+                FontMapper = InfoPanelFontMapper.Instance,
                 EllipsisEnabled = ellipsis,
                 MaxLines = wrap ? 1 : null,
                 MaxWidth = width > 0 ? width : null

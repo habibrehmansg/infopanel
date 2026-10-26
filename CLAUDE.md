@@ -52,7 +52,8 @@ Rendering reads nothing global: time, sensor values, history, images and per-ite
   - `HttpImageDisplayItem.HttpUrl` is kept but always serializes as null: the one whitelisted difference from 1.x output.
   - `DisplayItem.Guid` is still `[XmlIgnore]`; M2 serializes it as a `<Guid>` element (1.x ignores unknown elements). That is the one planned model change.
 - **Goldens and snapshots** (from M3 and M5): rendering changes are guarded by golden images and the kind manifest by a snapshot. Regenerate only for an intended change, and review the diff:
-  - `UPDATE_GOLDENS=1 dotnet test --filter Category=Golden`
+  - `UPDATE_GOLDENS=1 dotnet test InfoPanel.slnx --filter Category=Golden` (goldens are per OS in `InfoPanel.Core.Tests/Golden/{osx,win,linux}/`; only missing or out-of-tolerance files are rewritten; failures leave `*.actual.png`/`*.diff.png` in `InfoPanel.Core.Tests/TestResults/golden/`). Text in goldens uses the bundled Inter only.
+  - The images they draw are generated: `GENERATE_FIXTURE_ASSETS=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~FixtureAssets` rewrites `InfoPanel.Core.Tests/Fixtures/assets/`.
   - `UPDATE_SNAPSHOTS=1 dotnet test --filter KindManifest`
 - **1.x code** is read from the `1.4.x` branch with `git show 1.4.x:<path>` (no worktrees). Port from there, using `PORTING.md` as the backlog.
 - **No CI on 2.0.x** for now; `.github/workflows/dotnet-desktop.yml` is the 1.x workflow and is left untouched.

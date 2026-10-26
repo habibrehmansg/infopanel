@@ -44,3 +44,24 @@ internal static class TestContexts
         Options = new RenderOptions(Smoothing: false),
     };
 }
+
+/// <summary>A clock in a UTC local zone that moves only when <see cref="Advance"/> is called.</summary>
+internal sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
+{
+    private DateTimeOffset _utcNow = utcNow;
+    private long _timestamp;
+
+    public override DateTimeOffset GetUtcNow() => _utcNow;
+
+    public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+    public override long GetTimestamp() => _timestamp;
+
+    public void Advance(TimeSpan by)
+    {
+        _utcNow += by;
+        _timestamp += by.Ticks;
+    }
+}
