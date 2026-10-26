@@ -1,0 +1,19 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "rect", "x": 10, "y": 10, "w": 80, "h": 50, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "media", "x": 10, "y": 10, "w": 80, "h": 50, "fit": "fill", "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"}},
+    {"kind": "rect", "x": 100, "y": 10, "w": 80, "h": 50, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "media", "x": 100, "y": 10, "w": 80, "h": 50, "fit": "contain", "align": [0, 0.5], "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"}},
+    {"kind": "rect", "x": 190, "y": 10, "w": 80, "h": 50, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "media", "x": 190, "y": 10, "w": 80, "h": 50, "fit": "cover", "align": [0.5, 0], "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"}},
+    {"kind": "rect", "x": 280, "y": 10, "w": 40, "h": 40, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "media", "x": 280, "y": 10, "w": 40, "h": 40, "fit": "none", "align": [1, 1], "source": {"asset": "sha256:a734e9ea7e45149b532550ec7450468ae76ff813aef8ae6f6c51ae2733a4a169"}},
+    {"kind": "media", "x": 330, "y": 10, "h": 80, "source": {"asset": "sha256:a734e9ea7e45149b532550ec7450468ae76ff813aef8ae6f6c51ae2733a4a169"}},
+    {"kind": "media", "x": 10, "y": 70, "w": 50, "playback": "once", "speed": 16, "source": {"asset": "sha256:e796ee98bcccd3a77b80d6c394435d1c460c3684c96c542b073150f0ba6eb354"}},
+    {"kind": "media", "x": 70, "y": 70, "w": 50, "h": 50, "sampling": "nearest", "opacity": 0.5, "source": {"sequence": [{"asset": "sha256:d33c05a7e4db5800d89782dde7346c7626b10180a3cbed024a1722af0db75138"}, {"asset": "sha256:dc12f6394ba94be0e7793081a10bedffd4c150a85d607dfc26a315dbe22c0969"}], "index": 0.6}},
+    {"kind": "media", "x": 130, "y": 70, "w": 50, "h": 50, "source": {"sequence": [{"asset": "sha256:d33c05a7e4db5800d89782dde7346c7626b10180a3cbed024a1722af0db75138"}, {"asset": "sha256:dc12f6394ba94be0e7793081a10bedffd4c150a85d607dfc26a315dbe22c0969"}], "index": 0.6, "crossfade": true}},
+    {"kind": "media", "x": 190, "y": 70, "w": 80, "h": 50, "source": {"asset": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+    {"kind": "media", "x": 280, "y": 60, "source": {"asset": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}}
+  ]
+}

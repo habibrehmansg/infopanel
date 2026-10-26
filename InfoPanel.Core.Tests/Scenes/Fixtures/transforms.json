@@ -1,0 +1,16 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "rect", "x": 10, "y": 10, "w": 40, "h": 40, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "group", "transform": [{"type": "translate", "x": 10, "y": 10}], "children": [{"kind": "rect", "w": 40, "h": 40, "fill": "#22c55e80"}]},
+    {"kind": "group", "transform": [{"type": "rotate", "angle": 30, "cx": 90, "cy": 30}], "children": [{"kind": "rect", "x": 70, "y": 10, "w": 40, "h": 40, "fill": "#3b82f6"}]},
+    {"kind": "group", "transform": [{"type": "scale", "x": 1.5, "y": 0.5, "cx": 150, "cy": 30}], "children": [{"kind": "rect", "x": 130, "y": 10, "w": 40, "h": 40, "fill": "#f59e0b"}]},
+    {"kind": "group", "transform": [{"type": "scale", "x": -1, "y": 1, "cx": 220, "cy": 0}], "children": [{"kind": "path", "d": "M200 10 L240 30 L200 50 Z", "fill": "#ef4444"}]},
+    {"kind": "group", "transform": [{"type": "skew", "x": 20, "y": 10}], "children": [{"kind": "rect", "x": 250, "y": 0, "w": 30, "h": 30, "fill": "#a855f7"}]},
+    {"kind": "group", "transform": [{"type": "translate", "x": 40, "y": 80}, {"type": "rotate", "angle": 45}, {"type": "scale", "x": 2, "y": 1}], "children": [{"kind": "rect", "x": -10, "y": -5, "w": 20, "h": 10, "fill": "#14b8a6"}]},
+    {"kind": "group", "transform": [{"type": "matrix", "m": [1, 0.3, -0.3, 1, 120, 70]}], "children": [{"kind": "rect", "w": 40, "h": 30, "r": [10, 0, 10, 0], "fill": "#ec4899"}]},
+    {"kind": "group", "transform": [{"type": "skew", "x": 120, "y": -120}], "children": [{"kind": "rect", "x": 200, "y": 80, "w": 20, "h": 20, "fill": "#84cc16"}]},
+    {"kind": "group", "opacity": 0.5, "children": [{"kind": "rect", "x": 240, "y": 70, "w": 40, "h": 40, "fill": "#ffffff"}, {"kind": "rect", "x": 260, "y": 90, "w": 40, "h": 20, "fill": "#ffffff"}]},
+    {"kind": "rect", "x": 290, "y": 10, "w": 20, "h": 20, "fill": "#f97316", "stroke": {"paint": "#ffffff", "width": 6}, "opacity": 0.5}
+  ]
+}

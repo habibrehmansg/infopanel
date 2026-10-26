@@ -1,0 +1,15 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "group", "clip": {"kind": "rect", "x": 10, "y": 10, "w": 60, "h": 60, "r": [20, 0, 20, 0]}, "children": [{"kind": "rect", "w": 100, "h": 100, "fill": "#3b82f6"}]},
+    {"kind": "group", "clip": {"kind": "ellipse", "cx": 110, "cy": 40, "rx": 30, "ry": 20}, "children": [{"kind": "rect", "x": 70, "w": 100, "h": 100, "fill": "#22c55e"}]},
+    {"kind": "group", "clip": {"kind": "arc", "cx": 180, "cy": 40, "r": 30, "inner": 15, "start": 0, "sweep": 270}, "children": [{"kind": "rect", "x": 140, "w": 100, "h": 100, "fill": "#f59e0b"}]},
+    {"kind": "group", "clip": {"kind": "path", "d": "M220 10 h60 v60 h-60 z M235 25 h30 v30 h-30 z", "fillRule": "evenodd"}, "children": [{"kind": "rect", "x": 200, "w": 100, "h": 100, "fill": "#ef4444"}]},
+    {"kind": "group", "effects": [{"type": "blur", "sigma": 4}], "children": [{"kind": "rect", "x": 300, "y": 15, "w": 40, "h": 40, "fill": "#e5e7eb"}]},
+    {"kind": "group", "effects": [{"type": "shadow", "dx": 4, "dy": 4, "sigma": 3, "color": "#000000cc"}], "children": [{"kind": "rect", "x": 15, "y": 85, "w": 50, "h": 40, "r": 6, "fill": "#f8fafc"}]},
+    {"kind": "group", "effects": [{"type": "glow", "sigma": 5, "color": "#22d3ee"}], "children": [{"kind": "ellipse", "cx": 110, "cy": 105, "rx": 20, "ry": 20, "fill": "#0e7490"}]},
+    {"kind": "group", "effects": [{"type": "glow", "sigma": 3, "color": "#f472b6"}, {"type": "blur", "sigma": 1}, {"type": "shadow", "dx": 0, "dy": 6, "sigma": 2, "color": "#00000099"}], "children": [{"kind": "text", "x": 150, "y": 90, "font": {"family": "Inter", "size": 22, "weight": 700}, "fill": "#ffffff", "text": "Glow"}]},
+    {"kind": "group", "clip": {"kind": "rect", "x": 240, "y": 85, "w": 40, "h": 40}, "effects": [{"type": "glow", "sigma": 4, "color": "#fde047"}], "children": [{"kind": "ellipse", "cx": 260, "cy": 105, "rx": 30, "ry": 30, "fill": "#ca8a04"}]},
+    {"kind": "group", "transform": [{"type": "rotate", "angle": 30, "cx": 320, "cy": 105}], "effects": [{"type": "shadow", "dx": 0, "dy": 6, "sigma": 2, "color": "#000000"}], "opacity": 0.8, "children": [{"kind": "rect", "x": 305, "y": 90, "w": 30, "h": 30, "fill": "#a3e635"}]}
+  ]
+}

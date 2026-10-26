@@ -1,0 +1,25 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "line", "x1": 180, "y1": 0, "x2": 180, "y2": 60, "stroke": {"paint": "#ef4444", "width": 1}},
+    {"kind": "line", "x1": 0, "y1": 30, "x2": 360, "y2": 30, "stroke": {"paint": "#ef4444", "width": 1}},
+    {"kind": "text", "x": 180, "y": 30, "align": "end", "valign": "bottom", "font": {"family": "Inter", "size": 14}, "fill": "#e5e7eb", "text": "end/bottom"},
+    {"kind": "text", "x": 180, "y": 30, "align": "start", "valign": "top", "font": {"family": "Inter", "size": 14}, "fill": "#e5e7eb", "text": "start/top"},
+    {"kind": "text", "x": 180, "y": 30, "align": "center", "valign": "baseline", "font": {"family": "Inter", "size": 10}, "fill": "#93c5fd", "text": "centre baseline"},
+    {"kind": "rect", "x": 10, "y": 60, "w": 160, "h": 50, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "text", "x": 10, "y": 60, "w": 160, "h": 50, "align": "center", "valign": "middle", "wrap": "word", "font": {"family": "Inter", "size": 13}, "fill": "#f9fafb", "text": "Centred in its box, wrapped at word boundaries over lines"},
+    {"kind": "rect", "x": 190, "y": 60, "w": 160, "h": 50, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "text", "x": 190, "y": 60, "w": 160, "h": 50, "valign": "bottom", "align": "end", "font": {"family": "Inter", "size": 13, "weight": 700}, "fill": {"type": "linear", "x1": 190, "y1": 0, "x2": 350, "y2": 0, "stops": [{"at": 0, "color": "#f472b6"}, {"at": 1, "color": "#60a5fa"}]}, "stroke": {"paint": "#00000080", "width": 0.75}, "text": "Gradient fill\nand stroke"},
+    {"kind": "rect", "x": 10, "y": 120, "w": 160, "h": 20, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "text", "x": 10, "y": 120, "w": 160, "overflow": "ellipsis", "font": {"family": "Inter", "size": 14}, "fill": "#e5e7eb", "text": "One line cut with an ellipsis at the box"},
+    {"kind": "rect", "x": 190, "y": 120, "w": 160, "h": 20, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "text", "x": 190, "y": 120, "w": 160, "h": 20, "overflow": "clip", "font": {"family": "Inter", "size": 14}, "fill": "#e5e7eb", "text": "One line clipped at the right edge of its box"},
+    {"kind": "text", "x": 10, "y": 150, "font": {"family": "Inter", "size": 22, "weight": 700}, "fill": "#fbbf24", "text": [{"text": "42.5"}, {"text": " °C", "font": {"size": 12, "weight": 400}, "fill": "#9ca3af"}, {"text": " max", "font": {"size": 12, "italic": true}, "fill": "#f87171", "underline": true}]},
+    {"kind": "text", "x": 190, "y": 150, "w": 160, "maxLines": 2, "wrap": "word", "overflow": "ellipsis", "lineHeight": 1.4, "font": {"family": "Inter", "size": 12}, "fill": "#d1d5db", "strike": true, "text": "Two lines at most, with a line height of 1.4, then an ellipsis for the rest"},
+    {"kind": "rect", "x": 10, "y": 190, "w": 160, "h": 30, "stroke": {"paint": "#4b5563", "width": 1}},
+    {"kind": "text", "x": 10, "y": 190, "w": 160, "h": 30, "fit": {"min": 6}, "valign": "middle", "font": {"family": "Inter", "size": 30}, "fill": "#a7f3d0", "text": "Shrunk to fit this box"},
+    {"kind": "text", "x": 190, "y": 195, "letterSpacing": 3, "font": {"family": "A family nobody has", "size": 14}, "fill": "#c4b5fd", "text": "Fallback ffi fl"},
+    {"kind": "text", "x": 190, "y": 220, "font": {"family": "Inter", "size": 14, "weight": 300, "italic": true}, "fill": "#fca5a5", "opacity": 0.6, "text": "Italic, opacity 0.6"},
+    {"kind": "text", "x": 10, "y": 230, "font": {"family": "Inter", "size": 12}, "fill": "#e5e7eb", "text": "Fallback per character: 日本 ✓"}
+  ]
+}

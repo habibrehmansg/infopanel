@@ -44,28 +44,35 @@ internal static class GoldenImage
 
     private static bool Update => Environment.GetEnvironmentVariable("UPDATE_GOLDENS") == "1";
 
-    public static void Verify(string name, SKBitmap rendered)
+    /// <summary>
+    /// Compares with <c>Golden/{os}/{name}.png</c>, or <c>Golden/{folder}/{os}/{name}.png</c> when
+    /// <paramref name="folder"/> is given (the scene runtime's goldens live in <c>Golden/scene/</c>).
+    /// </summary>
+    public static void Verify(string name, SKBitmap rendered, string? folder = null)
     {
         var actualPng = EncodePng(rendered);
-        var goldenPath = Path.Combine(GoldenDirectory, name + ".png");
+        var directory = folder is null ? GoldenDirectory : Path.Combine(TestPaths.ProjectDirectory, "Golden", folder, OsFolder);
+        var shown = folder is null ? $"Golden/{OsFolder}/" : $"Golden/{folder}/{OsFolder}/";
+        var goldenPath = Path.Combine(directory, name + ".png");
+        if (folder is not null) name = folder + "-" + name;
 
         if (Update)
         {
             if (!File.Exists(goldenPath) || Compare(File.ReadAllBytes(goldenPath), actualPng, out _) is not null)
             {
-                Directory.CreateDirectory(GoldenDirectory);
+                Directory.CreateDirectory(directory);
                 File.WriteAllBytes(goldenPath, actualPng);
             }
 
             return;
         }
 
-        RequireGoldenDirectory(GoldenDirectory);
+        RequireGoldenDirectory(directory);
 
         if (!File.Exists(goldenPath))
         {
             WriteResults(name, actualPng, diff: null);
-            Assert.Fail($"Golden {name}.png is missing from Golden/{OsFolder}/. Create it with UPDATE_GOLDENS=1 "
+            Assert.Fail($"Golden {Path.GetFileName(goldenPath)} is missing from {shown}. Create it with UPDATE_GOLDENS=1 "
                 + $"(the rendered frame is in TestResults/golden/{name}.actual.png).");
         }
 

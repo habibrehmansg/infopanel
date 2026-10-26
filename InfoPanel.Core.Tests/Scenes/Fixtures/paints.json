@@ -1,0 +1,17 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "rect", "x": 10, "y": 10, "w": 120, "h": 40, "fill": {"type": "linear", "x1": 40, "y1": 0, "x2": 80, "y2": 0, "stops": [{"at": 0, "color": "#22c55e"}, {"at": 1, "color": "#3b82f6"}]}},
+    {"kind": "rect", "x": 140, "y": 10, "w": 120, "h": 40, "fill": {"type": "linear", "x1": 180, "y1": 0, "x2": 200, "y2": 0, "spread": "repeat", "stops": [{"at": 0, "color": "#22c55e"}, {"at": 1, "color": "#3b82f6"}]}},
+    {"kind": "rect", "x": 270, "y": 10, "w": 120, "h": 40, "fill": {"type": "linear", "x1": 310, "y1": 0, "x2": 330, "y2": 0, "spread": "reflect", "stops": [{"at": 0, "color": "#22c55e"}, {"at": 1, "color": "#3b82f6"}]}},
+    {"kind": "ellipse", "cx": 70, "cy": 90, "rx": 60, "ry": 30, "fill": {"type": "radial", "cx": 70, "cy": 90, "r": 20, "stops": [{"at": 0, "color": "#fde047"}, {"at": 0.5, "color": "#f97316"}, {"at": 1, "color": "#7c2d12"}]}},
+    {"kind": "ellipse", "cx": 200, "cy": 90, "rx": 60, "ry": 30, "fill": {"type": "radial", "cx": 200, "cy": 90, "r": 15, "spread": "repeat", "stops": [{"at": 0, "color": "#fde047"}, {"at": 1, "color": "#7c2d12"}]}},
+    {"kind": "ellipse", "cx": 330, "cy": 90, "rx": 60, "ry": 30, "fill": {"type": "radial", "cx": 330, "cy": 90, "r": 15, "spread": "reflect", "stops": [{"at": 0, "color": "#fde047"}, {"at": 1, "color": "#7c2d12"}]}},
+    {"kind": "ellipse", "cx": 50, "cy": 170, "rx": 40, "ry": 40, "fill": {"type": "sweep", "cx": 50, "cy": 170, "stops": [{"at": 0, "color": "#ef4444"}, {"at": 0.5, "color": "#3b82f6"}, {"at": 1, "color": "#ef4444"}]}},
+    {"kind": "ellipse", "cx": 150, "cy": 170, "rx": 40, "ry": 40, "fill": {"type": "sweep", "cx": 150, "cy": 170, "start": 270, "end": 90, "stops": [{"at": 0, "color": "#ef4444"}, {"at": 1, "color": "#3b82f6"}]}},
+    {"kind": "ellipse", "cx": 250, "cy": 170, "rx": 40, "ry": 40, "fill": {"type": "sweep", "cx": 250, "cy": 170, "start": -45, "end": 45, "spread": "reflect", "stops": [{"at": 0, "color": "#a855f7"}, {"at": 1, "color": "#22d3ee"}]}},
+    {"kind": "rect", "x": 300, "y": 130, "w": 90, "h": 80, "fill": "#ffffff"},
+    {"kind": "rect", "x": 300, "y": 130, "w": 90, "h": 40, "fill": {"type": "linear", "x1": 300, "y1": 0, "x2": 390, "y2": 0, "stops": [{"at": 0, "color": "#ff000000"}, {"at": 1, "color": "#0000ffff"}]}},
+    {"kind": "rect", "x": 300, "y": 170, "w": 90, "h": 40, "fill": {"type": "compose", "blend": "multiply", "dst": {"type": "linear", "x1": 300, "y1": 0, "x2": 390, "y2": 0, "stops": [{"at": 0, "color": "#ffffff"}, {"at": 1, "color": "#f59e0b"}]}, "src": {"type": "linear", "x1": 0, "y1": 170, "x2": 0, "y2": 210, "stops": [{"at": 0, "color": "#ffffff"}, {"at": 1, "color": "#0ea5e9"}]}}}
+  ]
+}

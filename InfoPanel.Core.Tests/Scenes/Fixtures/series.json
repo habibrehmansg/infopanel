@@ -1,0 +1,13 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number"}, "none": {"type": "number"}},
+  "nodes": [
+    {"kind": "rect", "x": 10, "y": 10, "w": 100, "h": 80, "fill": "#0b1220"},
+    {"kind": "series", "input": "v", "x": 10, "y": 10, "w": 100, "h": 80, "min": 0, "max": 100, "pitch": 3, "stroke": {"paint": "#38bdf8", "width": 1.5, "join": "round"}},
+    {"kind": "rect", "x": 120, "y": 10, "w": 100, "h": 80, "fill": "#0b1220"},
+    {"kind": "series", "input": "v", "x": 120, "y": 10, "w": 100, "h": 80, "min": 20, "max": 80, "mode": "area", "count": 20, "pitch": 5, "fill": "#22c55e55", "stroke": {"paint": "#22c55e", "width": 2}},
+    {"kind": "rect", "x": 230, "y": 10, "w": 90, "h": 80, "fill": "#0b1220"},
+    {"kind": "series", "input": "v", "x": 230, "y": 10, "w": 90, "h": 80, "min": 0, "max": 100, "mode": "bars", "pitch": 9, "barWidth": 6, "fill": {"type": "linear", "x1": 0, "y1": 10, "x2": 0, "y2": 90, "stops": [{"at": 0, "color": "#ef4444"}, {"at": 1, "color": "#f59e0b"}]}},
+    {"kind": "series", "input": "none", "x": 10, "y": 10, "w": 100, "h": 80, "min": 0, "max": 0, "stroke": {"paint": "#ffffff", "width": 1}}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "polyline", "points": [[16, 50], [40, 16], [64, 50]], "stroke": {"paint": "#f87171", "width": 8, "join": "miter"}},
+    {"kind": "polyline", "points": [[86, 50], [110, 16], [134, 50]], "stroke": {"paint": "#fbbf24", "width": 8, "join": "round"}},
+    {"kind": "polyline", "points": [[156, 50], [180, 16], [204, 50]], "stroke": {"paint": "#34d399", "width": 8, "join": "bevel"}},
+    {"kind": "polyline", "points": [[226, 50], [250, 30], [274, 50]], "stroke": {"paint": "#60a5fa", "width": 8, "join": "miter", "miterLimit": 1}},
+    {"kind": "line", "x1": 20, "y1": 80, "x2": 90, "y2": 80, "stroke": {"paint": "#e5e7eb", "width": 10}},
+    {"kind": "line", "x1": 120, "y1": 80, "x2": 190, "y2": 80, "stroke": {"paint": "#e5e7eb", "width": 10, "cap": "round"}},
+    {"kind": "line", "x1": 220, "y1": 80, "x2": 290, "y2": 80, "stroke": {"paint": "#e5e7eb", "width": 10, "cap": "square"}},
+    {"kind": "line", "x1": 20, "y1": 80, "x2": 290, "y2": 80, "stroke": {"paint": "#ef4444", "width": 1}},
+    {"kind": "rect", "x": 20, "y": 105, "w": 70, "h": 40, "r": 6, "stroke": {"paint": "#a78bfa", "width": 3, "dash": [8, 4]}},
+    {"kind": "ellipse", "cx": 150, "cy": 125, "rx": 35, "ry": 20, "stroke": {"paint": "#f472b6", "width": 3, "dash": [6, 3, 2], "dashOffset": 5}},
+    {"kind": "arc", "cx": 250, "cy": 135, "r": 30, "start": 180, "sweep": 180, "close": "open", "stroke": {"paint": "#374151", "width": 8}},
+    {"kind": "arc", "cx": 250, "cy": 135, "r": 30, "start": 180, "sweep": 180, "close": "open", "stroke": {"paint": "#22d3ee", "width": 8, "cap": "round", "trimStart": 0.2, "trimEnd": 0.7}},
+    {"kind": "rect", "x": 20, "y": 160, "w": 70, "h": 30, "stroke": {"paint": "#facc15", "width": 4, "trimStart": 0.25}},
+    {"kind": "polyline", "points": [[110, 190], [130, 160], [150, 190], [170, 160], [190, 190]], "stroke": {"paint": "#fb923c", "width": 3, "dash": [10, 5], "trimEnd": 0.8, "join": "round"}},
+    {"kind": "rect", "x": 220, "y": 175, "w": 60, "h": 10, "fill": "#334155", "stroke": {"paint": "#94a3b8", "width": 0}},
+    {"kind": "rect", "x": 290, "y": 160, "w": -10, "h": 20, "fill": "#ff0000"}
+  ]
+}

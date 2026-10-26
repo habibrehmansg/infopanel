@@ -1,0 +1,422 @@
+{
+ "format": "infopanel.scene/1",
+ "nodes": [
+  {
+   "kind": "rect",
+   "w": 360,
+   "h": 120,
+   "fill": {
+    "type": "linear",
+    "x1": 0,
+    "y1": 0,
+    "x2": 360,
+    "y2": 0,
+    "stops": [
+     {
+      "at": 0,
+      "color": "#1e3a8a"
+     },
+     {
+      "at": 0.5,
+      "color": "#be185d"
+     },
+     {
+      "at": 1,
+      "color": "#facc15"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "group",
+   "blend": "normal",
+   "opacity": 0.9,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 24,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 14,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "multiply",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 63,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 53,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "screen",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 102,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 92,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "overlay",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 141,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 131,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "darken",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 180,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 170,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "lighten",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 219,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 209,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "color-dodge",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 258,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 248,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "color-burn",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 297,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 287,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "hard-light",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 336,
+     "cy": 26,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 326,
+     "y": 32,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "soft-light",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 24,
+     "cy": 81,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 14,
+     "y": 87,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "difference",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 63,
+     "cy": 81,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 53,
+     "y": 87,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "exclusion",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 102,
+     "cy": 81,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 92,
+     "y": 87,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "hue",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 141,
+     "cy": 81,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 131,
+     "y": 87,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "saturation",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 180,
+     "cy": 81,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 170,
+     "y": 87,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "color",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 219,
+     "cy": 81,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 209,
+     "y": 87,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "luminosity",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 258,
+     "cy": 81,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 248,
+     "y": 87,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  },
+  {
+   "kind": "group",
+   "blend": "plus",
+   "opacity": 1,
+   "children": [
+    {
+     "kind": "ellipse",
+     "cx": 297,
+     "cy": 81,
+     "rx": 15,
+     "ry": 15,
+     "fill": "#22c55e"
+    },
+    {
+     "kind": "rect",
+     "x": 287,
+     "y": 87,
+     "w": 24,
+     "h": 20,
+     "fill": "#e5e7eb80"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,16 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "rect", "x": 10, "y": 10, "w": 60, "h": 40, "fill": "#3b82f6"},
+    {"kind": "rect", "x": 80, "y": 10, "w": 60, "h": 40, "r": 100, "fill": "#22c55e"},
+    {"kind": "rect", "x": 150, "y": 10, "w": 60, "h": 40, "r": [0, 20, 5, 10], "fill": "#f59e0b", "stroke": {"paint": "#ffffff", "width": 2}},
+    {"kind": "ellipse", "cx": 250, "cy": 30, "rx": 30, "ry": 20, "fill": "#ef4444"},
+    {"kind": "ellipse", "cx": 320, "cy": 30, "rx": 0, "ry": 20, "fill": "#ef4444"},
+    {"kind": "arc", "cx": 40, "cy": 90, "r": 25, "start": -90, "sweep": 120, "fill": "#a855f7"},
+    {"kind": "arc", "cx": 110, "cy": 90, "r": 25, "inner": 15, "start": 0, "sweep": 360, "fill": "#14b8a6"},
+    {"kind": "arc", "cx": 180, "cy": 90, "r": 25, "inner": 12, "start": 45, "sweep": -200, "fill": "#f472b6", "stroke": {"paint": "#ffffff", "width": 1.5, "join": "round"}},
+    {"kind": "arc", "cx": 250, "cy": 90, "r": 25, "start": 200, "sweep": 140, "close": "open", "fill": "#64748b", "stroke": {"paint": "#fde047", "width": 3}},
+    {"kind": "path", "d": "M300 70 c10 -10 30 -10 40 0 s 10 30 -10 40 q-10 5 -20 -5 t-10 -15 a10 10 0 01 0 -20 Z h5 V75 H300 l5 5 z", "fill": "#0ea5e9", "fillRule": "nonzero", "stroke": {"paint": "#f8fafc", "width": 1}},
+    {"kind": "polyline", "points": [[300, 112], [320, 100], [340, 112], [355, 100]], "closed": false, "fill": "#fb923c80"}
+  ]
+}
