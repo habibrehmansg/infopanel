@@ -1,4 +1,6 @@
 <Solution>
+  <Project Path="InfoPanel.Core.Tests/InfoPanel.Core.Tests.csproj" />
+  <Project Path="InfoPanel.Core/InfoPanel.Core.csproj" />
   <Project Path="InfoPanel.Extras/InfoPanel.Extras.csproj" />
   <Project Path="InfoPanel.Plugins.Graphics/InfoPanel.Plugins.Graphics.csproj" />
   <Project Path="InfoPanel.Plugins.Host/InfoPanel.Plugins.Host.csproj" />

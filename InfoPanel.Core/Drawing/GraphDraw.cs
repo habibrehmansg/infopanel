@@ -1,55 +1,36 @@
 using InfoPanel.Models;
-using InfoPanel.Monitors;
-using InfoPanel.Plugins;
-using LibreHardwareMonitor.Hardware;
-using Microsoft.Extensions.Caching.Memory;
+using InfoPanel.Sensors;
 using SkiaSharp;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 
 namespace InfoPanel.Drawing
 {
     internal class GraphDraw
     {
-        private static readonly IMemoryCache GraphDataSmoothCache = new MemoryCache(new MemoryCacheOptions()
-        {
-            ExpirationScanFrequency = TimeSpan.FromSeconds(5)
-        });
-        private static readonly IMemoryCache AutoRangeCache = new MemoryCache(new MemoryCacheOptions()
-        {
-            ExpirationScanFrequency = TimeSpan.FromSeconds(5)
-        });
-        private static readonly ConcurrentDictionary<(int, UInt32, UInt32, UInt32), Queue<double>> GraphDataCache = [];
-        private static readonly ConcurrentDictionary<string, Queue<double>> GraphDataCache2 = [];
-        private static readonly ConcurrentDictionary<string, Queue<double>> GraphDataCache3 = [];
-        private static readonly Stopwatch Stopwatch = new();
-
         // Expand the auto-scale range immediately on new extremes; contract it gradually so
         // the scale doesn't yo-yo when a transient spike falls out of the sample window.
         // 0.05 per frame ≈ 14 frames to halfway convergence at 40fps — responsive but stable.
         private const double AutoRangeContract = 0.05;
         private const double AutoRangeMinSpan = 1e-6;
-        private static readonly TimeSpan AutoRangeTtl = TimeSpan.FromSeconds(30);
 
         private static (double min, double max) ResolveAutoRange(
-            Guid id, double[] samples, double userMin, double userMax, bool autoValue)
+            ChartState state, IReadOnlyList<double> samples, double userMin, double userMax, bool autoValue)
         {
-            if (!autoValue || samples.Length == 0)
+            if (!autoValue || samples.Count == 0)
                 return (userMin, userMax);
 
             var sMin = samples[0];
             var sMax = samples[0];
-            for (int i = 1; i < samples.Length; i++)
+            for (int i = 1; i < samples.Count; i++)
             {
                 var v = samples[i];
                 if (v < sMin) sMin = v;
                 if (v > sMax) sMax = v;
             }
 
-            if (AutoRangeCache.TryGetValue(id, out (double min, double max) prev))
+            if (state.PrevAutoRange is { } prev)
             {
                 var newMin = sMin < prev.min ? sMin : prev.min + (sMin - prev.min) * AutoRangeContract;
                 var newMax = sMax > prev.max ? sMax : prev.max + (sMax - prev.max) * AutoRangeContract;
@@ -61,169 +42,59 @@ namespace InfoPanel.Drawing
                     newMax = mid + 0.5;
                 }
 
-                AutoRangeCache.Set(id, (newMin, newMax), AutoRangeTtl);
+                state.AutoRange = (newMin, newMax);
                 return (newMin, newMax);
             }
 
             // First frame: seed from samples, or fall back to user range if the window is flat.
             if (sMax - sMin < AutoRangeMinSpan)
             {
-                AutoRangeCache.Set(id, (userMin, userMax), AutoRangeTtl);
+                state.AutoRange = (userMin, userMax);
                 return (userMin, userMax);
             }
 
-            AutoRangeCache.Set(id, (sMin, sMax), AutoRangeTtl);
+            state.AutoRange = (sMin, sMax);
             return (sMin, sMax);
         }
 
-        static GraphDraw()
+        /// <summary>
+        /// The value to draw this tick. Unsmoothed renders (goldens, thumbnails) draw the target and
+        /// leave the smoothing state alone, so they never change a live render's animation.
+        /// Smoothed renders interpolate from the start-of-tick value, so redrawing in the same tick
+        /// gives the same result.
+        /// </summary>
+        private static double Smooth(ChartState state, double value, RenderContext ctx)
         {
-            Stopwatch.Start();
-        }
-
-        private static Queue<double> GetGraphDataQueue(int remoteIndex, UInt32 id, UInt32 instance, UInt32 entryId)
-        {
-            var key = (remoteIndex, id, instance, entryId);
-
-            GraphDataCache.TryGetValue(key, out Queue<double>? result);
-
-            if (result == null)
+            if (!ctx.Options.Smoothing)
             {
-                result = new Queue<double>();
-                GraphDataCache.TryAdd(key, result);
+                return value;
             }
 
-            return result;
+            value = InterpolateWithCycles(state.PrevSmoothedValue, value, ctx.Options.TargetFrameRate * 3);
+            state.SmoothedValue = value;
+            return value;
         }
 
-        private static Queue<double> GetGraphDataQueue(string libreSensorId)
+        public static void Run(ChartDisplayItem chartDisplayItem, SkiaGraphics g, RenderContext ctx)
         {
-            var key = libreSensorId;
-
-            GraphDataCache2.TryGetValue(key, out Queue<double>? result);
-
-            if (result == null)
-            {
-                result = new Queue<double>();
-                GraphDataCache2.TryAdd(key, result);
-            }
-
-            return result;
-        }
-
-        private static Queue<double> GetGraphPluginDataQueue(string pluginSensorId)
-        {
-            var key = pluginSensorId;
-
-            GraphDataCache3.TryGetValue(key, out Queue<double>? result);
-
-            if (result == null)
-            {
-                result = new Queue<double>();
-                GraphDataCache3.TryAdd(key, result);
-            }
-
-            return result;
-        }
-
-        public static void Run(ChartDisplayItem chartDisplayItem, SkiaGraphics g, bool preview = false)
-        {
-            var elapsedMilliseconds = Stopwatch.ElapsedMilliseconds;
-
-            if (elapsedMilliseconds > ConfigModel.Instance.Settings.TargetGraphUpdateRate)
-            {
-                foreach (var key in GraphDataCache.Keys)
-                {
-                    GraphDataCache.TryGetValue(key, out Queue<double>? queue);
-                    if (queue != null)
-                    {
-                        HWHash.SENSORHASH.TryGetValue(key, out HWHash.HWINFO_HASH value);
-
-                        lock (queue)
-                        {
-                            queue.Enqueue(value.ValueNow);
-
-                            if (queue.Count > 4096)
-                            {
-                                queue.Dequeue();
-                            }
-                        }
-                    }
-                }
-
-                foreach (var key in GraphDataCache2.Keys)
-                {
-                    GraphDataCache2.TryGetValue(key, out Queue<double>? queue);
-                    if (queue != null)
-                    {
-                        LibreMonitor.SENSORHASH.TryGetValue(key, out ISensor? value);
-                        lock (queue)
-                        {
-                            queue.Enqueue(value?.Value ?? 0);
-
-                            if (queue.Count > 4096)
-                            {
-                                queue.Dequeue();
-                            }
-                        }
-                    }
-                }
-
-                foreach (var key in GraphDataCache3.Keys)
-                {
-                    GraphDataCache3.TryGetValue(key, out Queue<double>? queue);
-                    if (queue != null)
-                    {
-                        if(PluginMonitor.SENSORHASH.TryGetValue(key, out PluginMonitor.PluginReading value) && value.Data is IPluginSensor sensor)
-                        {
-                            lock (queue)
-                            {
-                                queue.Enqueue(sensor.Value);
-
-                                if (queue.Count > 4096)
-                                {
-                                    queue.Dequeue();
-                                }
-                            }
-                        }
-                       
-                    }
-                }
-
-                Stopwatch.Restart();
-            }
+            var state = ctx.State.Get<ChartState>(chartDisplayItem.Guid);
+            state.BeginTick(ctx.Tick);
 
             {
                 g.Clear(SKColors.Transparent);
 
                 var frameRect = new SKRect(0, 0, chartDisplayItem.Width, chartDisplayItem.Height);
 
-                Queue<double> queue;
+                IReadOnlyList<double> history = SensorKeys.Of(chartDisplayItem) is SensorKey key
+                    ? ctx.History.GetSamples(key)
+                    : [];
 
-                if (chartDisplayItem.SensorType == Enums.SensorType.Libre)
-                {
-                    queue = GetGraphDataQueue(chartDisplayItem.LibreSensorId);
-                }
-                else if (chartDisplayItem.SensorType == Enums.SensorType.Plugin)
-                {
-                    queue = GetGraphPluginDataQueue(chartDisplayItem.PluginSensorId);
-                }
-                else
-                {
-                    queue = GetGraphDataQueue(chartDisplayItem.HwInfoRemoteIndex, chartDisplayItem.Id, chartDisplayItem.Instance, chartDisplayItem.EntryId);
-                }
-
-                if (queue.Count == 0 && chartDisplayItem is not BarDisplayItem)
+                if (history.Count == 0 && chartDisplayItem is not BarDisplayItem)
                 {
                     return;
                 }
 
-                double[] tempValues;
-
-                lock (queue)
-                {
-                    tempValues = [.. queue];
-                }
+                double[] tempValues = [.. history];
 
                 double minValue = chartDisplayItem.MinValue;
                 double maxValue = chartDisplayItem.MaxValue;
@@ -262,7 +133,7 @@ namespace InfoPanel.Drawing
                                         var values = tempValues[(tempValues.Length - size)..];
 
                                         (minValue, maxValue) = ResolveAutoRange(
-                                            chartDisplayItem.Guid, values, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
+                                            state, values, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
 
                                         using var path = new SKPath();
 
@@ -328,7 +199,7 @@ namespace InfoPanel.Drawing
                                         var values = tempValues[(tempValues.Length - size)..];
 
                                         (minValue, maxValue) = ResolveAutoRange(
-                                            chartDisplayItem.Guid, values, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
+                                            state, values, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
 
                                         // Initialize refRect to start at the right edge of frameRect
                                         var refRect = new SKRect(
@@ -381,10 +252,10 @@ namespace InfoPanel.Drawing
                     case BarDisplayItem barDisplayItem:
                         {
                             (minValue, maxValue) = ResolveAutoRange(
-                                chartDisplayItem.Guid, tempValues, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
+                                state, tempValues, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
 
                             var value = 0.0;
-                            var sensorReading = barDisplayItem.GetValue();
+                            var sensorReading = barDisplayItem.GetValue(ctx.Sensors);
 
                             if (sensorReading.HasValue)
                             {
@@ -397,9 +268,7 @@ namespace InfoPanel.Drawing
                             value = value * Math.Max(frameRect.Width, frameRect.Height);
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
-                            GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = preview ? value : InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
-                            GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
+                            value = Smooth(state, value, ctx);
 
                             // Inset fill/background when the frame is drawn so the 1px AA stroke
                             // doesn't blend with the fill underneath (issue #81).
@@ -485,7 +354,7 @@ namespace InfoPanel.Drawing
                     case DonutDisplayItem donutDisplayItem:
                         {
                             (minValue, maxValue) = ResolveAutoRange(
-                                chartDisplayItem.Guid, tempValues, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
+                                state, tempValues, chartDisplayItem.MinValue, chartDisplayItem.MaxValue, chartDisplayItem.AutoValue);
 
                             var value = tempValues.LastOrDefault(0.0);
                             var scale = maxValue - minValue;
@@ -493,9 +362,7 @@ namespace InfoPanel.Drawing
                             value = Math.Clamp(value, 0, 1);
                             value = value * 100;
 
-                            GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = preview ? value : InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
-                            GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
+                            value = Smooth(state, value, ctx);
 
                             var offset = 1;
                             g.FillDonut((int)frameRect.Left + offset, (int)frameRect.Top + offset, ((int)frameRect.Width / 2) - offset, donutDisplayItem.Thickness,

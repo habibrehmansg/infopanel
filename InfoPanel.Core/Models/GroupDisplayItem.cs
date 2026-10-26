@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using InfoPanel.Drawing;
 using SkiaSharp;
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
@@ -56,29 +57,29 @@ namespace InfoPanel.Models
             return clone;
         }
 
-        public override SKRect EvaluateBounds()
+        public override SKRect EvaluateBounds(RenderContext ctx)
         {
             return new SKRect(0, 0, 0, 0);
         }
 
-        public override string EvaluateColor()
+        public override string EvaluateColor(RenderContext ctx)
         {
             return "#FFFFFFFF";
         }
 
-        public override SKSize EvaluateSize()
+        public override SKSize EvaluateSize(RenderContext ctx)
         {
             return new SKSize(0, 0);
         }
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
             return "";
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
-            return (EvaluateText(), EvaluateColor());
+            return (EvaluateText(ctx), EvaluateColor(ctx));
         }
 
         public override void SetProfile(Profile profile)

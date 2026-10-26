@@ -1,9 +1,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
 using InfoPanel.Enums;
+using InfoPanel.Sensors;
 using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
-using System.Linq;
 
 namespace InfoPanel.Models
 {
@@ -172,51 +173,6 @@ namespace InfoPanel.Models
             }
         }
 
-        private bool forward = true;
-        private int counter = 0;
-
-        public ImageDisplayItem? DisplayImage
-        {
-            get
-            {
-                if (_images.Count == 0)
-                {
-                    return null;
-                }
-
-                if (counter >= _images.Count || counter < 0)
-                {
-                    counter = 0;
-                }
-
-                if (counter >= _images.Count - 1)
-                {
-                    forward = false;
-                }
-                else if (counter <= 0)
-                {
-                    forward = true;
-                }
-
-                var result = _images.ElementAt(counter);
-                if (forward)
-                {
-                    counter++;
-                }
-                else
-                {
-                    counter--;
-                }
-
-                return result;
-            }
-        }
-
-        public void TriggerDisplayImageChange()
-        {
-            OnPropertyChanged(nameof(DisplayImage));
-        }
-
         public GaugeDisplayItem()
         {
             Name = "Gauge";
@@ -243,25 +199,16 @@ namespace InfoPanel.Models
             EntryId = entryId;
         }
 
-        public SensorReading? GetValue()
+        public SensorReading? GetValue(ISensorReader sensors)
         {
-            return SensorType switch
-            {
-                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(HwInfoRemoteIndex, Id, Instance, EntryId),
-                SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
-                SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
-                _ => null,
-            };
+            return SensorKeys.Read(this, sensors);
         }
-
-        private double currentImageIndex = 0;
-        private DateTime _lastGaugeUpdate = DateTime.MinValue;
 
         /// <summary>
         /// Returns frame A (floor), optional frame B (ceil), and blend factor for crossfade.
-        /// Updates currentImageIndex internally with smoothing logic.
+        /// Advances the animated frame index (a <see cref="GaugeState"/> in <c>ctx.State</c>) once per tick.
         /// </summary>
-        public void EvaluateImageFrame(out ImageDisplayItem? imageA, out ImageDisplayItem? imageB, out float blend)
+        public void EvaluateImageFrame(RenderContext ctx, out ImageDisplayItem? imageA, out ImageDisplayItem? imageB, out float blend)
         {
             imageA = null;
             imageB = null;
@@ -275,7 +222,7 @@ namespace InfoPanel.Models
                 return;
             }
 
-            var sensorReading = GetValue();
+            var sensorReading = GetValue(ctx.Sensors);
             if (!sensorReading.HasValue)
             {
                 imageA = Images[0];
@@ -283,40 +230,48 @@ namespace InfoPanel.Models
                 return;
             }
 
-            var step = 100.0 / (_images.Count - 1);
-            var value = sensorReading.Value.ValueNow;
-            value = ((value - _minValue) / (_maxValue - _minValue)) * 100;
-            var targetIndex = (int)Math.Round(value / step);
-            targetIndex = Math.Clamp(targetIndex, 0, Images.Count - 1);
+            var state = ctx.State.Get<GaugeState>(Guid);
 
-            var now = DateTime.UtcNow;
-            // First evaluation: use a nominal delta (1/60s) so smoothing runs instead of snapping (log evidence: deltaSeconds=0 on first frame caused usedSmoothing=false).
-            double deltaSeconds;
-            if (_lastGaugeUpdate == DateTime.MinValue)
+            if (state.LastTick != ctx.Tick)
             {
-                deltaSeconds = _animationSpeed > 0 ? 1.0 / 60.0 : 0;
-                _lastGaugeUpdate = now;
-            }
-            else
-            {
-                deltaSeconds = (now - _lastGaugeUpdate).TotalSeconds;
-                _lastGaugeUpdate = now;
-            }
+                state.LastTick = ctx.Tick;
 
-            if (_animationSpeed > 0 && deltaSeconds > 0)
-            {
-                var maxStep = _animationSpeed * deltaSeconds;
-                var diff = targetIndex - currentImageIndex;
-                if (Math.Abs(diff) <= maxStep)
-                    currentImageIndex = targetIndex;
+                var step = 100.0 / (_images.Count - 1);
+                var value = sensorReading.Value.ValueNow;
+                value = ((value - _minValue) / (_maxValue - _minValue)) * 100;
+                var targetIndex = (int)Math.Round(value / step);
+                targetIndex = Math.Clamp(targetIndex, 0, Images.Count - 1);
+
+                var now = ctx.Elapsed;
+                // First evaluation: use a nominal delta (1/60s) so smoothing runs instead of snapping (log evidence: deltaSeconds=0 on first frame caused usedSmoothing=false).
+                double deltaSeconds;
+                if (state.LastUpdate is not TimeSpan lastUpdate)
+                {
+                    deltaSeconds = _animationSpeed > 0 ? 1.0 / 60.0 : 0;
+                }
                 else
-                    currentImageIndex += Math.Sign(diff) * maxStep;
-                currentImageIndex = Math.Clamp(currentImageIndex, 0, Images.Count - 1);
+                {
+                    deltaSeconds = (now - lastUpdate).TotalSeconds;
+                }
+                state.LastUpdate = now;
+
+                if (_animationSpeed > 0 && deltaSeconds > 0)
+                {
+                    var maxStep = _animationSpeed * deltaSeconds;
+                    var diff = targetIndex - state.CurrentImageIndex;
+                    if (Math.Abs(diff) <= maxStep)
+                        state.CurrentImageIndex = targetIndex;
+                    else
+                        state.CurrentImageIndex += Math.Sign(diff) * maxStep;
+                    state.CurrentImageIndex = Math.Clamp(state.CurrentImageIndex, 0, Images.Count - 1);
+                }
+                else
+                {
+                    state.CurrentImageIndex = targetIndex;
+                }
             }
-            else
-            {
-                currentImageIndex = targetIndex;
-            }
+
+            var currentImageIndex = Math.Clamp(state.CurrentImageIndex, 0, Images.Count - 1);
 
             var idxFloor = (int)Math.Floor(currentImageIndex);
             var idxCeil = (int)Math.Ceiling(currentImageIndex);
@@ -334,29 +289,26 @@ namespace InfoPanel.Models
             }
         }
 
-        public ImageDisplayItem? CurrentImage
+        public ImageDisplayItem? GetCurrentImage(RenderContext ctx)
         {
-            get
+            if(_images.Count > 0)
             {
-                if(_images.Count > 0)
-                {
-                    currentImageIndex = Math.Clamp(currentImageIndex, 0, Images.Count - 1);
-                    var imageDisplayItem = Images[(int)Math.Round(currentImageIndex)];
-                    imageDisplayItem.Scale = _scale;
-                    return imageDisplayItem;
-                }
-
-                return null;
+                var currentImageIndex = Math.Clamp(ctx.State.Get<GaugeState>(Guid).CurrentImageIndex, 0, Images.Count - 1);
+                var imageDisplayItem = Images[(int)Math.Round(currentImageIndex)];
+                imageDisplayItem.Scale = _scale;
+                return imageDisplayItem;
             }
+
+            return null;
         }
 
-        public override SKRect EvaluateBounds()
+        public override SKRect EvaluateBounds(RenderContext ctx)
         {
-            var size = EvaluateSize();
+            var size = EvaluateSize(ctx);
             return new SKRect(X, Y, X + size.Width, Y + size.Height);
         }
 
-        public override SKSize EvaluateSize()
+        public override SKSize EvaluateSize(RenderContext ctx)
         {
             if(Width != 0 && Height != 0)
             {
@@ -365,25 +317,25 @@ namespace InfoPanel.Models
 
             var result = new SKSize(0, 0);
 
-            if(CurrentImage != null)
+            if(GetCurrentImage(ctx) is ImageDisplayItem currentImage)
             {
-                return CurrentImage.EvaluateSize();
+                return currentImage.EvaluateSize(ctx);
             }
 
             return result;
         }
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
             return Name;
         }
 
-        public override string EvaluateColor()
+        public override string EvaluateColor(RenderContext ctx)
         {
             return "#000000";
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
             return (Name, "#000000");
         }
@@ -403,8 +355,6 @@ namespace InfoPanel.Models
         {
             var clone = (GaugeDisplayItem)MemberwiseClone();
             clone.Guid = Guid.NewGuid();
-            clone.currentImageIndex = 0;
-            clone._lastGaugeUpdate = DateTime.MinValue;
 
             clone.Images = new ObservableCollection<ImageDisplayItem>();
 

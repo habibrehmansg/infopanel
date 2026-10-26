@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Drawing;
+using InfoPanel.Sensors;
 using SkiaSharp;
 using System;
 using System.Data;
@@ -47,19 +48,19 @@ namespace InfoPanel.Models
             PluginSensorId = pluginSensorId;
         }
 
-        public SensorReading? GetValue()
+        public SensorReading? GetValue(ISensorReader sensors)
         {
-            return SensorReader.ReadPluginSensor(PluginSensorId);
+            return SensorKeys.Read(this, sensors);
         }
 
-        public override SKSize EvaluateSize()
+        public override SKSize EvaluateSize(RenderContext ctx)
         {
 
             var skiaGraphics = SkiaGraphics.FromEmpty(Profile.FontScale);
             var text = "A";
             var (_, height) = skiaGraphics.MeasureString(text, Font, FontStyle, FontSize, Bold, Italic, Underline, Strikeout, Wrap, Ellipsis, Width, Height);
 
-            if (GetValue() is SensorReading sensorReading && sensorReading.ValueTable is DataTable table)
+            if (GetValue(ctx.Sensors) is SensorReading sensorReading && sensorReading.ValueTable is DataTable table)
             {
                 var formatParts = TableFormat.Split('|');
                 var sizeF = new SKSize(0, height * (MaxRows + (ShowHeader ? 1: 0)));
@@ -78,23 +79,23 @@ namespace InfoPanel.Models
                 return sizeF;    
             }
 
-            return base.EvaluateSize();
+            return base.EvaluateSize(ctx);
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
-            return (EvaluateText(), Color);
+            return (EvaluateText(ctx), Color);
         }
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
             return "Invalid sensor";
         }
 
-        public override SKRect EvaluateBounds()
+        public override SKRect EvaluateBounds(RenderContext ctx)
         {
-            var size = EvaluateSize();
-            if (GetValue() is SensorReading sensorReading && sensorReading.ValueTable is not null)
+            var size = EvaluateSize(ctx);
+            if (GetValue(ctx.Sensors) is SensorReading sensorReading && sensorReading.ValueTable is not null)
             {
                 return new SKRect(X, Y, X + size.Width, Y + size.Height);
             }

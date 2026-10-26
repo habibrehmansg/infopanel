@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using InfoPanel.Drawing;
 using SkiaSharp;
 using System;
 using System.Linq;
@@ -27,21 +28,6 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
     {
         IsLocked = !IsLocked;
     }
-
-    private bool _selected;
-
-    [XmlIgnore]
-    public bool Selected
-    {
-        get { return _selected; }
-        set
-        {
-            SetProperty(ref _selected, value);
-        }
-    }
-
-    [XmlIgnore]
-    public System.Windows.Point MouseOffset { get; set; }
 
     private string _name;
     public string Name
@@ -144,15 +130,15 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
         Profile = profile;
     }
 
-    public abstract string EvaluateText();
+    public abstract string EvaluateText(RenderContext ctx);
 
-    public abstract string EvaluateColor();
+    public abstract string EvaluateColor(RenderContext ctx);
 
-    public abstract (string, string) EvaluateTextAndColor();
+    public abstract (string, string) EvaluateTextAndColor(RenderContext ctx);
 
-    public abstract SKSize EvaluateSize();
+    public abstract SKSize EvaluateSize(RenderContext ctx);
 
-    public abstract SKRect EvaluateBounds();
+    public abstract SKRect EvaluateBounds(RenderContext ctx);
 
     public DisplayItem[] Flatten()
     {
@@ -170,9 +156,9 @@ public abstract partial class DisplayItem : ObservableObject, ICloneable
 
     public abstract object Clone();
 
-    public bool ContainsPoint(System.Windows.Point worldPoint)
+    public bool ContainsPoint(SKPoint worldPoint, RenderContext ctx)
     {
-        var bounds = EvaluateBounds();
+        var bounds = EvaluateBounds(ctx);
         double centerX = bounds.MidX;
         double centerY = bounds.MidY;
 

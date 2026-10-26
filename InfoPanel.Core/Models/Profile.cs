@@ -1,8 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using SkiaSharp;
+using InfoPanel.Drawing;
 using System;
-using System.Linq;
-using System.Windows.Media;
 using System.Xml.Serialization;
 
 namespace InfoPanel.Models
@@ -49,9 +47,6 @@ namespace InfoPanel.Models
         }
 
         private string _name = "Profile";
-
-        [XmlIgnore]
-        public SKBitmap? PreviewBitmap;
 
         [XmlIgnore]
         [ObservableProperty]
@@ -152,7 +147,7 @@ namespace InfoPanel.Models
 
         }
 
-        private string _font = Fonts.SystemFontFamilies.First().ToString();
+        private string _font = FontDefaults.Family;
 
         public string Font
         {

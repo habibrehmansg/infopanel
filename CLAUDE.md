@@ -9,210 +9,59 @@ Branch `2.0.x` is InfoPanel 2.0: a cross-platform .NET engine (Windows + macOS) 
 - **SDK:** .NET 10, pinned by `global.json` (`10.0.403`, `rollForward: latestFeature`).
 - **Solution:** `InfoPanel.slnx`, Debug/Release, Any CPU. No platform or runtime identifier is forced; builds run on macOS (arm64) and Windows.
 - **Package versions** live in `Directory.Packages.props` (central package management). A `PackageReference` never carries a `Version`. There are no `packages.lock.json` files.
-- **Plugin SDK projects** (`InfoPanel.Plugins*`) target net8.0 so existing plugins keep loading. `InfoPanel.Extras` targets net8.0-windows and builds anywhere via `EnableWindowsTargeting`.
-- The 1.x WPF projects (`InfoPanel/`, `InfoPanel.Views.Skia/`) are still on disk but are **not** in the solution and do not build on 2.0.x.
+- **Plugin SDK projects** (`InfoPanel.Plugins*`) target net8.0 so existing plugins keep loading. `InfoPanel.Extras` targets net8.0-windows and builds anywhere via `EnableWindowsTargeting`. Core and tests target net10.0.
+- The 1.x WPF app is gone from this branch; `PORTING.md` lists what it did and where each part goes in 2.0.
 
 ```bash
-# Build (Debug / Release)
-dotnet build InfoPanel.slnx -c Debug
-dotnet build InfoPanel.slnx -c Release
+dotnet build InfoPanel.slnx            # -c Release for Release
+dotnet test InfoPanel.slnx             # xUnit v3, run through VSTest
+dotnet test InfoPanel.slnx --filter FullyQualifiedName~SensorKey
 
 # Run plugin simulator for testing plugins
 dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj
 ```
 
-> **Note:** Everything below this section still describes the 1.x WPF app. It is rewritten as the 2.0 engine replaces it.
+## Architecture (2.0.x)
 
-## Architecture Overview
-
-InfoPanel is a WPF desktop application built on .NET 8.0 that displays hardware monitoring data on desktop overlays and USB LCD panels. The codebase follows MVVM architecture with a modular plugin system.
-
-### Projects
+2.0 is one headless .NET engine that loads profiles, reads sensors, renders frames with SkiaSharp and serves the editor to the user's browser on localhost. The preview the editor shows is rendered by the engine with the same code that drives panels; a client draws only its own overlays, from the item bounds. The engine host (`InfoPanel`, ASP.NET Core) arrives in M4; today the branch has the renderer library, its tests and the plugin SDK.
 
 | Project | Role |
 |---|---|
-| **InfoPanel** | Main WPF application (entry point, UI, services, drawing) |
-| **InfoPanel.Plugins** | Plugin interface definitions (`IPlugin`, `IPluginSensor`, `BasePlugin`, `IPluginConfigurable`, `PluginActionAttribute`) |
-| **InfoPanel.Plugins.Graphics** | Image provider interfaces (`IPluginImageProvider`, `IPluginImageWriter`) and MMF-backed double buffering |
-| **InfoPanel.Plugins.Ipc** | IPC interfaces and DTOs for out-of-process communication (`IPluginHostService`, `IPluginClientCallback`) |
-| **InfoPanel.Plugins.Host** | Out-of-process plugin host executable (StreamJsonRpc over named pipes) |
-| **InfoPanel.Plugins.Loader** | Dynamic plugin loading with assembly isolation (`PluginLoadContext`, `PluginWrapper`) |
-| **InfoPanel.Plugins.Simulator** | Test harness for plugin development |
-| **InfoPanel.Extras** | Built-in plugins (system info, network, drives, weather) |
+| **InfoPanel.Core** (net10.0) | The 1.x model (14 display item kinds + `Profile`) and renderer, moved from the WPF app with history, behind cross-platform seams |
+| **InfoPanel.Core.Tests** | xUnit v3 tests for Core |
+| **InfoPanel.Plugins**, **.Plugins.Graphics**, **.Plugins.Ipc**, **.Plugins.Host**, **.Plugins.Loader**, **.Plugins.Simulator** (net8.0) | Plugin SDK, out-of-process plugin host and simulator (see `PLUGINS.md`, `PLUGIN-ARCHITECTURE.md`) |
+| **InfoPanel.Extras** | Built-in plugins (Windows-only at runtime) |
 
-> **Local DLL references:** LibreHardwareMonitor DLLs are referenced from `../LibreHardwareMonitor/` relative to the repo root. FlyleafLib.dll is referenced from `../libs/` (custom build with headless renderer fix). Ensure that sibling repos/directories are present when building.
+### InfoPanel.Core
 
-### Application Startup
+Root namespace `InfoPanel`. Files moved from 1.x keep their 1.x namespaces (`InfoPanel.Models`, `InfoPanel.Drawing`, ...).
 
-Entry point is `Program.cs` (`[STAThread] Main`) → `App.xaml.cs` → `OnStartup()`:
+- `Models/` — `DisplayItem` and the 14 kinds (Text, Sensor, Clock, Calendar, Table, Image, SensorImage, HttpImage, Gauge, Graph, Bar, Donut, Shape, Group), `Profile`, `SensorReading`. These are the 1.x XML types.
+- `Sensors/` — `SensorKey` (`hwinfo:{remote}:{id}:{instance}:{entry}`, `libre:{id}`, `plugin:{id}`), `ISensorReader`, `ISensorSource`, `ISensorHistory`, `SensorKeys` (maps an item's sensor binding to a key).
+- `Images/` — `IImageSource` (non-blocking; null means "draw the placeholder"), `IRenderImage`, `IAssetLocator`, `IMediaPlayback`; `ImageCache` (local raster and SVG files; null for HTTP, RTSP, video and `plugin-image://` until providers exist) and `LockedImage`.
+- `Drawing/` — `RenderContext` (sensors, history, images, assets, `ItemStateStore`, `Tick`, `Now`, `Elapsed`, `RenderOptions`), `PanelDraw.Run(profile, items, graphics, ctx)`, `GraphDraw`, `SkiaGraphics` (all three internal), `FontDefaults`.
+- `Editing/UndoHistory.cs` — the 1.x undo manager, unchanged; rewritten per document in M5.
 
-1. Single-instance check (prompts to kill existing process)
-2. `_host.Start()` — starts the Generic Host, which runs `ApplicationHostService` (an `IHostedService` that creates `MainWindow` and sets up navigation)
-3. Flyleaf media engine initialization
-4. `ConfigModel.Instance.Initialize()` — loads settings and profiles from disk
-5. Default profile creation if first run
-6. `HWHash.Launch()` — starts HWiNFO shared-memory reader on its own thread
-7. `LibreMonitor.Instance.StartAsync()` — if enabled in settings
-8. `PluginMonitor.Instance.StartAsync()`
-9. `StartPanels()` — starts BeadaPanel, TuringPanel, and WebServer tasks based on settings
+Rendering reads nothing global: time, sensor values, history, images and per-item animation state (gauge frames, chart smoothing) all come from the `RenderContext`, so the same inputs give the same pixels. Animation state advances at most once per `Tick`. Selection, grid lines and other editor chrome are never drawn by Core.
 
-> **Note:** `Startup.cs` exists in the project but is entirely commented out — it is not part of the startup flow.
+## Invariants
 
-### Key Singletons
-
-These singletons use the `Lazy<T>` / `Instance` pattern and are **not** in the DI container:
-
-| Singleton | File | Role |
-|---|---|---|
-| `ConfigModel.Instance` | `Models/ConfigModel.cs` | Settings, profiles, persistence (XML). Thread-safe with locks. |
-| `SharedModel.Instance` | `Models/SharedModel.cs` | Shared app state: selected profile, display items, sensor data. Inherits `ObservableObject`. |
-| `DisplayWindowManager.Instance` | `DisplayWindowManager.cs` | Manages overlay windows on a dedicated STA thread. |
-| `LibreMonitor.Instance` | `Monitors/LibreMonitor.cs` | LibreHardwareMonitor sensor polling. |
-| `PluginMonitor.Instance` | `Monitors/PluginMonitor.cs` | Plugin lifecycle management. |
-| `BeadaPanelTask.Instance` | `Services/BeadaPanelTask.cs` | BeadaPanel USB device communication. |
-| `TuringPanelTask.Instance` | `Services/TuringPanelTask.cs` | TuringPanel USB/serial communication. |
-| `WebServerTask.Instance` | `Services/WebServerTask.cs` | Built-in HTTP API and web interface. |
-| `ProfilePreviewCoordinator.Instance` | `Services/ProfilePreviewCoordinator.cs` | Batched profile preview rendering. |
-| `UndoManager.Instance` | `Services/UndoManager.cs` | Per-profile undo/redo via XML snapshots. |
-
-### DI Container Services
-
-Registered in `App.xaml.cs` via `Host.CreateDefaultBuilder().ConfigureServices(...)`:
-
-- **Hosted:** `ApplicationHostService` (bridges host lifecycle → WPF)
-- **Singletons:** `IThemeService`, `ITaskBarService`, `ISnackbarService`, `IContentDialogService`, `IPageService`, `INavigationService`
-- **Scoped:** `MainWindow` (as `INavigationWindow`), all Pages and their ViewModels
-
-### Threading Model
-
-| Thread | Purpose |
-|---|---|
-| **Main UI thread** | WPF dispatcher, MainWindow, all settings pages |
-| **DisplayWindowThread** | Dedicated STA thread created by `DisplayWindowManager` with its own `Dispatcher`. Hosts all `DisplayWindow` overlays. |
-| **BackgroundTask workers** | Each service (`BeadaPanelTask`, `TuringPanelTask`, `WebServerTask`, `LibreMonitor`, `PluginMonitor`) runs via `Task.Run` from `BackgroundTask` base class with `CancellationToken` and `SemaphoreSlim(1,1)` for thread safety. |
-| **HWHash thread** | `HWHash.Launch()` starts a dedicated thread that reads HWiNFO shared memory at a configurable interval. |
-
-> `BackgroundTask` (`Services/BackgroundTask.cs`) is the abstract base class for all long-running services. It provides `StartAsync`, `StopAsync`, `IsRunning`, and a protected `DoWorkAsync(CancellationToken)` method.
-
-### Display System
-
-The drawing system (`InfoPanel/Drawing/`) has multiple implementations:
-- `SkiaGraphics` — Primary renderer using SkiaSharp
-- `AcceleratedGraphics` — Hardware-accelerated DirectX rendering
-- `PanelDraw` — Orchestrates rendering of display items
-
-### DisplayItem Hierarchy
-
-Base class: `DisplayItem` (abstract, in `Models/DisplayItem.cs`) — inherits `ObservableObject`, implements `ICloneable`.
-
-| Category | Types |
-|---|---|
-| **Text-based** | `TextDisplayItem`, `SensorDisplayItem`, `ClockDisplayItem`, `CalendarDisplayItem` |
-| **Table** | `TableSensorDisplayItem` |
-| **Images** | `ImageDisplayItem`, `HttpImageDisplayItem`, `SensorImageDisplayItem` |
-| **Charts** | `GraphDisplayItem`, `BarDisplayItem`, `DonutDisplayItem` (all inherit abstract `ChartDisplayItem`) |
-| **Other** | `GaugeDisplayItem`, `ShapeDisplayItem`, `GroupDisplayItem` (container) |
-
-`SensorDisplayItem` inherits from `TextDisplayItem`. Chart types inherit from abstract `ChartDisplayItem` which inherits from `DisplayItem`.
-
-### Data Sources
-
-| Source | Class | Notes |
-|---|---|---|
-| **HWiNFO** | `HWHash` (`HWHash/HWHash.cs`) | Reads shared memory; must be running externally |
-| **LibreHardwareMonitor** | `LibreMonitor` (`Monitors/LibreMonitor.cs`) | Built-in; requires PawniO driver for low-level access |
-| **Plugins** | `PluginMonitor` (`Monitors/PluginMonitor.cs`) | Bundled from `plugins/`; external from `%ProgramData%\InfoPanel\plugins\`. Each plugin runs in a separate host process via StreamJsonRpc over named pipes. |
-
-### USB Panel Support
-
-USB panel communication is in `InfoPanel/TuringPanel/` and `InfoPanel/BeadaPanel/`:
-- Uses WinUSB API for BeadaPanel devices
-- Serial/USB communication for TuringPanel devices
-- Model-specific configurations in database classes
-
-### Plugin Development
-
-Plugins are .NET libraries that:
-1. Reference `InfoPanel.Plugins` package
-2. Implement `IPlugin` interface (inherit from `BasePlugin`)
-3. Use attributes like `[PluginSensor]` to expose data
-4. Include a `PluginInfo.ini` manifest file
-
-See `PLUGINS.md` for detailed plugin development guide.
-
-## File Storage
-
-All user data is stored under `%LOCALAPPDATA%/InfoPanel/`:
-
-| Path | Contents |
-|---|---|
-| `settings.xml` | Application settings |
-| `profiles.xml` | Profile list |
-| `profiles/{guid}.xml` | Individual profile data (display items) |
-| `assets/{guid}/` | Profile-specific images and assets |
-| `logs/infopanel-*.log` | Rolling daily logs (7-day retention, 100MB limit) |
-| `updates/` | Downloaded update installers (auto-cleaned) |
-| `plugins.bin` | Plugin activation state |
-
-External plugin data is stored under `%ProgramData%/InfoPanel/`:
-
-| Path | Contents |
-|---|---|
-| `plugins/` | User-installed (external) plugins |
-
-## CI/CD
-
-GitHub Actions workflow: `.github/workflows/dotnet-desktop.yml`
-
-- **Triggers:** push to `main`/`master`, tags, pull requests, manual dispatch
-- **Runner:** `windows-2022`
-- **Steps:** checkout → setup .NET 8.0 → restore → publish (win-x64) → compile Inno Setup installer → upload artifact
-- **Releases:** tagged pushes automatically upload the installer to GitHub Releases
-
-## Key Technologies
-
-- **WPF** with **WPF-UI** for modern Windows 11 styling
-- **CommunityToolkit.MVVM** for MVVM implementation
-- **SkiaSharp** for cross-platform graphics rendering
-- **FlyleafLib** for media playback
-- **Serilog** for structured logging (see `LoggingGuidelines.md`)
-- **LibreHardwareMonitor** for hardware sensor access
-- **ASP.NET Core** for built-in web server
-- **Sentry** for error tracking
-
-## Development Notes
-
-- The solution targets .NET 8.0 with Windows Desktop runtime (`net8.0-windows10.0.19041.0`)
-- **x64 only** — `<Platforms>x64</Platforms>` is set in all csproj files
-- Warning level 6 and nullable reference types are enabled
-- `AllowUnsafeBlocks` is enabled for performance-critical code
-- No unit test projects currently exist
-- Plugins are loaded from the `plugins` directory at runtime
-
-## API Client
-
-The C# API client (`InfoPanel/ApiClient/InfoPanelApiClient.cs`) is auto-generated from the OpenAPI spec using NSwag. It is committed to source control — no build-time generation.
-
-- **Spec:** `InfoPanel/ApiClient/openapi.json` (OpenAPI 3.0, fetched from the live API)
-- **Config:** `InfoPanel/ApiClient/nswag.json`
-- **Generated client:** `InfoPanel/ApiClient/InfoPanelApiClient.cs`
-- **Wrapper service:** `InfoPanel/Services/InfoPanelApiService.cs` (singleton with `Instance` pattern)
-
-### Regenerating the client
-
-When the API changes, run:
-
-```powershell
-pwsh scripts/generate-api-client.ps1
-```
-
-This fetches the latest spec from `https://api.infopanel.net/openapi.json` and regenerates the client. Review the diff in both `openapi.json` and `InfoPanelApiClient.cs` before committing.
-
-> **Note:** NSwag is installed as a local dotnet tool (`.config/dotnet-tools.json`). Run `dotnet tool restore` after cloning.
+- **The engine owns the model.** The editor sends patches only (property sets, structural operations) and never round-trips whole profiles or items through its own model. Undo/redo and dirty state live in the engine.
+- **1.x XML compatibility.** Profiles are `profiles.xml` + `profiles/{guid}.xml`, written with `XmlSerializer`, and 1.x must keep reading what 2.0 writes:
+  - Model freeze: never add, remove or rename a public read/write property or public field on `Profile` or any display item type, and never change the type of one that serializes. `[ObservableProperty]` fields count (it does not copy `[XmlIgnore]`, so those serialize). Members that do not serialize (get-only, `[XmlIgnore]`) may change.
+  - `HttpImageDisplayItem.HttpUrl` is kept but always serializes as null: the one whitelisted difference from 1.x output.
+  - `DisplayItem.Guid` is still `[XmlIgnore]`; M2 serializes it as a `<Guid>` element (1.x ignores unknown elements). That is the one planned model change.
+- **Goldens and snapshots** (from M3 and M5): rendering changes are guarded by golden images and the kind manifest by a snapshot. Regenerate only for an intended change, and review the diff:
+  - `UPDATE_GOLDENS=1 dotnet test --filter Category=Golden`
+  - `UPDATE_SNAPSHOTS=1 dotnet test --filter KindManifest`
+- **1.x code** is read from the `1.4.x` branch with `git show 1.4.x:<path>` (no worktrees). Port from there, using `PORTING.md` as the backlog.
+- **No CI on 2.0.x** for now; `.github/workflows/dotnet-desktop.yml` is the 1.x workflow and is left untouched.
 
 ## Related Documentation
 
+- `docs/2.0/decisions.md` — 2.0 decisions (date, decision, reason)
+- `PORTING.md` — 1.x components still to port, with their 1.4.x sources
 - `PLUGINS.md` — Plugin development guide (for plugin authors)
-- `PLUGIN-ARCHITECTURE.md` — Plugin system internals (for contributors)
-- `PANELS.md` — Hardware panel support and models
+- `PLUGIN-ARCHITECTURE.md` — Plugin system internals (for contributors; describes the 1.x host side)
+- `PANELS.md` — Hardware panel support and models (1.x)
 - `LoggingGuidelines.md` — Serilog usage standards and log levels

@@ -1,4 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
+using InfoPanel.Extensions;
 using SkiaSharp;
 using System;
 using System.IO;
@@ -20,7 +22,6 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _type, value);
-                OnPropertyChanged(nameof(CalculatedPath));
             }
         }
 
@@ -40,7 +41,6 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _filePath, value);
-                OnPropertyChanged(nameof(CalculatedPath));
             }
         }
 
@@ -52,7 +52,6 @@ namespace InfoPanel.Models
             set
             {
                 SetProperty(ref _relativePath, value);
-                OnPropertyChanged(nameof(CalculatedPath));
             }
         }
 
@@ -66,17 +65,11 @@ namespace InfoPanel.Models
             get { return _rtspUrl; }
             set
             {
-                var previousValue = _rtspUrl;
                 if (string.IsNullOrEmpty(value) 
                     || value.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) 
                     || value.StartsWith("rtsps://"))
                 {
                     SetProperty(ref _rtspUrl, value);
-                    OnPropertyChanged(nameof(CalculatedPath));
-                    if (!string.IsNullOrEmpty(previousValue))
-                    {
-                        InfoPanel.Cache.InvalidateImage(previousValue);
-                    }
                 }
             }
         }
@@ -88,52 +81,50 @@ namespace InfoPanel.Models
             get { return _httpUrl; }
             set
             {
-                var previousValue = _httpUrl;
                 if (string.IsNullOrEmpty(value)
                      || value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
                      || value.StartsWith("https://"))
                 {
                     SetProperty(ref _httpUrl, value);
-                    OnPropertyChanged(nameof(CalculatedPath));
-
-                    if (!string.IsNullOrEmpty(previousValue))
-                    {
-                        InfoPanel.Cache.InvalidateImage(previousValue);
-                    }
                 }
             }
         }
 
-        public string? CalculatedPath
+        /// <summary>
+        /// The image source to load: the RTSP or HTTP URL, or the file path. A relative path resolves
+        /// inside the profile's assets folder and gives null if it points outside it.
+        /// </summary>
+        public virtual string? ResolveSource(RenderContext ctx)
         {
-            get
+            if (Type == ImageType.RTSP)
             {
-                if (Type == ImageType.RTSP)
-                {
-                    return RtspUrl;
-                }
-
-                if (Type == ImageType.URL)
-                {
-                    return HttpUrl;
-                }
-
-                if (RelativePath)
-                {
-                    if (FilePath != null)
-                    {
-                        return Path.Combine(
-                            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                            "InfoPanel", "assets", ProfileGuid.ToString(), FilePath);
-                    }
-                    else
-                    {
-                        return null;
-                    }
-                }
-
-                return FilePath;
+                return RtspUrl;
             }
+
+            if (Type == ImageType.URL)
+            {
+                return HttpUrl;
+            }
+
+            if (string.IsNullOrEmpty(FilePath))
+            {
+                return null;
+            }
+
+            if (RelativePath)
+            {
+                if (Profile is null)
+                {
+                    return null;
+                }
+
+                var assetsDirectory = ctx.Assets.GetProfileAssetsDirectory(Profile.Guid);
+                var fullPath = Path.GetFullPath(Path.Combine(assetsDirectory, FilePath));
+
+                return fullPath.IsSubdirectoryOf(assetsDirectory) ? fullPath : null;
+            }
+
+            return FilePath;
         }
 
         private bool _cache = true;
@@ -223,28 +214,28 @@ namespace InfoPanel.Models
             this.RelativePath = relativePath;
         }
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
             return Name;
         }
 
-        public override string EvaluateColor()
+        public override string EvaluateColor(RenderContext ctx)
         {
             return "#000000";
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
             return (Name, "#000000");
         }
 
-        public override SKSize EvaluateSize()
+        public override SKSize EvaluateSize(RenderContext ctx)
         {
             var result = new SKSize(Width, Height);
 
-            if (CalculatedPath != null)
+            if (ResolveSource(ctx) is { Length: > 0 } source)
             {
-                var cachedImage = InfoPanel.Cache.GetLocalImage(this, false);
+                var cachedImage = ctx.Images.Get(source, PersistentCache);
                 if (cachedImage != null)
                 {
                     if (result.Width == 0)
@@ -272,9 +263,9 @@ namespace InfoPanel.Models
             return result;
         }
 
-        public override SKRect EvaluateBounds()
+        public override SKRect EvaluateBounds(RenderContext ctx)
         {
-            var size = EvaluateSize();
+            var size = EvaluateSize(ctx);
             return new SKRect(X, Y, X + size.Width, Y + size.Height);
         }
 

@@ -1,5 +1,5 @@
 using InfoPanel.Extensions;
-using InfoPanel.Models;
+using InfoPanel.Images;
 using Serilog;
 using SkiaSharp;
 using System;
@@ -87,11 +87,11 @@ namespace InfoPanel.Drawing
             Canvas.Restore();
         }
 
-        public void DrawImage(LockedImage lockedImage, int x, int y, int width, int height, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool cache = true, string cacheHint = "default", bool flipX = false, float opacity = 1f)
+        public void DrawImage(IRenderImage renderImage, int x, int y, int width, int height, TimeSpan elapsed, int rotation = 0, int rotationCenterX = 0, int rotationCenterY = 0, bool flipX = false, float opacity = 1f)
         {
-            if (lockedImage.Type == LockedImage.ImageType.SVG)
+            if (renderImage.IsVector)
             {
-                lockedImage.AccessSVG(picture =>
+                renderImage.AccessVector(picture =>
                 {
                     if (flipX)
                     {
@@ -108,13 +108,13 @@ namespace InfoPanel.Drawing
             }
             else
             {
-                lockedImage.AccessSK(width, height, image =>
+                renderImage.AccessRaster(width, height, elapsed, image =>
                 {
                     if (image != null)
                     {
                         DrawImage(image, x, y, width, height, rotation, rotationCenterX, rotationCenterY, flipX: flipX, opacity: opacity);
                     }
-                }, cache, cacheHint, GRContext);
+                });
             }
         }
 

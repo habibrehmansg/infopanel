@@ -1,6 +1,6 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using InfoPanel.Drawing;
 using InfoPanel.Enums;
-using InfoPanel.Extensions;
+using InfoPanel.Sensors;
 using SkiaSharp;
 using System;
 
@@ -110,25 +110,42 @@ namespace InfoPanel.Models
             get { return true; }
         }
 
+        /// <summary>
+        /// Kept so the XML element stays; the URL now comes from the sensor at render time
+        /// (<see cref="ResolveSource"/>), so this always serializes as null.
+        /// </summary>
         public new string? HttpUrl
         {
-            get { return CalculatedPath; }
+            get { return null; }
             set { }
         }
 
-        public new string? CalculatedPath
+        /// <summary>
+        /// The sensor's text, if it is an absolute http(s) URL or a <c>plugin-image://</c> source;
+        /// anything else (a local or UNC path, another scheme) gives null, as in 1.x.
+        /// </summary>
+        public override string? ResolveSource(RenderContext ctx)
         {
-            get
+            var sensorReading = GetValue(ctx.Sensors);
+
+            if (sensorReading.HasValue && sensorReading.Value.ValueText is { Length: > 0 } text && IsAllowedSource(text))
             {
-                var sensorReading = GetValue();
-
-                if (sensorReading.HasValue && sensorReading.Value.ValueText != null)
-                {
-                    return sensorReading.Value.ValueText;
-                }
-
-                return null;
+                return text;
             }
+
+            return null;
+        }
+
+        internal static bool IsAllowedSource(string text)
+        {
+            if (text.StartsWith("plugin-image://", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return Uri.TryCreate(text, UriKind.Absolute, out var uri)
+                && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                && text.StartsWith(uri.Scheme + "://", StringComparison.OrdinalIgnoreCase);
         }
 
         public HttpImageDisplayItem(): base()
@@ -154,24 +171,18 @@ namespace InfoPanel.Models
             LibreSensorId = libreSensorId;
         }
 
-        public SensorReading? GetValue()
+        public SensorReading? GetValue(ISensorReader sensors)
         {
-            return SensorType switch
-            {
-                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(HwInfoRemoteIndex, Id, Instance, EntryId),
-                SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
-                SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
-                _ => null,
-            };
+            return SensorKeys.Read(this, sensors);
         }
 
-        public override SKSize EvaluateSize()
+        public override SKSize EvaluateSize(RenderContext ctx)
         {
             var result = new SKSize(Width, Height);
 
-            if (result.Width == 0 || result.Height == 0)
+            if ((result.Width == 0 || result.Height == 0) && ResolveSource(ctx) is { Length: > 0 } source)
             {
-                var cachedImage = InfoPanel.Cache.GetLocalImage(this, false);
+                var cachedImage = ctx.Images.Get(source, PersistentCache);
                 if (cachedImage != null)
                 {
                     if (result.Width == 0)

@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Enums;
+using InfoPanel.Sensors;
 using System;
 
 namespace InfoPanel.Models
@@ -139,20 +140,14 @@ namespace InfoPanel.Models
             LibreSensorId = libreSensorId;
         }
 
-        public SensorReading? GetValue()
+        public SensorReading? GetValue(ISensorReader sensors)
         {
-            return SensorType switch
-            {
-                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(HwInfoRemoteIndex, Id, Instance, EntryId),
-                SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
-                SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
-                _ => null,
-            };
+            return SensorKeys.Read(this, sensors);
         }
 
-        public bool ShouldShow()
+        public bool ShouldShow(ISensorReader sensors)
         {
-            var sensorReading = GetValue();
+            var sensorReading = GetValue(sensors);
 
             if (sensorReading.HasValue)
             {

@@ -1,104 +1,37 @@
-using FlyleafLib.MediaPlayer;
 using InfoPanel.Extensions;
+using InfoPanel.Images;
 using InfoPanel.Models;
 using InfoPanel.Plugins;
-using InfoPanel.Utils;
-using Serilog;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
-using System.Linq;
 
 namespace InfoPanel.Drawing
 {
-    readonly struct SelectedRectangle(SKRect rect, int rotation = 0)
-    {
-        public readonly SKRect Rect = rect;
-        public readonly int Rotation = rotation;
-    }
-
     internal class PanelDraw
     {
-        private static readonly ILogger Logger = Log.ForContext<PanelDraw>();
-        private static readonly Stopwatch _selectionStopwatch = new();
-
-        static PanelDraw()
-        {
-            _selectionStopwatch.Start();
-        }
-
-        public static void Run(Profile profile, SkiaGraphics g, bool preview = false, float scale = 1, bool cache = true, string cacheHint = "default", FpsCounter? fpsCounter = null)
+        /// <summary>
+        /// Draws <paramref name="displayItems"/> (the profile's items, in draw order) onto <paramref name="g"/>.
+        /// Output depends only on the arguments: the same profile, items and context give the same pixels.
+        /// </summary>
+        public static void Run(Profile profile, IReadOnlyList<DisplayItem> displayItems, SkiaGraphics g, RenderContext ctx, float scale = 1)
         {
             var stopwatch = Stopwatch.StartNew();
-
-            List<SelectedRectangle> selectedRectangles = [];
 
             if (SKColor.TryParse(profile.BackgroundColor, out var backgroundColor))
             {
                 g.Clear(backgroundColor);
             }
 
-            foreach (var displayItem in SharedModel.Instance.GetProfileDisplayItemsCopy(profile))
+            foreach (var displayItem in displayItems)
             {
                 if (displayItem.Hidden) continue;
-                Draw(g, preview, scale, cache, cacheHint, displayItem, selectedRectangles);
+                Draw(g, ctx, scale, displayItem);
             }
 
-            if (!preview && SharedModel.Instance.SelectedProfile == profile && selectedRectangles.Count != 0)
-            {
-                if (ConfigModel.Instance.Settings.ShowGridLines)
-                {
-                    var gridSpace = ConfigModel.Instance.Settings.GridLinesSpacing;
-                    var gridColor = ConfigModel.Instance.Settings.GridLinesColor;
-
-                    var verticalLines = profile.Width / gridSpace;
-                    for (int i = 1; i < verticalLines; i++)
-                    {
-                        //draw vertical lines
-                        var x = i * gridSpace + 0.5f;
-                        g.DrawLine(x, 0, x, profile.Height, gridColor, 1);
-                    }
-
-                    var horizontalLines = profile.Height / gridSpace;
-                    for (int j = 1; j < horizontalLines; j++)
-                    {
-                        //draw horizontal lines
-                        var y = j * gridSpace + 0.5f;
-                        g.DrawLine(0, y, profile.Width, y, gridColor, 1);
-                    }
-                }
-
-                if (SKColor.TryParse(ConfigModel.Instance.Settings.SelectedItemColor, out var color))
-                {
-                    var elapsedMilliseconds = _selectionStopwatch.ElapsedMilliseconds;
-
-                    // Define "on" and "off" durations
-                    int onDuration = 600;  // Time the rectangle is visible
-                    int offDuration = 400; // Time the rectangle is invisible
-                    int cycleDuration = onDuration + offDuration; // Total cycle time
-
-                    // Determine if we are in the "on" phase
-                    if (elapsedMilliseconds % cycleDuration < onDuration) // "on" phase
-                    {
-                        foreach (var rectangle in selectedRectangles)
-                        {
-                            using var path = RectToPath(rectangle.Rect, rectangle.Rotation, profile.Width, profile.Height, 2);
-
-                            if (path != null)
-                            {
-                                g.DrawPath(path, color, 2);
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    Logger.Warning("Failed to parse selected item color: {Color}", ConfigModel.Instance.Settings.SelectedItemColor);
-                }
-            }
-
+            var fpsCounter = ctx.Fps;
             fpsCounter?.Update(stopwatch.ElapsedMilliseconds);
 
             if (profile.ShowFps && fpsCounter != null)
@@ -123,66 +56,7 @@ namespace InfoPanel.Drawing
             }
         }
 
-        public static SKPath? RectToPath(SKRect rect, int rotation, float maxWidth, float maxHeight, float penWidth = 2)
-        {
-            float halfPenWidth = penWidth / 2f;
-            var canvasBounds = new SKRect(halfPenWidth, halfPenWidth,
-                                          maxWidth - halfPenWidth, maxHeight - halfPenWidth);
-
-            // Early check: if the rectangle is entirely outside canvas bounds before rotation
-            if (!rect.IntersectsWith(canvasBounds) && rotation == 0)
-            {
-                return null;
-            }
-
-            var path = new SKPath();
-            path.AddRect(rect);
-
-            // Apply rotation if needed
-            if (rotation != 0)
-            {
-                float centerX = rect.MidX;
-                float centerY = rect.MidY;
-                var rotationMatrix = SKMatrix.CreateRotationDegrees(rotation, centerX, centerY);
-                path.Transform(rotationMatrix);
-            }
-
-            // Get the bounds of the transformed path
-            var pathBounds = path.Bounds;
-
-            // Check if the path is entirely outside the canvas bounds
-            if (pathBounds.Right < halfPenWidth || pathBounds.Left > maxWidth - halfPenWidth ||
-                pathBounds.Bottom < halfPenWidth || pathBounds.Top > maxHeight - halfPenWidth)
-            {
-                path.Dispose();
-                return null;
-            }
-
-            // Check if the path is entirely within the canvas bounds
-            if (pathBounds.Left >= halfPenWidth && pathBounds.Top >= halfPenWidth &&
-                pathBounds.Right <= maxWidth - halfPenWidth && pathBounds.Bottom <= maxHeight - halfPenWidth)
-            {
-                return path;
-            }
-
-            // Path partially overlaps with canvas, perform intersection
-            using var canvasPath = new SKPath();
-            canvasPath.AddRect(canvasBounds);
-            var clippedPath = new SKPath();
-
-            if (path.Op(canvasPath, SKPathOp.Intersect, clippedPath))
-            {
-                path.Dispose();
-                return clippedPath;
-            }
-
-            // Intersection failed (shouldn't happen if bounds checks are correct)
-            path.Dispose();
-            clippedPath.Dispose();
-            return null;
-        }
-
-        private static void Draw(SkiaGraphics g, bool preview, float scale, bool cache, string cacheHint, DisplayItem displayItem, List<SelectedRectangle> selectedRectangles)
+        private static void Draw(SkiaGraphics g, RenderContext ctx, float scale, DisplayItem displayItem)
         {
             var x = (int)Math.Floor(displayItem.X * scale);
             var y = (int)Math.Floor(displayItem.Y * scale);
@@ -194,17 +68,17 @@ namespace InfoPanel.Drawing
                         foreach (var item in groupDisplayItem.DisplayItemsCopy)
                         {
                             if (item.Hidden) continue;
-                            Draw(g, preview, scale, cache, cacheHint, item, selectedRectangles);
+                            Draw(g, ctx, scale, item);
                         }
                         break;
                     }
                 case TextDisplayItem textDisplayItem:
                     {
-                        (var text, var color) = textDisplayItem.EvaluateTextAndColor();
+                        (var text, var color) = textDisplayItem.EvaluateTextAndColor(ctx);
 
                         // Handle table display items separately
                         if (textDisplayItem is TableSensorDisplayItem tableSensorDisplayItem
-                            && tableSensorDisplayItem.GetValue() is SensorReading sensorReading
+                            && tableSensorDisplayItem.GetValue(ctx.Sensors) is SensorReading sensorReading
                             && sensorReading.ValueTable is DataTable table)
                         {
                             DrawTableSensorDisplay(g, tableSensorDisplayItem, x, y, scale, color, table);
@@ -214,7 +88,7 @@ namespace InfoPanel.Drawing
                         // Regular text display
                         if (textDisplayItem.Marquee && textDisplayItem.Width > 0)
                         {
-                            DrawMarqueeText(g, textDisplayItem, text, color, x, y, scale);
+                            DrawMarqueeText(g, ctx, textDisplayItem, text, color, x, y, scale);
                         }
                         else
                         {
@@ -227,15 +101,22 @@ namespace InfoPanel.Drawing
                     {
                         if (imageDisplayItem is SensorImageDisplayItem sensorImageDisplayItem)
                         {
-                            if (!sensorImageDisplayItem.ShouldShow())
+                            if (!sensorImageDisplayItem.ShouldShow(ctx.Sensors))
                             {
                                 break;
                             }
                         }
 
-                        LockedImage? cachedImage = Cache.GetLocalImage(imageDisplayItem);
+                        var source = imageDisplayItem.ResolveSource(ctx);
+                        var cachedImage = string.IsNullOrEmpty(source) ? null : ctx.Images.Get(source, imageDisplayItem.PersistentCache);
 
-                        var size = imageDisplayItem.EvaluateSize();
+                        var size = imageDisplayItem.EvaluateSize(ctx);
+
+                        if (cachedImage == null)
+                        {
+                            size = ImagePlaceholder.Resolve(size);
+                        }
+
                         var scaledWidth = (int)size.Width;
                         var scaledHeight = (int)size.Height;
 
@@ -249,22 +130,22 @@ namespace InfoPanel.Drawing
 
                         if (cachedImage != null)
                         {
-                            g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, imageDisplayItem.Rotation, cache: imageDisplayItem.Cache && cache, cacheHint: cacheHint);
+                            g.DrawImage(cachedImage, x, y, scaledWidth, scaledHeight, ctx.Elapsed, imageDisplayItem.Rotation);
 
                             if (imageDisplayItem.Layer)
                             {
                                 g.FillRectangle(imageDisplayItem.LayerColor, x, y, scaledWidth, scaledHeight, rotation: imageDisplayItem.Rotation);
                             }
 
-                            if (!preview && imageDisplayItem.ShowPanel && cachedImage.CurrentTime != null && cachedImage.FrameRate != null && cachedImage.Duration != null && cachedImage.VideoPlayerStatus != null)
+                            if (imageDisplayItem.ShowPanel && cachedImage is IMediaPlayback media)
                             {
                                 if (g is SkiaGraphics skiaGraphics)
                                 {
                                     var canvas = skiaGraphics.Canvas;
 
                                     // Calculate progress
-                                    var progress = cachedImage.Duration.Value.TotalMilliseconds > 0
-                                        ? cachedImage.CurrentTime.Value.TotalMilliseconds / cachedImage.Duration.Value.TotalMilliseconds
+                                    var progress = media.Duration.TotalMilliseconds > 0
+                                        ? media.CurrentTime.TotalMilliseconds / media.Duration.TotalMilliseconds
                                         : 0;
 
                                     // Rotation is already -180 to 180
@@ -280,11 +161,12 @@ namespace InfoPanel.Drawing
                                     using var overlayBitmap = CreateVideoOverlay(
                                         overlayWidth,
                                         progress,
-                                        cachedImage.CurrentTime.Value,
-                                        cachedImage.Duration.Value,
-                                        cachedImage.FrameRate.Value,
-                                        cachedImage.Volume,
-                                        cachedImage.VideoPlayerStatus.Value
+                                        media.CurrentTime,
+                                        media.Duration,
+                                        media.FrameRate,
+                                        media.Volume,
+                                        media.Status,
+                                        ctx.Elapsed
                                     );
 
                                     // Draw overlay with rotation
@@ -341,32 +223,45 @@ namespace InfoPanel.Drawing
                     }
                 case GaugeDisplayItem gaugeDisplayItem:
                     {
-                        gaugeDisplayItem.EvaluateImageFrame(out var imageA, out var imageB, out var blend);
+                        gaugeDisplayItem.EvaluateImageFrame(ctx, out var imageA, out var imageB, out var blend);
 
-                        if (imageA != null)
+                        var cachedA = imageA != null ? GetImage(ctx, imageA) : null;
+
+                        if (cachedA != null)
                         {
-                            var cachedA = Cache.GetLocalImage(imageA);
-                            if (cachedA != null)
+                            var scaledWidth = gaugeDisplayItem.Width;
+                            var scaledHeight = gaugeDisplayItem.Height;
+
+                            if (scaledWidth == 0) scaledWidth = cachedA.Width;
+                            if (scaledHeight == 0) scaledHeight = cachedA.Height;
+
+                            scaledWidth = (int)Math.Floor(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
+                            scaledHeight = (int)Math.Floor(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
+
+                            g.DrawImage(cachedA, x, y, scaledWidth, scaledHeight, ctx.Elapsed, gaugeDisplayItem.Rotation, 0, 0, flipX: gaugeDisplayItem.FlipX);
+
+                            if (imageB != null && imageB != imageA && blend > 0f)
                             {
-                                var scaledWidth = gaugeDisplayItem.Width;
-                                var scaledHeight = gaugeDisplayItem.Height;
-
-                                if (scaledWidth == 0) scaledWidth = cachedA.Width;
-                                if (scaledHeight == 0) scaledHeight = cachedA.Height;
-
-                                scaledWidth = (int)Math.Floor(scaledWidth * gaugeDisplayItem.Scale / 100.0f * scale);
-                                scaledHeight = (int)Math.Floor(scaledHeight * gaugeDisplayItem.Scale / 100.0f * scale);
-
-                                g.DrawImage(cachedA, x, y, scaledWidth, scaledHeight, gaugeDisplayItem.Rotation, 0, 0, cache, cacheHint, flipX: gaugeDisplayItem.FlipX);
-
-                                if (imageB != null && imageB != imageA && blend > 0f)
+                                var cachedB = GetImage(ctx, imageB);
+                                if (cachedB != null)
                                 {
-                                    var cachedB = Cache.GetLocalImage(imageB);
-                                    if (cachedB != null)
-                                    {
-                                        g.DrawImage(cachedB, x, y, scaledWidth, scaledHeight, gaugeDisplayItem.Rotation, 0, 0, cache, cacheHint, flipX: gaugeDisplayItem.FlipX, opacity: blend);
-                                    }
+                                    g.DrawImage(cachedB, x, y, scaledWidth, scaledHeight, ctx.Elapsed, gaugeDisplayItem.Rotation, 0, 0, flipX: gaugeDisplayItem.FlipX, opacity: blend);
                                 }
+                            }
+                        }
+                        else
+                        {
+                            // No frame image: the placeholder at the gauge's size (100×100 where it is 0).
+                            var size = ImagePlaceholder.Resolve(new SKSize(
+                                gaugeDisplayItem.Width * gaugeDisplayItem.Scale / 100.0f,
+                                gaugeDisplayItem.Height * gaugeDisplayItem.Scale / 100.0f));
+                            var scaledWidth = (int)Math.Floor(size.Width * scale);
+                            var scaledHeight = (int)Math.Floor(size.Height * scale);
+
+                            if (scaledWidth > 0 && scaledHeight > 0)
+                            {
+                                using var placeholder = SKBitmapExtensions.CreateMaterialNoImageBitmap(scaledWidth, scaledHeight);
+                                g.DrawBitmap(placeholder, x, y, scaledWidth, scaledHeight, gaugeDisplayItem.Rotation, flipX: gaugeDisplayItem.FlipX);
                             }
                         }
                         break;
@@ -380,7 +275,7 @@ namespace InfoPanel.Drawing
                         using var canvas = new SKCanvas(graphBitmap);
 
                         using var g1 = new SkiaGraphics(canvas, g.FontScale);
-                        GraphDraw.Run(chartDisplayItem, g1, preview);
+                        GraphDraw.Run(chartDisplayItem, g1, ctx);
 
                         if (chartDisplayItem.FlipX)
                         {
@@ -608,7 +503,7 @@ namespace InfoPanel.Drawing
                             {
                                 if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor) && SKColor.TryParse(shapeDisplayItem.GradientColor2, out var gradientColor2))
                                 {
-                                    g.FillPath(path, color, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
+                                    g.FillPath(path, color, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(ctx.Elapsed), shapeDisplayItem.GradientType);
                                 }
                                 else
                                 {
@@ -623,7 +518,7 @@ namespace InfoPanel.Drawing
                             {
                                 if (shapeDisplayItem.ShowGradient && SKColor.TryParse(shapeDisplayItem.GradientColor, out var gradientColor) && SKColor.TryParse(shapeDisplayItem.GradientColor2, out var gradientColor2))
                                 {
-                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness * scale, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(), shapeDisplayItem.GradientType);
+                                    g.DrawPath(path, color, shapeDisplayItem.FrameThickness * scale, gradientColor, gradientColor2, shapeDisplayItem.GetGradientAnimationOffset(ctx.Elapsed), shapeDisplayItem.GradientType);
                                 }
                                 else
                                 {
@@ -635,14 +530,15 @@ namespace InfoPanel.Drawing
                         break;
                     }
             }
-
-            if (!preview && displayItem.Selected && displayItem is not GroupDisplayItem)
-            {
-                selectedRectangles.Add(new SelectedRectangle(displayItem.EvaluateBounds(), displayItem.Rotation));
-            }
         }
 
-        private static SKBitmap CreateVideoOverlay(float imageWidth, double progress, TimeSpan currentTime, TimeSpan duration, double frameRate, float volume, Status playerStatus)
+        private static IRenderImage? GetImage(RenderContext ctx, ImageDisplayItem imageDisplayItem)
+        {
+            var source = imageDisplayItem.ResolveSource(ctx);
+            return string.IsNullOrEmpty(source) ? null : ctx.Images.Get(source, imageDisplayItem.PersistentCache);
+        }
+
+        private static SKBitmap CreateVideoOverlay(float imageWidth, double progress, TimeSpan currentTime, TimeSpan duration, double frameRate, float volume, MediaPlaybackStatus playerStatus, TimeSpan elapsed)
         {
             const int overlayHeight = 40;
             var overlayBitmap = new SKBitmap((int)imageWidth, overlayHeight);
@@ -678,10 +574,10 @@ namespace InfoPanel.Drawing
                 var progressWidth = isLive ? progressBarWidth : (float)(progressBarWidth * Math.Min(progress, 1.0));
                 var progressRect = SKRect.Create(progressBarLeft, progressBarY, progressWidth, progressBarHeight);
                 
-                if (isLive && playerStatus == Status.Playing)
+                if (isLive && playerStatus == MediaPlaybackStatus.Playing)
                 {
                     // Create animated gradient for live content
-                    var animationTime = (float)(DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond % 3000) / 3000f;
+                    var animationTime = (float)((long)elapsed.TotalMilliseconds % 3000) / 3000f;
                     
                     using var liveProgressPaint = new SKPaint { IsAntialias = true };
                     
@@ -757,7 +653,7 @@ namespace InfoPanel.Drawing
                 using var liveFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Symbol", SKFontStyle.Bold), 12f);
                 using var livePaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
 
-                var liveText = playerStatus == Status.Playing ? "LIVE" : "CONNECTING..";
+                var liveText = playerStatus == MediaPlaybackStatus.Playing ? "LIVE" : "CONNECTING..";
                 overlayCanvas.DrawText(liveText, progressBarLeft, overlayHeight - 8f, liveFont, livePaint);
 
                 // Measure the LIVE text width
@@ -857,7 +753,7 @@ namespace InfoPanel.Drawing
             }
         }
 
-        private static void DrawMarqueeText(SkiaGraphics g, TextDisplayItem textDisplayItem, 
+        private static void DrawMarqueeText(SkiaGraphics g, RenderContext ctx, TextDisplayItem textDisplayItem, 
             string text, string color, int x, int y, float scale)
         {
             var fontSize = (int)Math.Floor(textDisplayItem.FontSize * scale);
@@ -880,7 +776,7 @@ namespace InfoPanel.Drawing
             }
 
             // Calculate animation
-            var currentTime = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+            var currentTime = (long)ctx.Elapsed.TotalMilliseconds;
             var totalDistance = textWidth + padding;
             var duration = totalDistance / scrollSpeed * 1000; // milliseconds
             var progress = (currentTime % duration) / duration;

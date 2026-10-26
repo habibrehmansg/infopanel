@@ -2,14 +2,13 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.Drawing;
 using SkiaSharp;
 using System;
-using System.Linq;
 
 namespace InfoPanel.Models
 {
     [Serializable]
     public partial class TextDisplayItem : DisplayItem
     {
-        private string _font = SKFontManager.Default.GetFontFamilies().First();
+        private string _font = FontDefaults.Family;
         public string Font
         {
             get { return _font; }
@@ -166,32 +165,32 @@ namespace InfoPanel.Models
         public TextDisplayItem(string name, Profile profile) : base(name, profile) { }
 
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
             return Name;
         }
 
-        public override string EvaluateColor()
+        public override string EvaluateColor(RenderContext ctx)
         {
             return Color;
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
             return (Name, Color);
         }
 
-        public override SKSize EvaluateSize()
+        public override SKSize EvaluateSize(RenderContext ctx)
         {
             var skiaGraphics = SkiaGraphics.FromEmpty(Profile.FontScale);
-            var text = EvaluateText();
+            var text = EvaluateText(ctx);
             var (width, height) = skiaGraphics.MeasureString(text, Font, FontStyle, FontSize, Bold, Italic, Underline, Strikeout, Wrap, Ellipsis, Width);
             return new SKSize(width, height);
         }
 
-        public override SKRect EvaluateBounds()
+        public override SKRect EvaluateBounds(RenderContext ctx)
         {
-            var size = EvaluateSize();
+            var size = EvaluateSize(ctx);
             int rectX = Width == 0 && RightAlign ? (int)(X - size.Width) : X;
             var rect = new SKRect(rectX, Y, rectX + size.Width, Y + size.Height);
             if (GlowEnabled && GlowRadius > 0)
@@ -211,7 +210,7 @@ namespace InfoPanel.Models
     [Serializable]
     public class ClockDisplayItem : TextDisplayItem
     {
-        private string _format = "hh:mm:ss tt";
+        private string _format = DefaultFormat;
         public string Format
         {
             get { return _format; }
@@ -233,27 +232,50 @@ namespace InfoPanel.Models
         public ClockDisplayItem(string name, Profile profile) : base(name, profile) { }
 
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
-            if (Uppercase)
+            var text = FormatDateTime(ToLocalDateTime(ctx.Now), _format, DefaultFormat);
+            return Uppercase ? text.ToUpper() : text;
+        }
+
+        internal const string DefaultFormat = "hh:mm:ss tt";
+
+        /// <summary>
+        /// <paramref name="now"/> as the <see cref="DateTime"/> 1.x formatted (<c>DateTime.Now</c>):
+        /// local kind when its offset is the machine's, so formats like "U" and "K" behave the same.
+        /// </summary>
+        internal static DateTime ToLocalDateTime(DateTimeOffset now)
+        {
+            return now.Offset == TimeZoneInfo.Local.GetUtcOffset(now.UtcDateTime)
+                ? DateTime.SpecifyKind(now.DateTime, DateTimeKind.Local)
+                : now.DateTime;
+        }
+
+        /// <summary>
+        /// Formats with <paramref name="format"/>, or with <paramref name="fallback"/> if that throws.
+        /// 1.x never rendered an invalid format: its setter kept the previous one.
+        /// </summary>
+        internal static string FormatDateTime(DateTime value, string format, string fallback)
+        {
+            try
             {
-                return DateTime.Now.ToString(_format).ToUpper();
+                return value.ToString(format);
             }
-            else
+            catch (FormatException)
             {
-                return DateTime.Now.ToString(_format);
+                return value.ToString(fallback);
             }
         }
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
-            return (EvaluateText(), Color);
+            return (EvaluateText(ctx), Color);
         }
     }
 
     [Serializable]
     public class CalendarDisplayItem : TextDisplayItem
     {
-        private string _format = "dd/MM/yyyy";
+        private string _format = DefaultFormat;
         public string Format
         {
             get { return _format; }
@@ -270,21 +292,19 @@ namespace InfoPanel.Models
 
         public CalendarDisplayItem(string name, Profile profile) : base(name, profile) { }
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
-            if (Uppercase)
-            {
-                return DateTime.Today.ToString(_format).ToUpper();
-            }
-            else
-            {
-                return DateTime.Today.ToString(_format);
-            }
+            // Midnight of ctx.Now's day, like 1.x DateTime.Today.
+            var today = ClockDisplayItem.ToLocalDateTime(ctx.Now).Date;
+            var text = ClockDisplayItem.FormatDateTime(today, _format, DefaultFormat);
+            return Uppercase ? text.ToUpper() : text;
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        internal const string DefaultFormat = "dd/MM/yyyy";
+
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
-            return (EvaluateText(), Color);
+            return (EvaluateText(ctx), Color);
         }
     }
 }

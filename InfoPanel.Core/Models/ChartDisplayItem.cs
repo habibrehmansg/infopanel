@@ -1,5 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
 using InfoPanel.Enums;
+using InfoPanel.Sensors;
 using SkiaSharp;
 using System;
 
@@ -291,39 +293,33 @@ namespace InfoPanel.Models
             
         }
 
-        public SensorReading? GetValue()
+        public SensorReading? GetValue(ISensorReader sensors)
         {
-            return SensorType switch
-            {
-                SensorType.HwInfo => SensorReader.ReadHwInfoSensor(HwInfoRemoteIndex, Id, Instance, EntryId),
-                SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
-                SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
-                _ => null,
-            };
+            return SensorKeys.Read(this, sensors);
         }
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
             return Name;
         }
 
-        public override string EvaluateColor()
+        public override string EvaluateColor(RenderContext ctx)
         {
             return Color;
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
             return (Name, Color);
         }
 
-        public override SKSize EvaluateSize()
+        public override SKSize EvaluateSize(RenderContext ctx)
         {
             return new SKSize(Width, Height);
         }
-        public override SKRect EvaluateBounds()
+        public override SKRect EvaluateBounds(RenderContext ctx)
         {
-            var size = EvaluateSize();
+            var size = EvaluateSize(ctx);
             return new SKRect(X, Y, X + size.Width, Y + size.Height);
         }
     }

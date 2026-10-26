@@ -2,8 +2,6 @@
 using InfoPanel.Drawing;
 using SkiaSharp;
 using System;
-using System.Diagnostics;
-using System.Xml.Serialization;
 
 namespace InfoPanel.Models
 {
@@ -77,9 +75,6 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _gradientAnimationSpeed = 300; // milliseconds
 
-        [XmlIgnore]
-        private readonly Stopwatch _animationTimer = Stopwatch.StartNew();
-
         public ShapeDisplayItem()
         {
             // Default constructor
@@ -89,7 +84,7 @@ namespace InfoPanel.Models
             // Constructor with parameters
         }
 
-        public int GetGradientAnimationOffset()
+        public int GetGradientAnimationOffset(TimeSpan elapsed)
         {
             if (GradientAnimationSpeed == 0)
                 return GradientAngle;
@@ -97,7 +92,7 @@ namespace InfoPanel.Models
             double degreesPerSecond = GradientAnimationSpeed;
 
             // Calculate the animated angle based on time
-            double elapsedSeconds = _animationTimer.Elapsed.TotalSeconds;
+            double elapsedSeconds = elapsed.TotalSeconds;
             double animationOffset = elapsedSeconds * degreesPerSecond;
 
             // If GradientAngle is negative, rotate in opposite direction
@@ -123,29 +118,29 @@ namespace InfoPanel.Models
             return clone;
         }
 
-        public override SKRect EvaluateBounds()
+        public override SKRect EvaluateBounds(RenderContext ctx)
         {
             return new SKRect(X, Y, X + Width, Y + Height);
         }
 
-        public override string EvaluateColor()
+        public override string EvaluateColor(RenderContext ctx)
         {
             return "#000000"; // Default color for shapes, can be overridden
         }
 
-        public override SKSize EvaluateSize()
+        public override SKSize EvaluateSize(RenderContext ctx)
         {
             return new SKSize(Width, Height); // Default size for shapes, can be overridden
         }
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
             return Name;
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
-            return (EvaluateText(), EvaluateColor());
+            return (EvaluateText(ctx), EvaluateColor(ctx));
         }
     }
 }

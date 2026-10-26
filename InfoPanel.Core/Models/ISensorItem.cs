@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Enums;
+using InfoPanel.Sensors;
 using System;
 
 namespace InfoPanel.Models
@@ -8,38 +9,38 @@ namespace InfoPanel.Models
         NOW, MIN, MAX, AVERAGE
     }
 
-    internal interface ISensorItem: IHwInfoSensorItem, ILibreSensorItem, IPluginSensorItem
+    public interface ISensorItem: IHwInfoSensorItem, ILibreSensorItem, IPluginSensorItem
     {
 
     }
 
-    internal interface IHwInfoSensorItem
+    public interface IHwInfoSensorItem
     {
         string SensorName { get; set; }
         SensorType SensorType { get; set; }
         SensorValueType ValueType { get; set; }
-        SensorReading? GetValue();
+        SensorReading? GetValue(ISensorReader sensors);
         int HwInfoRemoteIndex { get; set; }
         UInt32 Id { get; set; }
         UInt32 Instance { get; set; }
         UInt32 EntryId { get; set; }
     }
 
-    internal interface ILibreSensorItem
+    public interface ILibreSensorItem
     {
         string SensorName { get; set; }
         SensorType SensorType { get; set; }
         SensorValueType ValueType { get; set; }
-        SensorReading? GetValue();
+        SensorReading? GetValue(ISensorReader sensors);
         string LibreSensorId { get; set; }
     }
 
-    internal interface IPluginSensorItem
+    public interface IPluginSensorItem
     {
         string SensorName { get; set; }
         SensorType SensorType { get; set; }
         SensorValueType ValueType { get; set; }
-        SensorReading? GetValue();
+        SensorReading? GetValue(ISensorReader sensors);
         string PluginSensorId { get; set; }
     }
 }

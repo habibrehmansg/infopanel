@@ -1,4 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using InfoPanel.Drawing;
+using InfoPanel.Sensors;
 using System;
 
 namespace InfoPanel.Models
@@ -285,20 +287,14 @@ namespace InfoPanel.Models
             EntryId = entryId;
         }
 
-        public SensorReading? GetValue()
+        public SensorReading? GetValue(ISensorReader sensors)
         {
-            return SensorType switch
-            {
-                Enums.SensorType.HwInfo => SensorReader.ReadHwInfoSensor(HwInfoRemoteIndex, Id, Instance, EntryId),
-                Enums.SensorType.Libre => SensorReader.ReadLibreSensor(LibreSensorId),
-                Enums.SensorType.Plugin => SensorReader.ReadPluginSensor(PluginSensorId),
-                _ => null,
-            };
+            return SensorKeys.Read(this, sensors);
         }
 
-        public override (string, string) EvaluateTextAndColor()
+        public override (string, string) EvaluateTextAndColor(RenderContext ctx)
         {
-            var value = GetValue();
+            var value = GetValue(ctx.Sensors);
 
             if (value.HasValue)
             {
@@ -308,9 +304,9 @@ namespace InfoPanel.Models
             return ("-", Color);
         }
 
-        public override string EvaluateColor()
+        public override string EvaluateColor(RenderContext ctx)
         {
-            var value = GetValue();
+            var value = GetValue(ctx.Sensors);
 
             if (value.HasValue)
             {
@@ -373,9 +369,9 @@ namespace InfoPanel.Models
             return Color;
         }
 
-        public override string EvaluateText()
+        public override string EvaluateText(RenderContext ctx)
         {
-            var sensorReading = GetValue();
+            var sensorReading = GetValue(ctx.Sensors);
 
             if (sensorReading.HasValue)
             {

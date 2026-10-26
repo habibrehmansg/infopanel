@@ -15,8 +15,15 @@ namespace InfoPanel.Extensions
             var parentFullPath = Path.GetFullPath(parentPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var childFullPath = Path.GetFullPath(childPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-            // Check if the child path starts with the parent path
-            return childFullPath.StartsWith(parentFullPath, StringComparison.OrdinalIgnoreCase);
+            // The child must be the parent itself or start with the parent followed by a separator,
+            // so "/assets/abc" is not treated as inside "/assets/ab".
+            if (childFullPath.Equals(parentFullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return childFullPath.StartsWith(parentFullPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || childFullPath.StartsWith(parentFullPath + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         }
         public static string SanitizeFileName(this string fileName)
         {
