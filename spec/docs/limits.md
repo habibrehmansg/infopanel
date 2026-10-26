@@ -86,6 +86,18 @@ An asset over a limit is refused when it is added, and media in a document that 
 - Effect layers are clipped to the canvas plus the effect's reach.
 - Frames are at most 16 Mpx (a preview at a scale that would exceed it is rendered at the largest scale that fits).
 
+## Run-time budgets (this engine's current values)
+
+Content within the limits can still be expensive on a given tick. This engine draws an item that would exceed one of these as a `budget` placeholder for that tick, with a diagnostic, and tries it again on the next. They are the engine's current values, not part of the format; another engine may choose others.
+
+| Budget | Value |
+|---|---|
+| Text layouts per document tick | 4,000 (layouts made, not ones kept from earlier ticks; every paragraph laid out counts, `fit` probes and ellipsis passes included) |
+| Text layouts per item tick | 2,000, counted the same way |
+| Dashes per stroke | 100,000 along its outline: a shape's, or the glyph outlines of a text or table. The pattern starts again on every contour (each glyph has one or more), so each contour counts at least one period however short it is |
+| Expression work per item tick | twice `exprWork` (valid scenes stay under it) |
+| Watchdog | An item whose evaluation or drawing takes over 50 ms on three ticks running is drawn as over budget for 5 s, then tried again. A tick counts once, by its evaluation and its slowest draw, however many outputs and scales draw it |
+
 ## Checking hostile content
 
 Validation itself is bounded, since it runs on untrusted imports and commits:

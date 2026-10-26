@@ -46,7 +46,7 @@ Named operands:
 | `formatTime` | `pattern`, `locale`, `zone` → string | The tick's date and time as text (below) |
 | `format` | `value`, `decimals`, `group`, `decimalSeparator`, `groupSeparator` → string | A number rounded half away from zero to `decimals` (0–6, default 0) places; with `group`, `groupSeparator` (default ",") between groups of three integer digits; `decimalSeparator` default "." |
 | `box` | `field` (`w`, `h`) → number | The item's layout box; an automatic dimension reads 0 |
-| `measure` | `node`, `field` (`w`, `h`) → number | The measured size of a text node of this scene this tick |
+| `measure` | `node`, `field` (`w`, `h`) → number | The measured size of a text node of this scene this tick: its laid-out text (the widest line's width, the lines' height), not its box |
 | `value` | `name` → its type | A named value |
 | `state` | `name` → its type | A state cell (its previous value inside a cell's `next`) |
 | `dt` | → number | Seconds since the cell's previous update; only directly in a state cell's `next` |

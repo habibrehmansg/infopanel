@@ -275,14 +275,14 @@
         "stroke": { "$ref": "#/$defs/stroke" },
         "align": { "enum": ["start", "center", "end"], "default": "start" },
         "valign": {
-          "description": "With `h`: where the text sits in the box. Without: which part of the text block `y` names (baseline: the first line's baseline).",
+          "description": "With `h`: where the text sits in the box (baseline places it as top does). Without: which part of the text block `y` names (baseline: the first line's baseline).",
           "enum": ["top", "middle", "bottom", "baseline"],
           "default": "top"
         },
         "wrap": { "enum": ["none", "word"], "default": "none" },
         "maxLines": { "type": "integer", "minimum": 1, "maximum": 1000 },
         "overflow": {
-          "description": "What happens when the text is larger than the box: visible (drawn past it), clip, ellipsis (the last line ends with …), marquee (one line scrolls left; needs `w`).",
+          "description": "What happens when the text is larger than the box: visible (drawn past it), clip, ellipsis (the last line ends with …, cut at a word boundary, or between characters inside a word wider than the box), marquee (one line scrolls left; needs `w`).",
           "enum": ["visible", "clip", "ellipsis", "marquee"],
           "default": "visible"
         },
@@ -386,7 +386,7 @@
         "columns": { "type": "array", "items": { "$ref": "#/$defs/tableColumn" }, "minItems": 1, "maxItems": 16 },
         "rows": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
         "header": { "type": "boolean", "default": true },
-        "rowHeight": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Absent: the font's line height." },
+        "rowHeight": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Each cell is centred vertically in it. Absent: the font's line height." },
         "gap": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
         "font": { "$ref": "#/$defs/font" },
         "fill": { "$ref": "#/$defs/paint", "default": "#000000" },
@@ -436,7 +436,7 @@
           ]
         },
         "fit": {
-          "description": "fill: stretch to the box. contain, cover: scale keeping proportions. none: natural size.",
+          "description": "fill: stretch to the box. contain, cover: scale keeping proportions. none: natural size. cover and none are clipped to the box, as CSS object-fit is.",
           "enum": ["fill", "contain", "cover", "none"],
           "default": "fill"
         },
@@ -745,7 +745,7 @@
       }
     },
     "shadowEffect": {
-      "description": "The content's coverage, filled with `color`, offset by (dx, dy) and blurred, drawn under the content.",
+      "description": "The content's coverage, filled with `color`, offset by (dx, dy) and blurred, drawn under the content. In the group's coordinates after its transform (the offset turns with the group); not clipped by the group's clip.",
       "type": "object",
       "required": ["type", "sigma", "color"],
       "additionalProperties": false,
@@ -758,7 +758,7 @@
       }
     },
     "glowEffect": {
-      "description": "A shadow with no offset: the content's coverage filled with `color`, blurred, drawn under the content.",
+      "description": "A shadow with no offset: the content's coverage filled with `color`, blurred, drawn under the content; not clipped by the group's clip.",
       "type": "object",
       "required": ["type", "sigma", "color"],
       "additionalProperties": false,

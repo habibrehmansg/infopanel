@@ -680,7 +680,7 @@ export interface BoxOp {
   field: "w" | "h";
 }
 
-/** The measured width or height of a text node of this scene (by id), laid out this tick. Not allowed in state cells, nor where it would affect the layout of a text node that is measured (see docs/expressions.md, "Order of evaluation"). */
+/** The measured width or height of a text node of this scene (by id), laid out this tick: the laid-out text (widest line, lines' height), not its box. Not allowed in state cells, nor where it would affect the layout of a text node that is measured (see docs/expressions.md, "Order of evaluation"). */
 export interface MeasureOp {
   op: "measure";
   node: NodeId;
@@ -1018,7 +1018,7 @@ export interface TextNode {
   /** @default "start" */
   align?: "start" | "center" | "end";
   /**
-   * With `h`: where the text sits in the box. Without: which part of the text block `y` names (baseline: the first line's baseline).
+   * With `h`: where the text sits in the box (baseline places it as top does). Without: which part of the text block `y` names (baseline: the first line's baseline).
    * @default "top"
    */
   valign?: "top" | "middle" | "bottom" | "baseline";
@@ -1027,7 +1027,7 @@ export interface TextNode {
   /** Range: 1–1000. */
   maxLines?: number;
   /**
-   * What happens when the text is larger than the box: visible (drawn past it), clip, ellipsis (the last line ends with …), marquee (one line scrolls left; needs `w`).
+   * What happens when the text is larger than the box: visible (drawn past it), clip, ellipsis (the last line ends with …, cut at a word boundary, or between characters inside a word wider than the box), marquee (one line scrolls left; needs `w`).
    * @default "visible"
    */
   overflow?: "visible" | "clip" | "ellipsis" | "marquee";
@@ -1148,7 +1148,7 @@ export interface TableNode {
   rows?: number;
   /** @default true */
   header?: boolean;
-  /** Absent: the font's line height. */
+  /** Each cell is centred vertically in it. Absent: the font's line height. */
   rowHeight?: NumberExpr;
   /** @default 0 */
   gap?: NumberExpr;
@@ -1188,7 +1188,7 @@ export interface MediaNode {
   h?: NumberExpr;
   source: AssetSource | ProviderSource | SequenceSource;
   /**
-   * fill: stretch to the box. contain, cover: scale keeping proportions. none: natural size.
+   * fill: stretch to the box. contain, cover: scale keeping proportions. none: natural size. cover and none are clipped to the box, as CSS object-fit is.
    * @default "fill"
    */
   fit?: "fill" | "contain" | "cover" | "none";
@@ -1428,7 +1428,7 @@ export interface BlurEffect {
   sigma: NumberExpr;
 }
 
-/** The content's coverage, filled with `color`, offset by (dx, dy) and blurred, drawn under the content. */
+/** The content's coverage, filled with `color`, offset by (dx, dy) and blurred, drawn under the content. In the group's coordinates after its transform (the offset turns with the group); not clipped by the group's clip. */
 export interface ShadowEffect {
   type: "shadow";
   /** @default 0 */
@@ -1440,7 +1440,7 @@ export interface ShadowEffect {
   color: ColorExpr;
 }
 
-/** A shadow with no offset: the content's coverage filled with `color`, blurred, drawn under the content. */
+/** A shadow with no offset: the content's coverage filled with `color`, blurred, drawn under the content; not clipped by the group's clip. */
 export interface GlowEffect {
   type: "glow";
   /** Clamped to 0–64. */

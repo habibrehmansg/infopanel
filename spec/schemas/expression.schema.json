@@ -267,7 +267,7 @@
       }
     },
     "measureOp": {
-      "description": "The measured width or height of a text node of this scene (by id), laid out this tick. Not allowed in state cells, nor where it would affect the layout of a text node that is measured (see docs/expressions.md, \"Order of evaluation\").",
+      "description": "The measured width or height of a text node of this scene (by id), laid out this tick: the laid-out text (widest line, lines' height), not its box. Not allowed in state cells, nor where it would affect the layout of a text node that is measured (see docs/expressions.md, \"Order of evaluation\").",
       "type": "object",
       "required": ["op", "node", "field"],
       "additionalProperties": false,
