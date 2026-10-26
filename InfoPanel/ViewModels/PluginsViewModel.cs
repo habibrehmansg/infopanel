@@ -163,6 +163,7 @@ namespace InfoPanel.ViewModels
 
     public partial class PluginModuleViewModel : ObservableObject
     {
+        private static readonly ILogger Logger = Log.ForContext<PluginModuleViewModel>();
         private RemotePluginWrapper _wrapper;
         private readonly PluginDescriptor _pluginDescriptor;
         public string Id { get; set; }
@@ -213,11 +214,25 @@ namespace InfoPanel.ViewModels
             foreach (var action in wrapper.Actions)
             {
                 var methodName = action.MethodName;
-                var command = new RelayCommand(() => _ = wrapper.InvokeActionAsync(methodName));
+                var command = new AsyncRelayCommand(() => InvokeActionAsync(methodName));
                 Actions.Add(new PluginActionCommand { DisplayName = action.DisplayName, Command = command });
             }
 
             RefreshConfigProperties();
+        }
+
+        private async Task InvokeActionAsync(string methodName)
+        {
+            try
+            {
+                // Resolve the wrapper when the action runs. Plugin reloads replace
+                // the wrapper and connection while this view model stays alive.
+                await _wrapper.InvokeActionAsync(methodName);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Plugin action '{MethodName}' failed for plugin {PluginId}", methodName, Id);
+            }
         }
 
         private void RefreshConfigProperties()
