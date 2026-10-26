@@ -32,6 +32,7 @@ public static class EngineCommandLine
         ["--no-browser"] = "NoBrowser",
         ["--no-windows"] = "NoWindows",
         ["--fresh"] = "Fresh",
+        ["--mock"] = "Mock",
     };
 
     private const string DevOrigin = "--dev-origin";
@@ -67,7 +68,8 @@ public static class EngineCommandLine
                                 only on a loopback host (repeatable)
           --import-v1 <dir>     Import a 1.x data folder at start-up
           --fresh               Wipe the data folder first (needs --data-dir)
-          --mock-seed <n>       Seed for the mock sensors
+          --mock                Mock sensors, and simulated values for sensors no source has
+          --mock-seed <n>       Seed for the mock sensors (implies --mock)
           --help                Show this help
         """;
 

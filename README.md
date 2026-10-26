@@ -16,7 +16,7 @@
 
 ## InfoPanel 2.0 (branch `2.0.x`, in development)
 
-This branch is InfoPanel 2.0: one cross-platform engine for Windows and macOS that renders your screens with the same Skia code that drives the panels and serves an API and live preview on localhost for an editor in your browser. The editor's preview is the engine's own output, so what you edit is what the panel shows. 2.0 reads 1.x profiles and `.infopanel` exports. It is not released yet: sensors are simulated (HWiNFO and LibreHardwareMonitor come back as Windows adapters), active screens show as desktop windows on macOS only so far, and panels and plugins are not connected yet.
+This branch is InfoPanel 2.0: one cross-platform engine for Windows and macOS that renders your screens with the same Skia code that drives the panels and serves an API and live preview on localhost for an editor in your browser. The editor's preview is the engine's own output, so what you edit is what the panel shows. 2.0 reads 1.x profiles and `.infopanel` exports. It is not released yet: sensors are read on macOS only so far (CPU, GPU, memory, temperatures, fans, power, battery, disk and network, as a normal user; HWiNFO and LibreHardwareMonitor come back as Windows adapters; `--mock` shows mock sensors instead), active screens show as desktop windows on macOS only so far, and panels and plugins are not connected yet.
 
 InfoPanel 1.x, the Windows app described below, keeps shipping from branch [`1.4.x`](https://github.com/habibrehmansg/infopanel/tree/1.4.x).
 

@@ -3,36 +3,19 @@ using InfoPanel.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace InfoPanel.Sensors;
 
-/// <summary>Where an item's sensor value comes from (<c>ItemNode.meta.sensor.status</c>).</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<SensorStatus>))]
-public enum SensorStatus
-{
-    /// <summary>A source handles the key and has a reading.</summary>
-    [JsonStringEnumMemberName("live")]
-    Live,
-
-    /// <summary>No source handles the key; the hub simulates it.</summary>
-    [JsonStringEnumMemberName("simulated")]
-    Simulated,
-
-    /// <summary>Unbound, malformed, or handled by a source that has no reading for it.</summary>
-    [JsonStringEnumMemberName("missing")]
-    Missing,
-}
-
 public sealed class SensorHubOptions
 {
     /// <summary>
     /// Give well-formed keys that no source handles (HWiNFO and Libre bindings in imported Windows profiles) a
-    /// deterministic 0–100 walk, so they still render. On by default in step 1.
+    /// deterministic 0–100 walk, so they still render. Off by default (such keys are
+    /// <see cref="SensorStatus.Unavailable"/>); the engine turns it on in mock mode only (<c>--mock</c>, <c>--mock-seed</c>).
     /// </summary>
-    public bool SimulateUnknown { get; init; } = true;
+    public bool SimulateUnknown { get; init; }
 
     /// <summary>At most this many keys are simulated at once; further unknown keys read as missing.</summary>
     public int MaxSimulatedKeys { get; init; } = 4096;
@@ -104,22 +87,41 @@ public sealed class SensorHub : ISensorReader
         }
     }
 
+    /// <summary>
+    /// <see cref="SensorStatus.Missing"/> for unbound or malformed keys; for a key a source handles, what an
+    /// <see cref="ISensorStatusSource"/> says, else <see cref="SensorStatus.Live"/> with a reading and
+    /// <see cref="SensorStatus.Unavailable"/> without; for keys no source handles, <see cref="SensorStatus.Simulated"/>
+    /// when simulating (and under the cap), else <see cref="SensorStatus.Unavailable"/>.
+    /// </summary>
     public SensorStatus GetStatus(SensorKey key)
     {
         if (!IsWellFormed(key))
             return SensorStatus.Missing;
 
         if (FindSource(key) is { } source)
-            return source.TryRead(key, out _) ? SensorStatus.Live : SensorStatus.Missing;
+        {
+            if (source is ISensorStatusSource statusSource)
+            {
+                return statusSource.GetStatus(key) switch
+                {
+                    SensorStatus.Live => SensorStatus.Live,
+                    SensorStatus.Stale => SensorStatus.Stale,
+                    SensorStatus.PermissionDenied => SensorStatus.PermissionDenied,
+                    _ => SensorStatus.Unavailable,
+                };
+            }
+
+            return source.TryRead(key, out _) ? SensorStatus.Live : SensorStatus.Unavailable;
+        }
 
         if (!_options.SimulateUnknown)
-            return SensorStatus.Missing;
+            return SensorStatus.Unavailable;
 
         lock (_lock)
         {
             return _simulated.ContainsKey(key) || _simulated.Count < _options.MaxSimulatedKeys
                 ? SensorStatus.Simulated
-                : SensorStatus.Missing;
+                : SensorStatus.Unavailable;
         }
     }
 

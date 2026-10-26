@@ -87,6 +87,9 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal("GPU [#0]: NVIDIA GeForce RTX 4090", gpuTemp.GetProperty("group").GetString());
         Assert.Equal("GPU Temperature", gpuTemp.GetProperty("name").GetString());
         Assert.Equal("°C", gpuTemp.GetProperty("unit").GetString());
+        Assert.Equal("live", gpuTemp.GetProperty("status").GetString());
+        Assert.All(sensors, s => Assert.Equal("live", s.GetProperty("status").GetString()));
+        Assert.Equal(["key", "source", "group", "name", "unit", "binding", "status"], gpuTemp.EnumerateObject().Select(p => p.Name));
 
         var binding = gpuTemp.GetProperty("binding");
         Assert.Equal("GPU Temperature", binding.GetProperty("sensorName").GetString());
@@ -108,6 +111,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal("%", cpuLoad.GetProperty("unit").GetString());
         Assert.False(cpuLoad.TryGetProperty("text", out _));
         Assert.Equal(60, cpuLoad.GetProperty("history").GetArrayLength());
+        Assert.Equal("live", cpuLoad.GetProperty("status").GetString());
 
         var table = values.Single(v => v.GetProperty("key").GetString() == "plugin:/infopanel.mock/system/top-processes");
         Assert.False(string.IsNullOrEmpty(table.GetProperty("text").GetString()));

@@ -140,7 +140,7 @@ public class ItemJsonTests
     public void ToNode_OverTheV1Fixture()
     {
         using var mock = new MockSensorSource(1);
-        var hub = new SensorHub([mock]);
+        var hub = new SensorHub([mock], new SensorHubOptions { SimulateUnknown = true });
         var items = FixtureItems();
 
         var nodes = items.Select(i => ItemJson.ToNode(i, hub)).ToList();
@@ -174,18 +174,18 @@ public class ItemJsonTests
         Assert.Contains(all, n => n.Props["sensorType"]?.GetValue<string>() == "HwInfo");
         Assert.Null(all.Single(n => n.Kind == "httpImage").Props["httpUrl"]);
 
-        // Sensor status: mock keys are live, Windows bindings simulated, unknown mock keys missing.
+        // Sensor status: mock keys are live, Windows bindings simulated (mock mode), unknown mock keys unavailable.
         var statuses = all.Where(n => n.Meta.Sensor != null).ToLookup(n => n.Meta.Sensor!.Key, n => n.Meta.Sensor!.Status);
         Assert.Equal(SensorStatus.Live, statuses["plugin:/infopanel.mock/gpu/gpu-temp"].First());
         Assert.Equal(SensorStatus.Simulated, statuses["libre:/amdcpu/0/load/0"].First());
         Assert.Equal(SensorStatus.Simulated, statuses["hwinfo:1:4026532608:1:16777221"].First());
-        Assert.Equal(SensorStatus.Missing, statuses["plugin:/infopanel.mock/processes/top"].First());
+        Assert.Equal(SensorStatus.Unavailable, statuses["plugin:/infopanel.mock/processes/top"].First());
     }
 
     [Fact]
     public void ToNode_SerializesToThePlanShape()
     {
-        var hub = new SensorHub([]);
+        var hub = new SensorHub([], new SensorHubOptions { SimulateUnknown = true });
         var item = new SensorDisplayItem("CPU", new Profile("P", 100, 100)) { SensorType = Enums.SensorType.Libre, LibreSensorId = "/cpu/0" };
 
         var json = JsonSerializer.SerializeToNode(ItemJson.ToNode(item, hub),

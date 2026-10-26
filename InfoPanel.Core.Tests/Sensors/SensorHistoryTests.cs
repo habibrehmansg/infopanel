@@ -149,7 +149,7 @@ public class SensorHistoryTests
     [Fact]
     public void MissingKeysPastTheHubsSimulationCap_AreNotTracked()
     {
-        var hub = new SensorHub([], new SensorHubOptions { MaxSimulatedKeys = 1 });
+        var hub = new SensorHub([], new SensorHubOptions { SimulateUnknown = true, MaxSimulatedKeys = 1 });
         var history = new SensorHistory(hub, NewTime());
 
         history.GetSamples(SensorKey.Plugin("/test/a"));
@@ -162,7 +162,7 @@ public class SensorHistoryTests
     public void TracksAtMostMaxSeries_EvictingTheLeastRecentlyRequested()
     {
         var time = NewTime();
-        var hub = new SensorHub([], new SensorHubOptions { MaxSimulatedKeys = SensorHistory.MaxSeries + 10 });
+        var hub = new SensorHub([], new SensorHubOptions { SimulateUnknown = true, MaxSimulatedKeys = SensorHistory.MaxSeries + 10 });
         var history = new SensorHistory(hub, time);
         var keys = Enumerable.Range(0, SensorHistory.MaxSeries + 1).Select(i => SensorKey.Plugin($"/test/k{i}")).ToArray();
 

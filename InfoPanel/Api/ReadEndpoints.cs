@@ -12,9 +12,11 @@ namespace InfoPanel.Api;
 
 public sealed record SessionInfo(string EngineVersion, int Protocol, string DataDir, string Platform);
 
-public sealed record SensorListEntry(string Key, string Source, string Group, string Name, string Unit, JsonObject Binding);
+/// <summary>A listed sensor; <c>status</c> is its <see cref="SensorStatus"/> now (added in protocol 1, after the other fields).</summary>
+public sealed record SensorListEntry(string Key, string Source, string Group, string Name, string Unit, JsonObject Binding, SensorStatus Status);
 
-public sealed record SensorValue(string Key, double Now, double Min, double Max, double Avg, string Unit, string? Text, IReadOnlyList<double>? History);
+/// <summary>A listed sensor that has a reading; <c>status</c> is <c>live</c> or <c>stale</c> (the last value).</summary>
+public sealed record SensorValue(string Key, double Now, double Min, double Max, double Avg, string Unit, string? Text, IReadOnlyList<double>? History, SensorStatus Status);
 
 /// <summary>The read side of the REST API (plan §6.3). Everything here is under <c>/api</c> and needs the token.</summary>
 public static class ReadEndpoints
@@ -35,7 +37,7 @@ public static class ReadEndpoints
 
         api.MapGet("/sensors", (SensorHub hub) =>
             hub.GetSensors()
-                .Select(s => new SensorListEntry(s.Key.ToString(), s.SourceId, s.Group, s.Name, s.Unit, ItemJson.BindingProps(s.Key, s.Name)))
+                .Select(s => new SensorListEntry(s.Key.ToString(), s.SourceId, s.Group, s.Name, s.Unit, ItemJson.BindingProps(s.Key, s.Name), hub.GetStatus(s.Key)))
                 .ToList());
 
         api.MapGet("/sensors/values", (int? history, SensorHub hub, SensorHistory sensorHistory) =>
@@ -55,8 +57,10 @@ public static class ReadEndpoints
                     samples = all.Skip(Math.Max(0, all.Count - count)).ToList();
                 }
 
+                // A reading that aged out between the read and this check is reported as stale, the state it was read in.
+                var status = hub.GetStatus(sensor.Key) is SensorStatus.Live ? SensorStatus.Live : SensorStatus.Stale;
                 values.Add(new SensorValue(sensor.Key.ToString(), Finite(reading.ValueNow), Finite(reading.ValueMin),
-                    Finite(reading.ValueMax), Finite(reading.ValueAvg), reading.Unit ?? "", text, samples));
+                    Finite(reading.ValueMax), Finite(reading.ValueAvg), reading.Unit ?? "", text, samples, status));
             }
 
             return values;

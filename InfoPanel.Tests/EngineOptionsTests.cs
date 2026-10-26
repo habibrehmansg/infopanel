@@ -31,6 +31,7 @@ public class EngineOptionsTests
         Assert.False(options.NoWindows);
         Assert.False(options.Fresh);
         Assert.Null(options.MockSeed);
+        Assert.False(options.Mock);
         Assert.Empty(options.DevOrigins);
         Assert.Empty(options.AllowOrigins);
         Assert.Matches("^[A-Za-z0-9_-]{43}$", options.Token);
@@ -52,6 +53,20 @@ public class EngineOptionsTests
         Assert.Equal(Path.GetFullPath(dir), options.DataDir);
         Assert.Equal("t3st", options.Token);
         Assert.Equal(7u, options.MockSeed);
+        Assert.True(options.Mock);
+    }
+
+    [Fact]
+    public void Mock_IsOnWithTheFlagOrAnySeed()
+    {
+        var flag = Load(["--mock"], out var errors);
+        Assert.Empty(errors);
+        Assert.True(flag!.Mock);
+        Assert.Null(flag.MockSeed);
+
+        Assert.True(Load(["--mock-seed", "0"], out _)!.Mock);
+        Assert.False(Load(["--mock=false"], out _)!.Mock);
+        Assert.True(Load(["--mock=false", "--mock-seed", "1"], out _)!.Mock);
     }
 
     [Fact]

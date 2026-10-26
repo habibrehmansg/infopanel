@@ -10,6 +10,7 @@ using InfoPanel.Persistence;
 using InfoPanel.Preview;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
+using InfoPanel.Sensors.MacOS;
 using Microsoft.AspNetCore.HostFiltering;
 using Serilog;
 using Serilog.Events;
@@ -162,9 +163,19 @@ try
     builder.Services.AddSingleton(store);
     builder.Services.AddSingleton<IAssetLocator>(store);
     builder.Services.AddSingleton(TimeProvider.System);
-    builder.Services.AddSingleton(sp => new MockSensorSource(options.MockSeed, sp.GetRequiredService<TimeProvider>()));
-    builder.Services.AddSingleton<ISensorSource>(sp => sp.GetRequiredService<MockSensorSource>());
-    builder.Services.AddSingleton(sp => new SensorHub(sp.GetServices<ISensorSource>()));
+    // Mock mode: the mock sensors and simulated unknown keys (tests, demos). Otherwise the platform's real sensors (only
+    // macOS has a source so far) and unknown keys read as unavailable.
+    if (options.Mock)
+    {
+        builder.Services.AddSingleton(sp => new MockSensorSource(options.MockSeed, sp.GetRequiredService<TimeProvider>()));
+        builder.Services.AddSingleton<ISensorSource>(sp => sp.GetRequiredService<MockSensorSource>());
+    }
+    else if (OperatingSystem.IsMacOS())
+    {
+        builder.Services.AddSingleton<ISensorSource>(sp => MacSensorSource.Create(sp.GetRequiredService<TimeProvider>()));
+    }
+
+    builder.Services.AddSingleton(sp => new SensorHub(sp.GetServices<ISensorSource>(), new SensorHubOptions { SimulateUnknown = options.Mock }));
     builder.Services.AddSingleton<ISensorReader>(sp => sp.GetRequiredService<SensorHub>());
     builder.Services.AddSingleton(sp => new Workspace(store, sp.GetRequiredService<SensorHub>(), sp.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton(sp =>

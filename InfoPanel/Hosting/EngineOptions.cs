@@ -48,8 +48,14 @@ public sealed partial class EngineOptions
     /// <summary>Wipe the data folder before starting (only with an explicit <see cref="DataDir"/>).</summary>
     public bool Fresh { get; init; }
 
-    /// <summary>Seed for the mock sensors; null takes one from the clock.</summary>
+    /// <summary>Seed for the mock sensors; null takes one from the clock. Setting it turns on <see cref="Mock"/>.</summary>
     public uint? MockSeed { get; init; }
+
+    /// <summary>
+    /// Mock mode (<c>--mock</c>, or any <c>--mock-seed</c>): the mock sensors instead of the platform's real ones, and
+    /// simulated values for well-formed keys no source handles. Off, unknown keys are unavailable.
+    /// </summary>
+    public bool Mock { get; init; }
 
     [GeneratedRegex("^[A-Za-z0-9_-]{1,256}$")]
     private static partial Regex TokenPattern();
@@ -80,6 +86,7 @@ public sealed partial class EngineOptions
                 problems.Add($"--mock-seed must be a number from 0 to {uint.MaxValue} (got '{seedText}').");
         }
 
+        var mock = Flag(section, "Mock", "--mock", problems) || seed != null;
         var noBrowser = Flag(section, "NoBrowser", "--no-browser", problems);
         var noWindows = Flag(section, "NoWindows", "--no-windows", problems);
         var fresh = Flag(section, "Fresh", "--fresh", problems);
@@ -171,6 +178,7 @@ public sealed partial class EngineOptions
             ImportV1 = importV1 == null ? null : Path.GetFullPath(importV1),
             Fresh = fresh,
             MockSeed = seed,
+            Mock = mock,
         };
     }
 

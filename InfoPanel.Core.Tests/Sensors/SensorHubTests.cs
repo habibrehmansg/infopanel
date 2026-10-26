@@ -27,6 +27,32 @@ public class SensorHubTests
         public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
+    /// <summary>A source whose every key has the status the test sets, with a reading when that is live or stale.</summary>
+    private sealed class StatusSource : ISensorSource, ISensorStatusSource
+    {
+        public SensorStatus Status { get; set; } = SensorStatus.Live;
+
+        public string Id => "s";
+
+        public bool Handles(SensorKey key) => key.Id.StartsWith("/s/", StringComparison.Ordinal);
+
+        public IReadOnlyList<SensorInfo> GetSensors() => [];
+
+        public SensorStatus GetStatus(SensorKey key) => Status;
+
+        public bool TryRead(SensorKey key, out SensorReading reading)
+        {
+            reading = new SensorReading(1, 1, 1, 1, "");
+            return Status is SensorStatus.Live or SensorStatus.Stale;
+        }
+
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private static readonly SensorHubOptions Simulating = new() { SimulateUnknown = true };
+
     private static readonly SensorKey HwInfoKey = SensorKey.HwInfo(-1, 0xF0000300, 0, 7);
     private static readonly SensorKey LibreKey = SensorKey.Libre("/amdcpu/0/load/0");
 
@@ -43,36 +69,70 @@ public class SensorHubTests
     }
 
     [Fact]
-    public void HandledKeyWithoutReading_IsMissing_NotSimulated()
+    public void HandledKeyWithoutReading_IsUnavailable_NotSimulated()
     {
-        var hub = new SensorHub([new PrefixSource("empty", "/x/", null)]);
+        var hub = new SensorHub([new PrefixSource("empty", "/x/", null)], Simulating);
         var key = SensorKey.Plugin("/x/1");
 
         Assert.False(hub.TryRead(key, out _));
-        Assert.Equal(SensorStatus.Missing, hub.GetStatus(key));
+        Assert.Equal(SensorStatus.Unavailable, hub.GetStatus(key));
     }
 
     [Fact]
-    public void Status_LiveSimulatedMissing()
+    public void Status_LiveSimulatedUnavailable_InMockMode()
     {
         using var mock = new MockSensorSource(1);
-        var hub = new SensorHub([mock]);
+        var hub = new SensorHub([mock], Simulating);
 
         Assert.Equal(SensorStatus.Live, hub.GetStatus(MockSensorCatalog.KeyOf("gpu.temp")));
         Assert.Equal(SensorStatus.Live, hub.GetStatus(MockSensorCatalog.TopProcessesKey));
         Assert.Equal(SensorStatus.Simulated, hub.GetStatus(HwInfoKey));
         Assert.Equal(SensorStatus.Simulated, hub.GetStatus(LibreKey));
         Assert.Equal(SensorStatus.Simulated, hub.GetStatus(SensorKey.Plugin("/someplugin/sensor")));
-        Assert.Equal(SensorStatus.Missing, hub.GetStatus(SensorKey.Plugin("/infopanel.mock/gpu/nope")));
+        Assert.Equal(SensorStatus.Unavailable, hub.GetStatus(SensorKey.Plugin("/infopanel.mock/gpu/nope")));
     }
 
     [Fact]
-    public void SimulateUnknownOff_UnknownIsMissing()
+    public void ByDefault_UnknownKeysAreUnavailable_NotSimulated()
     {
-        var hub = new SensorHub([], new SensorHubOptions { SimulateUnknown = false });
+        Assert.False(new SensorHubOptions().SimulateUnknown);
+        var hub = new SensorHub([]);
 
+        foreach (var key in new[] { LibreKey, HwInfoKey, SensorKey.Plugin("/someplugin/sensor") })
+        {
+            Assert.False(hub.TryRead(key, out _));
+            Assert.Equal(SensorStatus.Unavailable, hub.GetStatus(key));
+        }
+
+        hub.Tick();
         Assert.False(hub.TryRead(LibreKey, out _));
-        Assert.Equal(SensorStatus.Missing, hub.GetStatus(LibreKey));
+    }
+
+    [Fact]
+    public void StatusSource_IsAskedForItsKeys()
+    {
+        var source = new StatusSource();
+        var hub = new SensorHub([source]);
+
+        source.Status = SensorStatus.Stale;
+        Assert.Equal(SensorStatus.Stale, hub.GetStatus(SensorKey.Plugin("/s/a")));
+        source.Status = SensorStatus.PermissionDenied;
+        Assert.Equal(SensorStatus.PermissionDenied, hub.GetStatus(SensorKey.Plugin("/s/a")));
+        // A source can't claim a hub-only status for its own keys.
+        source.Status = SensorStatus.Simulated;
+        Assert.Equal(SensorStatus.Unavailable, hub.GetStatus(SensorKey.Plugin("/s/a")));
+        source.Status = SensorStatus.Missing;
+        Assert.Equal(SensorStatus.Unavailable, hub.GetStatus(SensorKey.Plugin("/s/a")));
+        // Malformed keys are missing before any source is asked.
+        Assert.Equal(SensorStatus.Missing, hub.GetStatus(SensorKey.Plugin(" ")));
+    }
+
+    [Fact]
+    public void Statuses_SerializeAsTheApiStrings()
+    {
+        Assert.Equal(
+            "[\"live\",\"simulated\",\"missing\",\"stale\",\"unavailable\",\"permission-denied\"]",
+            System.Text.Json.JsonSerializer.Serialize(Enum.GetValues<SensorStatus>()));
     }
 
     public static TheoryData<SensorKey> MalformedKeys => new()
@@ -99,8 +159,8 @@ public class SensorHubTests
     [Fact]
     public void SimulatedKeys_AreDeterministicPerKey_AndIn0To100()
     {
-        var a = new SensorHub([]);
-        var b = new SensorHub([]);
+        var a = new SensorHub([], Simulating);
+        var b = new SensorHub([], Simulating);
         var keys = new[] { HwInfoKey, LibreKey, SensorKey.Plugin("/p/1"), SensorKey.HwInfo(0, 1, 2, 3) };
 
         var seriesA = keys.ToDictionary(k => k, _ => new List<double>());
@@ -135,7 +195,7 @@ public class SensorHubTests
     [Fact]
     public void SimulatedKey_HoldsItsValueBetweenTicks()
     {
-        var hub = new SensorHub([]);
+        var hub = new SensorHub([], Simulating);
 
         Assert.True(hub.TryRead(LibreKey, out var first));
         Assert.True(hub.TryRead(LibreKey, out var second));
@@ -145,12 +205,12 @@ public class SensorHubTests
     [Fact]
     public void SimulatedKeys_AreCapped()
     {
-        var hub = new SensorHub([], new SensorHubOptions { MaxSimulatedKeys = 2 });
+        var hub = new SensorHub([], new SensorHubOptions { SimulateUnknown = true, MaxSimulatedKeys = 2 });
 
         Assert.True(hub.TryRead(SensorKey.Plugin("/a"), out _));
         Assert.True(hub.TryRead(SensorKey.Plugin("/b"), out _));
         Assert.False(hub.TryRead(SensorKey.Plugin("/c"), out _));
-        Assert.Equal(SensorStatus.Missing, hub.GetStatus(SensorKey.Plugin("/c")));
+        Assert.Equal(SensorStatus.Unavailable, hub.GetStatus(SensorKey.Plugin("/c")));
         Assert.Equal(SensorStatus.Simulated, hub.GetStatus(SensorKey.Plugin("/a")));
     }
 

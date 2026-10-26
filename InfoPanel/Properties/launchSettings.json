@@ -7,7 +7,7 @@
     },
     "dev": {
       "commandName": "Project",
-      "commandLineArgs": "--port 5199 --dev-origin http://localhost:5180 --no-browser --data-dir .data",
+      "commandLineArgs": "--port 5199 --dev-origin http://localhost:5180 --no-browser --data-dir .data --mock",
       "launchBrowser": false
     }
   }
