@@ -8,8 +8,10 @@
     <RootNamespace>InfoPanel</RootNamespace>
     <Version>2.0.0-dev</Version>
     <IsPackable>false</IsPackable>
-    <!-- `dotnet run` starts in the project folder, so the launch profile's relative paths (../.data) resolve from here. -->
-    <RunWorkingDirectory>$(MSBuildProjectDirectory)</RunWorkingDirectory>
+    <!-- `dotnet run` keeps the caller's folder (the Web SDK would switch to this project folder), so relative data
+         folder, web root and 1.x import paths resolve as they do in the caller's shell: a web client's browser-test run passes
+         a data folder of .e2e-data and a web root of dist from client/. -->
+    <EnableDefaultRunWorkingDirectory>false</EnableDefaultRunWorkingDirectory>
   </PropertyGroup>
 
   <ItemGroup>

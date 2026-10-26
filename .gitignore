@@ -201,7 +201,7 @@ InnoSetup/Output/
 # VS Code workspace files (personal)
 *.code-workspace
 
-# Engine dev data folder (launchSettings profile "dev": --data-dir ../.data)
+# Engine dev data folder (launchSettings profile "dev": --data-dir .data, run from the repo root)
 .data/
 
 # macOS Finder metadata

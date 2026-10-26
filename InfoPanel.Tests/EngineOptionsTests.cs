@@ -1,5 +1,6 @@
 using InfoPanel.Hosting;
 using Microsoft.Extensions.Configuration;
+using System.Xml.Linq;
 using Xunit;
 
 namespace InfoPanel.Tests;
@@ -229,5 +230,43 @@ public class EngineOptionsTests
     public void Help()
     {
         Assert.True(EngineCommandLine.Parse(["--help"]).ShowHelp);
+    }
+
+    [Fact]
+    public void RelativePaths_ResolveFromTheWorkingDirectory()
+    {
+        // A web client's browser-test run starts the engine from client/ with `--data-dir .e2e-data --web-root dist`.
+        // A folder under the working directory: a temp folder on another Windows drive has no relative path.
+        var relative = "infopanel-options-" + Guid.NewGuid().ToString("N");
+        var dir = Path.Combine(Environment.CurrentDirectory, relative);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var options = Load(["--data-dir", Path.Combine(relative, "data"), "--web-root", relative], out var errors);
+
+            Assert.Empty(errors);
+            Assert.Equal(Path.Combine(Path.GetFullPath(dir), "data"), options!.DataDir);
+            Assert.Equal(Path.GetFullPath(dir), options.WebRoot);
+        }
+        finally
+        {
+            Directory.Delete(dir);
+        }
+    }
+
+    [Fact]
+    public void DotnetRun_StartsTheEngineInTheCallersFolder()
+    {
+        // The Web SDK makes `dotnet run` start in the project folder (RunWorkingDirectory), which would resolve the
+        // relative paths above against InfoPanel/ instead of the caller's folder.
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "InfoPanel.slnx")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+
+        var project = XDocument.Load(Path.Combine(dir.FullName, "InfoPanel", "InfoPanel.csproj"));
+
+        Assert.Equal("false", project.Descendants("EnableDefaultRunWorkingDirectory").Single().Value.Trim());
+        Assert.Empty(project.Descendants("RunWorkingDirectory"));
     }
 }

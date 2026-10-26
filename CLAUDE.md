@@ -19,7 +19,7 @@ dotnet test InfoPanel.slnx --filter FullyQualifiedName~SensorKey
 
 # Run the engine as the product does (launch profile "InfoPanel": default data folder, opens the browser)
 dotnet run --project InfoPanel
-# Dev loop (launch profile "dev": --port 5199 --dev-origin http://localhost:5180 --no-browser --data-dir ../.data)
+# Dev loop, from the repo root (launch profile "dev": --port 5199 --dev-origin http://localhost:5180 --no-browser --data-dir .data)
 dotnet run --project InfoPanel --launch-profile dev
 # Run it on its own data folder, port and token
 dotnet run --project InfoPanel -- --data-dir /tmp/ip --port 5299 --token t3st --no-browser
@@ -31,11 +31,18 @@ dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csp
 
 Engine options (flags, or `Engine:*` configuration): `--port` (0 = a free port), `--data-dir` (default `{LocalApplicationData}/InfoPanel/v2`), `--web-root` (default `wwwroot` next to the binary, else the editor's `dist` folder in a source checkout), `--no-browser`, `--token` (default random), `--dev-origin <url>` (repeatable), `--import-v1 <dir>` (import a 1.x data folder at start-up), `--fresh` (wipe the data folder first; needs `--data-dir`; refuses, by the folder's real path, a root, the home folder or a folder above it, and any folder holding something the engine didn't create), `--mock-seed`. Kestrel/URL settings (`--Kestrel:*`, `--urls`, …) are refused, and Kestrel endpoints from configuration or the environment are ignored. Every option, the `--import-v1` overlap rule included, is validated before anything is deleted. Unknown or invalid arguments exit with code 2; a second engine on the same data folder exits with code 3. The engine prints its sign-in link (`http://127.0.0.1:{port}/auth/{token}`, plus one per dev origin) to the console only (the log file gets it with the token redacted), creates the data folder and `logs/` owner-only (0700) on Unix, and writes `{data}/runtime.json` (`{pid, port, url}`).
 
-**Dev loop:** run the engine with the `dev` profile (`--launch-profile dev`: port 5199, data in `{repo}/.data`, gitignored) with a client's dev server on `http://localhost:5180` (the allowed dev origin), then open the logged `http://localhost:5180/auth/{token}` link. Without one, the engine serves a built client from its web root itself.
+`dotnet run` starts the engine in the caller's folder (`EnableDefaultRunWorkingDirectory=false`), so relative `--data-dir`/`--web-root`/`--import-v1` resolve from where you run it.
+
+**Dev loop:**
+1. From the repo root: `dotnet run --project InfoPanel --launch-profile dev` (port 5199, data in `{repo}/.data`, gitignored).
+2. Run a client's dev server on `http://localhost:5180` (the allowed dev origin); a proxy from it to the engine must keep the Host header.
+3. Open the `http://localhost:5180/auth/{token}` link the engine prints (console only).
+
+Without a dev server, open the engine's own `http://127.0.0.1:{port}/auth/{token}` link: it serves a built client from its web root itself.
 
 ## Architecture (2.0.x)
 
-2.0 is one headless .NET engine that loads profiles, reads sensors, renders frames with SkiaSharp and serves the editor to the user's browser on localhost. The preview the editor shows is rendered by the engine with the same code that drives panels; a client draws only its own overlays, from the item bounds. Today the engine serves the read and editing API with undo/redo, save, import/export and thumbnails (M4, M5) and the live preview WebSocket `/ws` (M6); the editor on the engine (M7) follows.
+2.0 is one headless .NET engine that loads profiles, reads sensors, renders frames with SkiaSharp and serves the editor to the user's browser on localhost. The preview the editor shows is rendered by the engine with the same code that drives panels; a client draws only its own overlays, from the item bounds. The engine serves the read and editing API with undo/redo, save, import/export and thumbnails (M4, M5) and the live preview WebSocket `/ws` (M6); the editor works only through them (M7).
 
 | Project | Role |
 |---|---|
