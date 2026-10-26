@@ -19,6 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Frozen 1.x XML fixtures, copied to the output under Fixtures/ for the persistence tests. -->
+    <None Update="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Core\InfoPanel.Core.csproj" />
   </ItemGroup>
 

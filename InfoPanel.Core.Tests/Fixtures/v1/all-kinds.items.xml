@@ -1,0 +1,678 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ArrayOfDisplayItem xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <DisplayItem xsi:type="GroupDisplayItem">
+    <Name>Outer Group</Name>
+    <Hidden>false</Hidden>
+    <X>5</X>
+    <Y>6</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <DisplayItems>
+      <DisplayItem xsi:type="TextDisplayItem">
+        <Name>Grouped Label</Name>
+        <Hidden>false</Hidden>
+        <X>20</X>
+        <Y>260</Y>
+        <IsLocked>false</IsLocked>
+        <Rotation>0</Rotation>
+        <Font>Arial</Font>
+        <FontSize>14</FontSize>
+        <Bold>false</Bold>
+        <Italic>false</Italic>
+        <Underline>false</Underline>
+        <Strikeout>false</Strikeout>
+        <Color>#FF00FF00</Color>
+        <Uppercase>false</Uppercase>
+        <GlowRadius>8</GlowRadius>
+        <FontStyle />
+        <RightAlign>false</RightAlign>
+        <CenterAlign>false</CenterAlign>
+        <Wrap>true</Wrap>
+        <Ellipsis>true</Ellipsis>
+        <Width>0</Width>
+        <Height>0</Height>
+        <Marquee>false</Marquee>
+        <MarqueeSpeed>50</MarqueeSpeed>
+        <MarqueeSpacing>40</MarqueeSpacing>
+        <GlowEnabled>false</GlowEnabled>
+        <GlowColor>#000000</GlowColor>
+        <GlowBlendMode>SrcOver</GlowBlendMode>
+      </DisplayItem>
+      <DisplayItem xsi:type="GroupDisplayItem">
+        <Name>Inner Group</Name>
+        <Hidden>false</Hidden>
+        <X>12</X>
+        <Y>24</Y>
+        <IsLocked>false</IsLocked>
+        <Rotation>0</Rotation>
+        <DisplayItems>
+          <DisplayItem xsi:type="ClockDisplayItem">
+            <Name>Clock</Name>
+            <Hidden>false</Hidden>
+            <X>20</X>
+            <Y>300</Y>
+            <IsLocked>false</IsLocked>
+            <Rotation>-10</Rotation>
+            <Font>Arial</Font>
+            <FontSize>48</FontSize>
+            <Bold>true</Bold>
+            <Italic>false</Italic>
+            <Underline>false</Underline>
+            <Strikeout>false</Strikeout>
+            <Color>#FFFFCC00</Color>
+            <Uppercase>false</Uppercase>
+            <GlowRadius>8</GlowRadius>
+            <FontStyle />
+            <RightAlign>false</RightAlign>
+            <CenterAlign>false</CenterAlign>
+            <Wrap>true</Wrap>
+            <Ellipsis>true</Ellipsis>
+            <Width>0</Width>
+            <Height>0</Height>
+            <Marquee>false</Marquee>
+            <MarqueeSpeed>50</MarqueeSpeed>
+            <MarqueeSpacing>40</MarqueeSpacing>
+            <GlowEnabled>false</GlowEnabled>
+            <GlowColor>#000000</GlowColor>
+            <GlowBlendMode>SrcOver</GlowBlendMode>
+            <Format>HH:mm</Format>
+          </DisplayItem>
+          <DisplayItem xsi:type="CalendarDisplayItem">
+            <Name>Calendar</Name>
+            <Hidden>false</Hidden>
+            <X>20</X>
+            <Y>360</Y>
+            <IsLocked>false</IsLocked>
+            <Rotation>0</Rotation>
+            <Font>Arial</Font>
+            <FontSize>16</FontSize>
+            <Bold>false</Bold>
+            <Italic>true</Italic>
+            <Underline>false</Underline>
+            <Strikeout>false</Strikeout>
+            <Color>#FFAAAAAA</Color>
+            <Uppercase>true</Uppercase>
+            <GlowRadius>8</GlowRadius>
+            <FontStyle />
+            <RightAlign>false</RightAlign>
+            <CenterAlign>false</CenterAlign>
+            <Wrap>true</Wrap>
+            <Ellipsis>true</Ellipsis>
+            <Width>0</Width>
+            <Height>0</Height>
+            <Marquee>false</Marquee>
+            <MarqueeSpeed>50</MarqueeSpeed>
+            <MarqueeSpacing>40</MarqueeSpacing>
+            <GlowEnabled>false</GlowEnabled>
+            <GlowColor>#000000</GlowColor>
+            <GlowBlendMode>SrcOver</GlowBlendMode>
+            <Format>dddd d MMMM yyyy</Format>
+          </DisplayItem>
+        </DisplayItems>
+        <DisplayItemsCount>2</DisplayItemsCount>
+        <IsExpanded>false</IsExpanded>
+      </DisplayItem>
+    </DisplayItems>
+    <DisplayItemsCount>2</DisplayItemsCount>
+    <IsExpanded>true</IsExpanded>
+  </DisplayItem>
+  <DisplayItem xsi:type="BarDisplayItem">
+    <Name>CPU Bar</Name>
+    <Hidden>false</Hidden>
+    <X>400</X>
+    <Y>20</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>15</Rotation>
+    <_valueType>MAX</_valueType>
+    <SensorName>CPU Bar</SensorName>
+    <SensorType>HwInfo</SensorType>
+    <HwInfoRemoteIndex>1</HwInfoRemoteIndex>
+    <Id>4026532608</Id>
+    <Instance>1</Instance>
+    <EntryId>16777221</EntryId>
+    <LibreSensorId />
+    <PluginSensorId />
+    <ValueType>MAX</ValueType>
+    <MinValue>10</MinValue>
+    <MaxValue>90</MaxValue>
+    <AutoValue>true</AutoValue>
+    <Width>300</Width>
+    <Height>24</Height>
+    <FlipX>true</FlipX>
+    <Frame>false</Frame>
+    <FrameColor>#FF112233</FrameColor>
+    <Background>false</Background>
+    <BackgroundColor>#FF445566</BackgroundColor>
+    <Color>#FF778899</Color>
+    <Gradient>false</Gradient>
+    <GradientColor>#FFAABBCC</GradientColor>
+    <CornerRadius>6</CornerRadius>
+  </DisplayItem>
+  <DisplayItem xsi:type="GraphDisplayItem">
+    <Name>CPU Load Graph</Name>
+    <Hidden>false</Hidden>
+    <X>400</X>
+    <Y>60</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <_valueType>AVERAGE</_valueType>
+    <SensorName>CPU Load Graph</SensorName>
+    <SensorType>Libre</SensorType>
+    <HwInfoRemoteIndex>-1</HwInfoRemoteIndex>
+    <Id>0</Id>
+    <Instance>0</Instance>
+    <EntryId>0</EntryId>
+    <LibreSensorId>/amdcpu/0/load/0</LibreSensorId>
+    <PluginSensorId />
+    <ValueType>AVERAGE</ValueType>
+    <MinValue>5</MinValue>
+    <MaxValue>95</MaxValue>
+    <AutoValue>true</AutoValue>
+    <Width>320</Width>
+    <Height>80</Height>
+    <FlipX>true</FlipX>
+    <Frame>true</Frame>
+    <FrameColor>#FF223344</FrameColor>
+    <Background>true</Background>
+    <BackgroundColor>#FF000000</BackgroundColor>
+    <Color>#FF00FFFF</Color>
+    <Type>HISTOGRAM</Type>
+    <Thickness>3</Thickness>
+    <Step>6</Step>
+    <Fill>false</Fill>
+    <FillColor>#80FF00FF</FillColor>
+  </DisplayItem>
+  <DisplayItem xsi:type="DonutDisplayItem">
+    <Name>GPU Temp Donut</Name>
+    <Hidden>false</Hidden>
+    <X>400</X>
+    <Y>160</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>45</Rotation>
+    <_valueType>MIN</_valueType>
+    <SensorName>GPU Temp Donut</SensorName>
+    <SensorType>Plugin</SensorType>
+    <HwInfoRemoteIndex>-1</HwInfoRemoteIndex>
+    <Id>0</Id>
+    <Instance>0</Instance>
+    <EntryId>0</EntryId>
+    <LibreSensorId />
+    <PluginSensorId>/infopanel.mock/gpu/gpu-temp</PluginSensorId>
+    <ValueType>MIN</ValueType>
+    <MinValue>30</MinValue>
+    <MaxValue>110</MaxValue>
+    <AutoValue>false</AutoValue>
+    <Width>120</Width>
+    <Height>120</Height>
+    <FlipX>false</FlipX>
+    <Frame>false</Frame>
+    <FrameColor>#000000</FrameColor>
+    <Background>true</Background>
+    <BackgroundColor>#FF202020</BackgroundColor>
+    <Color>#FFFF4400</Color>
+    <Radius>60</Radius>
+    <Thickness>14</Thickness>
+    <Span>270</Span>
+  </DisplayItem>
+  <DisplayItem xsi:type="DonutDisplayItem">
+    <Name>Odd Donut</Name>
+    <Hidden>false</Hidden>
+    <X>540</X>
+    <Y>160</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <_valueType>NOW</_valueType>
+    <SensorName>Odd Donut</SensorName>
+    <SensorType>Libre</SensorType>
+    <HwInfoRemoteIndex>-1</HwInfoRemoteIndex>
+    <Id>0</Id>
+    <Instance>0</Instance>
+    <EntryId>0</EntryId>
+    <LibreSensorId>/amdcpu/0/load/0</LibreSensorId>
+    <PluginSensorId />
+    <ValueType>NOW</ValueType>
+    <MinValue>0</MinValue>
+    <MaxValue>100</MaxValue>
+    <AutoValue>false</AutoValue>
+    <Width>101</Width>
+    <Height>101</Height>
+    <FlipX>false</FlipX>
+    <Frame>false</Frame>
+    <FrameColor>#000000</FrameColor>
+    <Background>true</Background>
+    <BackgroundColor>#FFDCDCDC</BackgroundColor>
+    <Color>#808080</Color>
+    <Radius>50</Radius>
+    <Thickness>9</Thickness>
+    <Span>180</Span>
+  </DisplayItem>
+  <DisplayItem xsi:type="TableSensorDisplayItem">
+    <Name>Process Table</Name>
+    <Hidden>false</Hidden>
+    <X>20</X>
+    <Y>420</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <Font>Consolas</Font>
+    <FontSize>12</FontSize>
+    <Bold>false</Bold>
+    <Italic>false</Italic>
+    <Underline>false</Underline>
+    <Strikeout>false</Strikeout>
+    <Color>#FFDDDDDD</Color>
+    <Uppercase>false</Uppercase>
+    <GlowRadius>8</GlowRadius>
+    <FontStyle />
+    <RightAlign>false</RightAlign>
+    <CenterAlign>false</CenterAlign>
+    <Wrap>true</Wrap>
+    <Ellipsis>true</Ellipsis>
+    <Width>360</Width>
+    <Height>120</Height>
+    <Marquee>false</Marquee>
+    <MarqueeSpeed>50</MarqueeSpeed>
+    <MarqueeSpacing>40</MarqueeSpacing>
+    <GlowEnabled>false</GlowEnabled>
+    <GlowColor>#000000</GlowColor>
+    <GlowBlendMode>SrcOver</GlowBlendMode>
+    <_valueType>MAX</_valueType>
+    <SensorName>Process Table</SensorName>
+    <SensorType>Plugin</SensorType>
+    <ValueType>MAX</ValueType>
+    <PluginSensorId>/infopanel.mock/processes/top</PluginSensorId>
+    <MaxRows>5</MaxRows>
+    <ShowHeader>false</ShowHeader>
+    <TableFormat>0:120|2:60|3:40</TableFormat>
+  </DisplayItem>
+  <DisplayItem xsi:type="SensorDisplayItem">
+    <Name>CPU Temp</Name>
+    <Hidden>false</Hidden>
+    <X>20</X>
+    <Y>20</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>5</Rotation>
+    <Font>Arial</Font>
+    <FontSize>28</FontSize>
+    <Bold>true</Bold>
+    <Italic>false</Italic>
+    <Underline>false</Underline>
+    <Strikeout>false</Strikeout>
+    <Color>#FFFFFFFF</Color>
+    <Uppercase>false</Uppercase>
+    <GlowRadius>8</GlowRadius>
+    <FontStyle />
+    <RightAlign>true</RightAlign>
+    <CenterAlign>false</CenterAlign>
+    <Wrap>true</Wrap>
+    <Ellipsis>true</Ellipsis>
+    <Width>0</Width>
+    <Height>0</Height>
+    <Marquee>false</Marquee>
+    <MarqueeSpeed>50</MarqueeSpeed>
+    <MarqueeSpacing>40</MarqueeSpacing>
+    <GlowEnabled>false</GlowEnabled>
+    <GlowColor>#000000</GlowColor>
+    <GlowBlendMode>SrcOver</GlowBlendMode>
+    <_valueType>AVERAGE</_valueType>
+    <SensorName>CPU Temp</SensorName>
+    <SensorType>HwInfo</SensorType>
+    <HwInfoRemoteIndex>2</HwInfoRemoteIndex>
+    <Id>4026532608</Id>
+    <Instance>0</Instance>
+    <EntryId>33554433</EntryId>
+    <LibreSensorId />
+    <PluginSensorId />
+    <ValueType>AVERAGE</ValueType>
+    <Threshold1>60.5</Threshold1>
+    <Threshold1Color>#FFFFA500</Threshold1Color>
+    <Threshold2>85.25</Threshold2>
+    <Threshold2Color>#FFFF0000</Threshold2Color>
+    <ShowName>true</ShowName>
+    <Unit> °C</Unit>
+    <OverrideUnit>true</OverrideUnit>
+    <ShowUnit>true</ShowUnit>
+    <OverridePrecision>true</OverridePrecision>
+    <Precision>1</Precision>
+    <ShowThousandsSeparator>true</ShowThousandsSeparator>
+    <AdditionModifier>-1.5</AdditionModifier>
+    <AbsoluteAddition>false</AbsoluteAddition>
+    <MultiplicationModifier>0.5</MultiplicationModifier>
+    <DivisionToggle>true</DivisionToggle>
+  </DisplayItem>
+  <DisplayItem xsi:type="SensorDisplayItem">
+    <Name>GPU Temp (hidden)</Name>
+    <Hidden>true</Hidden>
+    <X>20</X>
+    <Y>60</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <Font>Arial</Font>
+    <FontSize>20</FontSize>
+    <Bold>false</Bold>
+    <Italic>false</Italic>
+    <Underline>false</Underline>
+    <Strikeout>false</Strikeout>
+    <Color>#FF00FF00</Color>
+    <Uppercase>false</Uppercase>
+    <GlowRadius>8</GlowRadius>
+    <FontStyle />
+    <RightAlign>false</RightAlign>
+    <CenterAlign>false</CenterAlign>
+    <Wrap>true</Wrap>
+    <Ellipsis>true</Ellipsis>
+    <Width>0</Width>
+    <Height>0</Height>
+    <Marquee>false</Marquee>
+    <MarqueeSpeed>50</MarqueeSpeed>
+    <MarqueeSpacing>40</MarqueeSpacing>
+    <GlowEnabled>false</GlowEnabled>
+    <GlowColor>#000000</GlowColor>
+    <GlowBlendMode>SrcOver</GlowBlendMode>
+    <_valueType>NOW</_valueType>
+    <SensorName>GPU Temp (hidden)</SensorName>
+    <SensorType>Plugin</SensorType>
+    <HwInfoRemoteIndex>-1</HwInfoRemoteIndex>
+    <Id>0</Id>
+    <Instance>0</Instance>
+    <EntryId>0</EntryId>
+    <LibreSensorId />
+    <PluginSensorId>/infopanel.mock/gpu/gpu-temp</PluginSensorId>
+    <ValueType>NOW</ValueType>
+    <Threshold1>0</Threshold1>
+    <Threshold1Color>#000000</Threshold1Color>
+    <Threshold2>0</Threshold2>
+    <Threshold2Color>#000000</Threshold2Color>
+    <ShowName>false</ShowName>
+    <Unit />
+    <OverrideUnit>false</OverrideUnit>
+    <ShowUnit>false</ShowUnit>
+    <OverridePrecision>false</OverridePrecision>
+    <Precision>0</Precision>
+    <ShowThousandsSeparator>false</ShowThousandsSeparator>
+    <AdditionModifier>0</AdditionModifier>
+    <AbsoluteAddition>true</AbsoluteAddition>
+    <MultiplicationModifier>1</MultiplicationModifier>
+    <DivisionToggle>false</DivisionToggle>
+  </DisplayItem>
+  <DisplayItem xsi:type="TextDisplayItem">
+    <Name>Now Playing: a long marquee title</Name>
+    <Hidden>false</Hidden>
+    <X>20</X>
+    <Y>100</Y>
+    <IsLocked>true</IsLocked>
+    <Rotation>30</Rotation>
+    <Font>Consolas</Font>
+    <FontSize>32</FontSize>
+    <Bold>true</Bold>
+    <Italic>true</Italic>
+    <Underline>true</Underline>
+    <Strikeout>true</Strikeout>
+    <Color>#FF00AAFF</Color>
+    <Uppercase>true</Uppercase>
+    <GlowRadius>12</GlowRadius>
+    <FontStyle>Bold Italic</FontStyle>
+    <RightAlign>false</RightAlign>
+    <CenterAlign>true</CenterAlign>
+    <Wrap>false</Wrap>
+    <Ellipsis>false</Ellipsis>
+    <Width>300</Width>
+    <Height>60</Height>
+    <Marquee>true</Marquee>
+    <MarqueeSpeed>80</MarqueeSpeed>
+    <MarqueeSpacing>24</MarqueeSpacing>
+    <GlowEnabled>true</GlowEnabled>
+    <GlowColor>#FFFF00FF</GlowColor>
+    <GlowBlendMode>Screen</GlowBlendMode>
+  </DisplayItem>
+  <DisplayItem xsi:type="SensorImageDisplayItem">
+    <Name>Fan Icon</Name>
+    <Hidden>false</Hidden>
+    <X>700</X>
+    <Y>300</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <Type>FILE</Type>
+    <ReadOnly>false</ReadOnly>
+    <FilePath>icon.svg</FilePath>
+    <RelativePath>true</RelativePath>
+    <Cache>true</Cache>
+    <Scale>75</Scale>
+    <Layer>true</Layer>
+    <LayerColor>#80000000</LayerColor>
+    <ShowPanel>false</ShowPanel>
+    <Volume>0</Volume>
+    <Width>64</Width>
+    <Height>64</Height>
+    <_valueType>MAX</_valueType>
+    <SensorName>Fan Icon</SensorName>
+    <SensorType>Libre</SensorType>
+    <HwInfoRemoteIndex>-1</HwInfoRemoteIndex>
+    <Id>0</Id>
+    <Instance>0</Instance>
+    <EntryId>0</EntryId>
+    <LibreSensorId>/amdcpu/0/fan/1</LibreSensorId>
+    <PluginSensorId />
+    <ValueType>MAX</ValueType>
+    <Threshold1>20.5</Threshold1>
+    <Threshold2>80</Threshold2>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Animated</Name>
+    <Hidden>false</Hidden>
+    <X>600</X>
+    <Y>20</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>90</Rotation>
+    <Type>FILE</Type>
+    <ReadOnly>false</ReadOnly>
+    <FilePath>anim.gif</FilePath>
+    <RelativePath>true</RelativePath>
+    <Cache>false</Cache>
+    <Scale>50</Scale>
+    <Layer>false</Layer>
+    <LayerColor>#77FFFFFF</LayerColor>
+    <ShowPanel>true</ShowPanel>
+    <Volume>30</Volume>
+    <Width>160</Width>
+    <Height>90</Height>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Logo</Name>
+    <Hidden>false</Hidden>
+    <X>760</X>
+    <Y>400</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <Type>FILE</Type>
+    <ReadOnly>false</ReadOnly>
+    <FilePath>logo.png</FilePath>
+    <RelativePath>true</RelativePath>
+    <Cache>true</Cache>
+    <Scale>125</Scale>
+    <Layer>false</Layer>
+    <LayerColor>#77FFFFFF</LayerColor>
+    <ShowPanel>false</ShowPanel>
+    <Volume>0</Volume>
+    <Width>0</Width>
+    <Height>0</Height>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Remote Image</Name>
+    <Hidden>false</Hidden>
+    <X>600</X>
+    <Y>120</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <Type>URL</Type>
+    <ReadOnly>false</ReadOnly>
+    <RelativePath>false</RelativePath>
+    <HttpUrl>https://example.com/feed.png</HttpUrl>
+    <Cache>true</Cache>
+    <Scale>100</Scale>
+    <Layer>false</Layer>
+    <LayerColor>#77FFFFFF</LayerColor>
+    <ShowPanel>false</ShowPanel>
+    <Volume>0</Volume>
+    <Width>0</Width>
+    <Height>0</Height>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Camera</Name>
+    <Hidden>false</Hidden>
+    <X>600</X>
+    <Y>220</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <Type>RTSP</Type>
+    <ReadOnly>false</ReadOnly>
+    <RelativePath>false</RelativePath>
+    <RtspUrl>rtsp://camera.local/stream</RtspUrl>
+    <Cache>true</Cache>
+    <Scale>100</Scale>
+    <Layer>false</Layer>
+    <LayerColor>#77FFFFFF</LayerColor>
+    <ShowPanel>false</ShowPanel>
+    <Volume>75</Volume>
+    <Width>0</Width>
+    <Height>0</Height>
+  </DisplayItem>
+  <DisplayItem xsi:type="HttpImageDisplayItem">
+    <Name>Album Art</Name>
+    <Hidden>false</Hidden>
+    <X>700</X>
+    <Y>380</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>0</Rotation>
+    <Type>URL</Type>
+    <ReadOnly>true</ReadOnly>
+    <RelativePath>false</RelativePath>
+    <Cache>true</Cache>
+    <Scale>90</Scale>
+    <Layer>false</Layer>
+    <LayerColor>#77FFFFFF</LayerColor>
+    <ShowPanel>false</ShowPanel>
+    <Volume>0</Volume>
+    <Width>96</Width>
+    <Height>96</Height>
+    <_valueType>NOW</_valueType>
+    <SensorName>Album Art</SensorName>
+    <SensorType>Plugin</SensorType>
+    <HwInfoRemoteIndex>-1</HwInfoRemoteIndex>
+    <Id>0</Id>
+    <Instance>0</Instance>
+    <EntryId>0</EntryId>
+    <LibreSensorId />
+    <PluginSensorId>/infopanel.mock/media/cover-url</PluginSensorId>
+    <ValueType>NOW</ValueType>
+  </DisplayItem>
+  <DisplayItem xsi:type="GaugeDisplayItem">
+    <Name>Load Gauge</Name>
+    <Hidden>false</Hidden>
+    <X>300</X>
+    <Y>300</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>180</Rotation>
+    <_valueType>MAX</_valueType>
+    <SensorName>Load Gauge</SensorName>
+    <SensorType>HwInfo</SensorType>
+    <HwInfoRemoteIndex>0</HwInfoRemoteIndex>
+    <Id>4026532864</Id>
+    <Instance>0</Instance>
+    <EntryId>117440512</EntryId>
+    <LibreSensorId />
+    <PluginSensorId />
+    <FlipX>true</FlipX>
+    <ValueType>MAX</ValueType>
+    <MinValue>10.5</MinValue>
+    <MaxValue>95.25</MaxValue>
+    <Scale>80</Scale>
+    <AnimationSpeed>12.5</AnimationSpeed>
+    <Images>
+      <ImageDisplayItem>
+        <Name>g0</Name>
+        <Hidden>false</Hidden>
+        <X>100</X>
+        <Y>100</Y>
+        <IsLocked>false</IsLocked>
+        <Rotation>0</Rotation>
+        <Type>FILE</Type>
+        <ReadOnly>false</ReadOnly>
+        <FilePath>g0.png</FilePath>
+        <RelativePath>true</RelativePath>
+        <Cache>true</Cache>
+        <Scale>80</Scale>
+        <Layer>false</Layer>
+        <LayerColor>#77FFFFFF</LayerColor>
+        <ShowPanel>false</ShowPanel>
+        <Volume>0</Volume>
+        <Width>0</Width>
+        <Height>0</Height>
+      </ImageDisplayItem>
+      <ImageDisplayItem>
+        <Name>g1</Name>
+        <Hidden>false</Hidden>
+        <X>100</X>
+        <Y>100</Y>
+        <IsLocked>false</IsLocked>
+        <Rotation>0</Rotation>
+        <Type>FILE</Type>
+        <ReadOnly>false</ReadOnly>
+        <FilePath>g1.png</FilePath>
+        <RelativePath>true</RelativePath>
+        <Cache>true</Cache>
+        <Scale>80</Scale>
+        <Layer>false</Layer>
+        <LayerColor>#77FFFFFF</LayerColor>
+        <ShowPanel>false</ShowPanel>
+        <Volume>0</Volume>
+        <Width>0</Width>
+        <Height>0</Height>
+      </ImageDisplayItem>
+      <ImageDisplayItem>
+        <Name>g2</Name>
+        <Hidden>false</Hidden>
+        <X>100</X>
+        <Y>100</Y>
+        <IsLocked>false</IsLocked>
+        <Rotation>0</Rotation>
+        <Type>FILE</Type>
+        <ReadOnly>false</ReadOnly>
+        <FilePath>g2.png</FilePath>
+        <RelativePath>true</RelativePath>
+        <Cache>true</Cache>
+        <Scale>80</Scale>
+        <Layer>false</Layer>
+        <LayerColor>#77FFFFFF</LayerColor>
+        <ShowPanel>false</ShowPanel>
+        <Volume>0</Volume>
+        <Width>0</Width>
+        <Height>0</Height>
+      </ImageDisplayItem>
+    </Images>
+    <Width>128</Width>
+    <Height>128</Height>
+  </DisplayItem>
+  <DisplayItem xsi:type="ShapeDisplayItem">
+    <Name>Star</Name>
+    <Hidden>false</Hidden>
+    <X>200</X>
+    <Y>200</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>45</Rotation>
+    <Type>Star</Type>
+    <Width>90</Width>
+    <Height>80</Height>
+    <CornerRadius>4</CornerRadius>
+    <ShowFrame>false</ShowFrame>
+    <FrameThickness>2</FrameThickness>
+    <FrameColor>#FF0000FF</FrameColor>
+    <ShowFill>true</ShowFill>
+    <FillColor>#FFFFFF00</FillColor>
+    <ShowGradient>true</ShowGradient>
+    <GradientColor>#FFFF00FF</GradientColor>
+    <GradientColor2>#FF00FFFF</GradientColor2>
+    <GradientType>Spiral</GradientType>
+    <GradientAngle>-30</GradientAngle>
+    <GradientAnimationSpeed>120</GradientAnimationSpeed>
+  </DisplayItem>
+</ArrayOfDisplayItem>

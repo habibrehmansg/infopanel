@@ -1,0 +1,2 @@
+# Frozen 1.x fixtures: keep their bytes (CRLF, BOM) exactly as generated.
+InfoPanel.Core.Tests/Fixtures/** -text
