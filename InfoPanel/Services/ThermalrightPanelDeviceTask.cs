@@ -1721,6 +1721,18 @@ namespace InfoPanel.Services
                 var height = _panelHeight;
                 var pixelFormat = _detectedModel?.PixelFormat ?? ThermalrightPixelFormat.Jpeg;
 
+                // Cap JPEG frame size like TRCC does. TRCC never sends a JPEG >= 450,000 bytes
+                // (FormCZTV.ImageToJpg drops the frame and reduces quality by 5); the panel
+                // firmware's receive buffer is sized accordingly. Without this cap, a bright,
+                // high-entropy theme at quality 95 can exceed the buffer and wedge the panel
+                // (issue #139: Trofeo Vision 6.86" shows a frame then goes black until replug,
+                // and dimming to brightness 50 "fixes" it only because darker frames compress
+                // smaller). GenerateFrameBuffer's adaptive-quality loop enforces the cap.
+                if (pixelFormat == ThermalrightPixelFormat.Jpeg)
+                {
+                    _maxJpegSize = 400_000;
+                }
+
                 try
                 {
                     if (useBulk && bulkWriter != null)
