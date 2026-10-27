@@ -2,7 +2,7 @@
 
 Schema: `urn:infopanel:document:1` (`schemas/document.schema.json`). Example: `examples/document/valid/desk.json`.
 
-A document is one profile: a canvas size, settings, and a tree of items. The engine owns it: it stores the saved version, applies every change (commits, undo, redo, revert) and assigns revisions. A client reads it from the engine and changes it only by committing ops ([commits](commit.md)).
+A document is one profile: a canvas size, settings, and a tree of items. The engine owns it: it stores the saved version, applies every change (commits, undo, redo, revert) and assigns revisions. A client reads it from the engine (`GET /api/profiles/{id}`, [API](api.md#documents)) and changes it only by committing ops ([commits](commit.md)).
 
 ```jsonc
 {
@@ -83,7 +83,7 @@ An item without a `source` has a scene that stands alone: a client that edits it
 
 ## Revisions
 
-The document has one revision counter, `rev`. It goes up with every change: each applied commit, undo, redo and revert. An item's `rev` (and the profile's) is the document revision at which it last changed, so after a commit every item it changed has the same new `rev`. The engine also tracks, per item, the revision at which each field group last changed (placement, design, bindings, name, visible, locked, position in the tree, and for a group its children: an item added to it or taken out of it); a commit's `baseRev` is checked against those ([commits](commit.md)).
+The document has one revision counter, `rev`. It goes up with every change: each commit that changes the document, and each undo, redo and revert that takes a step ([commits](commit.md#what-a-change-stamps)). An item's `rev` (and the profile's) is the document revision at which it last changed, so after a commit every item it changed has the same new `rev`. The engine also tracks, per item, the revision at which each field group last changed (placement, design, bindings, name, visible, locked, position in the tree, and for a group its children: an item added to it or taken out of it); a commit's `baseRev` is checked against those ([commits](commit.md)).
 
 Revisions are meaningful within one run of the engine: `GET /api/session` reports an `instance` id that changes every time the engine starts, and a commit that names an old `instance` is refused. Unsaved changes do not survive the engine stopping; the saved document does.
 

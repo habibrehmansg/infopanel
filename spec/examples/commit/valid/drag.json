@@ -1,6 +1,7 @@
 {
   "opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10",
   "instance": "e1f6",
+  "baseRev": 42,
   "coalesceKey": "gesture:5b0e8f0c-3c1d-4b8e-a7f2-1d9c6e4a2b7f:7",
   "ops": [{"op": "setPlacement", "id": "cpu-bar", "baseRev": 42, "placement": {"x": 52, "y": 108, "rotation": 0}}]
 }

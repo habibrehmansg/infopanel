@@ -1,0 +1,6 @@
+{
+  "id": "9b0c5e2a-41f7-4d3b-8c6e-2a7f1d9e0b43",
+  "status": "unsupported",
+  "name": "Garage",
+  "problem": {"path": "/format", "code": "unsupported.format", "message": "This engine reads infopanel.document/1, not infopanel.document/2."}
+}

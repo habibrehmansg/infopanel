@@ -1,0 +1,12 @@
+{
+  "title": "Conflict",
+  "detail": "The document changed after revision 43.",
+  "status": 409,
+  "code": "conflict",
+  "rev": 45,
+  "conflicts": [
+    {"id": "cpu-bar", "reason": "changed", "rev": 44, "fields": ["placement"]},
+    {"id": "clock", "reason": "changed", "rev": 45, "fields": ["design"]},
+    {"reason": "changed", "rev": 45, "fields": ["background"]}
+  ]
+}

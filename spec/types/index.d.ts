@@ -4,18 +4,328 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { [key:
 
 // api.schema.json (urn:infopanel:api:1)
 
+/** GET /api/session: the engine, this run of it and what it supports. */
+export interface Session {
+  /**
+   * The engine's version, such as "2.0.0".
+   * Length: 1–64.
+   */
+  engineVersion: string;
+  /**
+   * The engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore (a member or endpoint removed or changed); members and endpoints are added without changing it.
+   * Range: ≥ 1.
+   */
+  protocol: number;
+  instance: InstanceId;
+  /** The operating system the engine runs on. */
+  platform: "macos" | "windows" | "linux" | "other";
+  /**
+   * The folder the engine keeps its data in: an absolute path on the engine's machine.
+   * Length: ≥ 1.
+   */
+  dataDir: string;
+  formatSupport: FormatSupport;
+}
+
+/**
+ * One run of the engine: a new id every time the engine starts. Revisions are only comparable within one instance. Opaque: compared for equality only.
+ * Length: 1–64.
+ */
+export type InstanceId = string;
+
+/** One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). */
+export type ProfileEntry = ProfileEntryOk | ProfileEntryUnsupported | ProfileEntryUnreadable;
+
+/** A profile whose document the engine opens. A document with invalid or unsupported scenes is ok: those items are placeholders (docs/unsupported.md). */
+export interface ProfileEntryOk {
+  id: DocumentId;
+  status: "ok";
+  /**
+   * The profile's name.
+   * Length: 1–256.
+   */
+  name: string;
+  /**
+   * The canvas width in pixels.
+   * Range: 1–16384.
+   */
+  width: number;
+  /**
+   * The canvas height in pixels.
+   * Range: 1–16384.
+   */
+  height: number;
+  /** The document's current revision. */
+  rev: Revision;
+  /** The document has changes that aren't saved. */
+  dirty: boolean;
+}
+
+/** A profile whose document needs a format major version or a document capability this engine lacks. */
+export interface ProfileEntryUnsupported {
+  id: DocumentId;
+  status: "unsupported";
+  /**
+   * The document's `profile.name` when that is a string of 1–256 characters, else absent.
+   * Length: 1–256.
+   */
+  name?: string;
+  /** Why the engine doesn't open it: `unsupported.format` (at /format) or `unsupported.capability` (at /requires/i), with a JSON pointer into the stored document. */
+  problem: ValidationError;
+}
+
+/** A profile whose stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes. */
+export interface ProfileEntryUnreadable {
+  id: DocumentId;
+  status: "unreadable";
+  /** The first problem found, with a JSON pointer into the stored document: `io` (the file can't be read), `json` (not JSON) or a document check's code (`schema`, `limit.documentBytes`, ...; docs/validation.md). */
+  problem: ValidationError;
+}
+
+/** 409 application/problem+json: the profile's document can't be opened (its status is unsupported or unreadable), so it can't be read, changed, saved or drawn. It can still be listed, deleted and exported as stored. */
+export interface ProfileStatusProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  status: 409;
+  /** The profile's status. */
+  code: "unsupported" | "unreadable";
+  /** The profile's `problem` (profileEntry). */
+  problem: ValidationError;
+}
+
+/** POST /api/profiles: a new profile under a client-chosen id, either empty (a canvas with no items) or from a document. An id that already exists: 409 existsProblem. Answered 201 with the new profile's profileEntry (docs/api.md). */
+export type CreateProfileRequest = CreateProfileEmpty | CreateProfileFromDocument;
+
+/** An empty profile: a document with this name and canvas size and no items. */
+export interface CreateProfileEmpty {
+  /** The new profile's id, chosen by the client. */
+  id: DocumentId;
+  /** Length: 1–256. */
+  name: string;
+  /**
+   * The canvas width in pixels.
+   * Range: 1–16384.
+   */
+  width: number;
+  /**
+   * The canvas height in pixels.
+   * Range: 1–16384.
+   */
+  height: number;
+}
+
+/** A profile from a document (importDocument), checked as a stored document is: a scene that is invalid or unsupported (or over a budget) is kept as sent and drawn as a placeholder; a document the engine wouldn't open is refused (422). The document's own `id` is replaced by `id`, and its `rev` members are ignored. */
+export interface CreateProfileFromDocument {
+  /** The new profile's id, chosen by the client. */
+  id: DocumentId;
+  document: ImportDocument;
+}
+
+/** A document (infopanel.document/1) as a create takes it: the document format with `rev` members optional (they are ignored) and every scene taken as stored (storedScene), so a document the engine exported, with scenes it draws as placeholders, can be created again. Its scenes are then checked as a stored document's are (docs/api.md). */
+export interface ImportDocument {
+  format: "infopanel.document/1";
+  /**
+   * Items: ≤ 32.
+   * Unique items.
+   */
+  requires?: Capability[];
+  id: DocumentId;
+  /** Ignored. */
+  rev?: Revision;
+  profile: Profile;
+  /** Top-level items in drawing order: the first is at the back. */
+  items: ImportItem[];
+}
+
+export type ImportItem = ImportSceneItem | ImportGroupItem;
+
+/** A scene item as a create takes it (document format: sceneItem), with its scene as stored. */
+export interface ImportSceneItem {
+  kind: "scene";
+  id: ItemId;
+  /** Ignored. */
+  rev?: Revision;
+  name?: ItemName;
+  /** @default true */
+  visible?: boolean;
+  /** @default false */
+  locked?: boolean;
+  placement: Placement;
+  layout?: Layout;
+  bindings?: Bindings;
+  source?: Source;
+  origin?: Origin;
+  scene: StoredScene;
+}
+
+/** A group item as a create takes it (document format: groupItem). */
+export interface ImportGroupItem {
+  kind: "group";
+  id: ItemId;
+  /** Ignored. */
+  rev?: Revision;
+  name?: ItemName;
+  /** @default true */
+  visible?: boolean;
+  /** @default false */
+  locked?: boolean;
+  placement: Placement;
+  origin?: Origin;
+  /** In drawing order: the first is at the back. */
+  children: ImportItem[];
+}
+
+/** POST /api/profiles/{id}/duplicate: a copy of the profile's current document under a client-chosen id. An id that already exists: 409 existsProblem. Answered 201 with the copy's profileEntry. */
+export interface DuplicateProfileRequest {
+  /** The copy's id, chosen by the client. */
+  id: DocumentId;
+}
+
+/** 409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this). Nothing was created. */
+export interface ExistsProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  status: 409;
+  code: "exists";
+}
+
+/** GET /api/profiles/{id}: the profile's current document, with its revision members (the `rev` of the document, the profile and every item), and its state. */
+export interface DocumentResponse {
+  /** The engine instance these revisions belong to (as in GET /api/session). */
+  instance: InstanceId;
+  /** The document's revision: the same as `document.rev`. */
+  rev: Revision;
+  /** The document differs from the saved one. */
+  dirty: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  document: ResponseDocument;
+}
+
+/** A document (infopanel.document/1) as the engine returns it: every revision member set, and every scene exactly as stored (storedScene). */
+export interface ResponseDocument {
+  format: "infopanel.document/1";
+  /**
+   * Items: ≤ 32.
+   * Unique items.
+   */
+  requires?: Capability[];
+  id: DocumentId;
+  /** The document's revision. */
+  rev: Revision;
+  profile: ResponseProfile;
+  /** Top-level items in drawing order: the first is at the back. */
+  items: ResponseItem[];
+}
+
+/** The document's profile, with `rev`: the document revision at which a profile field last changed. */
+export type ResponseProfile = Profile & {
+  rev: Revision;
+};
+
+export type ResponseItem = ResponseSceneItem | ResponseGroupItem;
+
+/** A scene item as the engine returns it (document format: sceneItem), with its `rev` and its scene as stored. */
+export interface ResponseSceneItem {
+  kind: "scene";
+  id: ItemId;
+  /** The document revision at which the item last changed. */
+  rev: Revision;
+  name?: ItemName;
+  /** @default true */
+  visible?: boolean;
+  /** @default false */
+  locked?: boolean;
+  placement: Placement;
+  layout?: Layout;
+  bindings?: Bindings;
+  source?: Source;
+  origin?: Origin;
+  scene: StoredScene;
+}
+
+/** A group item as the engine returns it (document format: groupItem), with its `rev`. */
+export interface ResponseGroupItem {
+  kind: "group";
+  id: ItemId;
+  /** The document revision at which the item last changed. */
+  rev: Revision;
+  name?: ItemName;
+  /** @default true */
+  visible?: boolean;
+  /** @default false */
+  locked?: boolean;
+  placement: Placement;
+  origin?: Origin;
+  /** In drawing order: the first is at the back. */
+  children: ResponseItem[];
+}
+
+/** A scene exactly as stored: an object with a string `format`. A scene the engine draws normally matches the scene schema (urn:infopanel:scene:1); one it draws as a placeholder (it needs a newer format or a capability the engine lacks, breaks a rule or limit, or can't be compiled) is returned unchanged and may not (docs/unsupported.md). */
+export type StoredScene = Opaque & {
+  format: string;
+};
+
+/** POST /api/blobs: a stored blob. The engine stores any bytes up to the `mediaBytes` limit (more: 413, not stored), named by their SHA-256, and inspects them as a media asset: the answer has `media`, what it found, or `mediaError`, why they can't be used as media (a scene's media naming such a blob draws the missing-media placeholder). */
+export type BlobInfo = BlobInfoMedia | BlobInfoMediaError;
+
+/** A stored blob that is a media asset within the media limits. */
+export interface BlobInfoMedia {
+  /** `sha256:` and the SHA-256 of the bytes as sent, in lower-case hex. */
+  id: BlobId;
+  /**
+   * The blob's size in bytes: at most `mediaBytes` (32 MiB, docs/limits.md).
+   * Range: 0–33554432.
+   */
+  bytes: number;
+  media: MediaInfo;
+}
+
+/** A stored blob that can't be used as media: not media at all, or media that breaks a media check other than its size in bytes. */
+export interface BlobInfoMediaError {
+  /** `sha256:` and the SHA-256 of the bytes as sent, in lower-case hex. */
+  id: BlobId;
+  /**
+   * The blob's size in bytes: at most `mediaBytes` (32 MiB, docs/limits.md).
+   * Range: 0–33554432.
+   */
+  bytes: number;
+  /** Why the bytes can't be used as media: the media check's first error (docs/validation.md: `media.*`, or a `limit.*` code other than `limit.mediaBytes`), with path "". */
+  mediaError: ValidationError;
+}
+
+/** A media asset as the engine read it from its header, without decoding it (docs/validation.md). Sizes are in pixels; an SVG's come from its `width` and `height` or its `viewBox` (docs/svg.md). */
+export interface MediaInfo {
+  format: "png" | "jpeg" | "gif" | "webp" | "svg";
+  /** Range: ≥ 0. */
+  width: number;
+  /** Range: ≥ 0. */
+  height: number;
+  /**
+   * 1 for a still image; an animation's frame count.
+   * Range: ≥ 1.
+   */
+  frames: number;
+  /**
+   * An animation's length in seconds (one loop); 0 for a still image.
+   * Range: ≥ 0.
+   */
+  duration: number;
+}
+
 /** POST /api/profiles/{id}/commit. The ops apply in order, all or none, as one undo step (or merged into the previous one, see coalesceKey). */
 export interface CommitRequest {
   /**
-   * Unique per commit, chosen by the client (a UUID, say). Retrying with the same opId and the same body returns the first result without applying anything again.
+   * Unique per commit, chosen by the client (a UUID, say). Retrying with the same opId and the same body (byte for byte) returns the first result without applying anything again.
    * Pattern: `^[A-Za-z0-9_.:-]{1,128}$`.
    */
   opId: string;
-  /**
-   * The engine instance the client's revisions came from (GET /api/session). A different one: 409 with reason "instance".
-   * Length: 1–64.
-   */
-  instance?: string;
+  /** The engine instance the client's revisions came from (GET /api/session). A different one: 409 with reason "instance". */
+  instance: InstanceId;
+  /** The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId with a baseRev older than the engine's retry window is refused (409 expiredProblem). Each op's own `baseRev` decides its conflicts. */
+  baseRev: Revision;
   /**
    * Merge this commit's undo step into the previous one when that had the identical key and the key starts with "gesture:" or less than 1 s passed. A key names one gesture of one client: it includes a random part chosen once per client instance ("gesture:5b0e8f0c-3c1d-4b8e-a7f2-1d9c6e4a2b7f:7").
    * Length: 1–128.
@@ -131,11 +441,19 @@ export interface ProfileOp {
   };
 }
 
-/** 200 response to a commit. */
+/** The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. A different instance: 409 conflictProblem (reason "instance"); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason "changed"); nothing is done either way (docs/commit.md). */
+export interface HistoryRequest {
+  /** The engine instance the client's revision came from (GET /api/session). */
+  instance: InstanceId;
+  /** The document `rev` the client last read: the request acts only while the document is still at that revision. */
+  baseRev: Revision;
+}
+
+/** 200 response to a commit, and to undo, redo, revert and save (docs/commit.md). */
 export interface CommitResult {
   /** The document's revision after the commit (unchanged when nothing changed). */
   rev: Revision;
-  /** The new `rev` of every item the commit changed or added. */
+  /** The new `rev` of every item the commit (or undo, redo or revert) changed or added. */
   items: { [key: string]: Revision };
   removed?: ItemId[];
   /** The profile's new `rev`, when the commit changed it. */
@@ -160,7 +478,7 @@ export interface CommitWarning {
   message?: string;
 }
 
-/** 409 application/problem+json: nothing was applied. The client refetches, rebuilds its change on the current state and commits again with a new opId. */
+/** 409 application/problem+json to a commit, undo, redo or revert: nothing was applied. The client refetches, rebuilds its change on the current state and sends it again (a commit with a new opId). */
 export interface ConflictProblem {
   type?: string;
   title?: string;
@@ -169,34 +487,49 @@ export interface ConflictProblem {
   code: "conflict";
   /** The document's current revision. */
   rev: Revision;
-  /** Items: ≥ 1. */
+  /** A commit's: every conflict found, at least one. An undo's, redo's or revert's: one `instance` conflict, or one `changed` conflict for each item (and for the profile) with a field group changed after its baseRev. That list can be empty: items removed since are not listed, and an undo, redo or revert step may change no field group. */
   conflicts: Conflict[];
 }
 
 export interface Conflict {
-  op: OpIndex;
+  /** The op that conflicts. Absent when the conflict is the whole request's: reason instance, and every conflict of an undo, redo or revert. */
+  op?: OpIndex;
   id?: ItemId;
-  /** changed: a field the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field of the item or of anything in it, each listed with its own `id`). missing: the item or parent no longer exists. instance: the engine restarted since the client's `instance`. */
+  /** changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the engine restarted since the client's `instance`. */
   reason: "changed" | "missing" | "instance";
   /** The item's (or profile's) current rev. */
   rev?: Revision;
-  /** The fields that changed: placement, design, bindings, name, visible, locked, position (parent and index), children (a group's membership: an item added to it or taken out of it), or a profile field's name. */
+  /** The field groups that changed (docs/commit.md): placement, design, bindings, name, visible, locked, position (parent, and index among the siblings present in both versions), children (a group's membership: an item added to it or taken out of it), or a profile field's name. */
   fields?: string[];
 }
 
-/** 422 application/problem+json: the commit (or document) breaks the format, a rule or a limit; nothing was applied. */
+/** 409 application/problem+json: the commit's opId isn't one the engine remembers, and its baseRev is older than the engine's retry window, so the engine can't tell whether it is a retry of a commit it applied and has since forgotten. Nothing was applied. The client reads the document, decides whether its change is still needed, and if so commits it again with a new opId and a current baseRev (docs/commit.md). */
+export interface ExpiredProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  status: 409;
+  code: "expired";
+  /** The document's current revision. */
+  rev: Revision;
+}
+
+/** 422 application/problem+json: the request body (a commit, a create, duplicate, undo, redo or revert body, or a document) breaks the format, a rule or a limit; nothing was applied. */
 export interface InvalidProblem {
   type?: string;
   title?: string;
   detail?: string;
   status: 422;
   code: "invalid";
-  /** Items: ≥ 1. */
+  /**
+   * Every error, at most 100, then, when there were more, one last error with code `more` (path "") counting the rest (docs/validation.md).
+   * Items: 1–101.
+   */
   errors: ValidationError[];
 }
 
 export interface ValidationError {
-  /** JSON pointer into the request body. */
+  /** JSON pointer into what was checked: the request body, or the stored document or blob. */
   path: string;
   /** A code from docs/limits.md and docs/validation.md (schema, limit.*, ref.*, type.*, ...). */
   code: string;
@@ -220,6 +553,67 @@ export interface Rect {
   w: number;
   /** Range: ≥ 0. */
   h: number;
+}
+
+/** The JSON header of a frame message on /ws (docs/api.md): the document revision and tick the frame was drawn from, its scale and size, and where every item is. */
+export interface FrameHeader {
+  profileId: DocumentId;
+  /** The document revision drawn. */
+  rev: Revision;
+  /**
+   * The render tick the frame was drawn from (docs/identity.md). Within one subscription, frames with the same tick were drawn from the same tick snapshot, and tick numbers never go down.
+   * Range: 0–9007199254740991.
+   */
+  tick: number;
+  /**
+   * The frame's number: unique within one run of the engine, and greater for a frame rendered later.
+   * Range: 0–9007199254740991.
+   */
+  frameId: number;
+  /**
+   * How the payload after the header is encoded: `png`, the whole frame as a PNG.
+   * Length: 1–32.
+   */
+  encoding: string;
+  /**
+   * Frame pixels per profile pixel: 0.1 or a multiple of 0.25 from 0.25 to 4. The subscription's scale rounded to a step of 0.25, then lowered while the frame would be over 16 Mpx (docs/api.md#frames).
+   * Range: 0.1–4.
+   */
+  scale: number;
+  /**
+   * The frame's width in pixels: profileWidth × scale, rounded (docs/api.md#frames). pixelWidth × pixelHeight is at most 16,777,216.
+   * Range: 1–65536.
+   */
+  pixelWidth: number;
+  /**
+   * The frame's height in pixels: profileHeight × scale, rounded (docs/api.md#frames).
+   * Range: 1–65536.
+   */
+  pixelHeight: number;
+  /**
+   * The profile's canvas width at `rev`, in profile pixels.
+   * Range: 1–16384.
+   */
+  profileWidth: number;
+  /**
+   * The profile's canvas height at `rev`, in profile pixels.
+   * Range: 1–16384.
+   */
+  profileHeight: number;
+  /** The bounds of every visible item that has bounds, from the same tick as the pixels, in document order: a group before its children (docs/geometry.md). Each id appears once. */
+  itemBounds: ItemBounds[];
+}
+
+/** The `doc` message on /ws: the subscribed document's state. Sent when the subscription starts and after every change to the document or its state (a commit, undo, redo, revert or save, from any client). The engine keeps only the latest state to send: a client that falls behind gets the newest, so it may skip revisions, and the last one it gets is always current. It carries no content; the document at that revision is read with GET /api/profiles/{id}. */
+export interface DocEvent {
+  type: "doc";
+  profileId: DocumentId;
+  /** The document's revision. */
+  rev: Revision;
+  /** The document differs from the saved one. */
+  dirty: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 /** What an engine supports (part of GET /api/session): the format strings it reads, the highest minor version of each, its optional capabilities and its limits. */

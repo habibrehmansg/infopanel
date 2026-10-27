@@ -1,0 +1,5 @@
+{
+  "id": "e02b4c18-93d6-4f7a-b5c0-1a6e8d2f9b34",
+  "status": "unreadable",
+  "problem": {"path": "/items/3", "code": "schema", "message": "Missing required property \"placement\"."}
+}

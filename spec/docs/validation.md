@@ -13,7 +13,7 @@ Every reader checks content in the same order, and reports problems as `{ path, 
 5. The schema (`schema`).
 6. The rules and limits below.
 
-**Document**: the same first two steps for the document format; its size; its item count, groups' children included (`limit.items`); the schema with each scene checked only for being an object with a string `format`; ids, nesting and sizes; then each scene on its own (a bad scene makes a placeholder, not a bad document); then the aggregate budgets, in document order.
+**Document**: it is UTF-8 JSON (`json`); the same first two steps for the document format; its size; its item count, groups' children included (`limit.items`); the schema with each scene checked only for being an object with a string `format`; ids, nesting and sizes; then each scene on its own (a bad scene makes a placeholder, not a bad document); then the aggregate budgets, in document order.
 
 **Commit**: its size; the op count (`limit.ops`) and each inserted item's count with its children (`limit.items`); the schema (scenes as for documents); each new scene and inserted item on its own (unsupported: a warning; invalid: an error); then, when it is applied, the checks in [commits](commit.md).
 
@@ -25,11 +25,12 @@ A check reports at most 100 errors; when there are more than 100 (101 included),
 
 | Code | Meaning |
 |---|---|
+| `json` | Not JSON: a stored or imported document (or other body) that isn't well-formed UTF-8 JSON. |
 | `schema` | The JSON doesn't match the schema (unknown or missing member, wrong type, value out of the schema's range or pattern). The message names the schema keyword; `complexity` when the content is too complex to check within the validator's work budget ([limits](limits.md#checking-hostile-content)). |
 | `unsupported.format` | A format major version this engine doesn't read. |
 | `unsupported.capability` | A capability in `requires` this engine lacks. |
 | `requires.missing` | The scene uses a capability it doesn't list in `requires`. |
-| `id.duplicate` | Two nodes of a scene, or two items of a document (or of an inserted item), have the same id. |
+| `id.duplicate` | Two nodes of a scene, or two items of a document (or of an inserted item), have the same id; or a frame header lists an item's bounds twice ([API](api.md#checks-beyond-the-schema)). |
 | `ref.input` | An expression or node reads an input the scene doesn't declare. |
 | `type.input` | An input is read as a type it isn't (a `series` of a text input, a `unit` of a table). |
 | `ref.value`, `ref.state` | A value or state cell the scene doesn't define. |
@@ -51,12 +52,14 @@ A check reports at most 100 errors; when there are more than 100 (101 included),
 | `media.svg-size` | An SVG whose `width` or `height` is in a unit other than `px`, a percentage, or not a non-negative number: unsupported. |
 | `media.svg-parse` | An SVG that isn't well-formed UTF-8 XML (an XML declaration naming another encoding included), has a DTD, or is too long to read. |
 | `more` | Not a problem itself: the count of errors not listed after the first 100. |
+| `io` | Not a problem with content: a stored file the engine couldn't read (reported in the profile list, [API](api.md#profiles)). |
 | `opId.reused` | An `opId` already applied with a different body ([commits](commit.md)). |
+| `rev.mismatch` | Not a check on content: an engine API body whose revisions disagree, such as a document response whose `rev` isn't its document's ([API](api.md#checks-beyond-the-schema)). |
 | `op.target` | `setDesign` or `setBindings` on a group. |
 | `op.parent` | An `insert` or `move` into an item that isn't a group. |
 | `op.cycle` | A group moved into itself or into something it contains. |
 
-Conflicts (409) are not validation errors: see [commits](commit.md).
+Conflicts and other refusals that depend on the document's state (409: `conflictProblem`, `expiredProblem`, `existsProblem`, `profileStatusProblem`) are not validation errors: see [commits](commit.md) and the [API](api.md).
 
 ## The examples
 

@@ -1,0 +1,6 @@
+{
+  "title": "The profile can't be opened",
+  "status": 409,
+  "code": "unsupported",
+  "problem": {"path": "/format", "code": "unsupported.format", "message": "This engine reads infopanel.document/1, not infopanel.document/2."}
+}

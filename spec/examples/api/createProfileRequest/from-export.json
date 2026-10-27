@@ -1,0 +1,33 @@
+{
+  "id": "e4b7c1d9-2f6a-4a0e-9d35-7c8b1f0a6e24",
+  "document": {
+    "format": "infopanel.document/1",
+    "id": "9b0c5e2a-41f7-4d3b-8c6e-2a7f1d9e0b43",
+    "rev": 7,
+    "profile": {"rev": 3, "name": "Garage", "width": 1920, "height": 480},
+    "items": [
+      {
+        "kind": "scene",
+        "id": "future",
+        "rev": 7,
+        "placement": {"x": 400, "y": 100},
+        "scene": {"format": "infopanel.scene/2", "nodes": [{"kind": "mesh", "points": 12}]}
+      },
+      {
+        "kind": "group",
+        "id": "row",
+        "placement": {"x": 0, "y": 0},
+        "children": [
+          {
+            "kind": "scene",
+            "id": "broken",
+            "rev": 5,
+            "placement": {"x": 20, "y": 20},
+            "layout": {"w": 100, "h": 40},
+            "scene": {"format": "infopanel.scene/1", "nodes": [{"kind": "rect", "w": "wide", "h": 10, "fill": "#ffffff"}]}
+          }
+        ]
+      }
+    ]
+  }
+}

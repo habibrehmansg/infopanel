@@ -1,1 +1,1 @@
-{"opId": "3f9d2c4e-8a1b-4c6d-9e2f-7b5a1c3d8e40", "ops": [{"op": "remove", "id": "gauges", "baseRev": 10}]}
+{"opId": "3f9d2c4e-8a1b-4c6d-9e2f-7b5a1c3d8e40", "instance": "7c2f9a41d0e34b8f9e6a5b3c1d2e4f60", "baseRev": 10, "ops": [{"op": "remove", "id": "gauges", "baseRev": 10}]}

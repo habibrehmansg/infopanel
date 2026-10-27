@@ -145,7 +145,7 @@ public class SceneRuleTests
     [InlineData(2147483648L, false)]
     public void ItemIndexes_AreBoundedByTheSchemaNotClamped(long index, bool valid)
     {
-        var commit = Parse($$$"""{"opId": "a", "ops": [{"op": "move", "id": "x", "index": {{{index}}}}, {"op": "insert", "index": {{{index}}}, "item": {"kind": "group", "id": "g", "placement": {"x": 0, "y": 0}, "children": []}}]}""");
+        var commit = Parse($$$"""{"opId": "a", "instance": "i", "baseRev": 0, "ops": [{"op": "move", "id": "x", "index": {{{index}}}}, {"op": "insert", "index": {{{index}}}, "item": {"kind": "group", "id": "g", "placement": {"x": 0, "y": 0}, "children": []}}]}""");
         var check = CommitValidator.Check(commit);
         if (valid) Assert.Empty(check.Errors);
         else Assert.Equal(["/ops/0/index", "/ops/1/index"], check.Errors.Where(e => e.Code == "schema").Select(e => e.Path).Order());

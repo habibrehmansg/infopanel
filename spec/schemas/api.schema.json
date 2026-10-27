@@ -1,24 +1,374 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:infopanel:api:1",
-  "description": "Engine API bodies that carry the document format: commits and their results, problems, item bounds and what the engine supports. See docs/commit.md and docs/geometry.md.",
+  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, and the preview socket's frame headers (with item bounds) and change events. See docs/api.md, docs/commit.md and docs/geometry.md.",
   "$defs": {
+    "session": {
+      "description": "GET /api/session: the engine, this run of it and what it supports.",
+      "type": "object",
+      "required": ["engineVersion", "protocol", "instance", "platform", "dataDir", "formatSupport"],
+      "additionalProperties": false,
+      "properties": {
+        "engineVersion": { "description": "The engine's version, such as \"2.0.0\".", "type": "string", "minLength": 1, "maxLength": 64 },
+        "protocol": {
+          "description": "The engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore (a member or endpoint removed or changed); members and endpoints are added without changing it.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "instance": { "$ref": "#/$defs/instanceId" },
+        "platform": { "description": "The operating system the engine runs on.", "enum": ["macos", "windows", "linux", "other"] },
+        "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
+        "formatSupport": { "$ref": "#/$defs/formatSupport" }
+      }
+    },
+    "instanceId": {
+      "description": "One run of the engine: a new id every time the engine starts. Revisions are only comparable within one instance. Opaque: compared for equality only.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+
+    "profileEntry": {
+      "description": "One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md).",
+      "oneOf": [
+        { "$ref": "#/$defs/profileEntryOk" },
+        { "$ref": "#/$defs/profileEntryUnsupported" },
+        { "$ref": "#/$defs/profileEntryUnreadable" }
+      ]
+    },
+    "profileEntryOk": {
+      "description": "A profile whose document the engine opens. A document with invalid or unsupported scenes is ok: those items are placeholders (docs/unsupported.md).",
+      "type": "object",
+      "required": ["id", "status", "name", "width", "height", "rev", "dirty"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "status": { "const": "ok" },
+        "name": { "description": "The profile's name.", "type": "string", "minLength": 1, "maxLength": 256 },
+        "width": { "description": "The canvas width in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "description": "The canvas height in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's current revision." },
+        "dirty": { "description": "The document has changes that aren't saved.", "type": "boolean" }
+      }
+    },
+    "profileEntryUnsupported": {
+      "description": "A profile whose document needs a format major version or a document capability this engine lacks.",
+      "type": "object",
+      "required": ["id", "status", "problem"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "status": { "const": "unsupported" },
+        "name": {
+          "description": "The document's `profile.name` when that is a string of 1–256 characters, else absent.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "problem": {
+          "$ref": "#/$defs/validationError",
+          "description": "Why the engine doesn't open it: `unsupported.format` (at /format) or `unsupported.capability` (at /requires/i), with a JSON pointer into the stored document."
+        }
+      }
+    },
+    "profileEntryUnreadable": {
+      "description": "A profile whose stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes.",
+      "type": "object",
+      "required": ["id", "status", "problem"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "status": { "const": "unreadable" },
+        "problem": {
+          "$ref": "#/$defs/validationError",
+          "description": "The first problem found, with a JSON pointer into the stored document: `io` (the file can't be read), `json` (not JSON) or a document check's code (`schema`, `limit.documentBytes`, ...; docs/validation.md)."
+        }
+      }
+    },
+    "profileStatusProblem": {
+      "description": "409 application/problem+json: the profile's document can't be opened (its status is unsupported or unreadable), so it can't be read, changed, saved or drawn. It can still be listed, deleted and exported as stored.",
+      "type": "object",
+      "required": ["status", "code", "problem"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 409 },
+        "code": { "description": "The profile's status.", "enum": ["unsupported", "unreadable"] },
+        "problem": { "$ref": "#/$defs/validationError", "description": "The profile's `problem` (profileEntry)." }
+      }
+    },
+
+    "createProfileRequest": {
+      "description": "POST /api/profiles: a new profile under a client-chosen id, either empty (a canvas with no items) or from a document. An id that already exists: 409 existsProblem. Answered 201 with the new profile's profileEntry (docs/api.md).",
+      "oneOf": [
+        { "$ref": "#/$defs/createProfileEmpty" },
+        { "$ref": "#/$defs/createProfileFromDocument" }
+      ]
+    },
+    "createProfileEmpty": {
+      "description": "An empty profile: a document with this name and canvas size and no items.",
+      "type": "object",
+      "required": ["id", "name", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "The new profile's id, chosen by the client." },
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "width": { "description": "The canvas width in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "description": "The canvas height in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 }
+      }
+    },
+    "createProfileFromDocument": {
+      "description": "A profile from a document (importDocument), checked as a stored document is: a scene that is invalid or unsupported (or over a budget) is kept as sent and drawn as a placeholder; a document the engine wouldn't open is refused (422). The document's own `id` is replaced by `id`, and its `rev` members are ignored.",
+      "type": "object",
+      "required": ["id", "document"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "The new profile's id, chosen by the client." },
+        "document": { "$ref": "#/$defs/importDocument" }
+      }
+    },
+    "importDocument": {
+      "description": "A document (infopanel.document/1) as a create takes it: the document format with `rev` members optional (they are ignored) and every scene taken as stored (storedScene), so a document the engine exported, with scenes it draws as placeholders, can be created again. Its scenes are then checked as a stored document's are (docs/api.md).",
+      "type": "object",
+      "required": ["format", "id", "profile", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "const": "infopanel.document/1" },
+        "requires": {
+          "type": "array",
+          "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" },
+          "maxItems": 32,
+          "uniqueItems": true
+        },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "Ignored." },
+        "profile": { "$ref": "urn:infopanel:document:1#/$defs/profile" },
+        "items": { "description": "Top-level items in drawing order: the first is at the back.", "type": "array", "items": { "$ref": "#/$defs/importItem" } }
+      }
+    },
+    "importItem": {
+      "oneOf": [
+        { "$ref": "#/$defs/importSceneItem" },
+        { "$ref": "#/$defs/importGroupItem" }
+      ]
+    },
+    "importSceneItem": {
+      "description": "A scene item as a create takes it (document format: sceneItem), with its scene as stored.",
+      "type": "object",
+      "required": ["kind", "id", "placement", "scene"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "scene" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "Ignored." },
+        "name": { "$ref": "urn:infopanel:document:1#/$defs/itemName" },
+        "visible": { "type": "boolean", "default": true },
+        "locked": { "type": "boolean", "default": false },
+        "placement": { "$ref": "urn:infopanel:document:1#/$defs/placement" },
+        "layout": { "$ref": "urn:infopanel:document:1#/$defs/layout" },
+        "bindings": { "$ref": "urn:infopanel:document:1#/$defs/bindings" },
+        "source": { "$ref": "urn:infopanel:document:1#/$defs/source" },
+        "origin": { "$ref": "urn:infopanel:document:1#/$defs/origin" },
+        "scene": { "$ref": "#/$defs/storedScene" }
+      }
+    },
+    "importGroupItem": {
+      "description": "A group item as a create takes it (document format: groupItem).",
+      "type": "object",
+      "required": ["kind", "id", "placement", "children"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "group" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "Ignored." },
+        "name": { "$ref": "urn:infopanel:document:1#/$defs/itemName" },
+        "visible": { "type": "boolean", "default": true },
+        "locked": { "type": "boolean", "default": false },
+        "placement": { "$ref": "urn:infopanel:document:1#/$defs/placement" },
+        "origin": { "$ref": "urn:infopanel:document:1#/$defs/origin" },
+        "children": { "description": "In drawing order: the first is at the back.", "type": "array", "items": { "$ref": "#/$defs/importItem" } }
+      }
+    },
+    "duplicateProfileRequest": {
+      "description": "POST /api/profiles/{id}/duplicate: a copy of the profile's current document under a client-chosen id. An id that already exists: 409 existsProblem. Answered 201 with the copy's profileEntry.",
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "The copy's id, chosen by the client." }
+      }
+    },
+    "existsProblem": {
+      "description": "409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this). Nothing was created.",
+      "type": "object",
+      "required": ["status", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 409 },
+        "code": { "const": "exists" }
+      }
+    },
+
+    "documentResponse": {
+      "description": "GET /api/profiles/{id}: the profile's current document, with its revision members (the `rev` of the document, the profile and every item), and its state.",
+      "type": "object",
+      "required": ["instance", "rev", "dirty", "canUndo", "canRedo", "document"],
+      "additionalProperties": false,
+      "properties": {
+        "instance": { "$ref": "#/$defs/instanceId", "description": "The engine instance these revisions belong to (as in GET /api/session)." },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's revision: the same as `document.rev`." },
+        "dirty": { "description": "The document differs from the saved one.", "type": "boolean" },
+        "canUndo": { "type": "boolean" },
+        "canRedo": { "type": "boolean" },
+        "document": { "$ref": "#/$defs/responseDocument" }
+      }
+    },
+    "responseDocument": {
+      "description": "A document (infopanel.document/1) as the engine returns it: every revision member set, and every scene exactly as stored (storedScene).",
+      "type": "object",
+      "required": ["format", "id", "rev", "profile", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "const": "infopanel.document/1" },
+        "requires": {
+          "type": "array",
+          "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" },
+          "maxItems": 32,
+          "uniqueItems": true
+        },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's revision." },
+        "profile": { "$ref": "#/$defs/responseProfile" },
+        "items": { "description": "Top-level items in drawing order: the first is at the back.", "type": "array", "items": { "$ref": "#/$defs/responseItem" } }
+      }
+    },
+    "responseProfile": {
+      "description": "The document's profile, with `rev`: the document revision at which a profile field last changed.",
+      "allOf": [
+        { "$ref": "urn:infopanel:document:1#/$defs/profile" },
+        { "properties": { "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision" } }, "required": ["rev"] }
+      ]
+    },
+    "responseItem": {
+      "oneOf": [
+        { "$ref": "#/$defs/responseSceneItem" },
+        { "$ref": "#/$defs/responseGroupItem" }
+      ]
+    },
+    "responseSceneItem": {
+      "description": "A scene item as the engine returns it (document format: sceneItem), with its `rev` and its scene as stored.",
+      "type": "object",
+      "required": ["kind", "id", "rev", "placement", "scene"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "scene" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document revision at which the item last changed." },
+        "name": { "$ref": "urn:infopanel:document:1#/$defs/itemName" },
+        "visible": { "type": "boolean", "default": true },
+        "locked": { "type": "boolean", "default": false },
+        "placement": { "$ref": "urn:infopanel:document:1#/$defs/placement" },
+        "layout": { "$ref": "urn:infopanel:document:1#/$defs/layout" },
+        "bindings": { "$ref": "urn:infopanel:document:1#/$defs/bindings" },
+        "source": { "$ref": "urn:infopanel:document:1#/$defs/source" },
+        "origin": { "$ref": "urn:infopanel:document:1#/$defs/origin" },
+        "scene": { "$ref": "#/$defs/storedScene" }
+      }
+    },
+    "responseGroupItem": {
+      "description": "A group item as the engine returns it (document format: groupItem), with its `rev`.",
+      "type": "object",
+      "required": ["kind", "id", "rev", "placement", "children"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "group" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document revision at which the item last changed." },
+        "name": { "$ref": "urn:infopanel:document:1#/$defs/itemName" },
+        "visible": { "type": "boolean", "default": true },
+        "locked": { "type": "boolean", "default": false },
+        "placement": { "$ref": "urn:infopanel:document:1#/$defs/placement" },
+        "origin": { "$ref": "urn:infopanel:document:1#/$defs/origin" },
+        "children": { "description": "In drawing order: the first is at the back.", "type": "array", "items": { "$ref": "#/$defs/responseItem" } }
+      }
+    },
+    "storedScene": {
+      "description": "A scene exactly as stored: an object with a string `format`. A scene the engine draws normally matches the scene schema (urn:infopanel:scene:1); one it draws as a placeholder (it needs a newer format or a capability the engine lacks, breaks a rule or limit, or can't be compiled) is returned unchanged and may not (docs/unsupported.md).",
+      "allOf": [
+        { "$ref": "urn:infopanel:common:1#/$defs/opaque" },
+        { "properties": { "format": { "type": "string" } }, "required": ["format"] }
+      ]
+    },
+
+    "blobInfo": {
+      "description": "POST /api/blobs: a stored blob. The engine stores any bytes up to the `mediaBytes` limit (more: 413, not stored), named by their SHA-256, and inspects them as a media asset: the answer has `media`, what it found, or `mediaError`, why they can't be used as media (a scene's media naming such a blob draws the missing-media placeholder).",
+      "oneOf": [
+        { "$ref": "#/$defs/blobInfoMedia" },
+        { "$ref": "#/$defs/blobInfoMediaError" }
+      ]
+    },
+    "blobInfoMedia": {
+      "description": "A stored blob that is a media asset within the media limits.",
+      "type": "object",
+      "required": ["id", "bytes", "media"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/blobId", "description": "`sha256:` and the SHA-256 of the bytes as sent, in lower-case hex." },
+        "bytes": { "description": "The blob's size in bytes: at most `mediaBytes` (32 MiB, docs/limits.md).", "type": "integer", "minimum": 0, "maximum": 33554432 },
+        "media": { "$ref": "#/$defs/mediaInfo" }
+      }
+    },
+    "blobInfoMediaError": {
+      "description": "A stored blob that can't be used as media: not media at all, or media that breaks a media check other than its size in bytes.",
+      "type": "object",
+      "required": ["id", "bytes", "mediaError"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/blobId", "description": "`sha256:` and the SHA-256 of the bytes as sent, in lower-case hex." },
+        "bytes": { "description": "The blob's size in bytes: at most `mediaBytes` (32 MiB, docs/limits.md).", "type": "integer", "minimum": 0, "maximum": 33554432 },
+        "mediaError": {
+          "$ref": "#/$defs/validationError",
+          "description": "Why the bytes can't be used as media: the media check's first error (docs/validation.md: `media.*`, or a `limit.*` code other than `limit.mediaBytes`), with path \"\"."
+        }
+      }
+    },
+    "mediaInfo": {
+      "description": "A media asset as the engine read it from its header, without decoding it (docs/validation.md). Sizes are in pixels; an SVG's come from its `width` and `height` or its `viewBox` (docs/svg.md).",
+      "type": "object",
+      "required": ["format", "width", "height", "frames", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "enum": ["png", "jpeg", "gif", "webp", "svg"] },
+        "width": { "type": "integer", "minimum": 0 },
+        "height": { "type": "integer", "minimum": 0 },
+        "frames": { "description": "1 for a still image; an animation's frame count.", "type": "integer", "minimum": 1 },
+        "duration": { "description": "An animation's length in seconds (one loop); 0 for a still image.", "type": "number", "minimum": 0 }
+      }
+    },
+
     "commitRequest": {
       "description": "POST /api/profiles/{id}/commit. The ops apply in order, all or none, as one undo step (or merged into the previous one, see coalesceKey).",
       "type": "object",
-      "required": ["opId", "ops"],
+      "required": ["opId", "instance", "baseRev", "ops"],
       "additionalProperties": false,
       "properties": {
         "opId": {
-          "description": "Unique per commit, chosen by the client (a UUID, say). Retrying with the same opId and the same body returns the first result without applying anything again.",
+          "description": "Unique per commit, chosen by the client (a UUID, say). Retrying with the same opId and the same body (byte for byte) returns the first result without applying anything again.",
           "type": "string",
           "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
         },
         "instance": {
-          "description": "The engine instance the client's revisions came from (GET /api/session). A different one: 409 with reason \"instance\".",
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64
+          "$ref": "#/$defs/instanceId",
+          "description": "The engine instance the client's revisions came from (GET /api/session). A different one: 409 with reason \"instance\"."
+        },
+        "baseRev": {
+          "$ref": "urn:infopanel:common:1#/$defs/revision",
+          "description": "The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId with a baseRev older than the engine's retry window is refused (409 expiredProblem). Each op's own `baseRev` decides its conflicts."
         },
         "coalesceKey": {
           "description": "Merge this commit's undo step into the previous one when that had the identical key and the key starts with \"gesture:\" or less than 1 s passed. A key names one gesture of one client: it includes a random part chosen once per client instance (\"gesture:5b0e8f0c-3c1d-4b8e-a7f2-1d9c6e4a2b7f:7\").",
@@ -188,15 +538,26 @@
       }
     },
 
+    "historyRequest": {
+      "description": "The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. A different instance: 409 conflictProblem (reason \"instance\"); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason \"changed\"); nothing is done either way (docs/commit.md).",
+      "type": "object",
+      "required": ["instance", "baseRev"],
+      "additionalProperties": false,
+      "properties": {
+        "instance": { "$ref": "#/$defs/instanceId", "description": "The engine instance the client's revision came from (GET /api/session)." },
+        "baseRev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document `rev` the client last read: the request acts only while the document is still at that revision." }
+      }
+    },
+
     "commitResult": {
-      "description": "200 response to a commit.",
+      "description": "200 response to a commit, and to undo, redo, revert and save (docs/commit.md).",
       "type": "object",
       "required": ["rev", "items", "dirty", "canUndo", "canRedo"],
       "additionalProperties": false,
       "properties": {
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's revision after the commit (unchanged when nothing changed)." },
         "items": {
-          "description": "The new `rev` of every item the commit changed or added.",
+          "description": "The new `rev` of every item the commit (or undo, redo or revert) changed or added.",
           "type": "object",
           "propertyNames": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
           "additionalProperties": { "$ref": "urn:infopanel:common:1#/$defs/revision" }
@@ -223,7 +584,7 @@
       }
     },
     "conflictProblem": {
-      "description": "409 application/problem+json: nothing was applied. The client refetches, rebuilds its change on the current state and commits again with a new opId.",
+      "description": "409 application/problem+json to a commit, undo, redo or revert: nothing was applied. The client refetches, rebuilds its change on the current state and sends it again (a commit with a new opId).",
       "type": "object",
       "required": ["status", "code", "rev", "conflicts"],
       "additionalProperties": false,
@@ -234,30 +595,48 @@
         "status": { "const": 409 },
         "code": { "const": "conflict" },
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's current revision." },
-        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/conflict" }, "minItems": 1 }
+        "conflicts": {
+          "description": "A commit's: every conflict found, at least one. An undo's, redo's or revert's: one `instance` conflict, or one `changed` conflict for each item (and for the profile) with a field group changed after its baseRev. That list can be empty: items removed since are not listed, and an undo, redo or revert step may change no field group.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/conflict" }
+        }
       }
     },
     "conflict": {
       "type": "object",
-      "required": ["op", "reason"],
+      "required": ["reason"],
       "additionalProperties": false,
       "properties": {
-        "op": { "$ref": "#/$defs/opIndex" },
+        "op": { "$ref": "#/$defs/opIndex", "description": "The op that conflicts. Absent when the conflict is the whole request's: reason instance, and every conflict of an undo, redo or revert." },
         "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
         "reason": {
-          "description": "changed: a field the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field of the item or of anything in it, each listed with its own `id`). missing: the item or parent no longer exists. instance: the engine restarted since the client's `instance`.",
+          "description": "changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the engine restarted since the client's `instance`.",
           "enum": ["changed", "missing", "instance"]
         },
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The item's (or profile's) current rev." },
         "fields": {
-          "description": "The fields that changed: placement, design, bindings, name, visible, locked, position (parent and index), children (a group's membership: an item added to it or taken out of it), or a profile field's name.",
+          "description": "The field groups that changed (docs/commit.md): placement, design, bindings, name, visible, locked, position (parent, and index among the siblings present in both versions), children (a group's membership: an item added to it or taken out of it), or a profile field's name.",
           "type": "array",
           "items": { "type": "string" }
         }
       }
     },
+    "expiredProblem": {
+      "description": "409 application/problem+json: the commit's opId isn't one the engine remembers, and its baseRev is older than the engine's retry window, so the engine can't tell whether it is a retry of a commit it applied and has since forgotten. Nothing was applied. The client reads the document, decides whether its change is still needed, and if so commits it again with a new opId and a current baseRev (docs/commit.md).",
+      "type": "object",
+      "required": ["status", "code", "rev"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 409 },
+        "code": { "const": "expired" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's current revision." }
+      }
+    },
     "invalidProblem": {
-      "description": "422 application/problem+json: the commit (or document) breaks the format, a rule or a limit; nothing was applied.",
+      "description": "422 application/problem+json: the request body (a commit, a create, duplicate, undo, redo or revert body, or a document) breaks the format, a rule or a limit; nothing was applied.",
       "type": "object",
       "required": ["status", "code", "errors"],
       "additionalProperties": false,
@@ -267,7 +646,13 @@
         "detail": { "type": "string" },
         "status": { "const": 422 },
         "code": { "const": "invalid" },
-        "errors": { "type": "array", "items": { "$ref": "#/$defs/validationError" }, "minItems": 1 }
+        "errors": {
+          "description": "Every error, at most 100, then, when there were more, one last error with code `more` (path \"\") counting the rest (docs/validation.md).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/validationError" },
+          "minItems": 1,
+          "maxItems": 101
+        }
       }
     },
     "validationError": {
@@ -275,7 +660,7 @@
       "required": ["path", "code", "message"],
       "additionalProperties": false,
       "properties": {
-        "path": { "description": "JSON pointer into the request body.", "type": "string" },
+        "path": { "description": "JSON pointer into what was checked: the request body, or the stored document or blob.", "type": "string" },
         "code": { "description": "A code from docs/limits.md and docs/validation.md (schema, limit.*, ref.*, type.*, ...).", "type": "string" },
         "message": { "type": "string" }
       }
@@ -306,6 +691,59 @@
         "y": { "type": "number" },
         "w": { "type": "number", "minimum": 0 },
         "h": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "frameHeader": {
+      "description": "The JSON header of a frame message on /ws (docs/api.md): the document revision and tick the frame was drawn from, its scale and size, and where every item is.",
+      "type": "object",
+      "required": ["profileId", "rev", "tick", "frameId", "encoding", "scale", "pixelWidth", "pixelHeight", "profileWidth", "profileHeight", "itemBounds"],
+      "additionalProperties": false,
+      "properties": {
+        "profileId": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document revision drawn." },
+        "tick": {
+          "description": "The render tick the frame was drawn from (docs/identity.md). Within one subscription, frames with the same tick were drawn from the same tick snapshot, and tick numbers never go down.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "frameId": {
+          "description": "The frame's number: unique within one run of the engine, and greater for a frame rendered later.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "encoding": { "description": "How the payload after the header is encoded: `png`, the whole frame as a PNG.", "type": "string", "minLength": 1, "maxLength": 32 },
+        "scale": {
+          "description": "Frame pixels per profile pixel: 0.1 or a multiple of 0.25 from 0.25 to 4. The subscription's scale rounded to a step of 0.25, then lowered while the frame would be over 16 Mpx (docs/api.md#frames).",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 4
+        },
+        "pixelWidth": { "description": "The frame's width in pixels: profileWidth × scale, rounded (docs/api.md#frames). pixelWidth × pixelHeight is at most 16,777,216.", "type": "integer", "minimum": 1, "maximum": 65536 },
+        "pixelHeight": { "description": "The frame's height in pixels: profileHeight × scale, rounded (docs/api.md#frames).", "type": "integer", "minimum": 1, "maximum": 65536 },
+        "profileWidth": { "description": "The profile's canvas width at `rev`, in profile pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "profileHeight": { "description": "The profile's canvas height at `rev`, in profile pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "itemBounds": {
+          "description": "The bounds of every visible item that has bounds, from the same tick as the pixels, in document order: a group before its children (docs/geometry.md). Each id appears once.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/itemBounds" }
+        }
+      }
+    },
+    "docEvent": {
+      "description": "The `doc` message on /ws: the subscribed document's state. Sent when the subscription starts and after every change to the document or its state (a commit, undo, redo, revert or save, from any client). The engine keeps only the latest state to send: a client that falls behind gets the newest, so it may skip revisions, and the last one it gets is always current. It carries no content; the document at that revision is read with GET /api/profiles/{id}.",
+      "type": "object",
+      "required": ["type", "profileId", "rev", "dirty", "canUndo", "canRedo"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "doc" },
+        "profileId": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's revision." },
+        "dirty": { "description": "The document differs from the saved one.", "type": "boolean" },
+        "canUndo": { "type": "boolean" },
+        "canRedo": { "type": "boolean" }
       }
     },
 

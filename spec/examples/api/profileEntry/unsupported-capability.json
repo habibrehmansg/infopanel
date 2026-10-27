@@ -1,0 +1,5 @@
+{
+  "id": "4e8a1f60-7b2d-4c95-a3e1-6f0d2b8c7a15",
+  "status": "unsupported",
+  "problem": {"path": "/requires/0", "code": "unsupported.capability", "message": "This engine doesn't support the document capability 'document.pages'."}
+}

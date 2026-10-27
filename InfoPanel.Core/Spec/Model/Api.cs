@@ -6,11 +6,122 @@ namespace InfoPanel.Spec;
 
 // Engine API bodies that carry the document format (spec/schemas/api.schema.json). Data only.
 
+[SpecDef("urn:infopanel:api:1#/$defs/session")]
+public sealed record Session
+{
+    public required string EngineVersion { get; init; }
+    public required int Protocol { get; init; }
+    public required string Instance { get; init; }
+    /// <summary><c>macos</c>, <c>windows</c>, <c>linux</c> or <c>other</c>.</summary>
+    public required string Platform { get; init; }
+    public required string DataDir { get; init; }
+    public required FormatSupport FormatSupport { get; init; }
+}
+
+/// <summary>
+/// One profile in the list (the schema's <c>profileEntry</c>, a union of one definition per status).
+/// <see cref="Status"/> is <c>ok</c> (<see cref="Name"/>, <see cref="Width"/>, <see cref="Height"/>, <see cref="Rev"/>
+/// and <see cref="Dirty"/> set, no <see cref="Problem"/>), <c>unsupported</c> (<see cref="Problem"/> set, and
+/// <see cref="Name"/> when the document has one) or <c>unreadable</c> (only <see cref="Problem"/>).
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/profileEntryOk", "urn:infopanel:api:1#/$defs/profileEntryUnsupported",
+    "urn:infopanel:api:1#/$defs/profileEntryUnreadable")]
+public sealed record ProfileEntry
+{
+    public required string Id { get; init; }
+    public required string Status { get; init; }
+    public string? Name { get; init; }
+    public int? Width { get; init; }
+    public int? Height { get; init; }
+    public long? Rev { get; init; }
+    public bool? Dirty { get; init; }
+    public ValidationErrorBody? Problem { get; init; }
+}
+
+[SpecDef("urn:infopanel:api:1#/$defs/profileStatusProblem")]
+public sealed record ProfileStatusProblem
+{
+    public string? Type { get; init; }
+    public string? Title { get; init; }
+    public string? Detail { get; init; }
+    public required int Status { get; init; }
+    /// <summary><c>unsupported</c> or <c>unreadable</c>: the profile's status.</summary>
+    public required string Code { get; init; }
+    public required ValidationErrorBody Problem { get; init; }
+}
+
+/// <summary>
+/// <c>POST /api/profiles</c> (the schema's <c>createProfileRequest</c>): <see cref="Id"/> with either <see cref="Name"/>,
+/// <see cref="Width"/> and <see cref="Height"/> (an empty profile) or <see cref="Document"/>.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/createProfileEmpty", "urn:infopanel:api:1#/$defs/createProfileFromDocument")]
+public sealed record CreateProfileRequest
+{
+    public required string Id { get; init; }
+    public string? Name { get; init; }
+    public int? Width { get; init; }
+    public int? Height { get; init; }
+    public Document? Document { get; init; }
+}
+
+[SpecDef("urn:infopanel:api:1#/$defs/duplicateProfileRequest")]
+public sealed record DuplicateProfileRequest
+{
+    public required string Id { get; init; }
+}
+
+/// <summary>409: a profile with the requested id already exists.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/existsProblem")]
+public sealed record ExistsProblem
+{
+    public string? Type { get; init; }
+    public string? Title { get; init; }
+    public string? Detail { get; init; }
+    public required int Status { get; init; }
+    /// <summary>Always <c>exists</c>.</summary>
+    public required string Code { get; init; }
+}
+
+/// <summary>The current document, as a <see cref="InfoPanel.Spec.Document"/> with every revision member set and scenes as stored.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/documentResponse")]
+public sealed record DocumentResponse
+{
+    public required string Instance { get; init; }
+    public required long Rev { get; init; }
+    public required bool Dirty { get; init; }
+    public required bool CanUndo { get; init; }
+    public required bool CanRedo { get; init; }
+    public required Document Document { get; init; }
+}
+
+/// <summary>A stored blob (the schema's <c>blobInfo</c>): exactly one of <see cref="Media"/> and <see cref="MediaError"/> is set.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/blobInfoMedia", "urn:infopanel:api:1#/$defs/blobInfoMediaError")]
+public sealed record BlobInfo
+{
+    public required string Id { get; init; }
+    public required long Bytes { get; init; }
+    public MediaInfoBody? Media { get; init; }
+    public ValidationErrorBody? MediaError { get; init; }
+}
+
+[SpecDef("urn:infopanel:api:1#/$defs/mediaInfo")]
+public sealed record MediaInfoBody
+{
+    /// <summary><c>png</c>, <c>jpeg</c>, <c>gif</c>, <c>webp</c> or <c>svg</c>.</summary>
+    public required string Format { get; init; }
+    public required int Width { get; init; }
+    public required int Height { get; init; }
+    public required int Frames { get; init; }
+    public required double Duration { get; init; }
+}
+
 [SpecDef("urn:infopanel:api:1#/$defs/commitRequest")]
 public sealed record CommitRequest
 {
     public required string OpId { get; init; }
-    public string? Instance { get; init; }
+    public required string Instance { get; init; }
+    /// <summary>The document revision the commit is based on: tells a retry from a new commit once older opIds are forgotten.</summary>
+    public required long BaseRev { get; init; }
     public string? CoalesceKey { get; init; }
     public required IReadOnlyList<CommitOp> Ops { get; init; }
 }
@@ -115,6 +226,14 @@ public sealed record ProfileFields
     public JsonElement? Editor { get; init; }
 }
 
+/// <summary>The body of undo, redo and revert: they act only on <see cref="Instance"/> while the document is at <see cref="BaseRev"/>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/historyRequest")]
+public sealed record HistoryRequest
+{
+    public required string Instance { get; init; }
+    public required long BaseRev { get; init; }
+}
+
 [SpecDef("urn:infopanel:api:1#/$defs/commitResult")]
 public sealed record CommitResult
 {
@@ -153,12 +272,26 @@ public sealed record ConflictProblem
 [SpecDef("urn:infopanel:api:1#/$defs/conflict")]
 public sealed record Conflict
 {
-    public required int Op { get; init; }
+    /// <summary>The conflicting op's index; null for a conflict of the whole request (<c>instance</c>, and every conflict of undo, redo or revert).</summary>
+    public int? Op { get; init; }
     public string? Id { get; init; }
     /// <summary><c>changed</c>, <c>missing</c> or <c>instance</c>.</summary>
     public required string Reason { get; init; }
     public long? Rev { get; init; }
     public IReadOnlyList<string>? Fields { get; init; }
+}
+
+/// <summary>409: an unknown opId with a baseRev older than the engine's retry window.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/expiredProblem")]
+public sealed record ExpiredProblem
+{
+    public string? Type { get; init; }
+    public string? Title { get; init; }
+    public string? Detail { get; init; }
+    public required int Status { get; init; }
+    /// <summary>Always <c>expired</c>.</summary>
+    public required string Code { get; init; }
+    public required long Rev { get; init; }
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/invalidProblem")]
@@ -197,6 +330,34 @@ public sealed record BoundsRect
     public required double Y { get; init; }
     public required double W { get; init; }
     public required double H { get; init; }
+}
+
+[SpecDef("urn:infopanel:api:1#/$defs/frameHeader")]
+public sealed record FrameHeader
+{
+    public required string ProfileId { get; init; }
+    public required long Rev { get; init; }
+    public required long Tick { get; init; }
+    public required long FrameId { get; init; }
+    public required string Encoding { get; init; }
+    public required double Scale { get; init; }
+    public required int PixelWidth { get; init; }
+    public required int PixelHeight { get; init; }
+    public required int ProfileWidth { get; init; }
+    public required int ProfileHeight { get; init; }
+    public required IReadOnlyList<ItemBounds> ItemBounds { get; init; }
+}
+
+[SpecDef("urn:infopanel:api:1#/$defs/docEvent")]
+public sealed record DocEvent
+{
+    /// <summary>Always <c>doc</c>.</summary>
+    public required string Type { get; init; }
+    public required string ProfileId { get; init; }
+    public required long Rev { get; init; }
+    public required bool Dirty { get; init; }
+    public required bool CanUndo { get; init; }
+    public required bool CanRedo { get; init; }
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/formatSupport")]

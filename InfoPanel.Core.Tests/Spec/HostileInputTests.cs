@@ -20,7 +20,7 @@ public class HostileInputTests
     {
         // Load the schemas (and JIT the validators) outside the measured runs.
         SceneValidator.Check(Parse("""{"format": "infopanel.scene/1", "nodes": []}"""));
-        CommitValidator.Check(Parse("""{"opId": "a", "ops": [{"op": "remove", "id": "x"}]}"""));
+        CommitValidator.Check(Parse("""{"opId": "a", "instance": "i", "baseRev": 0, "ops": [{"op": "remove", "id": "x"}]}"""));
         DocumentValidator.Check(Parse("""{"format": "infopanel.document/1", "id": "3dd19c0e-675a-4591-b096-83417853861f", "profile": {"name": "P", "width": 1, "height": 1}, "items": []}"""));
         MediaValidator.Check("<svg xmlns='http://www.w3.org/2000/svg'/>"u8);
     }
@@ -269,7 +269,7 @@ public class HostileInputTests
     [Fact]
     public void MillionsOfNullOps_AreOneLimitError()
     {
-        var commit = Parse(Repeat("""{"opId": "a", "ops": [""", "null", "]}", 16 << 20));
+        var commit = Parse(Repeat("""{"opId": "a", "instance": "i", "baseRev": 0, "ops": [""", "null", "]}", 16 << 20));
         var check = Bounded(() => CommitValidator.Check(commit));
         var error = Assert.Single(check.Errors);
         Assert.Equal(("limit.ops", "/ops"), (error.Code, error.Path));
@@ -298,7 +298,7 @@ public class HostileInputTests
     public void ManyErrors_AreCappedWithACount()
     {
         // 1,000 ops within the limit, each with errors: at most 100 are listed, then one "more".
-        var commit = Parse(Repeat("""{"opId": "a", "ops": [""", """{"op": "setPlacement", "id": "x", "placement": {"x": "a", "y": "b"}}""", "]}", 60_000));
+        var commit = Parse(Repeat("""{"opId": "a", "instance": "i", "baseRev": 0, "ops": [""", """{"op": "setPlacement", "id": "x", "placement": {"x": "a", "y": "b"}}""", "]}", 60_000));
         var check = Bounded(() => CommitValidator.Check(commit), seconds: 2);
         Assert.Equal(101, check.Errors.Count);
         Assert.Equal("more", check.Errors[^1].Code);
@@ -312,7 +312,7 @@ public class HostileInputTests
     [Fact]
     public void AnInsertOfMillionsOfChildren_IsOneLimitError()
     {
-        var commit = Parse(Repeat("""{"opId": "a", "ops": [{"op": "insert", "item": {"kind": "group", "id": "g", "placement": {"x": 0, "y": 0}, "children": [""",
+        var commit = Parse(Repeat("""{"opId": "a", "instance": "i", "baseRev": 0, "ops": [{"op": "insert", "item": {"kind": "group", "id": "g", "placement": {"x": 0, "y": 0}, "children": [""",
             "{}", "]}}]}", 16 << 20));
         var check = Bounded(() => CommitValidator.Check(commit));
         var error = Assert.Single(check.Errors);
@@ -349,7 +349,7 @@ public class HostileInputTests
         // first 100 and counts the other 200 in one "more".
         var nodes = string.Join(",", Enumerable.Repeat("""{"kind": "rect", "w": {"op": "input", "name": "missing"}, "h": 1}""", 150));
         var op = """{"op": "setDesign", "id": "a", "scene": {"format": "infopanel.scene/1", "nodes": [""" + nodes + "]}}";
-        var commit = Parse($$"""{"opId": "a", "ops": [{{op}}, {{op.Replace("\"a\"", "\"b\"")}}]}""");
+        var commit = Parse($$"""{"opId": "a", "instance": "i", "baseRev": 0, "ops": [{{op}}, {{op.Replace("\"a\"", "\"b\"")}}]}""");
         var check = Bounded(() => CommitValidator.Check(commit), seconds: 2);
         Assert.Equal(101, check.Errors.Count);
         Assert.Single(check.Errors, e => e.Code == "more");

@@ -69,7 +69,7 @@ Aggregates are admitted in document order: a scene that would take the document 
 
 | Limit | Value | Why |
 |---|---|---|
-| `mediaBytes` | 32 MiB per asset | Generous for images; bounds storage and upload. |
+| `mediaBytes` | 32 MiB per asset, and per stored blob of any kind: a larger blob is refused (413) and not stored | Generous for images; bounds storage and upload. |
 | `svgBytes` | 1 MiB | SVG is parsed in full; checked before any of it is read. |
 | `svgElements` | 10,000 | Bounds SVG rendering cost: reading stops at element 10,001, and the expanded size (each `use`, `clip-path` and `mask` reference counting what it draws, every 32 path numbers and each gradient reference counting too, [SVG](svg.md)) is held to it. Elements nest at most 32 deep, drawing through references at most 64 deep, and a gradient inherits through at most 4 `href`s. |
 | `mediaSide` | 8,192 px | Twice a 4K panel's width. |
@@ -78,13 +78,13 @@ Aggregates are admitted in document order: a scene that would take the document 
 | `mediaFrameArea` | 268,435,456 px (frames × area) | 1 GiB of RGBA if every frame were decoded; the engine decodes on demand into a bounded cache. |
 | `mediaDuration` | 600 s | An animation's length. |
 
-An asset over a limit is refused when it is added, and media in a document that is over one draws the missing-media placeholder. An SVG's size is its `width` and `height` in pixels (unitless or `px`; other units are unsupported, [SVG](svg.md)) or, where one is absent, its `viewBox` size, and the limits apply to that size.
+Bytes over `mediaBytes` are refused when they are added, and not stored. An asset within `mediaBytes` that is over another limit (or fails another media check) is stored as a blob but refused as media: the engine reports why it can't be used as media (`mediaError`, [API](api.md#blobs)). Media in a document that names such a blob, or one over a limit, draws the missing-media placeholder. An SVG's size is its `width` and `height` in pixels (unitless or `px`; other units are unsupported, [SVG](svg.md)) or, where one is absent, its `viewBox` size, and the limits apply to that size.
 
 ## Run-time limits
 
 - Every string an expression produces is cut to its first 4,096 Unicode scalar values (`textLength`), at the operation that produces it ([expressions](expressions.md#numbers-and-strings)), so no string an engine holds for a scene is longer.
 - Effect layers are clipped to the canvas plus the effect's reach.
-- Frames are at most 16 Mpx (a preview at a scale that would exceed it is rendered at the largest scale that fits).
+- Frames are at most 16 Mpx, counted after each side is rounded to whole pixels (a preview at a scale that would exceed it is drawn at the largest step of 0.25 that fits, [API](api.md#frame-size)).
 
 ## Run-time budgets (this engine's current values)
 

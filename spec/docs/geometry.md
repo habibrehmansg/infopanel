@@ -44,7 +44,7 @@ Resizing an item changes `layout` (with `setDesign`, [commits](commit.md)). A sc
 
 ## Measured bounds (reported by the engine)
 
-The engine measures every item each frame, from the same tick it draws ([identity](identity.md)), and reports it with the frame (`urn:infopanel:api:1#/$defs/itemBounds`):
+The engine measures every item each frame, from the same tick it draws ([identity](identity.md)), and reports it with the frame (`urn:infopanel:api:1#/$defs/itemBounds`, in the frame's header, [API](api.md#frames)):
 
 ```jsonc
 { "id": "cpu-bar", "frame": { "x": 40, "y": 100, "w": 240, "h": 20 },

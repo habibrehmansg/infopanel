@@ -1,0 +1,16 @@
+{
+  "profileId": "3dd19c0e-675a-4591-b096-83417853861f",
+  "rev": 43,
+  "tick": 1820,
+  "frameId": 5113,
+  "encoding": "png",
+  "scale": 1,
+  "pixelWidth": 800,
+  "pixelHeight": 480,
+  "profileWidth": 800,
+  "profileHeight": 480,
+  "itemBounds": [
+    {"id": "cpu-bar", "frame": {"x": 20, "y": 60, "w": 240, "h": 20}, "ink": {"x": 20, "y": 60, "w": 240, "h": 20}, "rotation": 0},
+    {"id": "cpu-bar", "frame": {"x": 20, "y": 90, "w": 240, "h": 20}, "ink": {"x": 20, "y": 90, "w": 240, "h": 20}, "rotation": 0}
+  ]
+}

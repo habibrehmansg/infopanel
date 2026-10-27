@@ -1,0 +1,7 @@
+{
+  "title": "The commit can't be told from a forgotten one",
+  "detail": "Read the document and commit again with a new opId.",
+  "status": 409,
+  "code": "expired",
+  "rev": 1203
+}

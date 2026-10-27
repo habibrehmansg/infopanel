@@ -9,7 +9,7 @@ An item is drawn as a **placeholder** when its scene is:
 | Problem | Cause | Code in the check |
 |---|---|---|
 | `unsupported` | A scene format major version the engine doesn't read, or a capability in `requires` it lacks | `unsupported.format`, `unsupported.capability` |
-| `invalid` | The scene breaks the schema, a rule or a scene limit of this engine | `schema`, `limit.*`, `ref.*`, ... ([validation](validation.md)) |
+| `invalid` | The scene breaks the schema, a rule or a scene limit of this engine, or the engine cannot compile it | `schema`, `limit.*`, `ref.*`, ... ([validation](validation.md)) |
 | `budget` | The scene is valid but would take the document over an aggregate budget; items are admitted in document order, so this is a later item | `limit.document*` |
 
 A placeholder item:
@@ -24,7 +24,7 @@ Clients follow the same rule: a client that copies, pastes, exports or imports a
 
 ## Document-level
 
-A document whose format major version or document `requires` the engine doesn't support is **not opened for editing**. It is listed with the reason; it can be deleted, and exported as stored, byte for byte. A document that is invalid as a whole (not JSON, or its structure breaks the schema outside its scenes) is refused when it is imported, and a stored one that has become unreadable is reported and left alone: the engine never overwrites a file it couldn't read.
+A document whose format major version or document `requires` the engine doesn't support is **not opened for editing**. It is listed with the reason (`status: "unsupported"` and a `problem` in the profile list, [API](api.md#profiles)); it can be deleted, and exported as stored, byte for byte. A document that is invalid as a whole (not JSON, or its structure breaks the schema outside its scenes) is refused when it is imported (422 to a create, [API](api.md#creating-and-duplicating)), and a stored one that has become unreadable is reported (`status: "unreadable"`) and left alone: the engine never overwrites a file it couldn't read.
 
 ## Writers versus readers
 

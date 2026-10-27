@@ -40,6 +40,16 @@ public class SpecExampleTests
             .Select(file => Path.GetRelativePath(ExamplesDir, file).Replace('\\', '/'))
             .Order(StringComparer.Ordinal);
 
+    /// <summary>API bodies (<c>api/{definition}/*.json</c>); with <paramref name="invalid"/>, the ones a definition refuses (<c>api/{definition}/invalid/</c>).</summary>
+    public static TheoryData<string> ApiFiles(bool invalid)
+    {
+        var data = new TheoryData<string>();
+        foreach (var rel in FileList("api").Where(f => IsInvalidApiBody(f) == invalid)) data.Add(rel);
+        return data;
+    }
+
+    private static bool IsInvalidApiBody(string rel) => rel.StartsWith("api/", StringComparison.Ordinal) && rel.Split('/') is [_, _, "invalid", _];
+
     private static JsonElement Load(string rel)
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(ExamplesDir, rel)), SpecJson.DocumentOptions);
@@ -190,16 +200,57 @@ public class SpecExampleTests
     // ---- API bodies --------------------------------------------------------------------------------------------
 
     [Theory]
-    [MemberData(nameof(Files), "api")]
+    [MemberData(nameof(ApiFiles), false)]
     public void ApiBody_MatchesItsDefinitionAndRoundTrips(string rel)
     {
         var def = rel.Split('/')[1];
         var json = Load(rel);
         var result = SpecSchemas.Strict.Validate(json, $"{SpecSchemas.Api}#/$defs/{def}");
         Assert.True(result.IsValid, $"{rel}: {string.Join("; ", result.Errors.Select(e => $"{e.InstancePath} {e.Message}"))}");
-        var type = SpecSchemaAgreementTests.ModelTypes.Single(t => t.Refs.Contains($"{SpecSchemas.Api}#/$defs/{def}")).Type;
+        Assert.Empty(ApiBodyRules.Check(def, json));
+        var type = ApiModelType(def);
         var model = json.Deserialize(type, SpecJson.Options)!;
         AssertJsonEqual(json, JsonSerializer.SerializeToElement(model, type, SpecJson.Options), rel);
+    }
+
+    [Theory]
+    [MemberData(nameof(ApiFiles), true)]
+    public void InvalidApiBody_FailsItsDefinition(string rel)
+    {
+        // Each example breaks one rule: a schema example fails its definition only at the expected path; a rule example
+        // (ApiBodyRules) matches its definition and breaks only that rule.
+        var def = rel.Split('/')[1];
+        var expected = Expect(rel);
+        var json = Load(rel);
+        var code = (string)expected["code"]!;
+        var path = (string)expected["path"]!;
+        var result = SpecSchemas.Strict.Validate(json, $"{SpecSchemas.Api}#/$defs/{def}");
+        if (code == "schema")
+        {
+            Assert.False(result.IsValid, $"{rel} matches {def}");
+            Assert.True(result.Errors.All(e => e.InstancePath == path),
+                $"{rel}: expected errors only at '{path}', got: {string.Join("; ", result.Errors.Select(e => $"{e.InstancePath} {e.Message}"))}");
+        }
+        else
+        {
+            Assert.True(result.IsValid, $"{rel}: a rule example must match {def}: {string.Join("; ", result.Errors.Select(e => $"{e.InstancePath} {e.Message}"))}");
+            var errors = ApiBodyRules.Check(def, json);
+            Assert.True(errors.SequenceEqual([(path, code)]), $"{rel}: expected only {code} at '{path}', got: {string.Join("; ", errors)}");
+        }
+    }
+
+    /// <summary>
+    /// The model type of an API definition: the type that mirrors it, or, for a definition that is a union of others
+    /// (<c>profileEntry</c>, <c>blobInfo</c>, <c>createProfileRequest</c>), the one type that mirrors every branch.
+    /// </summary>
+    private static Type ApiModelType(string def)
+    {
+        var reference = $"{SpecSchemas.Api}#/$defs/{def}";
+        var direct = SpecSchemaAgreementTests.ModelTypes.Where(t => t.Refs.Contains(reference)).ToList();
+        if (direct.Count > 0) return Assert.Single(direct).Type;
+        var schema = JsonNode.Parse(SpecSchemas.Files["api.schema.json"])!["$defs"]![def]!;
+        var branches = schema["oneOf"]!.AsArray().Select(b => SpecSchemas.Api + (string)b!["$ref"]!).ToList();
+        return SpecSchemaAgreementTests.ModelTypes.Single(t => branches.All(t.Refs.Contains)).Type;
     }
 
     // ---- media -------------------------------------------------------------------------------------------------
@@ -235,7 +286,10 @@ public class SpecExampleTests
             "document/unsupported/", "document/invalid/", "commit/valid/", "commit/warning/", "commit/invalid/", "api/",
             "media/valid/", "media/invalid/"];
         Assert.Empty(files.Where(f => !folders.Any(f.StartsWith)));
-        var needExpectation = files.Where(f => !f.Contains("/valid/") && !f.StartsWith("api/", StringComparison.Ordinal)).ToHashSet();
+        // API bodies are api/{definition}/*.json, and the ones a definition refuses api/{definition}/invalid/*.json.
+        var misplaced = files.Where(f => f.StartsWith("api/", StringComparison.Ordinal) && f.Split('/').Length != 3 && !IsInvalidApiBody(f)).ToList();
+        Assert.True(misplaced.Count == 0, "Misplaced API examples: " + string.Join(", ", misplaced));
+        var needExpectation = files.Where(f => f.StartsWith("api/", StringComparison.Ordinal) ? IsInvalidApiBody(f) : !f.Contains("/valid/")).ToHashSet();
         Assert.Empty(needExpectation.Where(f => !Expected.ContainsKey(f)));
         Assert.Empty(Expected.Select(p => p.Key).Where(k => !needExpectation.Contains(k)));
     }
@@ -259,9 +313,9 @@ public class SpecExampleTests
             }
         }
         var used = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var folder in new[] { "scene/valid", "document/valid", "commit/valid" })
-            foreach (var rel in FileList(folder))
-                Collect(JsonNode.Parse(File.ReadAllText(Path.Combine(ExamplesDir, rel))), used);
+        foreach (var rel in new[] { "scene/valid", "document/valid", "commit/valid" }.SelectMany(FileList)
+                     .Concat(FileList("api").Where(f => !IsInvalidApiBody(f))))
+            Collect(JsonNode.Parse(File.ReadAllText(Path.Combine(ExamplesDir, rel))), used);
         Assert.Empty(declared.Where(d => !used.Contains(d)));
 
         static void Collect(JsonNode? node, HashSet<string> used)
@@ -452,11 +506,11 @@ public class SpecSchemaAgreementTests
             required.Add((def["required"]?.AsArray().Select(r => (string)r!) ?? []).Where(r => !discriminators.Contains(r)).ToHashSet());
         }
         Assert.Equal(properties.Order(StringComparer.Ordinal), members.Order(StringComparer.Ordinal));
-        if (refs.Count == 1)
-        {
-            var modelRequired = info.Properties.Where(p => p.IsRequired).Select(p => p.Name).Order(StringComparer.Ordinal);
-            Assert.Equal(required[0].Order(StringComparer.Ordinal), modelRequired);
-        }
+        // A type that mirrors several definitions (the branches of a union, or a document and the API's returned form of
+        // it) requires what every one of them requires.
+        var everyRequired = required.Skip(1).Aggregate(required[0], (all, r) => all.Intersect(r).ToHashSet());
+        var modelRequired = info.Properties.Where(p => p.IsRequired).Select(p => p.Name).Order(StringComparer.Ordinal);
+        Assert.Equal(everyRequired.Order(StringComparer.Ordinal), modelRequired);
     }
 
     private static bool IsPolymorphic(Type type) =>
@@ -490,4 +544,64 @@ public class SpecSchemaAgreementTests
             Assert.Equal((string)def["properties"]![name]!["const"]!, (string)derived.TypeDiscriminator!);
         }
     }
+}
+
+/// <summary>
+/// What an engine API body must satisfy beyond its schema definition (spec/docs/api.md, "Checks beyond the schema"):
+/// revisions that agree (<c>rev.mismatch</c>) and ids listed once (<c>id.duplicate</c>). Run on bodies that match their
+/// definition; each error is a JSON pointer into the body and a code, as in spec/examples/expected.json.
+/// </summary>
+internal static class ApiBodyRules
+{
+    public static IReadOnlyList<(string Path, string Code)> Check(string def, JsonElement body)
+    {
+        var errors = new List<(string, string)>();
+        switch (def)
+        {
+            case "documentResponse":
+            {
+                // The state's rev is the document's, and nothing in the document changed after it.
+                var document = body.GetProperty("document");
+                var rev = document.GetProperty("rev").GetInt64();
+                if (body.GetProperty("rev").GetInt64() != rev) errors.Add(("/document/rev", "rev.mismatch"));
+                if (document.GetProperty("profile").GetProperty("rev").GetInt64() > rev) errors.Add(("/document/profile/rev", "rev.mismatch"));
+                Items(document.GetProperty("items"), "/document/items", rev, errors);
+                break;
+            }
+            case "commitResult":
+            {
+                // Every item the result names, and the profile, changed at the result's revision.
+                var rev = body.GetProperty("rev").GetInt64();
+                foreach (var item in body.GetProperty("items").EnumerateObject())
+                    if (item.Value.GetInt64() != rev) errors.Add(("/items/" + Escape(item.Name), "rev.mismatch"));
+                if (body.TryGetProperty("profileRev", out var profileRev) && profileRev.GetInt64() != rev) errors.Add(("/profileRev", "rev.mismatch"));
+                break;
+            }
+            case "frameHeader":
+            {
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                var i = 0;
+                foreach (var bounds in body.GetProperty("itemBounds").EnumerateArray())
+                {
+                    if (!seen.Add(bounds.GetProperty("id").GetString()!)) errors.Add(($"/itemBounds/{i}/id", "id.duplicate"));
+                    i++;
+                }
+                break;
+            }
+        }
+        return errors;
+    }
+
+    private static void Items(JsonElement items, string path, long rev, List<(string, string)> errors)
+    {
+        var i = 0;
+        foreach (var item in items.EnumerateArray())
+        {
+            var at = $"{path}/{i++}";
+            if (item.GetProperty("rev").GetInt64() > rev) errors.Add((at + "/rev", "rev.mismatch"));
+            if (item.TryGetProperty("children", out var children)) Items(children, at + "/children", rev, errors);
+        }
+    }
+
+    private static string Escape(string name) => name.Replace("~", "~0").Replace("/", "~1");
 }

@@ -1,0 +1,39 @@
+{
+  "profileId": "3dd19c0e-675a-4591-b096-83417853861f",
+  "rev": 43,
+  "tick": 1820,
+  "frameId": 5113,
+  "encoding": "png",
+  "scale": 2,
+  "pixelWidth": 1600,
+  "pixelHeight": 960,
+  "profileWidth": 800,
+  "profileHeight": 480,
+  "itemBounds": [
+    {
+      "id": "stats",
+      "frame": {"x": 20, "y": 20, "w": 240, "h": 60},
+      "ink": {"x": 20, "y": 20, "w": 240, "h": 60},
+      "rotation": 0
+    },
+    {
+      "id": "cpu-label",
+      "frame": {"x": 20, "y": 22.5, "w": 46.2, "h": 24},
+      "ink": {"x": 20, "y": 22.5, "w": 46.2, "h": 24},
+      "rotation": 0
+    },
+    {
+      "id": "cpu-bar",
+      "frame": {"x": 20, "y": 60, "w": 240, "h": 20},
+      "ink": {"x": 20, "y": 60, "w": 240, "h": 20},
+      "rotation": 0
+    },
+    {
+      "id": "future",
+      "frame": {"x": 400, "y": 100, "w": 100, "h": 100},
+      "ink": {"x": 400, "y": 100, "w": 100, "h": 100},
+      "rotation": 0,
+      "problem": "unsupported"
+    }
+  ]
+}

@@ -8,7 +8,9 @@ namespace InfoPanel.Spec;
 // scene is kept as the JSON it arrived as (SceneItem.Scene): a scene the engine can't read is stored unchanged and
 // drawn as a placeholder (docs/unsupported.md), so the document never needs to parse it to be loaded.
 
-[SpecDef("urn:infopanel:document:1")]
+// The engine API returns a document in the same shape with every rev set and scenes as stored (responseDocument), and a
+// create takes one with rev optional and scenes as stored (importDocument).
+[SpecDef("urn:infopanel:document:1", "urn:infopanel:api:1#/$defs/responseDocument", "urn:infopanel:api:1#/$defs/importDocument")]
 public sealed record Document
 {
     public required string Format { get; init; }
@@ -79,7 +81,8 @@ public abstract record Item
     public JsonElement? Origin { get; init; }
 }
 
-[SpecDef("urn:infopanel:document:1#/$defs/sceneItem")]
+[SpecDef("urn:infopanel:document:1#/$defs/sceneItem", "urn:infopanel:api:1#/$defs/responseSceneItem",
+    "urn:infopanel:api:1#/$defs/importSceneItem")]
 public sealed record SceneItem : Item
 {
     public Layout? Layout { get; init; }
@@ -89,7 +92,8 @@ public sealed record SceneItem : Item
     public required JsonElement Scene { get; init; }
 }
 
-[SpecDef("urn:infopanel:document:1#/$defs/groupItem")]
+[SpecDef("urn:infopanel:document:1#/$defs/groupItem", "urn:infopanel:api:1#/$defs/responseGroupItem",
+    "urn:infopanel:api:1#/$defs/importGroupItem")]
 public sealed record GroupItem : Item
 {
     public required IReadOnlyList<Item> Children { get; init; }

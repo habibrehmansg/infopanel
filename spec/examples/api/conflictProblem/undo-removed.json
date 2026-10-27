@@ -1,0 +1,8 @@
+{
+  "title": "Conflict",
+  "detail": "The document changed after revision 43: a top-level item was removed.",
+  "status": 409,
+  "code": "conflict",
+  "rev": 44,
+  "conflicts": []
+}

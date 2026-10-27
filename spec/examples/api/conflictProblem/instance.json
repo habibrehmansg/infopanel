@@ -4,5 +4,5 @@
   "status": 409,
   "code": "conflict",
   "rev": 3,
-  "conflicts": [{"op": 0, "reason": "instance"}]
+  "conflicts": [{"reason": "instance"}]
 }
