@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.DependencyInjection;
@@ -279,17 +280,29 @@ internal static class ContractCheck
         return violation;
     }
 
+    /// <summary>What <see cref="Methods"/> names for an endpoint ASP.NET serves for every method.</summary>
+    internal const string AnyMethod = "ANY";
+
     /// <summary>
-    /// The operation a request reached: the endpoint routing chose (an endpoint without methods, the socket, is its
-    /// <c>GET</c>), or, when routing chose none (the security layer answered first) or a fallback, the operation whose
-    /// method and template the request fills. A chosen endpoint that isn't in the document is a violation.
+    /// The methods an endpoint serves. One without methods, or with an empty list, serves any method: the socket, which
+    /// is its <c>GET</c>, else <see cref="AnyMethod"/>, which is no operation.
+    /// </summary>
+    internal static IReadOnlyList<string> Methods(RouteEndpoint endpoint) =>
+        endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods is { Count: > 0 } methods ? [.. methods]
+            : Template(endpoint.RoutePattern) == "/ws" ? ["GET"] : [AnyMethod];
+
+    /// <summary>
+    /// The operation a request reached: the endpoint routing chose (by <see cref="Methods"/>), or, when routing chose
+    /// none (the security layer answered first) or a fallback, the operation whose method and template the request
+    /// fills. A chosen endpoint that isn't in the document is a violation.
     /// </summary>
     internal static (Operation? Operation, string? Violation) OperationOf(HttpContext context, ApiContract contract)
     {
         if (context.GetEndpoint() is RouteEndpoint endpoint && !IsFallback(endpoint))
         {
-            var methods = endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods;
-            var key = $"{(methods is null ? "GET" : context.Request.Method.ToUpperInvariant())} {Template(endpoint.RoutePattern)}";
+            var methods = Methods(endpoint);
+            var method = methods.Contains(context.Request.Method, StringComparer.OrdinalIgnoreCase) ? context.Request.Method.ToUpperInvariant() : methods[0];
+            var key = $"{method} {Template(endpoint.RoutePattern)}";
             return contract.Find(key) is { } found
                 ? (found, null)
                 : (null, $"{key} is served by the engine ('{endpoint.DisplayName}') but isn't an operation in spec/openapi.json.");
