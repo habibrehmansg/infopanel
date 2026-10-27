@@ -56,6 +56,7 @@ A check reports at most 100 errors; when there are more than 100 (101 included),
 | `more` | Not a problem itself: the count of errors not listed after the first 100. |
 | `io` | Not a problem with content: a stored file the engine couldn't read (reported in the profile list, [API](api.md#profiles)). |
 | `opId.reused` | An `opId` already applied with a different body ([commits](commit.md)). |
+| `baseRev.future` | Not a check on content: a commit's or op's `baseRev`, or an undo's, redo's or revert's, greater than the document's `rev`, a revision it hasn't reached ([commits](commit.md#baserev-conflicts)). |
 | `rev.mismatch` | Not a check on content: an engine API body whose revisions disagree, such as a document response whose `rev` isn't its document's ([API](api.md#checks-beyond-the-schema)). |
 | `op.target` | `setDesign` or `setBindings` on a group. |
 | `op.parent` | An `insert` or `move` into an item that isn't a group. |
@@ -65,4 +66,4 @@ Conflicts and other refusals that depend on the document's state (409: `conflict
 
 ## The examples
 
-`examples/` holds valid content using every node, paint, effect, transform, operation and op, and invalid content for every rule and limit that can be checked without a document to apply to (the `op.*` and `opId.reused` checks need one); `examples/expected.json` gives each invalid example's code and path, and the limits an example tightens to stay small. The engine's tests check every example against the schemas and the rules; any validator for these formats can run the same set.
+`examples/` holds valid content using every node, paint, effect, transform, operation and op, and invalid content for every rule and limit that can be checked without a document to apply to (the `op.*`, `opId.reused` and `baseRev.future` checks need one); `examples/expected.json` gives each invalid example's code and path, and the limits an example tightens to stay small. The engine's tests check every example against the schemas and the rules; any validator for these formats can run the same set.

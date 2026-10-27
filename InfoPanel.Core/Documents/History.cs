@@ -93,7 +93,7 @@ internal sealed class History(TimeProvider time, HistoryBudget budget, int maxSt
         Trim();
     }
 
-    /// <summary>Ends any merge: the next commit starts a new step, whatever its key (an undo or redo was asked for).</summary>
+    /// <summary>Ends any merge: the next commit starts a new step, whatever its key (an undo, redo or revert passed its checks).</summary>
     public void EndMerge() => _lastKey = null;
 
     /// <summary>The content an undo goes back to, without taking it; null when there is nothing to undo.</summary>

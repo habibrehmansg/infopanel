@@ -255,7 +255,8 @@ public sealed class ProfileDocument : IDisposable
     /// Applies a commit body already parsed (tests, and code that builds one), as spec/docs/commit.md says: checked on
     /// its own (422) outside the lock, then under it the <c>opId</c> (a retry returns the stored result with
     /// <c>replayed: true</c>; another body is 422 <c>opId.reused</c>), the <c>instance</c> (409), the retry window (409
-    /// <c>expired</c>), and the ops against a tentative copy, all or none (409 listing every conflict, else 422 listing
+    /// <c>expired</c>), every <c>baseRev</c> newer than the document (422 <c>baseRev.future</c>), and the ops against a
+    /// tentative copy, all or none (409 listing every conflict, else 422 listing
     /// every error). Applied: one new revision and one undo step (or merged into the previous one by its
     /// <c>coalesceKey</c>); a commit that changes nothing records nothing. The <c>opId</c> digest is over the value's
     /// own text, without whitespace around it: an endpoint uses <see cref="Commit(ReadOnlyMemory{byte})"/>.
@@ -296,6 +297,8 @@ public sealed class ProfileDocument : IDisposable
                     },
                 };
             }
+            // After the opId (a retry still replays) and the window (which a baseRev newer than the document never meets).
+            if (CommitApplier.FutureBaseRevs(request, current.Rev) is { Count: > 0 } future) return Invalid(future, "Invalid commit");
 
             var applied = CommitApplier.Apply(current.Content, _revisions, prepared);
             if (applied.Conflicts.Count > 0) return Conflict(current.Rev, applied.Conflicts, null);
@@ -388,8 +391,9 @@ public sealed class ProfileDocument : IDisposable
 
     /// <summary>
     /// Undo, redo or revert (spec/docs/commit.md, "Undo, redo, revert and save"), checked in order: the body (422), the
-    /// <c>instance</c> (409, <c>reason: "instance"</c>), the revision (409 when the document isn't at <c>baseRev</c>,
-    /// listing what changed after it); then it acts, ending any merge. Nothing is done when a check fails.
+    /// <c>instance</c> (409, <c>reason: "instance"</c>), a <c>baseRev</c> newer than the document (422
+    /// <c>baseRev.future</c>), the revision (409 when the document isn't at <c>baseRev</c>, listing what changed after
+    /// it); then it acts, ending any merge even when it takes no step. Nothing is done when a check fails.
     /// </summary>
     private CommitOutcome Step(JsonElement body, DocumentChange change)
     {
@@ -403,6 +407,8 @@ public sealed class ProfileDocument : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             var current = _current;
             if (request.Instance != _options.Instance) return InstanceConflict(current.Rev);
+            if (request.BaseRev > current.Rev)
+                return Invalid([CommitApplier.FutureBaseRev("/baseRev", request.BaseRev, current.Rev)], "Invalid request");
             if (current.Rev != request.BaseRev)
                 return Conflict(current.Rev, ChangedAfter(current, request.BaseRev), $"The document changed after revision {request.BaseRev}.");
 

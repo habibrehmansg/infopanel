@@ -86,10 +86,19 @@ public sealed class HistoryTests
         Assert.Equal((409, "conflict", 4L), (stale.Status, stale.Code, stale.Rev));
         Assert.Equal([":a:changed:2:placement", ":c:changed:3:design", "::changed:3:background"], stale.Conflicts.Select(Text));
         Assert.Equal([":c:changed:3:design", "::changed:3:background"], doc.Redo(new HistoryRequest { Instance = Instance, BaseRev = 2 }).Conflict!.Conflicts.Select(Text));
-        // Only a removal since: the list is empty. A revision the document hasn't reached conflicts too.
+        // Only a removal since: the list is empty.
         Assert.Empty(doc.Revert(new HistoryRequest { Instance = Instance, BaseRev = 3 }).Conflict!.Conflicts);
-        Assert.Empty(doc.Undo(new HistoryRequest { Instance = Instance, BaseRev = 5 }).Conflict!.Conflicts);
         Assert.Equal((4L, 3), (doc.Rev, doc.HistorySize.Undo));
+
+        // A revision the document hasn't reached is 422 at /baseRev, after the instance check; nothing is done.
+        foreach (var act in new Func<HistoryRequest, CommitOutcome>[] { doc.Undo, doc.Redo, doc.Revert })
+        {
+            var ahead = act(new HistoryRequest { Instance = Instance, BaseRev = 5 }).Invalid!;
+            Assert.Equal((422, "invalid"), (ahead.Status, ahead.Code));
+            Assert.Equal(("baseRev.future", "/baseRev"), (Assert.Single(ahead.Errors).Code, ahead.Errors[0].Path));
+            Assert.Equal("instance", Assert.Single(act(new HistoryRequest { Instance = "an-older-run", BaseRev = 5 }).Conflict!.Conflicts).Reason);
+        }
+        Assert.Equal((4L, 3, true), (doc.Rev, doc.HistorySize.Undo, doc.Dirty));
 
         // A body that breaks the schema is 422; nothing is done.
         var invalid = doc.Undo(Element(new JsonObject { ["instance"] = Instance })).Invalid!;
@@ -152,6 +161,7 @@ public sealed class HistoryTests
         doc.Ok(Commit("g1", "gesture:x:1", Place("a", 20, 20)));
         Assert.NotNull(doc.Undo(new HistoryRequest { Instance = Instance, BaseRev = 1 }).Conflict);
         Assert.NotNull(doc.Undo(new HistoryRequest { Instance = "an-older-run", BaseRev = 2 }).Conflict);
+        Assert.NotNull(doc.Undo(new HistoryRequest { Instance = Instance, BaseRev = 3 }).Invalid);
         doc.Ok(Commit("g2", "gesture:x:1", Place("a", 25, 25)));
         Assert.Equal((3L, 1), (doc.Rev, doc.HistorySize.Undo));
 

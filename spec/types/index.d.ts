@@ -324,7 +324,7 @@ export interface CommitRequest {
   opId: string;
   /** The engine instance the client's revisions came from (GET /api/session). A different one: 409 with reason "instance". */
   instance: InstanceId;
-  /** The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId with a baseRev older than the engine's retry window is refused (409 expiredProblem). Each op's own `baseRev` decides its conflicts. */
+  /** The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId with a baseRev older than the engine's retry window is refused (409 expiredProblem). Greater than the document's `rev`: 422 (baseRev.future). Each op's own `baseRev` decides its conflicts. */
   baseRev: Revision;
   /**
    * Merge this commit's undo step into the previous one when that had the identical key and the key starts with "gesture:" or less than 1 s passed. A key names one gesture of one client: it includes a random part chosen once per client instance ("gesture:5b0e8f0c-3c1d-4b8e-a7f2-1d9c6e4a2b7f:7").
@@ -337,7 +337,7 @@ export interface CommitRequest {
 
 export type Op = SetPlacementOp | SetDesignOp | SetBindingsOp | SetAttributesOp | InsertOp | RemoveOp | MoveOp | ProfileOp;
 
-/** The document revision the change is based on: the document `rev` the client last read, for every kind of op (not the item's own `rev`). The op conflicts when a field group it writes (for `remove`, any field of the item or of anything in it) last changed at a revision greater than this. Absent: no check. */
+/** The document revision the change is based on: the document `rev` the client last read, for every kind of op (not the item's own `rev`). The op conflicts when a field group it writes (for `remove`, any field of the item or of anything in it) last changed at a revision greater than this. Greater than the document's `rev`: the commit is refused (422, baseRev.future). Absent: no check. */
 export type BaseRev = Revision;
 
 /** Replaces the item's placement. */
@@ -441,7 +441,7 @@ export interface ProfileOp {
   };
 }
 
-/** The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. A different instance: 409 conflictProblem (reason "instance"); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason "changed"); nothing is done either way (docs/commit.md). */
+/** The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. A different instance: 409 conflictProblem (reason "instance"); a `baseRev` greater than the document's `rev`: 422 invalidProblem (baseRev.future); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason "changed"); nothing is done in each case (docs/commit.md). */
 export interface HistoryRequest {
   /** The engine instance the client's revision came from (GET /api/session). */
   instance: InstanceId;

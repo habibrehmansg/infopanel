@@ -11,7 +11,7 @@ namespace InfoPanel.Documents;
 /// <summary>A commit body that passed step 1 (no document needed): the request, its hash for <c>opId</c> retries, warnings and its checked scenes.</summary>
 internal sealed record PreparedCommit(CommitRequest Request, byte[] Hash, IReadOnlyList<CommitWarning> Warnings, SceneChecker Scenes);
 
-/// <summary>The outcome of steps 5 and 6: conflicts (409), else errors (422), else the new content and what changed (none when nothing did).</summary>
+/// <summary>The outcome of steps 6 and 7: conflicts (409), else errors (422), else the new content and what changed (none when nothing did).</summary>
 internal sealed class AppliedCommit
 {
     public List<Conflict> Conflicts { get; } = [];
@@ -22,8 +22,8 @@ internal sealed class AppliedCommit
 
 /// <summary>
 /// Applies a commit as spec/docs/commit.md, "What the engine checks when it applies a commit", says. Step 1
-/// (<see cref="Prepare"/>) needs no document and runs outside its lock; the document runs steps 2 to 4 (<c>opId</c>,
-/// <c>instance</c>, the retry window), then <see cref="Apply"/> runs the ops in order against a tentative copy of the current content and
+/// (<see cref="Prepare"/>) needs no document and runs outside its lock; the document runs steps 2 to 5 (<c>opId</c>,
+/// <c>instance</c>, the retry window, <see cref="FutureBaseRevs"/>), then <see cref="Apply"/> runs the ops in order against a tentative copy of the current content and
 /// checks the result's limits and budgets. Checked scenes come with the commit; the document's aggregate budgets are
 /// summed from each item's cached cost, so scenes the commit didn't change are never checked again.
 /// </summary>
@@ -45,7 +45,7 @@ internal static class CommitApplier
     }
 
     /// <summary>
-    /// Steps 5 and 6 against <paramref name="current"/>, with conflicts checked against <paramref name="revisions"/> as
+    /// Steps 6 and 7 against <paramref name="current"/>, with conflicts checked against <paramref name="revisions"/> as
     /// they are (the caller stamps them only after the commit applied). Never changes <paramref name="current"/>.
     /// </summary>
     public static AppliedCommit Apply(GenerationContent current, FieldRevisions revisions, PreparedCommit commit)
@@ -293,6 +293,37 @@ internal static class CommitApplier
             return false;
         }
     }
+
+    /// <summary>
+    /// Step 5: <c>baseRev.future</c> at <c>/baseRev</c> and at each <c>/ops/{i}/baseRev</c> greater than
+    /// <paramref name="rev"/>, the document's revision. No client read such a revision, and an op based on it could
+    /// never conflict, so it would act as if it carried no guard.
+    /// </summary>
+    public static List<SpecError> FutureBaseRevs(CommitRequest request, long rev)
+    {
+        var errors = new List<SpecError>();
+        if (request.BaseRev > rev) errors.Add(FutureBaseRev("/baseRev", request.BaseRev, rev));
+        for (var i = 0; i < request.Ops.Count; i++)
+        {
+            var baseRev = request.Ops[i] switch
+            {
+                SetPlacementOp o => o.BaseRev,
+                SetDesignOp o => o.BaseRev,
+                SetBindingsOp o => o.BaseRev,
+                SetAttributesOp o => o.BaseRev,
+                RemoveOp o => o.BaseRev,
+                MoveOp o => o.BaseRev,
+                ProfileOp o => o.BaseRev,
+                _ => null,
+            };
+            if (baseRev > rev) errors.Add(FutureBaseRev($"/ops/{i}/baseRev", baseRev.Value, rev));
+        }
+        return errors;
+    }
+
+    /// <summary>A <c>baseRev</c> newer than the document's revision <paramref name="rev"/> (a commit's or a history request's).</summary>
+    public static SpecError FutureBaseRev(string path, long baseRev, long rev) =>
+        new(path, "baseRev.future", $"baseRev {baseRev} is newer than the document's revision {rev}.");
 
     private static Conflict Missing(int op, string id) => new() { Op = op, Id = id, Reason = "missing" };
 

@@ -434,6 +434,39 @@ public sealed class CommitTests
     }
 
     [Fact]
+    public void A_baseRev_newer_than_the_document_is_422_at_its_path_after_the_opId_and_instance()
+    {
+        using var doc = Sample();
+        var applied = Commit(1, "drag", null, Place("a", 40, 40, baseRev: 1));
+        Assert.Equal(2, doc.Ok(applied).Rev);
+        static string Errors(InvalidProblem p) => string.Join(" ", p.Errors.Select(e => $"{e.Code} {e.Path}"));
+
+        // The commit's own baseRev and every op's newer than the document's revision (2) are listed; an insert has none.
+        var ahead = doc.Invalid(Commit(3, "ahead", null, Place("a", 41, 40, baseRev: 2), Insert(Scene("n")), Design("a", Rect("#00ff00"), baseRev: 3),
+            Bind("b", "v", "test:v", baseRev: 3), Attrs("b", name: "x", baseRev: 4), Remove("b", baseRev: 9), Move("a", "g", 0, baseRev: 3),
+            Profile(new JsonObject { ["background"] = "#111111" }, baseRev: 3)));
+        Assert.Equal((422, "invalid"), (ahead.Status, ahead.Code));
+        Assert.Equal("baseRev.future /baseRev baseRev.future /ops/2/baseRev baseRev.future /ops/3/baseRev baseRev.future /ops/4/baseRev "
+            + "baseRev.future /ops/5/baseRev baseRev.future /ops/6/baseRev baseRev.future /ops/7/baseRev", Errors(ahead));
+        Assert.Equal((2L, 40.0, 1), (doc.Rev, doc.Current.Item("a").Placement.X, doc.HistorySize.Undo));
+
+        // Only an op's: the commit's own is current. Ops that would otherwise conflict or miss aren't checked.
+        Assert.Equal("baseRev.future /ops/1/baseRev", Errors(doc.Invalid(Commit(2, "op-ahead", null, Place("gone", 1, 1), Place("a", 1, 1, baseRev: 3)))));
+
+        // A retry of an applied commit still replays, and another instance's revisions are refused as such first.
+        Assert.True(doc.Ok(applied).Replayed);
+        var other = Element(new JsonObject { ["opId"] = "other", ["instance"] = "an-older-run", ["baseRev"] = 9, ["ops"] = new JsonArray(Place("a", 3, 3, baseRev: 9)) });
+        Assert.Equal("instance", Assert.Single(doc.Conflict(other).Conflicts).Reason);
+
+        // A refused commit isn't remembered: once the document has reached its baseRev, its retry applies.
+        var early = Commit(3, "early", null, Place("b", 7, 7, baseRev: 3));
+        doc.Invalid(early);
+        Assert.Equal(3, doc.Ok(Commit(2, "next", null, Place("a", 50, 50, baseRev: 2))).Rev);
+        Assert.Equal(4, doc.Ok(early).Rev);
+        Assert.Equal(7, doc.Current.Item("b").Placement.X);
+    }
+
+    [Fact]
     public void Applied_opIds_are_remembered_for_the_last_1000_commits_then_expire()
     {
         using var doc = Sample();
