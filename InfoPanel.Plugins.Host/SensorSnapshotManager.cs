@@ -87,8 +87,7 @@ namespace InfoPanel.Plugins.Host
 
             if (entry is IPluginSensor sensor)
             {
-                var reading = new SensorReading(sensor.Value, sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg);
-                var unit = sensor.Unit;
+                var reading = new SensorReading(sensor.Value, sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg, sensor.Unit);
                 state = reading;
                 update = new EntryUpdateDto
                 {
@@ -101,7 +100,7 @@ namespace InfoPanel.Plugins.Host
                         ValueMin = reading.ValueMin,
                         ValueMax = reading.ValueMax,
                         ValueAvg = reading.ValueAvg,
-                        Unit = unit
+                        Unit = reading.Unit
                     }
                 };
             }
@@ -142,7 +141,8 @@ namespace InfoPanel.Plugins.Host
             return update;
         }
 
-        private readonly record struct SensorReading(float Value, float ValueMin, float ValueMax, float ValueAvg);
+        // Everything a sensor's payload carries, the unit included: a change of unit alone is an update.
+        private readonly record struct SensorReading(float Value, float ValueMin, float ValueMax, float ValueAvg, string? Unit);
 
         private static bool SameState(object? last, object state) => (last, state) switch
         {

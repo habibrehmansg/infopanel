@@ -202,6 +202,24 @@ public class SensorSnapshotManagerTests
         Assert.Empty(Deliver(manager, wrapper));
     }
 
+    [Fact]
+    public void A_sensor_whose_unit_alone_changes_is_an_update()
+    {
+        // Precipitation reads 0 in dry weather whichever measurement system is chosen; switching it must still send
+        // the new unit.
+        var rain = new PluginSensor("rain", "Precipitation", 0, "mm/h");
+        var wrapper = Wrap(rain);
+        var manager = new SensorSnapshotManager();
+        Assert.Single(Deliver(manager, wrapper));
+
+        rain.Unit = "in/h";
+
+        var update = Assert.Single(Deliver(manager, wrapper));
+        Assert.Equal(0, update.SensorValue!.Value);
+        Assert.Equal("in/h", update.SensorValue.Unit);
+        Assert.Empty(Deliver(manager, wrapper));
+    }
+
     /// <summary>One host cycle that reaches the client: the changes are read, then confirmed delivered.</summary>
     private static List<EntryUpdateDto> Deliver(SensorSnapshotManager manager, PluginWrapper wrapper)
     {
