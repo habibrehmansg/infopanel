@@ -78,55 +78,51 @@ namespace InfoPanel.Plugins.Host
             ex is InvalidOperationException or DataException or NullReferenceException
                 or IndexOutOfRangeException or ArgumentOutOfRangeException;
 
+        // Each entry is read once per cycle. The change check compares what was read with what was last delivered,
+        // and the payload is built from the same read, so the check always describes the payload sent.
         private EntryUpdateDto? CreateUpdateIfChanged(string key, string containerId, IPluginData entry)
         {
+            object state;
+            EntryUpdateDto update;
+
             if (entry is IPluginSensor sensor)
             {
-                var currentHash = HashCode.Combine(sensor.Value, sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg);
-                if (_lastValues.TryGetValue(key, out var lastHash) && lastHash is int lastInt && lastInt == currentHash)
-                    return null;
-
-                _pending[key] = currentHash;
-                return new EntryUpdateDto
+                var reading = new SensorReading(sensor.Value, sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg);
+                var unit = sensor.Unit;
+                state = reading;
+                update = new EntryUpdateDto
                 {
                     ContainerId = containerId,
                     EntryId = entry.Id,
                     Type = "sensor",
                     SensorValue = new SensorValueDto
                     {
-                        Value = sensor.Value,
-                        ValueMin = sensor.ValueMin,
-                        ValueMax = sensor.ValueMax,
-                        ValueAvg = sensor.ValueAvg,
-                        Unit = sensor.Unit
+                        Value = reading.Value,
+                        ValueMin = reading.ValueMin,
+                        ValueMax = reading.ValueMax,
+                        ValueAvg = reading.ValueAvg,
+                        Unit = unit
                     }
                 };
             }
             else if (entry is IPluginText text)
             {
-                if (_lastValues.TryGetValue(key, out var lastVal) && lastVal is string lastStr && lastStr == text.Value)
-                    return null;
-
-                _pending[key] = text.Value;
-                return new EntryUpdateDto
+                var value = text.Value;
+                state = value;
+                update = new EntryUpdateDto
                 {
                     ContainerId = containerId,
                     EntryId = entry.Id,
                     Type = "text",
-                    TextValue = text.Value
+                    TextValue = value
                 };
             }
             else if (entry is IPluginTable table)
             {
-                var hash = ComputeTableHash(table);
-                if (_lastValues.TryGetValue(key, out var lastHash) && lastHash is int lastInt && lastInt == hash)
-                    return null;
-
-                // Convert before recording the hash: if the conversion throws,
-                // the change must still be sent on the next cycle.
+                // The payload is the table's only read; it is compared whole, never through a hash of a second read.
                 var tableValue = TableDtoConverter.ConvertTableToDto(table);
-                _pending[key] = hash;
-                return new EntryUpdateDto
+                state = tableValue;
+                update = new EntryUpdateDto
                 {
                     ContainerId = containerId,
                     EntryId = entry.Id,
@@ -134,39 +130,65 @@ namespace InfoPanel.Plugins.Host
                     TableValue = tableValue
                 };
             }
+            else
+            {
+                return null;
+            }
 
-            return null;
+            if (_lastValues.TryGetValue(key, out var last) && SameState(last, state))
+                return null;
+
+            _pending[key] = state;
+            return update;
         }
 
-        private static int ComputeTableHash(IPluginTable table)
+        private readonly record struct SensorReading(float Value, float ValueMin, float ValueMax, float ValueAvg);
+
+        private static bool SameState(object? last, object state) => (last, state) switch
         {
-            var dt = table.Value;
-            if (dt == null) return 0;
+            (SensorReading a, SensorReading b) => a == b,
+            (string a, string b) => a == b,
+            (TableValueDto a, TableValueDto b) => SameTable(a, b),
+            _ => false
+        };
 
-            var hash = HashCode.Combine(dt.Rows.Count, dt.Columns.Count);
+        private static bool SameTable(TableValueDto a, TableValueDto b)
+        {
+            if (a.DefaultFormat != b.DefaultFormat
+                || !a.Columns.SequenceEqual(b.Columns)
+                || a.Rows.Count != b.Rows.Count)
+                return false;
 
-            foreach (DataRow row in dt.Rows)
+            for (var r = 0; r < a.Rows.Count; r++)
             {
-                for (int i = 0; i < dt.Columns.Count; i++)
+                var rowA = a.Rows[r];
+                var rowB = b.Rows[r];
+                if (rowA.Count != rowB.Count) return false;
+
+                for (var c = 0; c < rowA.Count; c++)
                 {
-                    var value = row[i];
-                    if (value is IPluginSensor sensor)
-                    {
-                        hash = HashCode.Combine(hash, sensor.Value, sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg);
-                    }
-                    else if (value is IPluginText text)
-                    {
-                        hash = HashCode.Combine(hash, text.Value?.GetHashCode() ?? 0);
-                    }
-                    else
-                    {
-                        hash = HashCode.Combine(hash, value?.GetHashCode() ?? 0);
-                    }
+                    if (!SameCell(rowA[c], rowB[c])) return false;
                 }
             }
 
-            return hash;
+            return true;
         }
+
+        private static bool SameCell(TableCellDto a, TableCellDto b) =>
+            a.Type == b.Type
+            && a.TextValue == b.TextValue
+            && a.SensorName == b.SensorName
+            && a.SensorUnit == b.SensorUnit
+            && SameSensorValue(a.SensorValue, b.SensorValue);
+
+        private static bool SameSensorValue(SensorValueDto? a, SensorValueDto? b) =>
+            a == null || b == null
+                ? a == b
+                : a.Value.Equals(b.Value)
+                  && a.ValueMin.Equals(b.ValueMin)
+                  && a.ValueMax.Equals(b.ValueMax)
+                  && a.ValueAvg.Equals(b.ValueAvg)
+                  && a.Unit == b.Unit;
 
         public void Clear()
         {

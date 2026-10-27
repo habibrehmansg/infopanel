@@ -56,16 +56,18 @@ public class SensorSnapshotManagerTests
     [Fact]
     public void A_table_whose_conversion_fails_is_sent_on_the_next_cycle()
     {
-        // The first read (the change hash) succeeds and the second (the conversion) throws. The hash must not be
-        // recorded before the conversion succeeds, or the next cycle sees "no change" and the table is never sent.
-        var table = new FlakyTable("table", [null, new InvalidOperationException("Collection was modified.")]);
+        // The conversion is the table's one read per cycle. When it throws on a changed table nothing is recorded,
+        // or the next cycle would see "no change" and the change would never be sent.
+        var table = new ScriptedTable("table", ["A", null], then: "B");
         var wrapper = Wrap(table);
         var manager = new SensorSnapshotManager();
+        Assert.Equal("A", Assert.Single(Deliver(manager, wrapper)).TableValue!.Rows.Single().Single().TextValue);
 
-        Assert.Empty(manager.GetChangedEntries(wrapper));
+        Assert.Empty(Deliver(manager, wrapper));
 
-        var retried = Assert.Single(manager.GetChangedEntries(wrapper));
+        var retried = Assert.Single(Deliver(manager, wrapper));
         Assert.Equal("table", retried.EntryId);
+        Assert.Equal("B", retried.TableValue!.Rows.Single().Single().TextValue);
     }
 
     [Fact]
@@ -140,6 +142,66 @@ public class SensorSnapshotManagerTests
         Assert.Empty(Deliver(manager, wrapper));
     }
 
+    // A plugin changes its table between the host's reads within one cycle: A, then B, then A from then on. Whatever
+    // the host sends, once the table stays at A the client must end up with A.
+    [Fact]
+    public void A_table_that_changes_between_reads_ends_up_delivered_as_it_now_is()
+    {
+        var table = new ScriptedTable("table", ["A", "B"], then: "A");
+        var wrapper = Wrap(table);
+        var manager = new SensorSnapshotManager();
+
+        TableValueDto? delivered = null;
+        for (var cycle = 0; cycle < 4; cycle++)
+        {
+            foreach (var update in Deliver(manager, wrapper)) delivered = update.TableValue;
+        }
+
+        Assert.NotNull(delivered);
+        Assert.Equal("A", delivered.Rows.Single().Single().TextValue);
+    }
+
+    [Fact]
+    public void A_sensor_that_changes_between_reads_ends_up_delivered_as_it_now_is()
+    {
+        var sensor = new ScriptedSensor("sensor", [1, 2], then: 1);
+        var wrapper = Wrap(sensor);
+        var manager = new SensorSnapshotManager();
+
+        float? delivered = null;
+        for (var cycle = 0; cycle < 4; cycle++)
+        {
+            foreach (var update in Deliver(manager, wrapper)) delivered = update.SensorValue!.Value;
+        }
+
+        Assert.Equal(1, delivered);
+    }
+
+    [Fact]
+    public void A_table_change_the_payload_carries_is_an_update()
+    {
+        // A cell's unit, a sensor cell's name and a column's name are all in the payload, so a change to any of them
+        // alone is an update.
+        var cell = new PluginSensor("rain", "Precipitation", 0, "mm/h");
+        var data = new DataTable();
+        data.Columns.Add("value", typeof(object));
+        data.Rows.Add(cell);
+        var table = new PluginTable("table", "Table", data, "");
+        var wrapper = Wrap(table);
+        var manager = new SensorSnapshotManager();
+        Assert.Single(Deliver(manager, wrapper));
+
+        cell.Unit = "in/h";
+        var unitChanged = Assert.Single(Deliver(manager, wrapper));
+        Assert.Equal("in/h", unitChanged.TableValue!.Rows.Single().Single().SensorUnit);
+
+        data.Columns[0].ColumnName = "amount";
+        var columnRenamed = Assert.Single(Deliver(manager, wrapper));
+        Assert.Equal(["amount"], columnRenamed.TableValue!.Columns);
+
+        Assert.Empty(Deliver(manager, wrapper));
+    }
+
     /// <summary>One host cycle that reaches the client: the changes are read, then confirmed delivered.</summary>
     private static List<EntryUpdateDto> Deliver(SensorSnapshotManager manager, PluginWrapper wrapper)
     {
@@ -196,6 +258,56 @@ public class SensorSnapshotManagerTests
         public string Name => "Bad";
         public string? Unit => null;
         public float Value { get => throw new InvalidOperationException("plugin failure"); set { } }
+    }
+
+    /// <summary>
+    /// A table that a plugin replaces between reads: each read of <see cref="Value"/> returns a one-cell table holding
+    /// the next scripted text (null: the read throws "Collection was modified"), and once the script is used up,
+    /// <c>then</c> on every read.
+    /// </summary>
+    private sealed class ScriptedTable(string id, string?[] script, string then) : IPluginTable
+    {
+        private int _reads;
+
+        public string Id { get; } = id;
+        public string Name { get; } = id;
+        public string DefaultFormat { get; } = "";
+
+        public DataTable Value
+        {
+            get
+            {
+                var text = _reads < script.Length ? script[_reads] : then;
+                _reads++;
+                if (text == null) throw new InvalidOperationException("Collection was modified.");
+                var table = new DataTable();
+                table.Columns.Add("name", typeof(object));
+                table.Rows.Add(new PluginText("cell", "Cell", text));
+                return table;
+            }
+            set => throw new NotSupportedException();
+        }
+    }
+
+    /// <summary>A sensor that a plugin updates between reads: each read returns the next scripted value, then <c>then</c>.</summary>
+    private sealed class ScriptedSensor(string id, float[] script, float then) : IPluginSensor
+    {
+        private int _reads;
+
+        public string Id { get; } = id;
+        public string Name { get; } = id;
+        public string? Unit => null;
+
+        public float Value
+        {
+            get
+            {
+                var value = _reads < script.Length ? script[_reads] : then;
+                _reads++;
+                return value;
+            }
+            set => throw new NotSupportedException();
+        }
     }
 
     /// <summary>A sensor whose first read fails as a plugin failure does; every later read is good.</summary>
