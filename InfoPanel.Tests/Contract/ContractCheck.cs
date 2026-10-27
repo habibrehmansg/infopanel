@@ -27,7 +27,14 @@ public sealed class ContractLog
 
     public IReadOnlyCollection<string> Violations => [.. _violations];
 
+    /// <summary>Every (method and path, status) the security layer answered before any operation, as it should.</summary>
+    public IReadOnlyCollection<(string Request, int Status)> Refusals => [.. _refusals.Keys];
+
+    private readonly ConcurrentDictionary<(string Request, int Status), byte> _refusals = new();
+
     internal void See(string operation, int status) => _seen.TryAdd((operation, status), 0);
+
+    internal void Refused(string request, int status) => _refusals.TryAdd((request, status), 0);
 
     internal void Violated(string violation) => _violations.Enqueue(violation);
 }
@@ -69,9 +76,10 @@ internal sealed class ContractCheckFilter(ContractLog log) : IStartupFilter
 /// body under <c>/ws</c> and <c>/auth</c>. The web client's files aren't the API and aren't checked.</item>
 /// </list>
 /// A violation is recorded in the host's <see cref="ContractLog"/> and thrown, so the request fails in the test that sent
-/// it (on a TestServer as the exception, on Kestrel as a 500). WebSocket upgrades pass through unchecked (an accepted one
-/// is recorded as the socket's 101); their messages are the test clients' to check. A request the client aborted isn't
-/// checked.
+/// it (on a TestServer as the exception, on Kestrel as a 500). A WebSocket upgrade is told from its request headers, so
+/// that every host treats it alike, and isn't buffered: an accepted one is recorded as the socket's 101 as it starts (its
+/// messages are the test clients' to check), and a refused one is checked like any other response, but after it went
+/// out, so its client may see the refusal before the check has run. A request the client aborted isn't checked.
 /// </summary>
 internal static class ContractCheck
 {
@@ -84,18 +92,37 @@ internal static class ContractCheck
     public static async Task RunAsync(HttpContext context, RequestDelegate next, ContractLog log)
     {
         var response = context.Response;
-        if (context.WebSockets.IsWebSocketRequest)
+        if (IsUpgrade(context))
         {
-            // Unbuffered: the upgrade's headers go out when the socket is accepted, and the request lasts as long as the
-            // socket. An accepted upgrade is the socket operation's 101, seen as it starts; a refused one is the same
-            // response as the request without the upgrade, checked there.
+            // Unbuffered: an accepted upgrade's headers go out when the socket is accepted (on a TestServer through the
+            // response body's start, which a buffer would hold back), and the request lasts as long as the socket; it is
+            // the socket operation's 101, seen as it starts. A refused one passes through as it is written, and is
+            // checked from a copy once it has gone out.
             response.OnStarting(() =>
             {
                 if (response.StatusCode == StatusCodes.Status101SwitchingProtocols && OperationOf(context, ApiContract.Instance).Operation is { } socket)
                     log.See(socket.Key, StatusCodes.Status101SwitchingProtocols);
                 return Task.CompletedTask;
             });
-            await next(context);
+            var passing = response.Body;
+            using var copy = new CopyingStream(passing, MaxRefusalBytes);
+            response.Body = copy;
+            try
+            {
+                await next(context);
+            }
+            finally
+            {
+                response.Body = passing;
+            }
+
+            if (response.StatusCode != StatusCodes.Status101SwitchingProtocols && !context.RequestAborted.IsCancellationRequested
+                && (copy.Overflowed ? $"A refused upgrade ({context.Request.Method} {context.Request.Path}) answered over {MaxRefusalBytes} bytes." : Check(context, copy.Copied, log)) is { } refused)
+            {
+                log.Violated(refused);
+                throw new ContractViolationException(refused);
+            }
+
             return;
         }
 
@@ -130,6 +157,84 @@ internal static class ContractCheck
         }
     }
 
+    /// <summary>The most of a refused upgrade's body the check copies; a refusal is a small problem.</summary>
+    private const int MaxRefusalBytes = 64 * 1024;
+
+    /// <summary>A response body that passes every write and flush on, and keeps a copy of the first <c>cap</c> bytes written.</summary>
+    private sealed class CopyingStream(Stream inner, int cap) : Stream
+    {
+        private readonly MemoryStream _copy = new();
+
+        public byte[] Copied => _copy.ToArray();
+
+        public bool Overflowed { get; private set; }
+
+        private void Keep(ReadOnlySpan<byte> bytes)
+        {
+            var room = cap - (int)_copy.Length;
+            if (bytes.Length > room)
+                Overflowed = true;
+            _copy.Write(bytes[..Math.Min(bytes.Length, Math.Max(room, 0))]);
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            Keep(buffer.AsSpan(offset, count));
+            inner.Write(buffer, offset, count);
+        }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            Keep(buffer.Span);
+            await inner.WriteAsync(buffer, cancellationToken);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override void Flush() => inner.Flush();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                _copy.Dispose();
+            base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>
+    /// Whether a request asks for a WebSocket upgrade, from its headers (HTTP/1.1 <c>Connection: Upgrade</c> and
+    /// <c>Upgrade: websocket</c>) or an HTTP/2 extended CONNECT. Not <c>IsWebSocketRequest</c>: the WebSocket feature that
+    /// reads is set before the pipeline on a TestServer but only by <c>UseWebSockets</c>, inside it, on Kestrel.
+    /// </summary>
+    internal static bool IsUpgrade(HttpContext context)
+    {
+        var headers = context.Request.Headers;
+        var connection = headers.Connection.SelectMany(v => (v ?? "").Split(',')).Any(t => t.Trim().Equals("upgrade", StringComparison.OrdinalIgnoreCase));
+        if (connection && headers.Upgrade.Any(v => string.Equals(v?.Trim(), "websocket", StringComparison.OrdinalIgnoreCase)))
+            return true;
+        return context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpExtendedConnectFeature>() is { IsExtendedConnect: true, Protocol: var protocol }
+            && string.Equals(protocol, "websocket", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string? Check(HttpContext context, byte[] body, ContractLog log)
     {
         var request = context.Request;
@@ -138,18 +243,26 @@ internal static class ContractCheck
             name => context.Response.Headers.ContainsKey(name));
 
         // The security layer, before any operation (spec/docs/api.md, "Where requests come from").
+        string? Security(string what, int status, bool problem)
+        {
+            var violation = Expect(exchange, what, status, problem);
+            if (violation is null)
+                log.Refused($"{exchange.Method} {exchange.Path}", status);
+            return violation;
+        }
+
         var hosts = services.GetRequiredService<IOptions<HostFilteringOptions>>().Value.AllowedHosts;
         if (!hosts.Contains(request.Host.Host, StringComparer.OrdinalIgnoreCase))
-            return Expect(exchange, $"a request for the host '{request.Host}'", StatusCodes.Status400BadRequest, problem: false);
+            return Security($"a request for the host '{request.Host}'", StatusCodes.Status400BadRequest, problem: false);
         if (request.Headers.TryGetValue("Origin", out var origins))
         {
             var runtime = services.GetRequiredService<EngineRuntime>();
             if (origins.Count != 1 || !runtime.IsAllowedOrigin(origins[0] ?? ""))
-                return Expect(exchange, $"a request from the origin '{origins}'", StatusCodes.Status403Forbidden, problem: true);
+                return Security($"a request from the origin '{origins}'", StatusCodes.Status403Forbidden, problem: true);
             if (runtime.IsCrossOrigin(origins[0]!) && CrossOrigin.AppliesTo(request.Path) && HttpMethods.IsOptions(request.Method)
                 && request.Headers.ContainsKey("Access-Control-Request-Method"))
             {
-                return Expect(exchange, "a cross-origin preflight", StatusCodes.Status204NoContent, problem: false);
+                return Security("a cross-origin preflight", StatusCodes.Status204NoContent, problem: false);
             }
         }
 

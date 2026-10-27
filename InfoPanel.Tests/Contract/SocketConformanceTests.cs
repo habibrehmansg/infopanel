@@ -156,6 +156,66 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         Assert.DoesNotContain("error", client.ReceivedTypes);
     }
 
+    /// <summary>A WebSocket connect on the TestServer that the engine refuses, with the error the client sees.</summary>
+    private async Task<string> RefusedConnect(string origin, string token)
+    {
+        var client = factory.Server.CreateWebSocketClient();
+        client.SubProtocols.Add(EngineRuntime.WebSocketProtocol);
+        client.SubProtocols.Add(EngineRuntime.WebSocketAuthPrefix + token);
+        client.ConfigureRequest = request => request.Headers.Origin = origin;
+        var error = await Assert.ThrowsAnyAsync<Exception>(() => client.ConnectAsync(new Uri("ws://localhost/ws"), Ct));
+        return error.Message;
+    }
+
+    /// <summary>
+    /// Waits for the check of a refused upgrade: it runs once the response has gone out, so the client may see the
+    /// refusal first.
+    /// </summary>
+    private static async Task Checked(Func<bool> done)
+    {
+        for (var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5); !done() && DateTime.UtcNow < deadline;)
+            await Task.Delay(10, Ct);
+    }
+
+    [Fact]
+    public async Task ARefusedUpgrade_IsCheckedLikeAnyResponse()
+    {
+        // A wrong token: the socket operation's declared 401. Another origin: the security layer's 403 problem.
+        Assert.Contains("401", await RefusedConnect(EngineFactory.DevOrigin, "not-the-token"));
+        await Checked(() => factory.Contract.Seen.Contains(("GET /ws", 401)));
+        Assert.Contains(("GET /ws", 401), factory.Contract.Seen);
+        Assert.Contains("403", await RefusedConnect("http://evil.example", EngineFactory.Token));
+        await Checked(() => factory.Contract.Refusals.Contains(("GET /ws", 403)));
+        Assert.Contains(("GET /ws", 403), factory.Contract.Refusals);
+        Assert.Empty(factory.Contract.Violations);
+    }
+
+    [Fact]
+    public async Task ARefusedUpgrade_IsCheckedOnKestrelToo()
+    {
+        using var engine = new EngineFactory();
+        using var live = InfoPanel.Tests.Editing.LiveEngine.Start(engine);
+        foreach (var (origin, token, status) in new[] { (EngineFactory.DevOrigin, "not-the-token", "401"), ("http://evil.example", EngineFactory.Token, "403") })
+        {
+            using var client = new System.Net.WebSockets.ClientWebSocket();
+            client.Options.AddSubProtocol(EngineRuntime.WebSocketProtocol);
+            client.Options.AddSubProtocol(EngineRuntime.WebSocketAuthPrefix + token);
+            client.Options.SetRequestHeader("Origin", origin);
+            var error = await Assert.ThrowsAsync<System.Net.WebSockets.WebSocketException>(() => client.ConnectAsync(new Uri($"ws://127.0.0.1:{live.Port}/ws"), Ct));
+            Assert.Contains(status, error.Message);
+        }
+
+        await Checked(() => engine.Contract.Seen.Contains(("GET /ws", 401)) && engine.Contract.Refusals.Contains(("GET /ws", 403)));
+
+        // And an accepted one is the socket's 101, as it starts.
+        await using (var socket = await live.Subscribe(JsonDocument.Parse(await live.Client().GetStringAsync("/api/profiles", Ct)).RootElement[0].GetProperty("id").GetString()!, Ct))
+            await socket.Until(() => socket.Docs.Count > 0, TimeSpan.FromSeconds(5), "a doc", Ct);
+        Assert.Contains(("GET /ws", 401), engine.Contract.Seen);
+        Assert.Contains(("GET /ws", 403), engine.Contract.Refusals);
+        Assert.Contains(("GET /ws", 101), engine.Contract.Seen);
+        Assert.Empty(engine.Contract.Violations);
+    }
+
     [Fact]
     public async Task ThePreviewSocket_SendsOnlyServerMessagesAndFrames()
     {
