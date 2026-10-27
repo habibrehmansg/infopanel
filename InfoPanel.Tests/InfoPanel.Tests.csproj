@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel\InfoPanel.csproj" />
+    <!-- The plugin host (net8.0) whose behaviour 2.0 keeps. -->
+    <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
   </ItemGroup>
 
 </Project>
