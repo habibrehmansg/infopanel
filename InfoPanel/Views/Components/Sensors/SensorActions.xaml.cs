@@ -12,10 +12,10 @@ namespace InfoPanel.Views.Components
     public partial class SensorActions : UserControl
     {
         public static readonly DependencyProperty SelectedSensorItemProperty =
-            DependencyProperty.Register(nameof(SelectedSensorItem), typeof(SensorTreeItem), typeof(SensorActions), new PropertyMetadata(null));
+            DependencyProperty.Register(nameof(SelectedSensorItem), typeof(SensorTreeItem), typeof(SensorActions), new PropertyMetadata(null, OnActionStateChanged));
 
         public static readonly DependencyProperty SensorTypeProperty =
-            DependencyProperty.Register(nameof(SensorType), typeof(SensorType), typeof(SensorActions), new PropertyMetadata(SensorType.HwInfo));
+            DependencyProperty.Register(nameof(SensorType), typeof(SensorType), typeof(SensorActions), new PropertyMetadata(SensorType.HwInfo, OnActionStateChanged));
 
         public SensorTreeItem SelectedSensorItem
         {
@@ -32,6 +32,29 @@ namespace InfoPanel.Views.Components
         public SensorActions()
         {
             InitializeComponent();
+            UpdateAddButtonState();
+        }
+
+        private static void OnActionStateChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs e)
+        {
+            ((SensorActions)dependencyObject).UpdateAddButtonState();
+        }
+
+        private void UpdateAddButtonState()
+        {
+            if (ButtonAddBar == null)
+            {
+                return;
+            }
+
+            var isHardwareRoot = SensorType is SensorType.HwInfo or SensorType.Libre
+                && SelectedSensorItem is HwInfoHardwareTreeItem or LibreHardwareTreeItem;
+
+            ButtonAddBar.IsEnabled = !isHardwareRoot;
+            ButtonAddDonut.IsEnabled = !isHardwareRoot;
+            ButtonAddGraph.IsEnabled = !isHardwareRoot;
+            ButtonAddCustom.IsEnabled = !isHardwareRoot;
+            ButtonAddSensorImage.IsEnabled = !isHardwareRoot;
         }
 
         private void ButtonSelect_Click(object sender, RoutedEventArgs e)
@@ -56,6 +79,16 @@ namespace InfoPanel.Views.Components
                         };
                         SharedModel.Instance.AddDisplayItem(item);
                     }
+                    else if (SelectedSensorItem is HwInfoHardwareTreeItem hardwareItem)
+                    {
+                        var textItem = new TextDisplayItem(hardwareItem.Name, selectedProfile)
+                        {
+                            Font = selectedProfile.Font,
+                            FontSize = selectedProfile.FontSize,
+                            Color = selectedProfile.Color
+                        };
+                        SharedModel.Instance.AddDisplayItem(textItem);
+                    }
                     break;
 
                 case SensorType.Libre:
@@ -69,6 +102,16 @@ namespace InfoPanel.Views.Components
                             Unit = libreItem.Unit,
                         };
                         SharedModel.Instance.AddDisplayItem(item);
+                    }
+                    else if (SelectedSensorItem is LibreHardwareTreeItem hardwareItem)
+                    {
+                        var textItem = new TextDisplayItem(hardwareItem.Name, selectedProfile)
+                        {
+                            Font = selectedProfile.Font,
+                            FontSize = selectedProfile.FontSize,
+                            Color = selectedProfile.Color
+                        };
+                        SharedModel.Instance.AddDisplayItem(textItem);
                     }
                     break;
 
@@ -98,6 +141,14 @@ namespace InfoPanel.Views.Components
             var selectedDisplayItem = SharedModel.Instance.SelectedItem;
             if (selectedDisplayItem == null)
                 return;
+
+            if (selectedDisplayItem is TextDisplayItem textDisplayItem
+                && selectedDisplayItem is not SensorDisplayItem
+                && SelectedSensorItem is HwInfoHardwareTreeItem or LibreHardwareTreeItem)
+            {
+                textDisplayItem.Name = SelectedSensorItem.Name;
+                return;
+            }
 
             switch (SensorType)
             {

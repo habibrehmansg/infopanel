@@ -37,7 +37,7 @@ namespace InfoPanel.ViewModels.Components
         }
     }
 
-    public partial class LibreHardwareTreeItem : TreeItem 
+    public partial class LibreHardwareTreeItem : SensorTreeItem
     {
         public LibreHardwareTreeItem(object id, string name, LibreHardwareMonitor.Hardware.HardwareType hardwareType) : base(id, name)
         {
@@ -66,6 +66,10 @@ namespace InfoPanel.ViewModels.Components
                 _ => "empty.png",
             };
         }
+
+        public override void Update()
+        {
+        }
     }
 
 
@@ -77,13 +81,17 @@ namespace InfoPanel.ViewModels.Components
         }
     }
 
-    public partial class HwInfoHardwareTreeItem : TreeItem
+    public partial class HwInfoHardwareTreeItem : SensorTreeItem
     {
         private static readonly string IconBase = "pack://application:,,,/Resources/Images/Libre/";
 
         public HwInfoHardwareTreeItem(object id, string name) : base(id, name)
         {
             Icon = IconBase + GetImage(name);
+        }
+
+        public override void Update()
+        {
         }
 
         private static string GetImage(string name)

@@ -172,7 +172,7 @@ namespace InfoPanel.Views.Components
 
         private void TreeViewInfo_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
-            if (e.NewValue is HwInfoSensorItem sensorItem)
+            if (e.NewValue is SensorTreeItem sensorItem)
             {
                 ViewModel.SelectedItem = sensorItem;
                 sensorItem.Update();

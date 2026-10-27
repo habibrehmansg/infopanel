@@ -7,8 +7,8 @@ namespace InfoPanel.ViewModels.Components
     {
         public ObservableCollection<TreeItem> Sensors { get; set; }
 
-        private LibreSensorItem? selectedItem;
-        public LibreSensorItem? SelectedItem
+        private SensorTreeItem? selectedItem;
+        public SensorTreeItem? SelectedItem
         {
             get { return selectedItem; }
             set { SetProperty(ref selectedItem, value); }

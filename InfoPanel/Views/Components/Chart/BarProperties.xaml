@@ -92,12 +92,7 @@
             </Grid>
 
             <Grid Grid.Row="2" Margin="0,10,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-
                 <metro:ColorPicker
-                    Grid.Column="0"
                     Height="40"
                     Margin="0,0,0,0"
                     metro:TextBoxHelper.UseFloatingWatermark="True"
@@ -265,6 +260,77 @@
                         <ui:SymbolIcon Symbol="ArrowAutofitHeightDotted20" ToolTip="Auto" />
                     </ToggleButton>
                 </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Grid Margin="0,0,5,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <ui:NumberBox
+                            FontSize="14"
+                            MaxDecimalPlaces="3"
+                            SmallChange="1"
+                            Text="{Binding Threshold}"
+                            ToolTip="Change color when value >= threshold 1"
+                            Value="{Binding Threshold}" />
+                        <TextBlock
+                            Margin="5,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="≥ Threshold #1" />
+                    </StackPanel>
+                    <metro:ColorPicker
+                        Grid.Column="1"
+                        Width="50"
+                        Height="35"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Top"
+                        metro:TextBoxHelper.UseFloatingWatermark="False"
+                        Background="Transparent"
+                        BorderThickness="1"
+                        SelectedColor="{Binding ThresholdColor}"
+                        SelectedColorTemplate="{DynamicResource MahApps.Templates.ColorPickerContent.ColorOnly}" />
+                </Grid>
+
+                <Grid Grid.Column="1" Margin="5,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <ui:NumberBox
+                            FontSize="14"
+                            MaxDecimalPlaces="3"
+                            SmallChange="1"
+                            Text="{Binding Threshold2}"
+                            ToolTip="Change color when value >= threshold 2"
+                            Value="{Binding Threshold2}" />
+                        <TextBlock
+                            Margin="5,0,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="≥ Threshold #2" />
+                    </StackPanel>
+                    <metro:ColorPicker
+                        Grid.Column="1"
+                        Width="50"
+                        Height="35"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Top"
+                        metro:TextBoxHelper.UseFloatingWatermark="False"
+                        Background="Transparent"
+                        BorderThickness="1"
+                        SelectedColor="{Binding Threshold2Color}"
+                        SelectedColorTemplate="{DynamicResource MahApps.Templates.ColorPickerContent.ColorOnly}" />
+                </Grid>
             </Grid>
 
         </Grid>

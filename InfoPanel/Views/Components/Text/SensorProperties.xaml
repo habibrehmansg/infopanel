@@ -73,6 +73,30 @@
                             IsChecked="{Binding ShowThousandsSeparator}">
                             <ui:SymbolIcon Symbol="NumberRow20" ToolTip="Thousands Separator" />
                         </ToggleButton>
+
+                        <ToggleButton
+                            Grid.Column="2"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Right"
+                            IsChecked="{Binding AutoScale}">
+                            <ui:SymbolIcon Symbol="Poll24" ToolTip="Auto-scale value and unit" />
+                        </ToggleButton>
+
+                        <ToggleButton
+                            Grid.Column="2"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Right"
+                            IsChecked="{Binding IgnoreUnitOnAutoScale}">
+                            <ui:SymbolIcon Symbol="TextBulletListTree20" ToolTip="Ignore unit magnitude on auto-scale" />
+                        </ToggleButton>
+
+                        <ToggleButton
+                            Grid.Column="2"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Right"
+                            IsChecked="{Binding SeparateUnitWithSpace}">
+                            <ui:SymbolIcon Symbol="Spacebar24" ToolTip="Separate unit from value with a space" />
+                        </ToggleButton>
                     </StackPanel>
                 </StackPanel>
 
@@ -239,7 +263,6 @@
 
                 </StackPanel>
             </Grid>
-
 
             <Grid Margin="0,15,0,0">
                 <Grid.ColumnDefinitions>

@@ -82,7 +82,13 @@
             Appearance="Caution"
             Click="ButtonReplace_Click"
             Icon="{ui:SymbolIcon ArrowSwap20}"
-            IsEnabled="{Binding Source={x:Static local:SharedModel.Instance}, Path=SelectedItem, Converter={StaticResource IsSensorConverter}}"
-            ToolTip="Replace selected sensor" />
+            ToolTip="Replace selected sensor">
+            <ui:Button.IsEnabled>
+                <MultiBinding Converter="{StaticResource IsSensorConverter}">
+                    <Binding Source="{x:Static local:SharedModel.Instance}" Path="SelectedItem" />
+                    <Binding Path="SelectedSensorItem" RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                </MultiBinding>
+            </ui:Button.IsEnabled>
+        </ui:Button>
     </Grid>
 </UserControl>

@@ -21,8 +21,8 @@ namespace InfoPanel.ViewModels.Components
             set { SetProperty(ref _selectedConnection, value); }
         }
 
-        private HwInfoSensorItem? selectedItem;
-        public HwInfoSensorItem? SelectedItem
+        private SensorTreeItem? selectedItem;
+        public SensorTreeItem? SelectedItem
         {
             get { return selectedItem; }
             set { SetProperty(ref selectedItem, value); }

@@ -264,8 +264,79 @@ namespace InfoPanel.Models
                 catch
                 { }
             }
+        }
 
-    }
+        private double? _threshold;
+        public double? Threshold
+        {
+            get { return _threshold; }
+            set
+            {
+                SetProperty(ref _threshold, value);
+            }
+        }
+
+        private string _thresholdColor = "#DD8800";
+        public string ThresholdColor
+        {
+            get { return _thresholdColor; }
+            set
+            {
+                if (value == null)
+                {
+                    return;
+                }
+
+                if (!value.StartsWith('#'))
+                {
+                    value = "#" + value;
+                }
+
+                try
+                {
+                    SKColor.Parse(value);
+                    SetProperty(ref _thresholdColor, value);
+                }
+                catch
+                { }
+            }
+        }
+
+        private double? _threshold2;
+        public double? Threshold2
+        {
+            get { return _threshold2; }
+            set
+            {
+                SetProperty(ref _threshold2, value);
+            }
+        }
+
+        private string _threshold2Color = "#FF0000";
+        public string Threshold2Color
+        {
+            get { return _threshold2Color; }
+            set
+            {
+                if (value == null)
+                {
+                    return;
+                }
+
+                if (!value.StartsWith('#'))
+                {
+                    value = "#" + value;
+                }
+
+                try
+                {
+                    SKColor.Parse(value);
+                    SetProperty(ref _threshold2Color, value);
+                }
+                catch
+                { }
+            }
+        }
 
         public ChartDisplayItem() { }
 
