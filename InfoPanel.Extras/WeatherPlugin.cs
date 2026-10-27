@@ -101,6 +101,9 @@ namespace InfoPanel.Extras
             }
         }
 
+        // The service client the configuration built: null until both an API key and a city are set.
+        internal OpenWeatherMapCache? Client => _current;
+
         private void RebuildClient()
         {
             _current?.Dispose();

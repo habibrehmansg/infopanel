@@ -97,6 +97,64 @@ public class WeatherPluginUnitTests
         Assert.Equal(expectedTemperatureUnit, sensors["temp"].Unit);
     }
 
+    // A choice other than Imperial is Metric whatever was chosen before, so each is applied after Imperial.
+    [Theory]
+    [InlineData("Furlongs")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void An_unknown_or_empty_choice_after_imperial_reports_metric_units_and_readings(string? choice)
+    {
+        var weather = Loaded(out var sensors);
+        weather.ApplyConfig("MeasurementSystem", "Imperial");
+
+        weather.ApplyConfig("MeasurementSystem", choice);
+        weather.ApplyReadings(Reading());
+
+        AssertSensor(sensors, "temp", 21.5f, "°C");
+        AssertSensor(sensors, "pressure", 1013f, "hPa");
+        AssertSensor(sensors, "wind_speed", 10f, "m/s");
+        AssertSensor(sensors, "rain", 25.4f, "mm/h");
+    }
+
+    // Configured with a key and a city, the plugin holds a service client (built without fetching). Switching units
+    // only changes how readings are reported, so it keeps that client and its cache; a new key or city needs a new one.
+    [Fact]
+    public void A_measurement_system_change_keeps_the_service_client()
+    {
+        var weather = Configured();
+        var client = weather.Client;
+        Assert.NotNull(client);
+
+        weather.ApplyConfig("MeasurementSystem", "Imperial");
+        Assert.Same(client, weather.Client);
+
+        weather.ApplyConfig("MeasurementSystem", "Metric");
+        Assert.Same(client, weather.Client);
+    }
+
+    [Theory]
+    [InlineData("APIKey", "another-key")]
+    [InlineData("City", "Othertown")]
+    public void An_api_key_or_city_change_replaces_the_service_client(string key, string value)
+    {
+        var weather = Configured();
+        var client = weather.Client;
+        Assert.NotNull(client);
+
+        weather.ApplyConfig(key, value);
+
+        Assert.NotNull(weather.Client);
+        Assert.NotSame(client, weather.Client);
+    }
+
+    private static WeatherPlugin Configured()
+    {
+        var weather = new WeatherPlugin();
+        weather.ApplyConfig("APIKey", "test-key");
+        weather.ApplyConfig("City", "Testville");
+        return weather;
+    }
+
     [Fact]
     public void The_measurement_system_is_offered_as_a_choice_of_metric_and_imperial()
     {
