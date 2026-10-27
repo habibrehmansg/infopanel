@@ -134,12 +134,14 @@ internal sealed class PreviewClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        // A message sent outside the spec is the engine's to refuse: an error message (or a close) answers it.
+        // A message sent outside the spec is the engine's to refuse: an error message (or a close) answers it. The wait is
+        // bounded as a whole, since a subscription's frames keep arriving while no error does.
         if (_unanswered.Count > 0 && Socket.State == WebSocketState.Open)
         {
             try
             {
-                while (_unanswered.Count > 0 && (await ReceiveAsync(CancellationToken.None, TimeSpan.FromSeconds(2))).CloseStatus is null)
+                var deadline = DateTime.UtcNow + DefaultTimeout;
+                while (_unanswered.Count > 0 && DateTime.UtcNow < deadline && (await ReceiveAsync(CancellationToken.None, Remaining(deadline))).CloseStatus is null)
                 {
                 }
             }
