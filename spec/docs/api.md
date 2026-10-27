@@ -191,7 +191,7 @@ A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`clientMessag
 - `unsubscribe` (`unsubscribeMessage`): no more `doc` messages or frames until the next `subscribe`.
 - `auth` (`authMessage`): only as the first message, above.
 
-The engine ignores members a message doesn't define. It answers `error` to a message it can't act on and keeps the socket open: one that isn't a JSON object with a string `type`, a binary message, an unknown `type`, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number or a `maxFps` that isn't a whole number of at least 1, or a `view` without a subscription.
+The engine ignores members a message doesn't define. It answers `error` to a message it can't act on and keeps the socket open: one that isn't a JSON object with a string `type`, a binary message, an unknown `type`, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number or a `maxFps` that isn't a whole number from 1 to 2,147,483,647, or a `view` without a subscription.
 
 The engine sends (`serverMessage`):
 

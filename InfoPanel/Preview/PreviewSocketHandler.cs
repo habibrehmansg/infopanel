@@ -525,7 +525,13 @@ internal sealed class PreviewSession
         _render.RequestChanged(sink);
     }
 
-    /// <summary>Reads <c>scale</c> (a positive number) and <c>maxFps</c> (a whole number, 1 or more), keeping <paramref name="current"/>'s for absent ones.</summary>
+    /// <summary>
+    /// Reads <c>scale</c> (a positive number) and <c>maxFps</c> (a whole number from 1 to 2^31 - 1), keeping
+    /// <paramref name="current"/>'s for absent ones. Both are read in the schema's numeric domain, as the spec's
+    /// validator decides them: <c>maxFps</c> exactly as a decimal (0.99999999999999999 isn't whole, though a double
+    /// rounds it to 1), and any positive <c>scale</c> a double holds, which docs/api.md#frame-size maps into 0.1–4. Numbers
+    /// beyond double range (1e400, 1e-400) are refused.
+    /// </summary>
     private bool TryReadRequest(JsonElement message, FrameRequest current, out FrameRequest request)
     {
         request = current;
@@ -534,19 +540,24 @@ internal sealed class PreviewSession
 
         if (message.TryGetProperty("scale", out var scaleElement))
         {
-            if (scaleElement.ValueKind != JsonValueKind.Number || !scaleElement.TryGetSingle(out scale) || !float.IsFinite(scale) || scale <= 0)
+            if (scaleElement.ValueKind != JsonValueKind.Number || !scaleElement.TryGetDouble(out var requested) || !double.IsFinite(requested) || requested <= 0)
             {
                 SendError("\"scale\" must be a positive number.");
                 return false;
             }
+
+            // Every scale below 0.125 draws at 0.1 and every one above 3.875 at 4 (FrameScale.Normalize), so clamping first
+            // changes nothing, and keeps a tiny scale from rounding to a float 0, which Normalize would read as 1.
+            scale = (float)Math.Clamp(requested, 0.01, 16);
         }
 
         if (message.TryGetProperty("maxFps", out var fpsElement))
         {
-            // A whole number in any spelling JSON Schema's integer allows (30, 30.0, 3e1), as every integer the engine reads.
-            if (fpsElement.ValueKind != JsonValueKind.Number || !fpsElement.TryGetDouble(out var fps) || fps != Math.Floor(fps) || fps < 1 || fps > int.MaxValue)
+            // A whole number in any spelling JSON Schema's integer allows (30, 30.0, 3e1), decided exactly as the spec's
+            // validator decides it; a number a decimal can't hold is over the maximum anyway.
+            if (fpsElement.ValueKind != JsonValueKind.Number || !fpsElement.TryGetDecimal(out var fps) || fps != decimal.Truncate(fps) || fps < 1 || fps > int.MaxValue)
             {
-                SendError("\"maxFps\" must be a whole number of at least 1.");
+                SendError("\"maxFps\" must be a whole number from 1 to 2147483647.");
                 return false;
             }
 

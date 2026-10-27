@@ -1,6 +1,9 @@
+using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using InfoPanel.Api;
 using InfoPanel.Hosting;
+using InfoPanel.Output;
 using InfoPanel.Preview;
 using InfoPanel.Spec;
 using InfoPanel.Tests.Preview;
@@ -98,6 +101,59 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
 
         Assert.DoesNotContain("error", client.ReceivedTypes);
         Assert.Equal(["subscribe", "view"], client.SentTypes.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task MaxFps_IsReadAsClientMessagesInteger_Exactly()
+    {
+        using var api = factory.CreateApiClient();
+        var id = JsonDocument.Parse(await api.GetStringAsync("/api/profiles", Ct)).RootElement[0].GetProperty("id").GetString();
+        await using var client = await PreviewClient.ConnectAsync(factory, Ct);
+        await client.ReceiveTextAsync("hello", Ct);
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.25, maxFps = 10 }, Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+
+        // Whole numbers from 1 to 2^31 - 1, in any spelling: accepted (an error for any would come before the doc).
+        foreach (var fps in new[] { "30.0", "3e1", "2147483647" })
+            await client.SendTextAsync($$"""{"type":"view","maxFps":{{fps}}}""", Ct);
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.25, maxFps = 10 }, Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+        Assert.DoesNotContain("error", client.ReceivedTypes);
+
+        // Not an integer (however close to one a double would round it), or over the maximum: each answered with an error
+        // about maxFps. Sent without a subscription and for an absent profile, so no frames follow either way: a value the
+        // engine took would draw "No profile" instead.
+        await client.SendAsync(new { type = "unsubscribe" }, Ct);
+        foreach (var fps in new[] { "0.99999999999999999", "2147483647.0000001", "2147483648", "2.5" })
+        {
+            await client.SendTextAsync($$"""{"type":"subscribe","profileId":"00000000-0000-4000-8000-0000000000aa","maxFps":{{fps}}}""", Ct);
+            await client.ReceiveTextAsync("error", Ct, e => e.GetProperty("message").GetString()!.Contains("maxFps", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task AnyPositiveScale_IsReadAndLimited_AsFrameSizeSays()
+    {
+        // A small canvas, so the largest scale is a small frame.
+        using var api = factory.CreateApiClient();
+        var id = TestDocs.NewId();
+        using (var created = await api.PostAsync("/api/profiles", TestDocs.Json(new JsonObject { ["id"] = id, ["name"] = "Scales", ["width"] = 100, ["height"] = 50 }), Ct))
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        await using var client = await PreviewClient.ConnectAsync(factory, Ct);
+        await client.ReceiveTextAsync("hello", Ct);
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.25, maxFps = 10 }, Ct);
+        var (first, _) = await client.ReceiveFrameAsync(Ct, h => h.Scale == 0.25);
+
+        // Beyond single precision either way: the largest and the smallest scale (docs/api.md#frame-size), not an error.
+        var largest = FrameScale.Normalize(FrameScale.Max, first.ProfileWidth, first.ProfileHeight);
+        var smallest = FrameScale.Normalize(FrameScale.Min, first.ProfileWidth, first.ProfileHeight);
+        await client.SendTextAsync("""{"type":"view","scale":1e100}""", Ct);
+        await client.ReceiveFrameAsync(Ct, h => h.Scale == largest);
+        // 1e-100 is a frameRequestScale (JSON Schema compares numbers by value), but the engine's schema validator reads it
+        // as the decimal 0 and calls it invalid, so it goes out past the client's clientMessage check.
+        await client.Socket.SendAsync(System.Text.Encoding.UTF8.GetBytes("""{"type":"view","scale":1e-100}"""), System.Net.WebSockets.WebSocketMessageType.Text, true, Ct);
+        await client.ReceiveFrameAsync(Ct, h => h.Scale == smallest);
+        Assert.DoesNotContain("error", client.ReceivedTypes);
     }
 
     [Fact]
