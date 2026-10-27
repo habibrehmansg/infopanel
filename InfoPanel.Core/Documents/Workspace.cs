@@ -513,6 +513,21 @@ public sealed class Workspace : IDisposable
     }
 
     /// <summary>
+    /// Checks <paramref name="document"/> as <see cref="Create"/> checks a <c>{id, document}</c> body's document (its
+    /// own <c>id</c> replaced, since a create chooses the id), without storing anything: the errors under
+    /// <c>/document</c>, or none when a create with it would store it. An unsupported document is an error here too.
+    /// </summary>
+    public IReadOnlyList<SpecError> CheckImportDocument(JsonElement document)
+    {
+        const string AnyId = "00000000-0000-4000-8000-000000000000";
+        using var copy = document.ValueKind == JsonValueKind.Object
+            ? WithId(document, AnyId)
+            : JsonDocument.Parse(document.GetRawText(), SpecJson.DocumentOptions);
+        var load = Generation.Load(copy.RootElement, 1, Limits, Support);
+        return load.Generation is null ? ValidationText.Cap(load.Check.Errors.Select(e => e.Under("/document")).ToList()) : [];
+    }
+
+    /// <summary>
     /// <c>POST /api/profiles/{id}/duplicate</c>: a copy of the profile's current document under the id in the body. The
     /// source is checked first (404, 409 <c>profileStatusProblem</c>), then the body.
     /// </summary>

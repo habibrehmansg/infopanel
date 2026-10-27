@@ -67,9 +67,6 @@ public static class V1Reader
     private const string ProfileEntry = "Profile.xml", ItemsEntry = "DisplayItems.xml";
     private const string GuideType = "GuideDisplayItem";
 
-    /// <summary>The document entry of a 2.0 profile archive, the sign that one was sent here.</summary>
-    private const string V2DocumentEntry = "document.json";
-
     /// <summary>
     /// Reads a 1.x <c>.infopanel</c> archive (a seekable stream: the body in a temporary file) into its envelope.
     /// <c>Profile.xml</c> and <c>DisplayItems.xml</c> match case-insensitively, asset entries start <c>assets/</c> or
@@ -104,7 +101,7 @@ public static class V1Reader
 
         if (profileEntry is null || itemsEntry is null)
         {
-            if (reader.Entries.Any(e => e.Name == V2DocumentEntry))
+            if (reader.Entries.Any(e => e.Name == ProfileArchive.DocumentEntry))
                 throw new ImportRefusal("archive.v2", "This is a 2.0 profile archive (.infopanel2), not a 1.x .infopanel file: import it as a profile archive.");
             throw new ImportRefusal("import.archive", $"The archive has no {ProfileEntry} or no {ItemsEntry}: it isn't a 1.x profile export.");
         }
