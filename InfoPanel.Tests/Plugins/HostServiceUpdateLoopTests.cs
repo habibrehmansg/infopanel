@@ -18,6 +18,52 @@ public class HostServiceUpdateLoopTests
     // Generous: every wait here ends on a signal long before it, unless what it waits for never happens.
     private static readonly TimeSpan Bound = TimeSpan.FromSeconds(10);
 
+    [Fact]
+    public async Task A_value_whose_send_completed_is_not_sent_again()
+    {
+        var temp = new PluginSensor("temp", "Temperature", 21);
+        var host = await HostWith(temp);
+        var transport = new TestTransport();
+        Connect(host, transport);
+
+        await Cycle(host);
+        await Cycle(host);
+
+        var sent = Assert.Single(transport.Sent);
+        Assert.Equal(("stub", "temp", 21f), sent);
+    }
+
+    [Fact]
+    public async Task A_value_whose_send_failed_is_sent_again_on_the_next_cycle()
+    {
+        var temp = new PluginSensor("temp", "Temperature", 21);
+        var host = await HostWith(temp);
+        var transport = new TestTransport(WriteOutcome.Throw);
+        Connect(host, transport);
+
+        await Cycle(host);
+        await Cycle(host);
+        await Cycle(host);
+
+        Assert.Equal([("stub", "temp", 21f), ("stub", "temp", 21f)], transport.Sent);
+    }
+
+    [Fact]
+    public async Task Nothing_is_marked_sent_before_a_client_connects()
+    {
+        var temp = new PluginSensor("temp", "Temperature", 21);
+        var host = await HostWith(temp);
+        await Cycle(host);
+
+        var transport = new TestTransport();
+        Connect(host, transport);
+        await Cycle(host);
+        await Cycle(host);
+
+        var sent = Assert.Single(transport.Sent);
+        Assert.Equal(("stub", "temp", 21f), sent);
+    }
+
     // A client that is connected but stops reading leaves the send pending for good: shutdown must not wait for it.
     [Fact]
     public async Task Shutdown_does_not_wait_for_a_send_that_never_completes()
