@@ -1,4 +1,4 @@
-﻿namespace InfoPanel.Plugins
+namespace InfoPanel.Plugins
 {
     public class PluginSensor(string id, string name, float value, string? unit = null) : IPluginSensor
     {
@@ -38,7 +38,7 @@
         public float ValueMax { get; private set; } = value;
         public float ValueAvg { get; private set; } = value;
 
-        public string? Unit { get; } = unit;
+        public string? Unit { get; set; } = unit;
 
         public PluginSensor(string name, float value, string? unit = null) : this(IdUtil.Encode(name), name, value, unit)
         {
