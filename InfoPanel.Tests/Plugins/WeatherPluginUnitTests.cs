@@ -105,6 +105,68 @@ public class WeatherPluginUnitTests
         AssertSensor(sensors, "rain", 25.4f, "mm/h");
     }
 
+    // A fetch applies its reading on the update loop's thread while a switch arrives on the host's configuration
+    // thread. The two never interleave: a fetch that chose Metric before a switch to Imperial can't write Celsius
+    // values under the Fahrenheit units after the switch, and the switch converts the newest reading. The fetch is
+    // held right after choosing its system while the switch runs, and released once the switch has either finished
+    // or is waiting for the fetch.
+    [Fact]
+    public void A_switch_and_a_fetch_in_flight_never_interleave()
+    {
+        var bound = TimeSpan.FromSeconds(10);
+        var weather = Loaded(out var sensors);
+        weather.ApplyReadings(Reading());
+
+        var chosen = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        Exception? failure = null;
+        Thread? fetch = null;
+        weather.AfterSystemChosen = () =>
+        {
+            if (Thread.CurrentThread != fetch) return;
+            chosen.Set();
+            release.Wait(bound);
+        };
+
+        // 27 °C (80.6 °F) instead of the held reading's 21.5 °C, so the result shows which reading was converted.
+        var newer = Reading(ServiceJson.Replace("\"temp\": 294.65", "\"temp\": 300.15"));
+        fetch = new Thread(() => Capture(ref failure, () => weather.ApplyReadings(newer)));
+        fetch.Start();
+        Assert.True(chosen.Wait(bound), "the fetch never chose its system");
+
+        var change = new Thread(() => Capture(ref failure, () => weather.ApplyConfig("MeasurementSystem", "Imperial")));
+        change.Start();
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (change.IsAlive && (change.ThreadState & ThreadState.WaitSleepJoin) == 0)
+        {
+            Assert.True(waited.Elapsed < bound, "the switch neither finished nor waited");
+            Thread.Yield();
+        }
+
+        release.Set();
+        Assert.True(fetch.Join(bound), "the fetch didn't finish");
+        Assert.True(change.Join(bound), "the switch didn't finish");
+        Assert.Null(failure);
+
+        AssertSensor(sensors, "temp", 80.6f, "°F");
+        AssertSensor(sensors, "max_temp", 77f, "°F");
+        AssertSensor(sensors, "pressure", 29.91f, "inHg");
+        AssertSensor(sensors, "wind_speed", 22.37f, "mph");
+        AssertSensor(sensors, "rain", 1f, "in/h");
+    }
+
+    private static void Capture(ref Exception? failure, Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+    }
+
     [Theory]
     [InlineData("imperial", "°F")]
     [InlineData("IMPERIAL", "°F")]
@@ -225,11 +287,11 @@ public class WeatherPluginUnitTests
         }
         """;
 
-    private static Readings Reading()
+    private static Readings Reading(string json = ServiceJson)
     {
         var constructor = typeof(Readings).GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             .Single(c => c.GetParameters() is [{ ParameterType.Name: "ApiWeatherResult" }]);
-        var apiResult = JsonSerializer.Deserialize(ServiceJson, constructor.GetParameters()[0].ParameterType)!;
+        var apiResult = JsonSerializer.Deserialize(json, constructor.GetParameters()[0].ParameterType)!;
         return (Readings)constructor.Invoke([apiResult]);
     }
 }

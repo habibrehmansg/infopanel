@@ -2,7 +2,6 @@ using InfoPanel.Plugins;
 using OpenWeatherMap.Cache;
 using OpenWeatherMap.Cache.Models;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 namespace InfoPanel.Extras
 {
@@ -17,9 +16,15 @@ namespace InfoPanel.Extras
         private string _apiKey = "";
         private string _cityName = "";
         private string _measurementSystem = MetricMeasurementSystem;
-        // The last reading applied, boxed so that replacing it is a single reference write: a switch of measurement
-        // system converts it at once instead of leaving the old system's values under the new units.
-        private StrongBox<Readings>? _lastReadings;
+        // The last reading applied: a switch of measurement system converts it at once instead of leaving the old
+        // system's values under the new units.
+        private Readings? _lastReadings;
+        // Taken by a fetch applying its reading (from choosing the system to the last value written) and by a switch
+        // of measurement system (the system, the units and the reapply), so the two never interleave: a fetch that
+        // chose one system can't write its values under the other's units, and a switch reapplies the newest reading.
+        // Every write of the system, the units, the values and the held reading is under it; it is never held across
+        // an await or a network call, and the host reads the sensors without it.
+        private readonly object _readingsLock = new();
 
         private readonly PluginText _name = new("name", "Name", "-");
         private readonly PluginText _weather = new("weather", "Weather", "-");
@@ -95,13 +100,16 @@ namespace InfoPanel.Extras
                     RebuildClient();
                     break;
                 case "MeasurementSystem":
-                    _measurementSystem = string.Equals(strValue, ImperialMeasurementSystem, StringComparison.OrdinalIgnoreCase)
-                        ? ImperialMeasurementSystem
-                        : MetricMeasurementSystem;
-                    ApplyMeasurementUnits();
-                    if (_lastReadings is { } last)
+                    lock (_readingsLock)
                     {
-                        ApplyReadings(last.Value);
+                        _measurementSystem = string.Equals(strValue, ImperialMeasurementSystem, StringComparison.OrdinalIgnoreCase)
+                            ? ImperialMeasurementSystem
+                            : MetricMeasurementSystem;
+                        ApplyMeasurementUnits();
+                        if (_lastReadings is { } last)
+                        {
+                            WriteReadings(last, UseImperial);
+                        }
                     }
                     break;
                 default:
@@ -172,7 +180,10 @@ namespace InfoPanel.Extras
 
         public override void Load(List<IPluginContainer> containers)
         {
-            ApplyMeasurementUnits();
+            lock (_readingsLock)
+            {
+                ApplyMeasurementUnits();
+            }
 
             var container = new PluginContainer("Weather");
             container.Entries.AddRange([_name, _weather, _weatherDesc, _weatherIcon, _weatherIconUrl]);
@@ -229,11 +240,25 @@ namespace InfoPanel.Extras
             }
         }
 
-        // Writes one reading into the sensors in the chosen measurement system. Split out of GetWeather so a test
-        // can feed it a reading without calling the OpenWeatherMap service.
+        // A test hook: runs inside ApplyReadings once the measurement system is chosen, before any value is written.
+        internal Action? AfterSystemChosen;
+
+        // Writes one fetched reading into the sensors in the chosen measurement system and holds it for a switch to
+        // convert. Split out of GetWeather so a test can feed it a reading without calling the OpenWeatherMap service.
         internal void ApplyReadings(Readings result)
         {
-            _lastReadings = new StrongBox<Readings>(result);
+            lock (_readingsLock)
+            {
+                _lastReadings = result;
+                var imperial = UseImperial;
+                AfterSystemChosen?.Invoke();
+                WriteReadings(result, imperial);
+            }
+        }
+
+        // Called with _readingsLock held.
+        private void WriteReadings(Readings result, bool imperial)
+        {
             _name.Value = result.CityName;
 
             if (result.Weather is { Length: > 0 })
@@ -244,7 +269,7 @@ namespace InfoPanel.Extras
                 _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weather[0].IconId}@2x.png";
             }
 
-            if (UseImperial)
+            if (imperial)
             {
                 _temp.Value = Convert.ToSingle(result.Temperature.DegreesFahrenheit);
                 _maxTemp.Value = Convert.ToSingle(result.MaximumTemperature.DegreesFahrenheit);
