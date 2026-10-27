@@ -1,4 +1,5 @@
 ﻿using InfoPanel.Images;
+using InfoPanel.Spec;
 using InfoPanel.Utils;
 using Microsoft.Extensions.Caching.Memory;
 using SkiaSharp;
@@ -6,6 +7,7 @@ using Svg.Skia;
 using System;
 using Serilog;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 
@@ -56,9 +58,18 @@ namespace InfoPanel.Models
 
         public bool Loaded { get; private set; } = false;
 
-        public LockedImage(string imagePath)
+        public LockedImage(string imagePath) : this(imagePath, loadSvg: null)
+        {
+        }
+
+        /// <param name="imagePath">The image file.</param>
+        /// <param name="loadSvg">Test seam: loads the SVG decoder from the stream it is handed (<c>SKSvg.Load</c> by default).</param>
+        internal LockedImage(string imagePath, Action<SKSvg, Stream>? loadSvg)
         {
             ImagePath = imagePath;
+            MemoryStream? memory = null;
+            var isSvg = false;
+            (string Name, int Limit)? over = null;
 
             try
             {
@@ -66,13 +77,28 @@ namespace InfoPanel.Models
                 {
                     try
                     {
-                        var fileStream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                        _stream = new MemoryStream();
-                        fileStream.CopyTo(_stream);
-                        fileStream.Dispose();
-                        _stream.Position = 0;
+                        using var fileStream = new FileStream(ImagePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
-                        Logger.Debug("Image loaded from file: {ImagePath}", ImagePath);
+                        // The kind is sniffed first, so the copy stops one byte past the media limit for it
+                        // (spec/docs/limits.md): a larger file, or one that grows while it is read, is never held whole.
+                        var head = new byte[SniffBytes];
+                        var headLength = fileStream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+                        isSvg = IsSvgContent(head.AsSpan(0, headLength));
+                        var limit = isSvg ? SpecLimits.Default.SvgBytes : SpecLimits.Default.MediaBytes;
+                        var copy = new MemoryStream((int)Math.Min(fileStream.Length, limit + 1L));
+                        copy.Write(head, 0, headLength);
+                        CopyAtMost(fileStream, copy, limit + 1L - headLength);
+
+                        if (copy.Length > limit)
+                        {
+                            over = (isSvg ? "svgBytes" : "mediaBytes", limit);
+                        }
+                        else
+                        {
+                            _stream = memory = copy;
+                            _stream.Position = 0;
+                            Logger.Debug("Image loaded from file: {ImagePath}", ImagePath);
+                        }
                     }
                     catch (Exception e)
                     {
@@ -80,18 +106,39 @@ namespace InfoPanel.Models
                     }
                 }
 
+                if (over is (var name, var max))
+                {
+                    Logger.Warning("Image {ImagePath} refused: {Code} {Message}", ImagePath,
+                        "limit." + name, $"Over the limit of {max} bytes ({name}).");
+                    throw new ArgumentException("Image file is over the size limit.", nameof(imagePath));
+                }
 
-                if (_stream == null)
+                if (_stream == null || memory == null)
                 {
                     throw new ArgumentException("Image path is invalid or file does not exist.", nameof(imagePath));
                 }
 
-                if (IsSvgContent(_stream))
+                if (isSvg)
                 {
                     Type = ImageType.SVG;
 
+                    // As on the spec path, an SVG is decoded only from the document the validator rebuilt from it
+                    // (spec/docs/svg.md): the file's bytes never reach the SVG decoder, which follows bare URIs and
+                    // recurses without bound. The byte limit applies before anything parses the file.
+                    var check = MediaValidator.Check(memory.GetBuffer().AsSpan(0, (int)memory.Length));
+                    if (check.Format != MediaFormat.Svg || check.Errors.Count > 0 || check.Sanitized is not { } rebuilt)
+                    {
+                        var error = check.Errors.FirstOrDefault();
+                        Logger.Warning("SVG {ImagePath} refused: {Code} {Message}", ImagePath,
+                            error?.Code ?? MediaProbe.MalformedCode, error?.Message ?? "The SVG has no rebuilt form to draw.");
+                        throw new ArgumentException("Unsupported image format or codec creation failed.", nameof(imagePath));
+                    }
+
                     SKSvg = new SKSvg();
-                    SKSvg.Load(_stream);
+                    using (var rebuiltStream = new MemoryStream(rebuilt, writable: false))
+                    {
+                        (loadSvg ?? LoadSvg)(SKSvg, rebuiltStream);
+                    }
 
                     if (SKSvg.Picture is SKPicture picture)
                     {
@@ -149,23 +196,39 @@ namespace InfoPanel.Models
             }
         }
 
-        private static bool IsSvgContent(Stream stream)
+        // Sniff up to the first 512 bytes; a small SVG (under 512 bytes) is still an SVG.
+        private const int SniffBytes = 512;
+
+        private static void LoadSvg(SKSvg svg, Stream stream) => svg.Load(stream);
+
+        private static bool IsSvgContent(ReadOnlySpan<byte> head)
         {
-            // Sniff up to the first 512 bytes; a small SVG (under 512 bytes) is still an SVG.
-            var length = (int)Math.Min(512, stream.Length);
-            if (length == 0)
+            if (head.IsEmpty)
             {
                 return false;
             }
 
-            var buffer = new byte[length];
-            stream.ReadExactly(buffer, 0, buffer.Length);
-            stream.Position = 0;
-
             // Check for SVG markers in the first bytes
-            var text = Encoding.UTF8.GetString(buffer);
+            var text = Encoding.UTF8.GetString(head);
             return text.Contains("<svg", StringComparison.OrdinalIgnoreCase) ||
                    text.Contains("<?xml", StringComparison.OrdinalIgnoreCase) && text.Contains("svg", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Copies at most <paramref name="count"/> bytes, fewer at the end of <paramref name="source"/>.</summary>
+        private static void CopyAtMost(Stream source, Stream destination, long count)
+        {
+            var buffer = new byte[81_920];
+            while (count > 0)
+            {
+                var read = source.Read(buffer, 0, (int)Math.Min(buffer.Length, count));
+                if (read == 0)
+                {
+                    return;
+                }
+
+                destination.Write(buffer, 0, read);
+                count -= read;
+            }
         }
 
         private SKBitmap? GetSKBitmapFromSK(int frame)
