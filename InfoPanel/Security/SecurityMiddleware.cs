@@ -11,7 +11,9 @@ namespace InfoPanel.Security;
 /// <c>http://127.0.0.1:{port}</c>, <c>http://localhost:{port}</c> or a <c>--dev-origin</c>; otherwise 403.</item>
 /// <item>An origin given with <c>--allow-origin</c> gets CORS on <c>/api</c> and <c>/healthz</c> (<see cref="CrossOrigin"/>);
 /// its preflights are answered here, before the token check.</item>
-/// <item><c>/api/*</c> needs <c>Authorization: Bearer {token}</c>. <c>/ws</c> needs the WebSocket subprotocol
+/// <item><c>/api/*</c> needs <c>Authorization: Bearer {token}</c>, the session token or an integration token
+/// (<see cref="TokenStore"/>); the request's <see cref="Caller"/> is set for <see cref="ScopeFilter"/>, which checks the
+/// endpoint's scope after routing. <c>/ws</c> needs the WebSocket subprotocol
 /// <c>infopanel.v1</c>, and the token either as the subprotocol <c>auth.{token}</c> (browsers can't set headers on a
 /// WebSocket) or, when no <c>auth.*</c> subprotocol is offered, in the first message after the upgrade
 /// (<see cref="PendingWebSocketAuthItem"/>, checked by <c>/ws</c> itself). Otherwise 401, before any upgrade; an
@@ -20,7 +22,7 @@ namespace InfoPanel.Security;
 /// <c>/healthz</c>, <c>/auth/{token}</c>) is public.</item>
 /// </list>
 /// </summary>
-public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runtime)
+public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runtime, TokenStore tokens)
 {
     /// <summary>
     /// Set in <see cref="HttpContext.Items"/> on a <c>/ws</c> request that offers <c>infopanel.v1</c> and no
@@ -40,18 +42,24 @@ public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runti
                 return Task.CompletedTask;
         }
 
-        if (request.Path.StartsWithSegments("/api") && !HasBearerToken(request))
+        if (request.Path.StartsWithSegments("/api"))
         {
-            context.Response.Headers.WWWAuthenticate = "Bearer";
-            return Problems.Write(context, StatusCodes.Status401Unauthorized, "Unauthorized",
-                "Open InfoPanel from the link it logs, or send the session token as a Bearer token.");
+            if (BearerCaller(request) is not { } caller)
+            {
+                context.Response.Headers.WWWAuthenticate = "Bearer";
+                return Problems.Write(context, StatusCodes.Status401Unauthorized, "Unauthorized",
+                    "Open InfoPanel from the link it logs, or send the session token or an integration token as a Bearer token.");
+            }
+
+            caller.SetOn(context);
         }
 
         if (request.Path.StartsWithSegments("/ws"))
         {
-            switch (WebSocketToken(request))
+            switch (WebSocketToken(request, out var caller))
             {
                 case TokenCheck.Valid:
+                    caller!.SetOn(context);
                     break;
                 case TokenCheck.Deferred:
                     context.Items[PendingWebSocketAuthItem] = true;
@@ -68,44 +76,47 @@ public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runti
 
     private enum TokenCheck { Invalid, Valid, Deferred }
 
-    private bool HasBearerToken(HttpRequest request)
+    private Caller? BearerCaller(HttpRequest request)
     {
         var authorization = request.Headers.Authorization.ToString();
         const string bearer = "Bearer ";
         return authorization.StartsWith(bearer, StringComparison.OrdinalIgnoreCase)
-            && runtime.IsValidToken(authorization[bearer.Length..].Trim());
+            ? Caller.Authenticate(authorization[bearer.Length..].Trim(), runtime, tokens)
+            : null;
     }
 
     /// <summary>
     /// <c>Sec-WebSocket-Protocol</c> must list <c>infopanel.v1</c>. With an <c>auth.*</c> subprotocol the token must be
-    /// valid; with none, the check is deferred to the first message. <c>/ws</c> accepts with <c>infopanel.v1</c> only,
-    /// never echoing the token.
+    /// valid (the session token or an integration token; <c>/ws</c> declares the <c>read</c> scope, which
+    /// <see cref="ScopeFilter"/> checks); with none, the check is deferred to the first message. <c>/ws</c> accepts with
+    /// <c>infopanel.v1</c> only, never echoing the token.
     /// </summary>
-    private TokenCheck WebSocketToken(HttpRequest request)
+    private TokenCheck WebSocketToken(HttpRequest request, out Caller? caller)
     {
+        caller = null;
         var protocols = request.Headers.GetCommaSeparatedValues(HeaderNames.SecWebSocketProtocol);
         if (!protocols.Contains(EngineRuntime.WebSocketProtocol, StringComparer.Ordinal))
             return TokenCheck.Invalid;
 
         var offered = false;
-        var valid = false;
         foreach (var protocol in protocols)
         {
             if (protocol.StartsWith(EngineRuntime.WebSocketAuthPrefix, StringComparison.Ordinal))
             {
                 offered = true;
-                valid |= runtime.IsValidToken(protocol[EngineRuntime.WebSocketAuthPrefix.Length..]);
+                caller ??= Caller.Authenticate(protocol[EngineRuntime.WebSocketAuthPrefix.Length..], runtime, tokens);
             }
         }
 
-        return valid ? TokenCheck.Valid : offered ? TokenCheck.Invalid : TokenCheck.Deferred;
+        return caller != null ? TokenCheck.Valid : offered ? TokenCheck.Invalid : TokenCheck.Deferred;
     }
 }
 
 /// <summary>
-/// <c>GET /auth/{token}</c>: a valid token redirects to <c>/#token={token}</c>. The web client reads the fragment (which is
-/// never sent to a server), keeps the token in <c>localStorage</c> (per origin, so per port), removes it from the
-/// address bar and sends it as a Bearer token. No cookie is set.
+/// <c>GET /auth/{token}</c>: the session token redirects to <c>/#token={token}</c>. The web client reads the fragment
+/// (which is never sent to a server), keeps the token in <c>localStorage</c> (per origin, so per port), removes it from
+/// the address bar and sends it as a Bearer token. No cookie is set. Only the session token signs in: an integration
+/// token is refused like any other, so it can never be exchanged for the session token.
 /// </summary>
 public static class AuthEndpoints
 {
@@ -114,7 +125,7 @@ public static class AuthEndpoints
         app.MapGet("/auth/{token}", (string token, EngineRuntime runtime, HttpContext context) =>
         {
             context.Response.Headers.CacheControl = "no-store";
-            if (!runtime.IsValidToken(token))
+            if (!runtime.IsSessionToken(token))
             {
                 return Results.Text("This sign-in link is not valid. Use the link the running engine logged.",
                     "text/plain", statusCode: StatusCodes.Status401Unauthorized);

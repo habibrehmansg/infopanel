@@ -8,7 +8,7 @@ namespace InfoPanel.Persistence;
 /// The engine's data folder. It keeps the 1.x layout (<c>profiles.xml</c>, <c>profiles/{guid}.xml</c>,
 /// <c>assets/{guid}/</c>) and adds <c>fonts/</c>, <c>logs/</c>, <c>runtime.json</c> and <c>engine.lock</c>.
 /// The 2.0 document store (<see cref="DocumentStore"/>, <see cref="BlobStore"/>) adds <c>profiles.json</c>,
-/// <c>profiles/{id}/document.json</c> and <c>blobs/{sha256 hex}</c>.
+/// <c>profiles/{id}/document.json</c> and <c>blobs/{sha256 hex}</c>; the engine adds <c>tokens.json</c>.
 /// </summary>
 public sealed class DataPaths
 {
@@ -64,6 +64,9 @@ public sealed class DataPaths
     /// <summary>A stored document's saved generation.</summary>
     /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
     public string DocumentFile(string id) => Path.Combine(ProfileFolder(id), DocumentStore.DocumentFileName);
+
+    /// <summary>The integration tokens: their records and the SHA-256 of each secret, never a secret.</summary>
+    public string TokensFile => Path.Combine(Root, "tokens.json");
 
     /// <summary>Stored blobs, one file per content hash.</summary>
     public string BlobsDirectory => Path.Combine(Root, "blobs");

@@ -99,6 +99,8 @@ try
 
     // The stores are opened and their blobs swept before anything changes them; the first run stores the example.
     var workspace = Workspace.Start(paths, new WorkspaceOptions { Logger = engineLogger.ForContext<Workspace>() }, DateTimeOffset.UtcNow);
+    // Integration tokens: a file that can't be read stops the engine rather than dropping or overwriting them.
+    var tokens = TokenStore.Open(paths.TokensFile, paths.Root, TimeProvider.System, engineLogger.ForContext<TokenStore>());
 
     FontRegistry.RegisterEmbedded();
     var userFonts = FontRegistry.RegisterDirectory(paths.FontsDirectory);
@@ -141,6 +143,7 @@ try
     builder.Services.AddSingleton(options);
     builder.Services.AddSingleton(paths);
     builder.Services.AddSingleton(runtime);
+    builder.Services.AddSingleton(tokens);
     // Made by a factory so the container disposes it (and every open document) after the services that use it.
     builder.Services.AddSingleton(_ => workspace);
     builder.Services.AddSingleton(TimeProvider.System);
@@ -206,12 +209,14 @@ try
     app.UseWebSockets(webSockets);
     app.UseClientFiles(webRoot);
     app.UseRouting();
+    app.UseMiddleware<ScopeFilter>();
 
     app.MapGet("/healthz", () => Results.Text("ok", "text/plain"));
     app.MapAuth();
     app.MapReadEndpoints();
     app.MapProfileEndpoints();
     app.MapBlobEndpoints();
+    app.MapTokenEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);
 

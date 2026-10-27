@@ -29,6 +29,11 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// Anything else (no message in time, a wrong token, another message, a binary or oversized one) closes the socket
 /// with <see cref="AuthFailedStatus"/> (1008, policy violation) and one of the <c>AuthFailed…</c> reasons.
 /// </para>
+/// <para>
+/// <b>Tokens.</b> Either way the token is the session token or an integration token with the <c>read</c> scope. A
+/// connection authenticated with an integration token is closed with 1008 and <see cref="TokenRevokedReason"/> as soon
+/// as that token is revoked; the others stay open.
+/// </para>
 /// <list type="bullet">
 /// <item>Client → server (JSON text, at most <see cref="MaxClientMessageBytes"/>): <c>subscribe {profileId, scale?, maxFps?}</c>,
 /// <c>view {scale?, maxFps?}</c>, <c>unsubscribe</c>.</item>
@@ -49,13 +54,16 @@ public static class PreviewSocketHandler
     public const string AuthFailedToken = "auth rejected";
     public const string AuthFailedMessage = "auth expected";
 
+    /// <summary>The close reason (with <see cref="AuthFailedStatus"/>) when the connection's integration token is revoked.</summary>
+    public const string TokenRevokedReason = "token revoked";
+
     /// <summary>How long the client has to answer a close frame before the connection is dropped.</summary>
     private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(2);
 
-    public static void MapPreviewSocket(this IEndpointRouteBuilder app) => app.Map("/ws", HandleAsync);
+    public static void MapPreviewSocket(this IEndpointRouteBuilder app) => app.Map("/ws", HandleAsync).RequireScope(ApiScope.Read);
 
     private static async Task HandleAsync(HttpContext context, Workspace workspace, RenderService render,
-        IHostApplicationLifetime lifetime, ILoggerFactory loggers, EngineRuntime runtime, PreviewSocketOptions options)
+        IHostApplicationLifetime lifetime, ILoggerFactory loggers, EngineRuntime runtime, TokenStore tokens, PreviewSocketOptions options)
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
@@ -70,23 +78,51 @@ public static class PreviewSocketHandler
         });
 
         var logger = loggers.CreateLogger("InfoPanel.Preview");
-        if (context.Items.ContainsKey(SecurityMiddleware.PendingWebSocketAuthItem)
-            && await AuthenticateFirstMessageAsync(socket, runtime, options.EffectiveAuthTimeout, context.RequestAborted) is { } failure)
+        var caller = Caller.Of(context);
+        if (context.Items.ContainsKey(SecurityMiddleware.PendingWebSocketAuthItem))
         {
-            logger.LogInformation("Closed a preview connection that did not authenticate ({Reason})", failure);
-            return;
+            (caller, var failure) = await AuthenticateFirstMessageAsync(socket, runtime, tokens, options.EffectiveAuthTimeout, context.RequestAborted);
+            if (failure != null)
+            {
+                logger.LogInformation("Closed a preview connection that did not authenticate ({Reason})", failure);
+                return;
+            }
         }
 
         var session = new PreviewSession(socket, workspace, render, logger);
-        await session.RunAsync(context.RequestAborted, lifetime.ApplicationStopping);
+        var tokenId = caller?.TokenId;
+        void OnRevoked(string id)
+        {
+            if (id == tokenId)
+                session.BeginClose(AuthFailedStatus, TokenRevokedReason);
+        }
+
+        if (tokenId != null)
+        {
+            tokens.Revoked += OnRevoked;
+            // Revoked between the check and the subscription: closed at once, like a later revocation.
+            if (!tokens.IsActive(tokenId))
+                session.BeginClose(AuthFailedStatus, TokenRevokedReason);
+        }
+
+        try
+        {
+            await session.RunAsync(context.RequestAborted, lifetime.ApplicationStopping);
+        }
+        finally
+        {
+            if (tokenId != null)
+                tokens.Revoked -= OnRevoked;
+        }
     }
 
     /// <summary>
     /// Reads the first message without cancelling the receive (a cancelled receive aborts the socket, and the client
-    /// would get no close status). Returns null when it is a valid <c>auth</c> message; otherwise closes the socket
+    /// would get no close status). Returns the caller when it is a valid <c>auth</c> message; otherwise closes the socket
     /// with <see cref="AuthFailedStatus"/> and returns the reason.
     /// </summary>
-    private static async Task<string?> AuthenticateFirstMessageAsync(WebSocket socket, EngineRuntime runtime, TimeSpan timeout, CancellationToken aborted)
+    private static async Task<(Caller? Caller, string? Failure)> AuthenticateFirstMessageAsync(WebSocket socket, EngineRuntime runtime,
+        TokenStore tokens, TimeSpan timeout, CancellationToken aborted)
     {
         var buffer = new byte[MaxClientMessageBytes + 1];
         var length = 0;
@@ -121,37 +157,42 @@ public static class PreviewSocketHandler
                 var result = await pending;
                 pending = null;
                 if (result.MessageType == WebSocketMessageType.Close)
-                    return await CloseAsync(socket, WebSocketCloseStatus.NormalClosure, "", null, "closed by the client");
+                    return (null, await CloseAsync(socket, WebSocketCloseStatus.NormalClosure, "", null, "closed by the client"));
 
                 length += result.Count;
                 if (!result.EndOfMessage)
                     continue;
 
+                Caller? caller = null;
                 failure = result.MessageType == WebSocketMessageType.Text && length <= MaxClientMessageBytes
-                    ? CheckAuthMessage(buffer.AsSpan(0, length), runtime)
+                    ? CheckAuthMessage(buffer.AsSpan(0, length), runtime, tokens, out caller)
                     : AuthFailedMessage;
                 if (failure.Length == 0)
-                    return null;
+                    return (caller, null);
                 break;
             }
         }
         catch (Exception ex) when (ex is WebSocketException or OperationCanceledException)
         {
-            return "connection lost";
+            return (null, "connection lost");
         }
 
         if (aborted.IsCancellationRequested)
         {
             socket.Abort();
-            return "connection lost";
+            return (null, "connection lost");
         }
 
-        return await CloseAsync(socket, AuthFailedStatus, failure, pending, failure);
+        return (null, await CloseAsync(socket, AuthFailedStatus, failure, pending, failure));
     }
 
-    /// <summary>"" for <c>{"type":"auth","token":"…"}</c> with the engine's token, else the failure reason.</summary>
-    private static string CheckAuthMessage(ReadOnlySpan<byte> utf8, EngineRuntime runtime)
+    /// <summary>
+    /// "" for <c>{"type":"auth","token":"…"}</c> with the session token or an integration token with the <c>read</c>
+    /// scope (<paramref name="caller"/> set), else the failure reason.
+    /// </summary>
+    private static string CheckAuthMessage(ReadOnlySpan<byte> utf8, EngineRuntime runtime, TokenStore tokens, out Caller? caller)
     {
+        caller = null;
         try
         {
             using var json = JsonDocument.Parse(utf8.ToArray());
@@ -163,7 +204,11 @@ public static class PreviewSocketHandler
                 return AuthFailedMessage;
             }
 
-            return runtime.IsValidToken(token.GetString()) ? "" : AuthFailedToken;
+            caller = Caller.Authenticate(token.GetString(), runtime, tokens);
+            if (caller?.Allows(ApiScope.Read) == true)
+                return "";
+            caller = null;
+            return AuthFailedToken;
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -264,6 +309,9 @@ internal sealed class PreviewSession
     {
         using var abort = CancellationTokenSource.CreateLinkedTokenSource(aborted);
         _abort = abort;
+        // Closed before it ran (its token revoked meanwhile): the close is bounded like any other.
+        if (_closing)
+            abort.CancelAfter(CloseTimeout);
         _workspace.ProfilesChanged += OnProfilesChanged;
         using var onStopping = stopping.Register(() => BeginClose(WebSocketCloseStatus.EndpointUnavailable, "The engine is stopping."));
 
@@ -628,9 +676,9 @@ internal sealed class PreviewSession
 
     /// <summary>
     /// Asks the send loop to send a close frame (once) and stop; the connection is aborted if the client hasn't
-    /// answered within <see cref="CloseTimeout"/>.
+    /// answered within <see cref="CloseTimeout"/>. Safe from any thread (a token's revocation calls it).
     /// </summary>
-    private void BeginClose(WebSocketCloseStatus status, string description)
+    internal void BeginClose(WebSocketCloseStatus status, string description)
     {
         lock (_lock)
         {

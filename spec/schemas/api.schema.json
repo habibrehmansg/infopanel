@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:infopanel:api:1",
-  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, and the preview socket's frame headers (with item bounds) and change events. See docs/api.md, docs/commit.md and docs/geometry.md.",
+  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, and the preview socket's frame headers (with item bounds) and change events. See docs/api.md, docs/commit.md and docs/geometry.md.",
   "$defs": {
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
@@ -770,6 +770,63 @@
         "formats": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
         "capabilities": { "type": "array", "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" } }
+      }
+    },
+    "createTokenRequest": {
+      "description": "POST /api/tokens (the session token only): a new integration token with a name and scopes. Answered 201 with createdToken, the only answer that carries the token's secret (docs/api.md#authentication).",
+      "type": "object",
+      "required": ["name", "scopes"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/tokenName" },
+        "scopes": { "$ref": "#/$defs/tokenScopes", "description": "What the token may do: `read`, `edit` or both. `edit` implies `read`, and the token is answered and listed with both." }
+      }
+    },
+    "tokenInfo": {
+      "description": "An integration token, without its secret: GET /api/tokens (the session token only) answers an array of these, oldest first. The session token is never listed.",
+      "type": "object",
+      "required": ["id", "name", "kind", "scopes", "created"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/tokenId" },
+        "name": { "$ref": "#/$defs/tokenName" },
+        "kind": { "description": "The token's kind: `integration`, the only kind the API creates and lists.", "const": "integration" },
+        "scopes": { "$ref": "#/$defs/tokenScopes", "description": "What the token may do: always `read`, and `edit` when it may change profiles, documents and blobs." },
+        "created": { "$ref": "#/$defs/timestamp", "description": "When the token was created." },
+        "lastUsed": { "$ref": "#/$defs/timestamp", "description": "When the token last authenticated a request, kept to within a minute; absent when it never has." }
+      }
+    },
+    "createdToken": {
+      "description": "201 to POST /api/tokens: the new token's tokenInfo members and its secret, `token`, which no other answer carries and the engine doesn't keep (it stores only a hash).",
+      "type": "object",
+      "required": ["id", "name", "kind", "scopes", "created", "token"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/tokenId" },
+        "name": { "$ref": "#/$defs/tokenName" },
+        "kind": { "const": "integration" },
+        "scopes": { "$ref": "#/$defs/tokenScopes" },
+        "created": { "$ref": "#/$defs/timestamp" },
+        "lastUsed": { "$ref": "#/$defs/timestamp" },
+        "token": { "description": "The secret, sent as `Authorization: Bearer {token}` or on /ws like the session token: `ipi_` and 43 base64url characters (256 random bits).", "type": "string", "pattern": "^ipi_[A-Za-z0-9_-]{43}$" }
+      }
+    },
+    "tokenId": { "description": "An integration token's id, used to revoke it (DELETE /api/tokens/{id}): 32 lower-case hex digits. Not a secret.", "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "tokenName": { "description": "A token's name, for people: 1 to 64 letters, digits, spaces, dots, underscores and hyphens, without a space at either end.", "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]([A-Za-z0-9 ._-]{0,62}[A-Za-z0-9._-])?$" },
+    "tokenScopes": { "type": "array", "items": { "enum": ["read", "edit"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true },
+    "timestamp": { "description": "A UTC time to the second (RFC 3339), such as \"2026-10-27T09:30:00Z\".", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "scopeProblem": {
+      "description": "403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication).",
+      "type": "object",
+      "required": ["status", "code", "scope"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 403 },
+        "code": { "const": "scope" },
+        "scope": { "description": "What the request needs.", "enum": ["read", "edit", "session"] }
       }
     }
   }

@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace InfoPanel.Spec;
 
-// Engine API bodies that carry the document format (spec/schemas/api.schema.json). Data only.
+// Engine API bodies that carry the document format, and the token bodies (spec/schemas/api.schema.json). Data only.
 
 [SpecDef("urn:infopanel:api:1#/$defs/session")]
 public sealed record Session
@@ -374,4 +374,42 @@ public sealed record FormatVersion
     public required IReadOnlyList<string> Formats { get; init; }
     public required string Version { get; init; }
     public required IReadOnlyList<string> Capabilities { get; init; }
+}
+
+/// <summary><c>POST /api/tokens</c>: <see cref="Scopes"/> holds <c>read</c>, <c>edit</c> or both.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/createTokenRequest")]
+public sealed record CreateTokenRequest
+{
+    public required string Name { get; init; }
+    public required IReadOnlyList<string> Scopes { get; init; }
+}
+
+/// <summary>
+/// An integration token (the schema's <c>tokenInfo</c>, as listed), or a new one (<c>createdToken</c>, with its secret
+/// in <see cref="Token"/>, which only the create's answer carries).
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/tokenInfo", "urn:infopanel:api:1#/$defs/createdToken")]
+public sealed record TokenInfo
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    /// <summary>Always <c>integration</c>.</summary>
+    public required string Kind { get; init; }
+    public required IReadOnlyList<string> Scopes { get; init; }
+    public required string Created { get; init; }
+    public string? LastUsed { get; init; }
+    public string? Token { get; init; }
+}
+
+/// <summary>403: the token lacks <see cref="Scope"/> (<c>read</c>, <c>edit</c> or <c>session</c>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/scopeProblem")]
+public sealed record ScopeProblem
+{
+    public string? Type { get; init; }
+    public string? Title { get; init; }
+    public string? Detail { get; init; }
+    public required int Status { get; init; }
+    /// <summary>Always <c>scope</c>.</summary>
+    public required string Code { get; init; }
+    public required string Scope { get; init; }
 }

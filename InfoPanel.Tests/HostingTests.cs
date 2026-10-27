@@ -71,7 +71,7 @@ public sealed class HostingTests : IDisposable
     [Fact]
     public void Wipe_OfAV2Folder_KeepsOnlyTheLock()
     {
-        // --fresh on a folder the 2.0 store wrote: its order file and temp files, profile folders, blobs.
+        // --fresh on a folder the 2.0 store wrote: its order file and temp files, the tokens, profile folders, blobs.
         var lockPath = Path.Combine(_dir, "engine.lock");
         using var held = InstanceLock.TryAcquire(lockPath, out _);
         var profile = Path.Combine(_dir, "profiles", Guid.NewGuid().ToString());
@@ -79,6 +79,8 @@ public sealed class HostingTests : IDisposable
         File.WriteAllText(Path.Combine(profile, "document.json"), "{}");
         File.WriteAllText(Path.Combine(_dir, "profiles.json"), """{"order":[]}""");
         File.WriteAllText(Path.Combine(_dir, $"profiles.json.{Guid.NewGuid():N}.tmp"), "x");
+        File.WriteAllText(Path.Combine(_dir, "tokens.json"), """{"tokens":[]}""");
+        File.WriteAllText(Path.Combine(_dir, $"tokens.json.{Guid.NewGuid():N}.tmp"), "x");
         Directory.CreateDirectory(Path.Combine(_dir, "blobs"));
         File.WriteAllText(Path.Combine(_dir, "blobs", new string('a', 64)), "x");
         Directory.CreateDirectory(Path.Combine(_dir, "assets"));
@@ -185,9 +187,9 @@ public sealed class HostingTests : IDisposable
         Assert.True(runtime.IsAllowedOrigin("http://localhost:5180"));
         Assert.False(runtime.IsAllowedOrigin("http://localhost:5181"));
         Assert.False(runtime.IsAllowedOrigin("http://[::1]:5199"));
-        Assert.True(runtime.IsValidToken("secret"));
-        Assert.False(runtime.IsValidToken("secre"));
-        Assert.False(runtime.IsValidToken(null));
+        Assert.True(runtime.IsSessionToken("secret"));
+        Assert.False(runtime.IsSessionToken("secre"));
+        Assert.False(runtime.IsSessionToken(null));
         Assert.Equal("http://127.0.0.1:5199/auth/secret", runtime.AuthUrl);
         Assert.Equal("http://localhost:5180/auth/<token>", runtime.AuthUrlFor("http://localhost:5180", redacted: true));
         Assert.False(runtime.IsCrossOrigin("http://localhost:5180"));

@@ -45,4 +45,4 @@ Anything else (removing or renaming, changing meaning, changing limits) needs a 
 
 ## The engine API
 
-The engine API bodies (session, profile list, profile creation and duplication, document, blob, commit, undo, redo and revert, result, problem, frame header and change event) are versioned with the engine API, which adds members and endpoints compatibly and reports its version in `GET /api/session` (`protocol`, [API](api.md#session)). A client ignores members it doesn't know in what the engine sends; the engine refuses members it doesn't know in what a client sends.
+The engine API bodies (session, profile list, profile creation and duplication, document, blob, commit, undo, redo and revert, result, problem, token, frame header and change event) are versioned with the engine API, which adds members and endpoints compatibly and reports its version in `GET /api/session` (`protocol`, [API](api.md#session)). A client ignores members it doesn't know in what the engine sends; the engine refuses members it doesn't know in what a client sends.

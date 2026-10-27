@@ -1,6 +1,7 @@
 using InfoPanel.Documents;
 using InfoPanel.Drawing;
 using InfoPanel.Persistence;
+using InfoPanel.Security;
 using InfoPanel.Sensors;
 using InfoPanel.Spec;
 using SkiaSharp;
@@ -16,7 +17,7 @@ public sealed record SensorValue(string Key, double Now, double Min, double Max,
 
 /// <summary>
 /// The engine's session, fonts and sensors (spec/docs/api.md, "Session"). Everything here is under <c>/api</c> and
-/// needs the token.
+/// needs a token with the <c>read</c> scope.
 /// </summary>
 public static class ReadEndpoints
 {
@@ -35,14 +36,14 @@ public static class ReadEndpoints
             Platform = Platform(),
             DataDir = paths.Root,
             FormatSupport = FormatSupportOf(workspace),
-        }));
+        })).RequireScope(ApiScope.Read);
 
-        api.MapGet("/fonts", () => Fonts());
+        api.MapGet("/fonts", () => Fonts()).RequireScope(ApiScope.Read);
 
         api.MapGet("/sensors", (SensorHub hub) =>
             hub.GetSensors()
                 .Select(s => new SensorListEntry(s.Key.ToString(), s.SourceId, s.Group, s.Name, s.Unit, hub.GetStatus(s.Key)))
-                .ToList());
+                .ToList()).RequireScope(ApiScope.Read);
 
         api.MapGet("/sensors/values", (int? history, SensorHub hub, SensorHistory sensorHistory) =>
         {
@@ -68,7 +69,7 @@ public static class ReadEndpoints
             }
 
             return values;
-        });
+        }).RequireScope(ApiScope.Read);
     }
 
     /// <summary>What the engine reads: the formats, their newest minor version, the capabilities it has and its limits.</summary>

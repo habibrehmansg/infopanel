@@ -70,6 +70,39 @@ public class AtomicFileTests
         Assert.Equal([StorageStep.CreateTemp, StorageStep.WriteTemp, StorageStep.FlushTemp, StorageStep.ReplaceFile, StorageStep.SyncFolder], steps);
     }
 
+    /// <summary>
+    /// A private file's temp file is owner read and write only from its creation, at every step while it is written,
+    /// and so is the file it becomes, even where the target had wider permissions.
+    /// </summary>
+    [Fact]
+    public void WritePrivate_TempFileIsOwnerOnlyWhileItIsWritten()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // no Unix modes there
+        using var temp = new TempDirectory();
+        var path = temp.Combine("tokens.json");
+        File.WriteAllText(path, "old");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        var seen = new List<(StorageStep Step, UnixFileMode Mode)>();
+        var faults = new MatchFaults
+        {
+            Fail = (step, _) =>
+            {
+                foreach (var file in Directory.EnumerateFiles(temp.Path, "tokens.json.*" + AtomicFile.TempSuffix))
+                    seen.Add((step, File.GetUnixFileMode(file)));
+                return false;
+            },
+        };
+
+        AtomicFile.WritePrivate(path, "{\"tokens\":[]}"u8.ToArray(), root: null, faults);
+
+        const UnixFileMode ownerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        Assert.Equal([StorageStep.WriteTemp, StorageStep.FlushTemp, StorageStep.ReplaceFile], seen.Select(s => s.Step));
+        Assert.All(seen, s => Assert.Equal(ownerOnly, s.Mode));
+        Assert.Equal(ownerOnly, File.GetUnixFileMode(path));
+        Assert.Equal("{\"tokens\":[]}", File.ReadAllText(path));
+    }
+
     [Fact]
     public void SyncFolder_FailureIsAnError()
     {

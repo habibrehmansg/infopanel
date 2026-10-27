@@ -1,0 +1,1 @@
+{"title": "Forbidden", "detail": "Only the session token may do this.", "status": 403, "code": "scope", "scope": "session"}

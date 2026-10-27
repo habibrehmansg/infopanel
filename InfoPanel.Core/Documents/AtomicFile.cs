@@ -98,6 +98,16 @@ public static class AtomicFile
     /// </exception>
     public static void Write(string path, Action<Stream> write, string? root = null) => Write(path, write, root, faults: null);
 
+    /// <summary>
+    /// As <see cref="Write(string, ReadOnlyMemory{byte}, string?)"/>, for a file only its owner may read: on Unix the
+    /// temp file is created owner read and write only (0600), so the target never has wider permissions, not even briefly.
+    /// </summary>
+    public static void WritePrivate(string path, ReadOnlyMemory<byte> content, string? root = null) =>
+        WritePrivate(path, content, root, faults: null);
+
+    internal static void WritePrivate(string path, ReadOnlyMemory<byte> content, string? root, IStorageFaults? faults) =>
+        Write(path, content, root, faults, ownerOnly: true);
+
     /// <summary>A random part for a temp file's or a staging folder's name: <see cref="RandomLength"/> lower-case hex digits.</summary>
     internal static string NewRandom() => Guid.NewGuid().ToString("N");
 
@@ -127,17 +137,19 @@ public static class AtomicFile
         return true;
     }
 
-    internal static void Write(string path, ReadOnlyMemory<byte> content, string? root, IStorageFaults? faults, Action? replaced = null) =>
+    internal static void Write(string path, ReadOnlyMemory<byte> content, string? root, IStorageFaults? faults, Action? replaced = null,
+        bool ownerOnly = false) =>
         Write(path, stream =>
         {
             var half = content.Length / 2;
             stream.Write(content.Span[..half]);
             faults?.Before(StorageStep.WriteTemp, path);
             stream.Write(content.Span[half..]);
-        }, root, faults, replaced);
+        }, root, faults, replaced, ownerOnly);
 
     /// <param name="replaced">Called once the target is replaced, before its folder is flushed (which may still fail).</param>
-    internal static void Write(string path, Action<Stream> write, string? root, IStorageFaults? faults, Action? replaced = null)
+    /// <param name="ownerOnly">Create the temp file 0600 on Unix (ignored on Windows).</param>
+    internal static void Write(string path, Action<Stream> write, string? root, IStorageFaults? faults, Action? replaced = null, bool ownerOnly = false)
     {
         var folder = Path.GetDirectoryName(Path.GetFullPath(path))!;
         CreateFolder(folder, root, faults);
@@ -145,7 +157,10 @@ public static class AtomicFile
         try
         {
             faults?.Before(StorageStep.CreateTemp, temp);
-            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+            if (ownerOnly && !OperatingSystem.IsWindows())
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            using (var stream = new FileStream(temp, options))
             {
                 write(stream);
                 faults?.Before(StorageStep.FlushTemp, temp);

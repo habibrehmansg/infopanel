@@ -92,8 +92,11 @@ public sealed class EngineRuntime
         return false;
     }
 
-    /// <summary>Compares in constant time for tokens of the right length.</summary>
-    public bool IsValidToken(string? candidate)
+    /// <summary>
+    /// Whether <paramref name="candidate"/> is this run's session token (full access); compares in constant time for
+    /// tokens of the right length. Integration tokens are checked by <see cref="Security.TokenStore"/>.
+    /// </summary>
+    public bool IsSessionToken(string? candidate)
     {
         if (string.IsNullOrEmpty(candidate))
             return false;

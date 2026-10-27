@@ -2,7 +2,9 @@
 
 Schema: `urn:infopanel:api:1` (`schemas/api.schema.json`). Examples: `examples/api/`, one folder per definition; each `invalid/` folder holds bodies its definition refuses, or that break a check beyond the schema ([below](#checks-beyond-the-schema)).
 
-The engine serves a REST API under `/api` and a preview socket at `/ws`. This page specifies the bodies that carry the formats and the engine behaviour behind them; commits, undo, redo, revert and save have their own page ([commits](commit.md)). Members are camelCase, and errors are `application/problem+json`. A client ignores members it doesn't know in what the engine sends ([versioning](versioning.md#the-engine-api)).
+The engine serves a REST API under `/api` and a preview socket at `/ws`. This page specifies the bodies that carry the formats, the tokens that give access to them, and the engine behaviour behind them; commits, undo, redo, revert and save have their own page ([commits](commit.md)). Members are camelCase, and errors are `application/problem+json`. A client ignores members it doesn't know in what the engine sends ([versioning](versioning.md#the-engine-api)).
+
+Every request below needs a token ([authentication](#authentication)): without a valid one the engine answers 401, and to a token without the scope the request needs, 403 `scopeProblem`.
 
 | Request | Body | Answer |
 |---|---|---|
@@ -19,10 +21,37 @@ The engine serves a REST API under `/api` and a preview socket at `/ws`. This pa
 | `POST /api/profiles/{id}/save` | | `commitResult` |
 | `POST /api/blobs` | The bytes | `blobInfo`: 201 when the blob is new, 200 when it was already stored; 413 over `mediaBytes` |
 | `HEAD /api/blobs/{id}`, `GET /api/blobs/{id}` | | The blob's bytes; 404 when it isn't stored |
+| `POST /api/tokens` | `createTokenRequest` | 201 `createdToken`; 422 `invalidProblem` ([below](#integration-tokens)) |
+| `GET /api/tokens` | | An array of `tokenInfo`, oldest first |
+| `DELETE /api/tokens/{id}` | | 204; 404 when there is no such token |
 | `/ws`, the `doc` message | | `docEvent` |
 | `/ws`, a frame message | | A `frameHeader`, then the frame |
 
 A request on a profile is checked in this order, and the first failure answers: the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
+
+## Authentication
+
+Every request under `/api` carries a token, as `Authorization: Bearer {token}`. The preview socket takes it as the subprotocol `auth.{token}` offered with `infopanel.v1` or, when no `auth.*` subprotocol is offered, as its first message, `{"type": "auth", "token": "…"}`, within 5 seconds. There are two kinds of token:
+
+- The **session** token is made by the engine each time it starts, or given on its command line, and has full access. The engine shows it only in the sign-in link it prints (`/auth/{token}`) and in the pairing link for a client served from another origin, and never stores it.
+- **Integration** tokens are for scripts and other programs. They are made with the session token ([below](#integration-tokens)), kept by the engine across restarts until they are revoked, and limited to the scopes they were made with.
+
+| Scope | Allows |
+|---|---|
+| `read` | Every `GET` and `HEAD` under `/api` (the session, fonts, sensors, the profile list, documents, exports, thumbnails, blobs) and the preview socket, `doc` messages and frames included |
+| `edit` | Every request that changes a profile, a document or a blob: creating, duplicating and deleting profiles, commits, undo, redo, revert, save and `POST /api/blobs`. `edit` implies `read`: a token made with `edit` has both |
+
+Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token) and uses the token endpoints. Scopes fail closed: a request that neither scope covers needs the session token.
+
+A request without a token, or with one the engine doesn't know or has revoked, is answered 401 with `WWW-Authenticate: Bearer`. A valid token without the scope the request needs is answered 403 `scopeProblem`, whose `scope` is what it lacks: `read`, `edit`, or `session` for what only the session token may do. Both are `application/problem+json`.
+
+### Integration tokens
+
+`POST /api/tokens` (`createTokenRequest`) makes a token: `name` is for people (1 to 64 letters, digits, spaces, dots, underscores and hyphens, without a space at either end; names needn't be unique), and `scopes` is `read`, `edit` or both. The answer, 201 `createdToken`, has the token's `id` and its secret, `token`: `ipi_` and 43 base64url characters (256 random bits). That answer is the only place the secret appears: the engine keeps only its SHA-256 and never writes the secret to its logs, so a lost secret can't be recovered; the token is revoked and another one made. A body that breaks `createTokenRequest` is answered 422 `invalidProblem`, and no token is made.
+
+`GET /api/tokens` lists the integration tokens, oldest first, as `tokenInfo`: `id`, `name`, `kind` (`integration`), `scopes` (`read`, and `edit` when it has it) and `created`, with `lastUsed` once the token has authenticated a request (kept to within a minute). It has no secrets and never lists the session token.
+
+`DELETE /api/tokens/{id}` revokes a token and answers 204, or 404 when there is no token with that id. Revocation takes effect at once: the next request with the token is answered 401, and every preview socket authenticated with it is closed with status 1008 and the reason `token revoked`. Every other connection stays open.
 
 ## Session
 

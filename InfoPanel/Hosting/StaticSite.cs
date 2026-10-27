@@ -34,8 +34,9 @@ public static class StaticSite
 
     public static void MapClientFallback(this WebApplication app, string? webRoot)
     {
+        // Any token may learn that a path doesn't exist; it reads and changes nothing.
         app.MapFallback("/api/{**rest}", (HttpContext context) =>
-            Problems.NotFound($"No API endpoint {context.Request.Method} {context.Request.Path}."));
+            Problems.NotFound($"No API endpoint {context.Request.Method} {context.Request.Path}.")).RequireScope(ApiScope.Read);
         app.MapFallback("/ws/{**rest}", () => Results.NotFound());
         app.MapFallback("/auth/{**rest}", () => Results.NotFound());
 

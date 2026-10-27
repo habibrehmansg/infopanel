@@ -632,6 +632,78 @@ export interface FormatVersion {
   capabilities: Capability[];
 }
 
+/** POST /api/tokens (the session token only): a new integration token with a name and scopes. Answered 201 with createdToken, the only answer that carries the token's secret (docs/api.md#authentication). */
+export interface CreateTokenRequest {
+  name: TokenName;
+  /** What the token may do: `read`, `edit` or both. `edit` implies `read`, and the token is answered and listed with both. */
+  scopes: TokenScopes;
+}
+
+/** An integration token, without its secret: GET /api/tokens (the session token only) answers an array of these, oldest first. The session token is never listed. */
+export interface TokenInfo {
+  id: TokenId;
+  name: TokenName;
+  /** The token's kind: `integration`, the only kind the API creates and lists. */
+  kind: "integration";
+  /** What the token may do: always `read`, and `edit` when it may change profiles, documents and blobs. */
+  scopes: TokenScopes;
+  /** When the token was created. */
+  created: Timestamp;
+  /** When the token last authenticated a request, kept to within a minute; absent when it never has. */
+  lastUsed?: Timestamp;
+}
+
+/** 201 to POST /api/tokens: the new token's tokenInfo members and its secret, `token`, which no other answer carries and the engine doesn't keep (it stores only a hash). */
+export interface CreatedToken {
+  id: TokenId;
+  name: TokenName;
+  kind: "integration";
+  scopes: TokenScopes;
+  created: Timestamp;
+  lastUsed?: Timestamp;
+  /**
+   * The secret, sent as `Authorization: Bearer {token}` or on /ws like the session token: `ipi_` and 43 base64url characters (256 random bits).
+   * Pattern: `^ipi_[A-Za-z0-9_-]{43}$`.
+   */
+  token: string;
+}
+
+/**
+ * An integration token's id, used to revoke it (DELETE /api/tokens/{id}): 32 lower-case hex digits. Not a secret.
+ * Pattern: `^[0-9a-f]{32}$`.
+ */
+export type TokenId = string;
+
+/**
+ * A token's name, for people: 1 to 64 letters, digits, spaces, dots, underscores and hyphens, without a space at either end.
+ * Length: 1–64.
+ * Pattern: `^[A-Za-z0-9._-]([A-Za-z0-9 ._-]{0,62}[A-Za-z0-9._-])?$`.
+ */
+export type TokenName = string;
+
+/**
+ * Items: 1–2.
+ * Unique items.
+ */
+export type TokenScopes = ("read" | "edit")[];
+
+/**
+ * A UTC time to the second (RFC 3339), such as "2026-10-27T09:30:00Z".
+ * Pattern: `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`.
+ */
+export type Timestamp = string;
+
+/** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
+export interface ScopeProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  status: 403;
+  code: "scope";
+  /** What the request needs. */
+  scope: "read" | "edit" | "session";
+}
+
 // common.schema.json (urn:infopanel:common:1)
 
 /**

@@ -1,5 +1,6 @@
 using InfoPanel.Documents;
 using InfoPanel.Output;
+using InfoPanel.Security;
 using InfoPanel.Spec;
 using System.Text.Json;
 using static InfoPanel.Api.ApiResults;
@@ -9,7 +10,7 @@ namespace InfoPanel.Api;
 /// <summary>
 /// Profiles and their documents (spec/docs/api.md, commit.md): list, create, duplicate, delete, read, export,
 /// thumbnail, commit, undo, redo, revert and save. All under <c>/api</c>, behind the Origin and Bearer checks of
-/// <c>SecurityMiddleware</c>. A request on a profile is checked in order: the profile exists (404), it can be opened
+/// <c>SecurityMiddleware</c>; reads need the <c>read</c> scope, and every request that changes a profile <c>edit</c>. A request on a profile is checked in order: the profile exists (404), it can be opened
 /// (409 <c>profileStatusProblem</c>), the body (422), then what the request itself checks. Errors are
 /// <c>application/problem+json</c>.
 /// </summary>
@@ -25,7 +26,7 @@ public static class ProfileEndpoints
     {
         var api = app.MapGroup("/api/profiles");
 
-        api.MapGet("", (Workspace workspace) => Json(workspace.List()));
+        api.MapGet("", (Workspace workspace) => Json(workspace.List())).RequireScope(ApiScope.Read);
 
         api.MapPost("", async (HttpRequest request, Workspace workspace, CancellationToken ct) =>
         {
@@ -33,7 +34,7 @@ public static class ProfileEndpoints
             if (over)
                 return Invalid("/document", "limit.documentBytes", $"The document is over the {workspace.Limits.DocumentBytes}-byte limit.");
             return Created(workspace.Create(body));
-        }).WithOwnBodyLimit();
+        }).WithOwnBodyLimit().RequireScope(ApiScope.Edit);
 
         api.MapPost("/{id}/duplicate", async (string id, HttpRequest request, Workspace workspace, CancellationToken ct) =>
         {
@@ -46,10 +47,10 @@ public static class ProfileEndpoints
                 return Invalid("", "schema", "A duplicate's body is {\"id\"}.");
             var outcome = workspace.Duplicate(found.Document!, body);
             return outcome.NotFound ? ProfileNotFound(id) : Created(outcome);
-        });
+        }).RequireScope(ApiScope.Edit);
 
         api.MapDelete("/{id}", (string id, Workspace workspace) =>
-            workspace.Delete(id) ? Results.NoContent() : ProfileNotFound(id));
+            workspace.Delete(id) ? Results.NoContent() : ProfileNotFound(id)).RequireScope(ApiScope.Edit);
 
         api.MapGet("/{id}", (string id, Workspace workspace) => WithDocument(workspace, id, doc =>
         {
@@ -63,7 +64,7 @@ public static class ProfileEndpoints
                 CanRedo = state.CanRedo,
                 Document = state.Document,
             });
-        }));
+        })).RequireScope(ApiScope.Read);
 
         api.MapGet("/{id}/document", (string id, Workspace workspace, HttpContext context) =>
         {
@@ -75,7 +76,7 @@ public static class ProfileEndpoints
 
             context.Response.Headers.CacheControl = "no-store";
             return Results.Stream(document.Content, document.Stored ? "application/octet-stream" : "application/json");
-        });
+        }).RequireScope(ApiScope.Read);
 
         api.MapGet("/{id}/thumbnail", (string id, int? w, Workspace workspace, RenderService render, HttpContext context) =>
             WithDocument(workspace, id, doc =>
@@ -84,7 +85,7 @@ public static class ProfileEndpoints
                 var png = render.RenderOnce(doc, w ?? Thumbnail.DefaultWidth);
                 context.Response.Headers.CacheControl = "no-store";
                 return Results.File(png, "image/png");
-            }));
+            })).RequireScope(ApiScope.Read);
 
         api.MapPost("/{id}/commit", async (string id, HttpRequest request, Workspace workspace, CancellationToken ct) =>
         {
@@ -98,14 +99,14 @@ public static class ProfileEndpoints
             if (over && body.Length == 0)
                 return Invalid("", "limit.commitBytes", $"{request.ContentLength} is over the limit of {workspace.Limits.CommitBytes} (commitBytes).");
             return Acting(id, () => Outcome(found.Document!.Commit(body)));
-        }).WithOwnBodyLimit();
+        }).WithOwnBodyLimit().RequireScope(ApiScope.Edit);
 
         MapHistory(api, "undo", (doc, body) => doc.Undo(body));
         MapHistory(api, "redo", (doc, body) => doc.Redo(body));
         MapHistory(api, "revert", (doc, body) => doc.Revert(body));
 
         api.MapPost("/{id}/save", (string id, Workspace workspace) =>
-            WithDocument(workspace, id, doc => Acting(id, () => Json(doc.Save()))));
+            WithDocument(workspace, id, doc => Acting(id, () => Json(doc.Save())))).RequireScope(ApiScope.Edit);
     }
 
     /// <summary>Undo, redo or revert: a <c>historyRequest</c> body, answered with <c>commitResult</c>, 409 or 422.</summary>
@@ -121,7 +122,7 @@ public static class ProfileEndpoints
             if (json == null)
                 return Invalid("", over ? "schema" : "json", over ? "The body is {\"instance\", \"baseRev\"}." : "The body isn't JSON.");
             return Acting(id, () => Outcome(act(found.Document!, json.RootElement)));
-        });
+        }).RequireScope(ApiScope.Edit);
 
     private static IResult WithDocument(Workspace workspace, string id, Func<ProfileDocument, IResult> act)
     {
