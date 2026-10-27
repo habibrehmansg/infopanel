@@ -389,6 +389,13 @@ const JSON_MEDIA = /^application\/([A-Za-z0-9.+-]+\+)?json$/;
 /** Whether a media type carries JSON (application/json, application/problem+json). */
 export const isJsonMedia = (media) => JSON_MEDIA.test(media);
 
+/** The types and keywords of a scalar a body array may hold inline (the font list's strings): no object or array keywords. */
+const SCALAR_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'null']);
+const SCALAR_KEYWORDS = new Set([
+  '$comment', 'title', 'description', 'default', 'examples', 'deprecated', 'readOnly', 'writeOnly', 'type', 'enum', 'const', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minLength',
+  'maxLength', 'pattern',
+]);
+
 /**
  * Checks an OpenAPI document against the subset and returns its operations, in document order:
  * `{ key: 'GET /path', method, path, operationId, summary, description, security, params, query, request, responses,
@@ -481,6 +488,28 @@ function checkOpenApi({ file, json: doc }, byId) {
     if (!has(v, 'schema')) fail(pointer, 'a parameter needs a schema');
     return { name: v.name, in: v.in, required: v.required === true, description: v.description, schema: schema(v.schema, ptr(pointer, 'schema')), pointer };
   };
+  // A body names its definitions; it never defines one: a bare `{"$ref"}` to a definition (or a schema's root).
+  const isBareRef = (s) => isObj(s) && Object.keys(s).length === 1 && has(s, '$ref');
+  const bareRef = (s, p, what) => {
+    if (!isBareRef(s)) fail(p, `${what} must be a bare {"$ref"} to a definition, with no other keys`);
+  };
+  // What a JSON body's schema may be: a definition, a oneOf of definitions, or an array of a definition or of a scalar.
+  const bodySchema = (s, p) => {
+    if (isBareRef(s)) return;
+    const keys = isObj(s) ? Object.keys(s).sort().join(',') : '';
+    if (keys === 'oneOf') {
+      if (s.oneOf.length === 0) fail(ptr(p, 'oneOf'), 'a body\'s oneOf names at least one definition');
+      s.oneOf.forEach((b, i) => bareRef(b, ptr(p, 'oneOf', i), 'each branch of a body\'s oneOf'));
+      return;
+    }
+    if (keys === 'items,type' && s.type === 'array') {
+      const items = s.items;
+      if (isBareRef(items)) return;
+      if (isObj(items) && SCALAR_TYPES.has(items.type) && Object.keys(items).every((k) => SCALAR_KEYWORDS.has(k))) return;
+      fail(ptr(p, 'items'), 'a body array\'s items must be a bare {"$ref"} to a definition, or a scalar type with no object or array keywords');
+    }
+    fail(p, 'a JSON body\'s schema must be {"$ref"}, {"oneOf": [{"$ref"}, …]} or {"type": "array", "items": …}: define its shape in the schemas, not here');
+  };
   const content = (v, p) => {
     object(v, p, 'content');
     if (Object.keys(v).length === 0) fail(p, 'content must name at least one media type');
@@ -488,7 +517,14 @@ function checkOpenApi({ file, json: doc }, byId) {
       const mp = ptr(p, media);
       if (!/^[a-z*]+\/[A-Za-z0-9.+*-]+$/.test(media)) fail(mp, `"${media}" is not a media type`);
       fields(m, 'mediaType', mp);
-      return { media, schema: has(m, 'schema') ? schema(m.schema, ptr(mp, 'schema')) : null, pointer: mp };
+      if (isJsonMedia(media)) {
+        if (!has(m, 'schema')) fail(mp, `a JSON body (${media}) needs a schema`);
+        schema(m.schema, ptr(mp, 'schema'));
+        bodySchema(m.schema, ptr(mp, 'schema'));
+      } else if (has(m, 'schema')) {
+        fail(ptr(mp, 'schema'), `a body that isn't JSON (${media}) has no schema: its media type names it`);
+      }
+      return { media, schema: has(m, 'schema') ? m.schema : null, pointer: mp };
     });
   };
   const headers = (v, p) =>
@@ -571,6 +607,7 @@ function checkOpenApi({ file, json: doc }, byId) {
         for (const k of ['clientMessage', 'serverMessage', 'frameHeader']) {
           if (!has(x, k)) fail(xp, `x-infopanel-socket needs ${k}`);
           schema(x[k], ptr(xp, k));
+          bareRef(x[k], ptr(xp, k), `x-infopanel-socket's ${k}`);
         }
         socket = { subprotocol: x.subprotocol, clientMessage: x.clientMessage, serverMessage: x.serverMessage, frameHeader: x.frameHeader };
       }
@@ -599,7 +636,7 @@ function checkOpenApi({ file, json: doc }, byId) {
 function bodyType(content, ctx, level) {
   if (content.length === 0) return atom('null');
   return union(content.map(({ media, schema, pointer }) =>
-    isJsonMedia(media) ? (schema === null ? atom('JsonValue') : conv(schema, level, ctx, ptr(pointer, 'schema'))) : atom(JSON.stringify(media))));
+    isJsonMedia(media) ? conv(schema, level, ctx, ptr(pointer, 'schema')) : atom(JSON.stringify(media))));
 }
 
 function paramsType(list, ctx, level) {

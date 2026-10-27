@@ -315,6 +315,32 @@ const openapiErrors = {
   'another OpenAPI version': [(d) => { d.openapi = '3.0.3'; }, [/#\/openapi/, /3\.1\.1/]],
   'another extension': [(d) => { getX(d)['x-other'] = 1; }, [/\/get\/x-other/, /unknown key "x-other"/]],
   'a socket extension without its messages': [(d) => { getX(d)['x-infopanel-socket'] = { subprotocol: 'p' }; }, [/\/x-infopanel-socket/, /needs clientMessage/]],
+  // D3's body shapes: a JSON body names definitions ($ref, a oneOf of $refs, an array of a $ref or a scalar), never defines one.
+  'a body $ref with sibling keys': [
+    (d) => { getX(d).responses[200].content['application/json'].schema = { $ref: 'urn:t:a:1#/$defs/x', properties: { a: {} } }; },
+    [/\/responses\/200\/content\/application~1json\/schema/, /must be \{"\$ref"\}/]],
+  'a JSON body without a schema': [(d) => { getX(d).responses[200].content['application/json'] = {}; }, [/\/content\/application~1json/, /needs a schema/]],
+  'a JSON body without a schema, as a problem': [
+    (d) => { getX(d).responses[404] = { description: 'n', content: { 'application/problem+json': {} } }; }, [/\/responses\/404\/content\/application~1problem\+json/, /needs a schema/]],
+  'an inline object body': [
+    (d) => { getX(d).responses[200].content['application/json'].schema = { type: 'object', properties: { a: { type: 'string' } } }; },
+    [/\/content\/application~1json\/schema/, /must be \{"\$ref"\}/]],
+  'a body oneOf with an inline branch': [
+    (d) => { getX(d).responses[200].content['application/json'].schema = { oneOf: [{ $ref: 'urn:t:a:1#/$defs/x' }, { type: 'string' }] }; },
+    [/\/schema\/oneOf\/1/, /bare \{"\$ref"\}/]],
+  'a body array of inline objects': [
+    (d) => { getX(d).responses[200].content['application/json'].schema = { type: 'array', items: { type: 'object', properties: {} } }; },
+    [/\/schema\/items/, /scalar type/]],
+  'a body array of a scalar with array keywords': [
+    (d) => { getX(d).responses[200].content['application/json'].schema = { type: 'array', items: { type: 'string', minItems: 1 } }; },
+    [/\/schema\/items/, /scalar type/]],
+  'a request body with an inline schema': [
+    (d) => { getX(d).requestBody = { content: { 'application/json': { schema: { type: 'string' } } } }; }, [/\/requestBody\/content\/application~1json\/schema/, /must be \{"\$ref"\}/]],
+  'a schema on a body that isn\'t JSON': [
+    (d) => { getX(d).responses[200].content['image/png'] = { schema: { type: 'string' } }; }, [/\/content\/image~1png\/schema/, /isn't JSON/]],
+  'a socket message that isn\'t a bare $ref': [
+    (d) => { getX(d)['x-infopanel-socket'] = { subprotocol: 'p', clientMessage: { $ref: 'urn:t:a:1#/$defs/x' }, serverMessage: { $ref: 'urn:t:a:1#/$defs/x', description: 'd' }, frameHeader: { $ref: 'urn:t:a:1#/$defs/x' } }; },
+    [/\/x-infopanel-socket\/serverMessage/, /bare \{"\$ref"\}/]],
 };
 
 for (const [name, [edit, expect]] of Object.entries(openapiErrors)) {
@@ -340,6 +366,20 @@ for (const [name, [edit, expect]] of Object.entries(openapiErrors)) {
 test('the valid request index of the error cases generates', () => {
   const out = generate([{ file: 'a.schema.json', json: schema('urn:t:a:1', { $defs: { x: { type: 'string' } } }) }], { file: 'openapi.json', json: openapiCase(() => {}) });
   assert.match(out, /"GET \/x\/\{id\}": \{/);
+});
+
+test('the body shapes D3 allows generate: a $ref, a oneOf of $refs, an array of a $ref or of a scalar', () => {
+  const schemas = [{ file: 'a.schema.json', json: schema('urn:t:a:1', { $defs: { x: { type: 'string' }, y: { type: 'number' } } }) }];
+  const out = generate(schemas, { file: 'openapi.json', json: openapiCase((d) => {
+    getX(d).responses[200].content['application/json'].schema = { type: 'array', items: { type: 'string', minLength: 1 } };
+    getX(d).responses[201] = { description: 'r', content: { 'application/json': { schema: { type: 'array', items: { $ref: 'urn:t:a:1#/$defs/y' } } } } };
+    getX(d).responses[409] = { description: 'o', content: { 'application/problem+json': { schema: { oneOf: [{ $ref: 'urn:t:a:1#/$defs/x' }, { $ref: 'urn:t:a:1#/$defs/y' }] } } } };
+    getX(d).responses[202] = { description: 'p', content: { 'image/png': {} } };
+  }) });
+  assert.match(out, /200: string\[\];/);
+  assert.match(out, /201: Y\[\];/);
+  assert.match(out, /202: "image\/png";/);
+  assert.match(out, /409: X \| Y;/);
 });
 
 test('ApiOperations is a reserved name', () => {

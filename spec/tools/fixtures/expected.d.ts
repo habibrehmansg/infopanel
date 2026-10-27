@@ -195,7 +195,7 @@ export interface ApiOperations {
     request: never;
     responses: {
       /** It exists. */
-      200: JsonValue;
+      200: Scene;
     };
   };
   /** commitScene: Applies ops. */
