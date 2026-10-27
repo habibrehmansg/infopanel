@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Hosting;
 using InfoPanel.Preview;
+using InfoPanel.Tests.Contract;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -180,7 +181,9 @@ internal readonly record struct DocState(long Rev, bool Dirty, bool CanUndo, boo
 
 /// <summary>
 /// A client's <c>/ws</c> connection over a real socket, subscribed to one document, read continuously in the background:
-/// every <c>doc</c> state and every frame's <c>rev</c>, with the time each revision's first frame arrived.
+/// every <c>doc</c> state and every frame's <c>rev</c>, with the time each revision's first frame arrived. What it sends
+/// is a <c>clientMessage</c>, and a message it receives outside the spec (a text message that isn't a
+/// <c>serverMessage</c>, a frame whose header isn't a <c>frameHeader</c>) fails the connection like a lost socket.
 /// </summary>
 internal sealed class LiveSocket : IAsyncDisposable
 {
@@ -206,6 +209,8 @@ internal sealed class LiveSocket : IAsyncDisposable
         var live = new LiveSocket(socket);
         live._reader = Task.Run(live.Read);
         var subscribe = JsonSerializer.Serialize(new { type = "subscribe", profileId, scale, maxFps });
+        if (SocketContract.CheckClientText(subscribe) is { } violation)
+            throw new InvalidOperationException(violation);
         await socket.SendAsync(Encoding.UTF8.GetBytes(subscribe), WebSocketMessageType.Text, true, ct);
         return live;
     }
@@ -297,6 +302,11 @@ internal sealed class LiveSocket : IAsyncDisposable
                 var bytes = buffer.ToArray();
                 buffer.SetLength(0);
                 var now = Stopwatch.GetTimestamp();
+                var outside = result.MessageType == WebSocketMessageType.Binary
+                    ? SocketContract.CheckFrame(bytes)
+                    : SocketContract.CheckServerText(Encoding.UTF8.GetString(bytes));
+                if (outside != null)
+                    throw new InvalidOperationException($"The engine sent a message outside the spec. {outside}");
                 lock (_gate)
                 {
                     if (result.MessageType == WebSocketMessageType.Binary)

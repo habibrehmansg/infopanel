@@ -1,12 +1,16 @@
 using System.Net.Http.Headers;
+using InfoPanel.Tests.Contract;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace InfoPanel.Tests;
 
 /// <summary>
 /// The engine on a <c>TestServer</c>, with a temp data folder, a temp web root holding an <c>index.html</c>,
-/// a fixed token, port, dev origin and cross origin, and seeded mock sensors.
+/// a fixed token, port, dev origin and cross origin, and seeded mock sensors. Every response it gives, on the TestServer
+/// or on Kestrel (<c>LiveEngine</c>), is checked against spec/openapi.json (<see cref="ContractCheck"/>), except in
+/// <c>Category=Performance</c> tests; <see cref="Contract"/> holds what the check saw.
 /// </summary>
 public class EngineFactory : WebApplicationFactory<Program>
 {
@@ -33,8 +37,15 @@ public class EngineFactory : WebApplicationFactory<Program>
 
     public string WebRoot { get; }
 
+    /// <summary>What the contract check saw of this engine's responses.</summary>
+    public ContractLog Contract { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Outermost, ahead of every other startup filter, so it sees each response as the client gets it.
+        if (!ContractCheck.OptedOut())
+            builder.ConfigureServices(services => services.Insert(0, ServiceDescriptor.Singleton<IStartupFilter>(new ContractCheckFilter(Contract))));
+
         builder.UseSetting("Engine:DataDir", DataDir);
         builder.UseSetting("Engine:WebRoot", WebRoot);
         builder.UseSetting("Engine:Token", Token);
