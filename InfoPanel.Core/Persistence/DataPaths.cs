@@ -1,11 +1,14 @@
 using System;
 using System.IO;
+using InfoPanel.Documents;
 
 namespace InfoPanel.Persistence;
 
 /// <summary>
 /// The engine's data folder. It keeps the 1.x layout (<c>profiles.xml</c>, <c>profiles/{guid}.xml</c>,
 /// <c>assets/{guid}/</c>) and adds <c>fonts/</c>, <c>logs/</c>, <c>runtime.json</c> and <c>engine.lock</c>.
+/// The 2.0 document store (<see cref="DocumentStore"/>, <see cref="BlobStore"/>) adds <c>profiles.json</c>,
+/// <c>profiles/{id}/document.json</c> and <c>blobs/{sha256 hex}</c>.
 /// </summary>
 public sealed class DataPaths
 {
@@ -49,4 +52,24 @@ public sealed class DataPaths
 
     /// <summary>Held by the running engine so a second instance can detect it.</summary>
     public string EngineLockFile => Path.Combine(Root, "engine.lock");
+
+    /// <summary>The display order of the stored documents (<c>{"order":[ids]}</c>).</summary>
+    public string ProfileOrderFile => Path.Combine(Root, "profiles.json");
+
+    /// <summary>A stored document's folder.</summary>
+    /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id (<see cref="DocumentStore.IsValidId"/>).</exception>
+    public string ProfileFolder(string id) =>
+        DocumentStore.IsValidId(id) ? Path.Combine(ProfilesDirectory, id) : throw new ArgumentException($"'{id}' is not a valid profile id.", nameof(id));
+
+    /// <summary>A stored document's saved generation.</summary>
+    /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
+    public string DocumentFile(string id) => Path.Combine(ProfileFolder(id), DocumentStore.DocumentFileName);
+
+    /// <summary>Stored blobs, one file per content hash.</summary>
+    public string BlobsDirectory => Path.Combine(Root, "blobs");
+
+    /// <summary>A blob's file, <c>blobs/{64 hex}</c>, for its id <c>sha256:{64 hex}</c>.</summary>
+    /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid blob id (<see cref="BlobStore.IsValidId"/>).</exception>
+    public string BlobFile(string id) =>
+        BlobStore.IsValidId(id) ? Path.Combine(BlobsDirectory, id[BlobStore.IdPrefix.Length..]) : throw new ArgumentException($"'{id}' is not a valid blob id.", nameof(id));
 }
