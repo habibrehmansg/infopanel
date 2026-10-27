@@ -197,6 +197,10 @@ internal sealed class LiveSocket : IAsyncDisposable
     private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task _reader = Task.CompletedTask;
     private Exception? _failure;
+    private SocketContractViolation? _violation;
+
+    /// <summary>A message the engine sent outside the spec: it fails the connection, and its disposal too.</summary>
+    private sealed class SocketContractViolation(string message) : InvalidOperationException(message);
 
     private LiveSocket(ClientWebSocket socket) => _socket = socket;
 
@@ -306,7 +310,7 @@ internal sealed class LiveSocket : IAsyncDisposable
                     ? SocketContract.CheckFrame(bytes)
                     : SocketContract.CheckServerText(Encoding.UTF8.GetString(bytes));
                 if (outside != null)
-                    throw new InvalidOperationException($"The engine sent a message outside the spec. {outside}");
+                    throw new SocketContractViolation($"The engine sent a message outside the spec. {outside}");
                 lock (_gate)
                 {
                     if (result.MessageType == WebSocketMessageType.Binary)
@@ -340,6 +344,7 @@ internal sealed class LiveSocket : IAsyncDisposable
             lock (_gate)
             {
                 _failure = ex;
+                _violation = ex as SocketContractViolation;
                 Signal();
             }
         }
@@ -352,6 +357,10 @@ internal sealed class LiveSocket : IAsyncDisposable
         changed.TrySetResult();
     }
 
+    /// <summary>
+    /// Closes the connection, reading what the engine sent until its close (for at most 2 s), and throws if any of it was
+    /// outside the spec, however late it came. A close or a lost connection is quiet.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         try
@@ -366,6 +375,8 @@ internal sealed class LiveSocket : IAsyncDisposable
         {
         }
 
+        // The messages already on their way are read and checked before the reader is stopped.
+        await Task.WhenAny(_reader, Task.Delay(TimeSpan.FromSeconds(2)));
         _stop.Cancel();
         try
         {
@@ -377,5 +388,11 @@ internal sealed class LiveSocket : IAsyncDisposable
 
         _socket.Dispose();
         _stop.Dispose();
+
+        SocketContractViolation? violation;
+        lock (_gate)
+            violation = _violation;
+        if (violation != null)
+            throw new InvalidOperationException("The engine sent a message outside the spec on this connection.", violation);
     }
 }

@@ -7,6 +7,9 @@ using InfoPanel.Output;
 using InfoPanel.Preview;
 using InfoPanel.Spec;
 using InfoPanel.Tests.Preview;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Xunit;
 
 namespace InfoPanel.Tests.Contract;
@@ -214,6 +217,39 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         Assert.Contains(("GET /ws", 403), engine.Contract.Refusals);
         Assert.Contains(("GET /ws", 101), engine.Contract.Seen);
         Assert.Empty(engine.Contract.Violations);
+    }
+
+    [Fact]
+    public async Task ALiveSocket_FailsItsDisposal_OnAMessageOutsideTheSpec_AfterTheLastWait()
+    {
+        // A peer on real Kestrel that answers the subscribe with a hello, then sends a message no serverMessage allows.
+        var sent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
+        await using var peer = builder.Build();
+        peer.UseWebSockets();
+        peer.Map("/ws", async context =>
+        {
+            using var socket = await context.WebSockets.AcceptWebSocketAsync(EngineRuntime.WebSocketProtocol);
+            var buffer = new byte[4096];
+            await socket.ReceiveAsync(buffer, context.RequestAborted);
+            foreach (var text in new[] { """{"type":"hello","protocol":2}""", """{"type":"welcome"}""" })
+                await socket.SendAsync(System.Text.Encoding.UTF8.GetBytes(text), System.Net.WebSockets.WebSocketMessageType.Text, true, context.RequestAborted);
+            sent.SetResult();
+            while (socket.State == System.Net.WebSockets.WebSocketState.Open)
+            {
+                if ((await socket.ReceiveAsync(buffer, context.RequestAborted)).MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                    await socket.CloseOutputAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "", context.RequestAborted);
+            }
+        });
+        await peer.StartAsync(Ct);
+        var address = new Uri(peer.Urls.Single());
+
+        var live = await InfoPanel.Tests.Editing.LiveSocket.Connect(new Uri($"ws://127.0.0.1:{address.Port}/ws"), EngineFactory.Token,
+            "3dd19c0e-675a-4591-b096-83417853861f", 0.5, 30, Ct);
+        await sent.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(async () => await live.DisposeAsync());
+        Assert.Contains("welcome", error.InnerException?.Message);
     }
 
     [Fact]
