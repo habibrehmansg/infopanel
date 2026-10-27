@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using InfoPanel.Desktop;
 using InfoPanel.Hosting;
 using Xunit;
@@ -82,6 +84,15 @@ public sealed class MacDesktopWindowTests
             var doc = await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{example}", Ct);
             Assert.False(doc.GetProperty("dirty").GetBoolean());
 
+            // Over the frame pixel cap: drawn at half the scale, the layer stretches it (contents scale halved, linear
+            // filter). Back under it: one frame pixel per backing pixel, nearest. Read back from the real layer.
+            var huge = await api.PostAsJsonAsync("/api/profiles", new { name = "Over the cap", width = 8192, height = 8192 }, Ct);
+            huge.EnsureSuccessStatusCode();
+            var hugeId = (await huge.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetString();
+            Assert.Equal((scale / 2, "linear"), await LayerScaling(output, 0.5));
+            await PatchProfile(api, hugeId!, new { width = 400, height = 200 });
+            Assert.Equal((scale, "nearest"), await LayerScaling(output, 1));
+
             // A clean stop (SIGTERM: a test runner started from a background shell may ignore SIGINT; the
             // manual check covers Ctrl+C) closes the windows and exits 0.
             Assert.Equal(0, kill(process.Id, 15));
@@ -102,6 +113,21 @@ public sealed class MacDesktopWindowTests
                 process.Kill();
             try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
+    }
+
+    /// <summary>The layer's contents scale and filter that the engine logs once a window shows frames rendered at <paramref name="frameScale"/>.</summary>
+    private static async Task<(double ContentsScale, string Filter)> LayerScaling(System.Text.StringBuilder output, double frameScale)
+    {
+        var pattern = new Regex(
+            $@"frames rendered at {frameScale.ToString(CultureInfo.InvariantCulture)}× at layer contents scale ([\d.]+), (\w+) magnification");
+        Match? match = null;
+        await Until(() =>
+        {
+            lock (output)
+                match = pattern.Match(output.ToString());
+            return Task.FromResult(match.Success);
+        }, $"a window to show frames rendered at {frameScale}×");
+        return (double.Parse(match!.Groups[1].Value, CultureInfo.InvariantCulture), match.Groups[2].Value);
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("macos")]

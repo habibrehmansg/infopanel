@@ -5,7 +5,9 @@ namespace InfoPanel.Tests.Desktop;
 
 /// <summary>
 /// A desktop platform with its own UI thread (like the macOS main thread) and windows that only record what they're
-/// told. A window's backing scale is the scale of the display holding its top-left, as when it sits on that display.
+/// told. A window's backing scale is the scale of the display holding its top-left, as when it sits on that display,
+/// and <see cref="IDesktopWindow.BackingScaleChanged"/> is raised whenever that changes (a move, the displays changing).
+/// A press is reported as the macOS window does: <see cref="IDesktopWindow.UserMoved"/> once at the release, moved or not.
 /// Tests read and drive it on the UI thread through <see cref="InvokeAsync{T}"/>.
 /// </summary>
 public sealed class FakeDesktopPlatform : IDesktopPlatform, IDisposable
@@ -78,12 +80,25 @@ public sealed class FakeDesktopPlatform : IDesktopPlatform, IDisposable
     /// <summary>Waits until everything posted so far has run.</summary>
     public Task IdleAsync() => InvokeAsync(() => { });
 
-    /// <summary>Changes the displays, raises <see cref="DisplaysChanged"/> on the UI thread and waits for what it posted.</summary>
+    /// <summary>
+    /// Changes the displays on the UI thread: moves each window whose top-left is on no display any more onto the first
+    /// (as macOS does, pressed or not), raises <see cref="IDesktopWindow.BackingScaleChanged"/> on each window whose scale
+    /// changed, then <see cref="DisplaysChanged"/>, and waits for what they posted.
+    /// </summary>
     public async Task ChangeDisplaysAsync(params DisplayInfo[] displays)
     {
         await InvokeAsync(() =>
         {
+            var scales = Created.Where(w => !w.Disposed).Select(w => (Window: w, Scale: w.BackingScale)).ToList();
             Displays = [.. displays];
+            foreach (var (window, scale) in scales)
+            {
+                if (!Displays.Any(d => d.Frame.Contains(window.Frame.X, window.Frame.Y)) && Displays.FirstOrDefault() is { } first)
+                    window.Relocate(window.Frame with { X = first.Frame.X, Y = first.Frame.Y });
+                if (window.BackingScale != scale)
+                    window.RaiseBackingScaleChanged();
+            }
+
             DisplaysChanged?.Invoke();
         });
         await IdleAsync();
@@ -123,6 +138,8 @@ public sealed class FakeWindow(FakeDesktopPlatform platform, DesktopWindowStyle 
 
     public double BackingScale => platform.ScaleAt(Frame);
 
+    public bool UserMoving { get; private set; }
+
     public bool Visible { get; private set; }
 
     public DesktopWindowStyle Style { get; private set; } = style;
@@ -146,11 +163,8 @@ public sealed class FakeWindow(FakeDesktopPlatform platform, DesktopWindowStyle 
     public void SetFrame(PointRect frame)
     {
         platform.AssertUiThread();
-        var scale = BackingScale;
-        Frame = frame;
         FrameChanges++;
-        if (BackingScale != scale)
-            BackingScaleChanged?.Invoke();
+        MoveTo(frame);
     }
 
     public void SetStyle(DesktopWindowStyle style)
@@ -172,6 +186,19 @@ public sealed class FakeWindow(FakeDesktopPlatform platform, DesktopWindowStyle 
         FramesShown++;
     }
 
+    private void MoveTo(PointRect frame)
+    {
+        var scale = BackingScale;
+        Frame = frame;
+        if (BackingScale != scale)
+            BackingScaleChanged?.Invoke();
+    }
+
+    internal void RaiseBackingScaleChanged() => BackingScaleChanged?.Invoke();
+
+    /// <summary>The system moved the window (no <see cref="SetFrame"/>, no event).</summary>
+    internal void Relocate(PointRect frame) => Frame = frame;
+
     public void Dispose()
     {
         platform.AssertUiThread();
@@ -182,8 +209,30 @@ public sealed class FakeWindow(FakeDesktopPlatform platform, DesktopWindowStyle 
     /// <summary>The user dragged the window to <paramref name="frame"/> and let go (UI thread).</summary>
     public void UserMove(PointRect frame)
     {
+        BeginUserMove();
+        DragTo(frame);
+        EndUserMove();
+    }
+
+    /// <summary>The mouse button went down on the window: a drag starts (UI thread).</summary>
+    public void BeginUserMove()
+    {
         platform.AssertUiThread();
-        Frame = frame;
+        UserMoving = true;
+    }
+
+    /// <summary>The user's drag is at <paramref name="frame"/>, the button still down (UI thread).</summary>
+    public void DragTo(PointRect frame)
+    {
+        platform.AssertUiThread();
+        MoveTo(frame);
+    }
+
+    /// <summary>The button is up again: <see cref="UserMoved"/>, moved or not (UI thread).</summary>
+    public void EndUserMove()
+    {
+        platform.AssertUiThread();
+        UserMoving = false;
         UserMoved?.Invoke();
     }
 

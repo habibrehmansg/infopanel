@@ -38,8 +38,9 @@ public readonly record struct DesktopWindowStyle(bool Topmost, bool Movable, boo
 /// <summary>
 /// One frame for a desktop window: RGBA, premultiplied (<c>SKColorType.Rgba8888</c>, <c>SKAlphaType.Premul</c>),
 /// <paramref name="RowBytes"/> apart. <paramref name="Pixels"/> may be longer than the frame (a pooled buffer).
+/// <paramref name="Scale"/> is the scale it was rendered at: 1, or less for a profile over the frame pixel cap.
 /// </summary>
-public sealed record DesktopFrame(byte[] Pixels, int Width, int Height, int RowBytes);
+public sealed record DesktopFrame(byte[] Pixels, int Width, int Height, int RowBytes, float Scale = 1);
 
 /// <summary>
 /// The operating system's windows, for <see cref="DisplayWindowManager"/>. Everything but <see cref="Post"/> must be
@@ -75,6 +76,9 @@ public interface IDesktopWindow : IDisposable
     /// <summary>Backing pixels per point of the display the window is on.</summary>
     double BackingScale { get; }
 
+    /// <summary>The user may be dragging the window: true from the press on it until just before <see cref="UserMoved"/>.</summary>
+    bool UserMoving { get; }
+
     bool Visible { get; }
 
     DesktopWindowStyle Style { get; }
@@ -87,10 +91,16 @@ public interface IDesktopWindow : IDisposable
     /// <summary>Shows the window without activating the app, or hides it.</summary>
     void SetVisible(bool visible);
 
-    /// <summary>Shows <paramref name="frame"/> at one frame pixel per backing pixel, anchored top-left. The pixels are copied.</summary>
+    /// <summary>
+    /// Shows <paramref name="frame"/> anchored top-left at one frame pixel per backing pixel, or, rendered at a
+    /// <see cref="DesktopFrame.Scale"/> below 1, stretched by 1 / <c>Scale</c> to fill the window. The pixels are copied.
+    /// </summary>
     void ShowFrame(DesktopFrame frame);
 
-    /// <summary>The user finished dragging the window (raised once, after the mouse button is released).</summary>
+    /// <summary>
+    /// The mouse button was released after a press on the window (raised once per press, whether or not the window
+    /// moved: a drag, a click, the end of a resize).
+    /// </summary>
     event Action? UserMoved;
 
     /// <summary>The user is resizing the window (raised for each change while resizing).</summary>

@@ -75,6 +75,8 @@ public sealed class Workspace
 
     /// <summary>The profile's document, loading its items on first use; null when there is no such profile.</summary>
     /// <exception cref="InvalidDataException">The profile's items file can't be read.</exception>
+    /// <exception cref="IOException">The profile's items file can't be opened or read.</exception>
+    /// <exception cref="UnauthorizedAccessException">The profile's items file may not be opened.</exception>
     public ProfileDocument? Open(Guid profileId)
     {
         lock (_lock)

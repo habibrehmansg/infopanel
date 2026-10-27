@@ -1,13 +1,16 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Desktop;
 using InfoPanel.Editing;
 using InfoPanel.Models;
 using InfoPanel.Output;
+using InfoPanel.Persistence;
 using InfoPanel.Tests.Preview;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using SkiaSharp;
 using Xunit;
 
@@ -15,7 +18,7 @@ namespace InfoPanel.Tests.Desktop;
 
 /// <summary>
 /// <see cref="DisplayWindowManager"/> on the engine host with a <see cref="FakeDesktopPlatform"/>, a manual clock and
-/// hand-driven render loops. Displays: "Built-in" (1512×982 points at 2×, the primary) and "External" (2560×1440 at
+/// hand-driven render loops, and the manager's log captured. Displays: "Built-in" (1512×982 points at 2×, the primary) and "External" (2560×1440 at
 /// 1×, above and to the left).
 /// </summary>
 public sealed class DisplayWindowManagerTests : IAsyncLifetime
@@ -27,6 +30,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
 
     private readonly EngineFactory _base = new();
     private readonly ManualTime _clock = new(new DateTimeOffset(2026, 10, 26, 9, 41, 7, TimeSpan.Zero));
+    private readonly CapturedLog _log = new();
     private FakeDesktopPlatform _platform = new(BuiltIn, External);
     private WebApplicationFactory<Program> _factory = null!;
 
@@ -53,6 +57,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
                 services.AddSingleton<IDesktopPlatform>(platform);
                 services.AddSingleton<TimeProvider>(_clock);
                 services.AddSingleton(new RenderServiceOptions(AutoTick: false));
+                services.AddSingleton<ILogger<DisplayWindowManager>>(_log);
             });
         });
 
@@ -262,7 +267,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AUserMove_OntoTheSameSpot_IsNoEdit()
+    public async Task AUserMove_OntoTheSameSpot_IsNoEdit_AndTheWindowGoesBackToItsPlace()
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
@@ -270,9 +275,78 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         await _platform.IdleAsync();
         var revision = doc.Revision;
 
-        await _platform.InvokeAsync(() => window.UserMove(Rect(0, 0, 960, 240)));
+        // Less than half a pixel away: the same WindowX and WindowY.
+        await _platform.InvokeAsync(() => window.UserMove(Rect(0.2, 0.2, 960, 240)));
         await _platform.IdleAsync();
         Assert.Equal(revision, doc.Revision);
+        Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ADragOntoADisplayOfAnotherScale_StaysWhereTheUserHasIt_UntilTheDrop()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+
+        // The top-left crosses onto the 1× display with the button still down: the window's scale changes mid-drag.
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.DragTo(Rect(-408 + 120, -1440 + 64, 960, 240));
+        });
+        await _platform.IdleAsync();
+        Assert.Equal(Rect(-288, -1376, 960, 240), window.Frame);
+        Assert.Equal(1, doc.Revision);
+
+        // Still mid-drag, another profile is created and a display is plugged in: both reconcile every window.
+        Workspace.Create("Second", 100, 50);
+        await _platform.IdleAsync();
+        await _platform.ChangeDisplaysAsync(BuiltIn, External, new DisplayInfo("Projector", Rect(1512, 0, 1920, 1080), 1));
+        Assert.Equal(Rect(-288, -1376, 960, 240), window.Frame);
+        Assert.Equal(1, doc.Revision);
+
+        await _platform.InvokeAsync(window.EndUserMove);
+        await _platform.IdleAsync();
+        Assert.Equal(2, doc.Revision);
+        lock (doc.SyncRoot)
+            Assert.Equal((120, 64, "External"), (doc.Profile.WindowX, doc.Profile.WindowY, doc.Profile.TargetWindow?.DeviceName));
+        Assert.Equal(Rect(-288, -1376, 1920, 480), window.Frame);
+        Assert.Single(_log.Messages, m => m.Contains(" moved "));
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task APressWithoutAMove_DuringWhichTheScaleChanged_IsReconciledAtTheRelease_WithoutAnEdit()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var changes = await _platform.InvokeAsync(() => window.FrameChanges);
+
+        // The button goes down on the window and the built-in display is switched to 1× (same pixels) before it is up.
+        await _platform.InvokeAsync(window.BeginUserMove);
+        await _platform.ChangeDisplaysAsync(BuiltIn with { Frame = Rect(0, 0, 3024, 1964), Scale = 1 }, External);
+        Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
+        Assert.Equal(changes, await _platform.InvokeAsync(() => window.FrameChanges));
+
+        await _platform.InvokeAsync(window.EndUserMove);
+        await _platform.IdleAsync();
+        Assert.Equal(Rect(0, 0, 1920, 480), window.Frame); // 1920×480 pixels at 1×
+        Assert.Equal(1, doc.Revision);
+        Assert.False(doc.CanUndo);
+        Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
+
+        // A plain click, nothing changed meanwhile: nothing at all.
+        changes = await _platform.InvokeAsync(() => window.FrameChanges);
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.EndUserMove();
+        });
+        await _platform.IdleAsync();
+        Assert.Equal(changes, await _platform.InvokeAsync(() => window.FrameChanges));
+        Assert.Equal(1, doc.Revision);
+        Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
         AssertNoErrors();
     }
 
@@ -311,6 +385,205 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         doc.Undo();
         await _platform.IdleAsync();
         Assert.Equal(Rect(0, 0, 700.5, 260), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeFromAnEdge_ReleasedBeforeItCommits_IsStillOneEdit()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+
+        // The button goes down on the window's left edge, the resize moves its top-left, and the button is up again
+        // before the size is quiet: the release is no move of its own.
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(10, 0, 950, 240));
+            window.EndUserMove();
+        });
+        await _platform.IdleAsync();
+        Assert.Equal(1, doc.Revision);
+
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal(2, doc.Revision);
+        lock (doc.SyncRoot)
+            Assert.Equal((1900, 480, 20, 0), (doc.Profile.Width, doc.Profile.Height, doc.Profile.WindowX, doc.Profile.WindowY));
+        Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeTimerThatFiredBeforeTheNextChange_DoesNotSplitTheResize()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        await _platform.InvokeAsync(() => window.UserResize(Rect(0, 0, 900, 240)));
+
+        // The quiet time runs out while the UI thread is busy and the resize's next change is already queued: the
+        // timer's commit is posted behind that change.
+        using var gate = new ManualResetEventSlim();
+        _platform.Post(() => gate.Wait(TimeSpan.FromSeconds(10)));
+        var next = _platform.InvokeAsync(() => window.UserResize(Rect(0, 0, 800, 250)));
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        gate.Set();
+        await next;
+        await _platform.IdleAsync();
+        Assert.Equal(1, doc.Revision);
+
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal(2, doc.Revision);
+        lock (doc.SyncRoot)
+            Assert.Equal((1600, 500), (doc.Profile.Width, doc.Profile.Height));
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeHeldPastItsCommit_ThenReleased_IsStillOneEdit()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+
+        // The size is quiet with the button still down on the window's edge: the resize commits before the release.
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(0, 0, 900, 240));
+        });
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal(2, doc.Revision);
+
+        await _platform.InvokeAsync(window.EndUserMove);
+        await _platform.IdleAsync();
+        Assert.Equal(2, doc.Revision);
+        Assert.Equal(Rect(0, 0, 900, 240), window.Frame);
+        Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
+
+        doc.Undo();
+        await _platform.IdleAsync();
+        Assert.False(doc.CanUndo);
+        Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ADragReleasedBeforeTheResizeAheadOfItIsQuiet_IsAnEditOfItsOwn()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+
+        // A resize from the right edge is released, then the window is dragged and released before the size is quiet.
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(0, 0, 900, 240));
+            window.EndUserMove();
+        });
+        await _platform.InvokeAsync(() => window.UserMove(Rect(100, 50, 900, 240)));
+        await _platform.IdleAsync();
+        Assert.Equal(3, doc.Revision);
+        lock (doc.SyncRoot)
+            Assert.Equal((1800, 480, 200, 100), (doc.Profile.Width, doc.Profile.Height, doc.Profile.WindowX, doc.Profile.WindowY));
+        Assert.Equal(Rect(100, 50, 900, 240), window.Frame);
+
+        // The resize's timer has nothing left to commit.
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal(3, doc.Revision);
+
+        // Undo takes back the drag alone, then the resize.
+        doc.Undo();
+        await _platform.IdleAsync();
+        lock (doc.SyncRoot)
+            Assert.Equal((1800, 480, 0, 0), (doc.Profile.Width, doc.Profile.Height, doc.Profile.WindowX, doc.Profile.WindowY));
+        Assert.Equal(Rect(0, 0, 900, 240), window.Frame);
+        Assert.True(doc.CanUndo);
+
+        doc.Undo();
+        await _platform.IdleAsync();
+        Assert.False(doc.CanUndo);
+        Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task APressDuringWhichItsDisplayWentAway_IsNoMove_AndTheWindowFallsBackToTheFirstDisplay()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        doc.PlaceWindow(new WindowPlacement(10, 20, new TargetWindow(-408, -1440, 2560, 1440, "External")));
+        await _platform.IdleAsync();
+        Assert.Equal(Rect(-398, -1420, 1920, 480), window.Frame);
+        var revision = doc.Revision;
+
+        // The button goes down on the window and its display is unplugged before it is up: the system moves the window
+        // onto the built-in display, under the still pressed button.
+        await _platform.InvokeAsync(window.BeginUserMove);
+        await _platform.ChangeDisplaysAsync(BuiltIn);
+        Assert.Equal(Rect(0, 0, 1920, 480), window.Frame);
+
+        await _platform.InvokeAsync(window.EndUserMove);
+        await _platform.IdleAsync();
+        Assert.Equal(revision, doc.Revision);
+        lock (doc.SyncRoot)
+            Assert.Equal((10, 20, "External"), (doc.Profile.WindowX, doc.Profile.WindowY, doc.Profile.TargetWindow?.DeviceName));
+
+        // Not strict: without its display the window goes to the first one, at the same offset.
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(5, 10, 960, 240), window.Frame);
+        Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task TheEditLogLines_NameThePlacementAndTheDisplay()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+        var moved = Assert.Single(_log.Messages, m => m.Contains(" moved "));
+        Assert.Contains("(120, 64) on External", moved);
+        Assert.DoesNotContain("InfoPanel.Models", moved);
+
+        await _platform.InvokeAsync(() => window.UserResize(Rect(-288, -1376, 1000, 300)));
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        var resized = Assert.Single(_log.Messages, m => m.Contains(" resized "));
+        Assert.Contains("1000×300 at (120, 64) on External", resized);
+        Assert.DoesNotContain("InfoPanel.Models", resized);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AnUnreadableProfile_DoesNotKeepTheOthersWindowsFromOpening()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Makes a profile unreadable through Unix file modes.");
+
+        // Listed first, so that today's pass reaches it before the readable one.
+        var store = new ProfileStore(new DataPaths(_base.DataDir));
+        var unreadable = new Profile("Unreadable", 100, 50);
+        var readable = new Profile("Readable", 200, 100);
+        store.AddProfile(unreadable, []);
+        store.AddProfile(readable, []);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(store.Paths.ProfileItemsFile(unreadable.Guid), UnixFileMode.None);
+
+        _ = _factory.Services;
+        await _platform.IdleAsync();
+
+        var window = await RequireWindow(readable.Guid);
+        Assert.True(window.Visible);
+        Assert.Null(await WindowOf(unreadable.Guid));
         AssertNoErrors();
     }
 
@@ -398,6 +671,65 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         Assert.Equal(1, await _platform.InvokeAsync(() => window.FramesShown));
     }
 
+    [Fact]
+    public async Task AProfileOverTheFramePixelCap_IsRenderedSmaller_AndStretchedToFillItsWindow()
+    {
+        await Start();
+        var created = Workspace.Create("Huge", 4097, 4096); // 16 781 312 pixels: over FrameScale.MaxPixels at scale 1
+        await _platform.IdleAsync();
+        var window = await RequireWindow(created.Id);
+        Assert.Equal(1, Render.Tick(created.Id));
+        await _platform.IdleAsync();
+
+        var (shown, backing, frame) = await _platform.InvokeAsync(() => (window.LastFrame, window.BackingScale, window.Frame));
+        Assert.NotNull(shown);
+        Assert.Equal((3073, 3072, 0.75f), (shown.Width, shown.Height, shown.Scale));
+
+        // Shown at Scale × BackingScale frame pixels per point, the frame covers the window to within one frame pixel.
+        var point = 1 / (shown.Scale * backing);
+        Assert.InRange(shown.Width * point - frame.Width, -point, point);
+        Assert.InRange(shown.Height * point - frame.Height, -point, point);
+        Assert.Single(_log.Messages, m => m.Contains("reduced resolution"));
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeAcrossTheFramePixelCap_WithUnchangedPixels_ReachesTheWindowAtItsNewScale()
+    {
+        await Start();
+        var created = Workspace.Create("Square", 4096, 4096); // exactly FrameScale.MaxPixels: scale 1
+        await _platform.IdleAsync();
+        var doc = Workspace.Open(created.Id)!;
+        var window = await RequireWindow(doc.Id);
+
+        async Task<float> ShownScale()
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(40));
+            Render.Tick(doc.Id);
+            await _platform.IdleAsync();
+            var shown = await _platform.InvokeAsync(() => window.LastFrame);
+            Assert.NotNull(shown);
+            Assert.Equal((4096, 4096), (shown.Width, shown.Height)); // the same pixels every time
+            return shown.Scale;
+        }
+
+        Assert.Equal(1f, await ShownScale());
+
+        // Twice the size is drawn at half the scale: the same 4096×4096 pixels, stretched by the window.
+        await Patch(doc, new JsonObject { ["width"] = 8192, ["height"] = 8192 });
+        Assert.Equal(0.5f, await ShownScale());
+        await Patch(doc, new JsonObject { ["width"] = 4096, ["height"] = 4096 });
+        Assert.Equal(1f, await ShownScale());
+
+        doc.Undo();
+        await _platform.IdleAsync();
+        Assert.Equal(0.5f, await ShownScale());
+        doc.Redo();
+        await _platform.IdleAsync();
+        Assert.Equal(1f, await ShownScale());
+        AssertNoErrors();
+    }
+
     private static byte[] Unpremultiplied(DesktopFrame frame)
     {
         using var source = new SKBitmap();
@@ -415,5 +747,18 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         {
             handle.Free();
         }
+    }
+
+    /// <summary>The manager's log messages, formatted.</summary>
+    private sealed class CapturedLog : ILogger<DisplayWindowManager>
+    {
+        public ConcurrentQueue<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Enqueue(formatter(state, exception));
     }
 }

@@ -14,9 +14,9 @@ namespace InfoPanel.Desktop.MacOS;
 /// floating level when topmost, on all Spaces and out of window cycling, movable by their background, never key,
 /// taking every click (also on transparent pixels); a layer-hosting view whose layer shows the frame as a
 /// <c>CGImage</c>, one frame pixel per backing pixel, anchored top-left, nearest-neighbour, without implicit
-/// animations.</item>
-/// <item>User moves are reported once, when the mouse button is up again; moves made by <see cref="IDesktopWindow.SetFrame"/>
-/// never are.</item>
+/// animations (a frame rendered below scale 1 is stretched to fill the window, filtered linearly).</item>
+/// <item>A press on a window is reported once, when the mouse button is up again, moved or not; moves made by
+/// <see cref="IDesktopWindow.SetFrame"/> never are.</item>
 /// </list>
 /// </summary>
 [SupportedOSPlatform("macos")]
@@ -216,6 +216,9 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
         public static readonly IntPtr PressedMouseButtons = ObjC.Sel("pressedMouseButtons");
         public static readonly IntPtr SetContents = ObjC.Sel("setContents:");
         public static readonly IntPtr SetContentsScale = ObjC.Sel("setContentsScale:");
+        public static readonly IntPtr SetMagnificationFilter = ObjC.Sel("setMagnificationFilter:");
+        public static readonly IntPtr ContentsScale = ObjC.Sel("contentsScale");
+        public static readonly IntPtr MagnificationFilter = ObjC.Sel("magnificationFilter");
         public static readonly IntPtr Begin = ObjC.Sel("begin");
         public static readonly IntPtr Commit = ObjC.Sel("commit");
         public static readonly IntPtr SetDisableActions = ObjC.Sel("setDisableActions:");
@@ -227,12 +230,15 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
     private sealed class MacWindow : IDesktopWindow
     {
         private static readonly IntPtr SrgbSpace = ObjC.CGColorSpaceCreateWithName(ObjC.Constant("CoreGraphics", "kCGColorSpaceSRGB"));
+        private static readonly IntPtr NearestFilter = ObjC.Constant("QuartzCore", "kCAFilterNearest");
+        private static readonly IntPtr LinearFilter = ObjC.Constant("QuartzCore", "kCAFilterLinear");
 
         private readonly MacDesktopPlatform _platform;
         private IntPtr _window;
         private IntPtr _layer;
         private PointRect _knownFrame;
         private double _scale;
+        private float _frameScale = 1;
         private bool _settingFrame;
         private bool _waitingForMouseUp;
         private bool _mouseDown;
@@ -258,9 +264,8 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             // A layer-hosting view: AppKit never draws into a layer it didn't create.
             _layer = ObjC.Send(ObjC.Send(ObjC.Class("CALayer"), ObjC.Sel("layer")), Sel.Retain);
             ObjC.SendVoidId(_layer, ObjC.Sel("setContentsGravity:"), ObjC.Constant("QuartzCore", "kCAGravityTopLeft"));
-            var nearest = ObjC.Constant("QuartzCore", "kCAFilterNearest");
-            ObjC.SendVoidId(_layer, ObjC.Sel("setMagnificationFilter:"), nearest);
-            ObjC.SendVoidId(_layer, ObjC.Sel("setMinificationFilter:"), nearest);
+            ObjC.SendVoidId(_layer, Sel.SetMagnificationFilter, NearestFilter);
+            ObjC.SendVoidId(_layer, ObjC.Sel("setMinificationFilter:"), NearestFilter);
             ObjC.SendVoidBool(_layer, ObjC.Sel("setOpaque:"), 0);
 
             var view = ObjC.SendIdRect(ObjC.Send(_viewClass, Sel.Alloc), ObjC.Sel("initWithFrame:"), new NSRect(0, 0, rect.Width, rect.Height));
@@ -280,6 +285,8 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
         public PointRect Frame => ToTopLeft(ObjC.SendRect(_window, Sel.Frame), PrimaryHeight());
 
         public double BackingScale => _scale;
+
+        public bool UserMoving => _waitingForMouseUp;
 
         public bool Visible => _visible;
 
@@ -364,10 +371,30 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             var transaction = Sel.CATransaction;
             ObjC.SendVoid(transaction, Sel.Begin);
             ObjC.SendVoidBool(transaction, Sel.SetDisableActions, 1);
+            var rescaled = frame.Scale != _frameScale;
+            if (rescaled)
+            {
+                // A frame rendered smaller (over the frame pixel cap) is stretched to fill the window.
+                _frameScale = frame.Scale;
+                ObjC.SendVoidDouble(_layer, Sel.SetContentsScale, _scale * _frameScale);
+                ObjC.SendVoidId(_layer, Sel.SetMagnificationFilter, _frameScale < 1 ? LinearFilter : NearestFilter);
+            }
+
             ObjC.SendVoidId(_layer, Sel.SetContents, image);
             ObjC.SendVoid(transaction, Sel.Commit);
             ObjC.CGImageRelease(image);
+
+            if (rescaled)
+            {
+                var (contentsScale, filter) = LayerScaling;
+                Logger.Information("A desktop window shows frames rendered at {FrameScale}× at layer contents scale {ContentsScale}, {Filter:l} magnification",
+                    _frameScale, contentsScale, filter);
+            }
         }
+
+        /// <summary>The layer's contents scale and magnification filter, read back from Core Animation.</summary>
+        internal (double ContentsScale, string? Filter) LayerScaling =>
+            (ObjC.SendDouble(_layer, Sel.ContentsScale), ObjC.ToManagedString(ObjC.Send(_layer, Sel.MagnificationFilter)));
 
         public void Dispose()
         {
@@ -442,11 +469,7 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
 
             _waitingForMouseUp = false;
             _mouseDown = false;
-            var frame = Frame;
-            if (frame == _knownFrame)
-                return;
-
-            _knownFrame = frame;
+            _knownFrame = Frame;
             UserMoved?.Invoke();
         }
 
@@ -470,7 +493,7 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
                 BackingScaleChanged?.Invoke();
         }
 
-        /// <summary>Reads the window's backing scale; one frame pixel per backing pixel. True when it changed.</summary>
+        /// <summary>Reads the window's backing scale; one frame pixel per backing pixel at frame scale 1. True when it changed.</summary>
         private bool UpdateScale()
         {
             var scale = ObjC.SendDouble(_window, ObjC.Sel("backingScaleFactor"));
@@ -480,7 +503,7 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
                 return false;
 
             _scale = scale;
-            ObjC.SendVoidDouble(_layer, Sel.SetContentsScale, scale);
+            ObjC.SendVoidDouble(_layer, Sel.SetContentsScale, scale * _frameScale);
             ObjC.SendVoidSize(_window, ObjC.Sel("setContentMinSize:"), new NSSize(1 / scale, 1 / scale));
             var max = InfoPanel.Editing.Workspace.MaxDimension / scale;
             ObjC.SendVoidSize(_window, ObjC.Sel("setContentMaxSize:"), new NSSize(max, max));
