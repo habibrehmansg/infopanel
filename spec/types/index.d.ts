@@ -704,6 +704,142 @@ export interface ScopeProblem {
   scope: "read" | "edit" | "session";
 }
 
+/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error). Its members are for people; a client acts on the status (docs/api.md#errors). */
+export interface Problem {
+  /** A URI for the kind of error: the HTTP status's section of RFC 9110. */
+  type?: string;
+  /** The HTTP status's reason phrase, such as "Not Found". */
+  title: string;
+  /**
+   * The response's HTTP status.
+   * Range: 400–599.
+   */
+  status: number;
+  /** What went wrong, for people. */
+  detail?: string;
+  /** The request's trace id. */
+  traceId?: string;
+}
+
+/** One sensor in GET /api/sensors, an array of these: a sensor the engine's sources offer, with the `key` a binding names (docs/bindings.md) and its status now. A client treats a status it doesn't know as no reading. */
+export interface SensorEntry {
+  /**
+   * The sensor's key, as a binding's `key` names it. Opaque.
+   * Length: ≥ 1.
+   */
+  key: string;
+  /** The id of the source that offers the sensor. */
+  source: string;
+  /** The group the source lists the sensor in (a device, say), for people. */
+  group: string;
+  /** The sensor's name, for people. */
+  name: string;
+  /** The unit of its values, for people ("°C", "%"); empty when it has none. */
+  unit: string;
+  /** `live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `permission-denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed). */
+  status: "live" | "stale" | "unavailable" | "permission-denied" | "simulated" | "missing";
+}
+
+/** One reading in GET /api/sensors/values, an array of these: every listed sensor (sensorEntry) that has a reading now, in list order. A sensor without one is left out. */
+export interface SensorValue {
+  /**
+   * The sensor's key (sensorEntry).
+   * Length: ≥ 1.
+   */
+  key: string;
+  /** The current value (the last one when the reading is stale). A value that isn't a finite number is 0. */
+  now: number;
+  /** The lowest value the source has reported. */
+  min: number;
+  /** The highest value the source has reported. */
+  max: number;
+  /** The average of the values the source has reported. */
+  avg: number;
+  /** The unit of its values, for people; empty when it has none. */
+  unit: string;
+  /** A text or table sensor's text ("" for a table without one); absent for a number sensor. */
+  text?: string;
+  /**
+   * With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one a second (docs/bindings.md#history). Absent otherwise, and for a text or table sensor.
+   * Items: ≤ 4096.
+   */
+  history?: number[];
+  /** `live`, or `stale` for the last value of a sensor that has stopped updating. */
+  status: "live" | "stale";
+}
+
+/** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. The engine ignores members a message doesn't define, and answers an error message to one it can't act on. */
+export type ClientMessage = AuthMessage | SubscribeMessage | ViewMessage | UnsubscribeMessage;
+
+/** The first message on /ws when no `auth.{token}` subprotocol was offered: the token, within 5 seconds of the upgrade. The engine sends nothing before it; a token it doesn't accept, any other message, or none in time closes the socket with 1008. */
+export interface AuthMessage {
+  type: "auth";
+  /** The session token or an integration token (either has the `read` scope). */
+  token: string;
+}
+
+/** Subscribes to a profile's document: its doc messages and its frames, at `scale` and at most `maxFps` frames a second. It ends the connection's earlier subscription. A profile that doesn't exist or can't be opened is answered with an error message. */
+export interface SubscribeMessage {
+  type: "subscribe";
+  profileId: DocumentId;
+  scale?: FrameRequestScale;
+  maxFps?: FrameRequestFps;
+}
+
+/** Changes the current subscription's scale or frame rate; a member left out keeps its value. Without a subscription it is answered with an error message. */
+export interface ViewMessage {
+  type: "view";
+  scale?: FrameRequestScale;
+  maxFps?: FrameRequestFps;
+}
+
+/** Ends the subscription: no more doc messages or frames until the next subscribe. */
+export interface UnsubscribeMessage {
+  type: "unsubscribe";
+}
+
+/**
+ * The frame's pixels per profile pixel asked for, before the engine rounds and limits it (docs/api.md#frame-size). 1 when a subscribe leaves it out.
+ * Range: > 0.
+ */
+export type FrameRequestScale = number;
+
+/**
+ * The most frames a second the client wants. 30 when a subscribe leaves it out; the engine draws at most 60.
+ * Range: 1–2147483647.
+ */
+export type FrameRequestFps = number;
+
+/** A text message the engine sends on /ws (docs/api.md#the-preview-socket): a JSON object with a `type`. Frames are binary messages (frameHeader). A client ignores a type and members it doesn't know. */
+export type ServerMessage = HelloMessage | DocEvent | ProfilesMessage | ErrorMessage;
+
+/** The engine's first message on /ws, once the connection is authenticated. */
+export interface HelloMessage {
+  type: "hello";
+  /**
+   * The engine API's version, as GET /api/session gives it.
+   * Range: ≥ 1.
+   */
+  protocol: number;
+}
+
+/** The profile list changed: a profile was created, duplicated or deleted, by any client. The client reads GET /api/profiles. The engine keeps only the newest to send. */
+export interface ProfilesMessage {
+  type: "profiles";
+  /**
+   * How many times the list has changed in this run of the engine: greater for a later change.
+   * Range: 1–9007199254740991.
+   */
+  version: number;
+}
+
+/** Something the engine couldn't do for the client: a message it can't act on (not JSON, binary, an unknown type, a member of the wrong type, a view without a subscription), or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted. The connection stays open. */
+export interface ErrorMessage {
+  type: "error";
+  /** What went wrong, for people. */
+  message: string;
+}
+
 // common.schema.json (urn:infopanel:common:1)
 
 /**

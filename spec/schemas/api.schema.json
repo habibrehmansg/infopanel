@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:infopanel:api:1",
-  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, and the preview socket's frame headers (with item bounds) and change events. See docs/api.md, docs/commit.md and docs/geometry.md.",
+  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, sensors and their readings, and the preview socket's messages, frame headers (with item bounds) and change events. spec/openapi.json says which request carries which. See docs/api.md, docs/commit.md and docs/geometry.md.",
   "$defs": {
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
@@ -827,6 +827,158 @@
         "status": { "const": 403 },
         "code": { "const": "scope" },
         "scope": { "description": "What the request needs.", "enum": ["read", "edit", "session"] }
+      }
+    },
+    "problem": {
+      "description": "application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error). Its members are for people; a client acts on the status (docs/api.md#errors).",
+      "type": "object",
+      "required": ["title", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "description": "A URI for the kind of error: the HTTP status's section of RFC 9110.", "type": "string" },
+        "title": { "description": "The HTTP status's reason phrase, such as \"Not Found\".", "type": "string" },
+        "status": { "description": "The response's HTTP status.", "type": "integer", "minimum": 400, "maximum": 599 },
+        "detail": { "description": "What went wrong, for people.", "type": "string" },
+        "traceId": { "description": "The request's trace id.", "type": "string" }
+      }
+    },
+
+    "sensorEntry": {
+      "description": "One sensor in GET /api/sensors, an array of these: a sensor the engine's sources offer, with the `key` a binding names (docs/bindings.md) and its status now. A client treats a status it doesn't know as no reading.",
+      "type": "object",
+      "required": ["key", "source", "group", "name", "unit", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "description": "The sensor's key, as a binding's `key` names it. Opaque.", "type": "string", "minLength": 1 },
+        "source": { "description": "The id of the source that offers the sensor.", "type": "string" },
+        "group": { "description": "The group the source lists the sensor in (a device, say), for people.", "type": "string" },
+        "name": { "description": "The sensor's name, for people.", "type": "string" },
+        "unit": { "description": "The unit of its values, for people (\"°C\", \"%\"); empty when it has none.", "type": "string" },
+        "status": {
+          "description": "`live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `permission-denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed).",
+          "enum": ["live", "stale", "unavailable", "permission-denied", "simulated", "missing"]
+        }
+      }
+    },
+    "sensorValue": {
+      "description": "One reading in GET /api/sensors/values, an array of these: every listed sensor (sensorEntry) that has a reading now, in list order. A sensor without one is left out.",
+      "type": "object",
+      "required": ["key", "now", "min", "max", "avg", "unit", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "description": "The sensor's key (sensorEntry).", "type": "string", "minLength": 1 },
+        "now": { "description": "The current value (the last one when the reading is stale). A value that isn't a finite number is 0.", "type": "number" },
+        "min": { "description": "The lowest value the source has reported.", "type": "number" },
+        "max": { "description": "The highest value the source has reported.", "type": "number" },
+        "avg": { "description": "The average of the values the source has reported.", "type": "number" },
+        "unit": { "description": "The unit of its values, for people; empty when it has none.", "type": "string" },
+        "text": { "description": "A text or table sensor's text (\"\" for a table without one); absent for a number sensor.", "type": "string" },
+        "history": {
+          "description": "With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one a second (docs/bindings.md#history). Absent otherwise, and for a text or table sensor.",
+          "type": "array",
+          "items": { "type": "number" },
+          "maxItems": 4096
+        },
+        "status": { "description": "`live`, or `stale` for the last value of a sensor that has stopped updating.", "enum": ["live", "stale"] }
+      }
+    },
+
+    "clientMessage": {
+      "description": "A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. The engine ignores members a message doesn't define, and answers an error message to one it can't act on.",
+      "oneOf": [
+        { "$ref": "#/$defs/authMessage" },
+        { "$ref": "#/$defs/subscribeMessage" },
+        { "$ref": "#/$defs/viewMessage" },
+        { "$ref": "#/$defs/unsubscribeMessage" }
+      ]
+    },
+    "authMessage": {
+      "description": "The first message on /ws when no `auth.{token}` subprotocol was offered: the token, within 5 seconds of the upgrade. The engine sends nothing before it; a token it doesn't accept, any other message, or none in time closes the socket with 1008.",
+      "type": "object",
+      "required": ["type", "token"],
+      "properties": {
+        "type": { "const": "auth" },
+        "token": { "description": "The session token or an integration token (either has the `read` scope).", "type": "string" }
+      }
+    },
+    "subscribeMessage": {
+      "description": "Subscribes to a profile's document: its doc messages and its frames, at `scale` and at most `maxFps` frames a second. It ends the connection's earlier subscription. A profile that doesn't exist or can't be opened is answered with an error message.",
+      "type": "object",
+      "required": ["type", "profileId"],
+      "properties": {
+        "type": { "const": "subscribe" },
+        "profileId": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "scale": { "$ref": "#/$defs/frameRequestScale" },
+        "maxFps": { "$ref": "#/$defs/frameRequestFps" }
+      }
+    },
+    "viewMessage": {
+      "description": "Changes the current subscription's scale or frame rate; a member left out keeps its value. Without a subscription it is answered with an error message.",
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "view" },
+        "scale": { "$ref": "#/$defs/frameRequestScale" },
+        "maxFps": { "$ref": "#/$defs/frameRequestFps" }
+      }
+    },
+    "unsubscribeMessage": {
+      "description": "Ends the subscription: no more doc messages or frames until the next subscribe.",
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "unsubscribe" }
+      }
+    },
+    "frameRequestScale": {
+      "description": "The frame's pixels per profile pixel asked for, before the engine rounds and limits it (docs/api.md#frame-size). 1 when a subscribe leaves it out.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "frameRequestFps": {
+      "description": "The most frames a second the client wants. 30 when a subscribe leaves it out; the engine draws at most 60.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+
+    "serverMessage": {
+      "description": "A text message the engine sends on /ws (docs/api.md#the-preview-socket): a JSON object with a `type`. Frames are binary messages (frameHeader). A client ignores a type and members it doesn't know.",
+      "oneOf": [
+        { "$ref": "#/$defs/helloMessage" },
+        { "$ref": "#/$defs/docEvent" },
+        { "$ref": "#/$defs/profilesMessage" },
+        { "$ref": "#/$defs/errorMessage" }
+      ]
+    },
+    "helloMessage": {
+      "description": "The engine's first message on /ws, once the connection is authenticated.",
+      "type": "object",
+      "required": ["type", "protocol"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "hello" },
+        "protocol": { "description": "The engine API's version, as GET /api/session gives it.", "type": "integer", "minimum": 1 }
+      }
+    },
+    "profilesMessage": {
+      "description": "The profile list changed: a profile was created, duplicated or deleted, by any client. The client reads GET /api/profiles. The engine keeps only the newest to send.",
+      "type": "object",
+      "required": ["type", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "profiles" },
+        "version": { "description": "How many times the list has changed in this run of the engine: greater for a later change.", "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "errorMessage": {
+      "description": "Something the engine couldn't do for the client: a message it can't act on (not JSON, binary, an unknown type, a member of the wrong type, a view without a subscription), or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted. The connection stays open.",
+      "type": "object",
+      "required": ["type", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "error" },
+        "message": { "description": "What went wrong, for people.", "type": "string" }
       }
     }
   }

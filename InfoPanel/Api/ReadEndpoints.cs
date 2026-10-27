@@ -9,15 +9,10 @@ using System.Reflection;
 
 namespace InfoPanel.Api;
 
-/// <summary>A listed sensor; <c>status</c> is its <see cref="SensorStatus"/> now. A binding names it by <c>key</c>.</summary>
-public sealed record SensorListEntry(string Key, string Source, string Group, string Name, string Unit, SensorStatus Status);
-
-/// <summary>A listed sensor that has a reading; <c>status</c> is <c>live</c> or <c>stale</c> (the last value).</summary>
-public sealed record SensorValue(string Key, double Now, double Min, double Max, double Avg, string Unit, string? Text, IReadOnlyList<double>? History, SensorStatus Status);
-
 /// <summary>
-/// The engine's session, fonts and sensors (spec/docs/api.md, "Session"). Everything here is under <c>/api</c> and
-/// needs a token with the <c>read</c> scope.
+/// The engine's session, fonts and sensors (spec/docs/api.md, "Session", "Fonts and sensors"). Everything here is under
+/// <c>/api</c> and needs a token with the <c>read</c> scope. Bodies are the spec model (<c>session</c>, <c>sensorEntry</c>,
+/// <c>sensorValue</c>), written with the format's JSON options like every other API body.
 /// </summary>
 public static class ReadEndpoints
 {
@@ -38,12 +33,20 @@ public static class ReadEndpoints
             FormatSupport = FormatSupportOf(workspace),
         })).RequireScope(ApiScope.Read);
 
-        api.MapGet("/fonts", () => Fonts()).RequireScope(ApiScope.Read);
+        api.MapGet("/fonts", () => ApiResults.Json(Fonts())).RequireScope(ApiScope.Read);
 
-        api.MapGet("/sensors", (SensorHub hub) =>
+        api.MapGet("/sensors", (SensorHub hub) => ApiResults.Json(
             hub.GetSensors()
-                .Select(s => new SensorListEntry(s.Key.ToString(), s.SourceId, s.Group, s.Name, s.Unit, hub.GetStatus(s.Key)))
-                .ToList()).RequireScope(ApiScope.Read);
+                .Select(s => new SensorEntry
+                {
+                    Key = s.Key.ToString(),
+                    Source = s.SourceId,
+                    Group = s.Group,
+                    Name = s.Name,
+                    Unit = s.Unit,
+                    Status = hub.GetStatus(s.Key),
+                })
+                .ToList())).RequireScope(ApiScope.Read);
 
         api.MapGet("/sensors/values", (int? history, SensorHub hub, SensorHistory sensorHistory) =>
         {
@@ -64,11 +67,21 @@ public static class ReadEndpoints
 
                 // A reading that aged out between the read and this check is reported as stale, the state it was read in.
                 var status = hub.GetStatus(sensor.Key) is SensorStatus.Live ? SensorStatus.Live : SensorStatus.Stale;
-                values.Add(new SensorValue(sensor.Key.ToString(), Finite(reading.ValueNow), Finite(reading.ValueMin),
-                    Finite(reading.ValueMax), Finite(reading.ValueAvg), reading.Unit ?? "", text, samples, status));
+                values.Add(new SensorValue
+                {
+                    Key = sensor.Key.ToString(),
+                    Now = Finite(reading.ValueNow),
+                    Min = Finite(reading.ValueMin),
+                    Max = Finite(reading.ValueMax),
+                    Avg = Finite(reading.ValueAvg),
+                    Unit = reading.Unit ?? "",
+                    Text = text,
+                    History = samples,
+                    Status = status,
+                });
             }
 
-            return values;
+            return ApiResults.Json(values);
         }).RequireScope(ApiScope.Read);
     }
 

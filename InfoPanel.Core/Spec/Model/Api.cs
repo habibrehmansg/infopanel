@@ -413,3 +413,108 @@ public sealed record ScopeProblem
     public required string Code { get; init; }
     public required string Scope { get; init; }
 }
+
+/// <summary>
+/// An error without a definition of its own (the schema's <c>problem</c>): what ASP.NET Core's problem details write for
+/// the engine's HTTP layer (401, a refused origin, 404, a bad query parameter, 405, 413, 500).
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/problem")]
+public sealed record ProblemBody
+{
+    public string? Type { get; init; }
+    public required string Title { get; init; }
+    public required int Status { get; init; }
+    public string? Detail { get; init; }
+    public string? TraceId { get; init; }
+}
+
+/// <summary>A listed sensor (<c>GET /api/sensors</c>); <see cref="Status"/> is its status now. A binding names it by <see cref="Key"/>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/sensorEntry")]
+public sealed record SensorEntry
+{
+    public required string Key { get; init; }
+    public required string Source { get; init; }
+    public required string Group { get; init; }
+    public required string Name { get; init; }
+    public required string Unit { get; init; }
+    public required InfoPanel.Sensors.SensorStatus Status { get; init; }
+}
+
+/// <summary>
+/// A listed sensor that has a reading (<c>GET /api/sensors/values</c>); <see cref="Status"/> is <c>live</c> or
+/// <c>stale</c> (the last value). <see cref="Text"/> is set for a text or table sensor, <see cref="History"/> for a
+/// number sensor when asked for.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/sensorValue")]
+public sealed record SensorValue
+{
+    public required string Key { get; init; }
+    public required double Now { get; init; }
+    public required double Min { get; init; }
+    public required double Max { get; init; }
+    public required double Avg { get; init; }
+    public required string Unit { get; init; }
+    public string? Text { get; init; }
+    public IReadOnlyList<double>? History { get; init; }
+    public required InfoPanel.Sensors.SensorStatus Status { get; init; }
+}
+
+// The preview socket's text messages (the schema's clientMessage and serverMessage; docEvent is above).
+
+/// <summary>The first message on <c>/ws</c> when the token wasn't offered as a subprotocol. <see cref="Type"/> is always <c>auth</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/authMessage")]
+public sealed record AuthMessage
+{
+    public required string Type { get; init; }
+    public required string Token { get; init; }
+}
+
+/// <summary>Subscribes to a profile's doc messages and frames. <see cref="Type"/> is always <c>subscribe</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/subscribeMessage")]
+public sealed record SubscribeMessage
+{
+    public required string Type { get; init; }
+    public required string ProfileId { get; init; }
+    public double? Scale { get; init; }
+    public int? MaxFps { get; init; }
+}
+
+/// <summary>Changes the subscription's scale or frame rate. <see cref="Type"/> is always <c>view</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/viewMessage")]
+public sealed record ViewMessage
+{
+    public required string Type { get; init; }
+    public double? Scale { get; init; }
+    public int? MaxFps { get; init; }
+}
+
+/// <summary>Ends the subscription. <see cref="Type"/> is always <c>unsubscribe</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/unsubscribeMessage")]
+public sealed record UnsubscribeMessage
+{
+    public required string Type { get; init; }
+}
+
+/// <summary>The engine's first message on <c>/ws</c>. <see cref="Type"/> is always <c>hello</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/helloMessage")]
+public sealed record HelloMessage
+{
+    public required string Type { get; init; }
+    public required int Protocol { get; init; }
+}
+
+/// <summary>The profile list changed (<see cref="Version"/> grows with each change). <see cref="Type"/> is always <c>profiles</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/profilesMessage")]
+public sealed record ProfilesMessage
+{
+    public required string Type { get; init; }
+    public required long Version { get; init; }
+}
+
+/// <summary>Something the engine couldn't do for the client; the connection stays open. <see cref="Type"/> is always <c>error</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/errorMessage")]
+public sealed record ErrorMessage
+{
+    public required string Type { get; init; }
+    public required string Message { get; init; }
+}

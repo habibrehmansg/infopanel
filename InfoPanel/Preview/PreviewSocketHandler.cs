@@ -35,9 +35,11 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// as that token is revoked; the others stay open.
 /// </para>
 /// <list type="bullet">
-/// <item>Client → server (JSON text, at most <see cref="MaxClientMessageBytes"/>): <c>subscribe {profileId, scale?, maxFps?}</c>,
-/// <c>view {scale?, maxFps?}</c>, <c>unsubscribe</c>.</item>
-/// <item>Server → client: <c>hello</c> on connect (<c>protocol</c> 2); <c>doc</c> (spec/docs/api.md <c>docEvent</c>)
+/// <item>Client → server (JSON text, at most <see cref="MaxClientMessageBytes"/>; the spec's <c>clientMessage</c>):
+/// <c>subscribe {profileId, scale?, maxFps?}</c>, <c>view {scale?, maxFps?}</c>, <c>unsubscribe</c>. Members a message
+/// doesn't define are ignored.</item>
+/// <item>Server → client (the spec's <c>serverMessage</c>, written from its models): <c>hello</c> on connect
+/// (<c>protocol</c> 2); <c>doc</c> (<c>docEvent</c>)
 /// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
 /// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>error</c> for a bad message, an unknown profile,
 /// one that can't be opened or a deleted one; binary frames (<see cref="FrameCodec"/>).</item>
@@ -265,8 +267,6 @@ internal sealed class PreviewSession
 {
     /// <summary>How long the client has to answer our close frame before the connection is aborted.</summary>
     private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(2);
-
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly WebSocket _socket;
     private readonly Workspace _workspace;
@@ -658,7 +658,7 @@ internal sealed class PreviewSession
 
     private void SendError(string message)
     {
-        if (_errors.Writer.TryWrite(JsonSerializer.Serialize(new { type = "error", message }, Json)))
+        if (_errors.Writer.TryWrite(JsonSerializer.Serialize(new ErrorMessage { Type = "error", Message = message }, SpecJson.Options)))
             Wake();
     }
 
@@ -706,7 +706,7 @@ internal sealed class PreviewSession
     {
         string? lastDoc = null;
         long profilesSent = 0;
-        await SendTextAsync(JsonSerializer.Serialize(new { type = "hello", protocol = Api.ReadEndpoints.Protocol }, Json), ct);
+        await SendTextAsync(JsonSerializer.Serialize(new HelloMessage { Type = "hello", Protocol = Api.ReadEndpoints.Protocol }, SpecJson.Options), ct);
 
         while (true)
         {
@@ -742,7 +742,7 @@ internal sealed class PreviewSession
             {
                 if (!CanSend)
                     return;
-                await SendTextAsync(JsonSerializer.Serialize(new { type = "profiles", version = profiles }, Json), ct);
+                await SendTextAsync(JsonSerializer.Serialize(new ProfilesMessage { Type = "profiles", Version = profiles }, SpecJson.Options), ct);
                 profilesSent = profiles;
             }
 

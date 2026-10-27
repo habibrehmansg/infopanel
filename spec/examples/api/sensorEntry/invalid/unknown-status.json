@@ -1,0 +1,1 @@
+{"key": "plugin:/infopanel.mock/cpu/cpu-load", "source": "infopanel.mock", "group": "CPU", "name": "CPU Load", "unit": "%", "status": "denied"}

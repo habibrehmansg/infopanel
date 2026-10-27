@@ -1,0 +1,1 @@
+{"key": "plugin:/infopanel.mock/gpu/gpu-temp", "source": "infopanel.mock", "group": "GPU [#0]", "name": "GPU Temperature", "unit": "°C", "status": "live"}
