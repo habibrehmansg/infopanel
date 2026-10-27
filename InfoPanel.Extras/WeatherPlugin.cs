@@ -210,53 +210,60 @@ namespace InfoPanel.Extras
 
                 if (result != null)
                 {
-                    _name.Value = result.CityName;
-
-                    if (result.Weather is { Length: > 0 })
-                    {
-                        _weather.Value = result.Weather[0].Main;
-                        _weatherDesc.Value = result.Weather[0].Description;
-                        _weatherIcon.Value = result.Weather[0].IconId;
-                        _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weather[0].IconId}@2x.png";
-                    }
-
-                    if (UseImperial)
-                    {
-                        _temp.Value = Convert.ToSingle(result.Temperature.DegreesFahrenheit);
-                        _maxTemp.Value = Convert.ToSingle(result.MaximumTemperature.DegreesFahrenheit);
-                        _minTemp.Value = Convert.ToSingle(result.MinimumTemperature.DegreesFahrenheit);
-                        _pressure.Value = Convert.ToSingle(result.Pressure.InchesOfMercury);
-                        _seaLevel.Value = Convert.ToSingle(result.SeaLevelPressure?.InchesOfMercury ?? 0);
-                        _groundLevel.Value = Convert.ToSingle(result.GroundLevelPressure?.InchesOfMercury ?? 0);
-                        _feelsLike.Value = Convert.ToSingle(result.FeelsLike.DegreesFahrenheit);
-                        _windSpeed.Value = Convert.ToSingle(result.WindSpeed.MilesPerHour);
-                        _windGust.Value = Convert.ToSingle(result.WindGust?.MilesPerHour ?? 0);
-                        _rain.Value = Convert.ToSingle(result.RainfallLastHour?.Inches ?? 0);
-                        _snow.Value = Convert.ToSingle(result.SnowfallLastHour?.Inches ?? 0);
-                    }
-                    else
-                    {
-                        _temp.Value = Convert.ToSingle(result.Temperature.DegreesCelsius);
-                        _maxTemp.Value = Convert.ToSingle(result.MaximumTemperature.DegreesCelsius);
-                        _minTemp.Value = Convert.ToSingle(result.MinimumTemperature.DegreesCelsius);
-                        _pressure.Value = Convert.ToSingle(result.Pressure.Hectopascals);
-                        _seaLevel.Value = Convert.ToSingle(result.SeaLevelPressure?.Hectopascals ?? 0);
-                        _groundLevel.Value = Convert.ToSingle(result.GroundLevelPressure?.Hectopascals ?? 0);
-                        _feelsLike.Value = Convert.ToSingle(result.FeelsLike.DegreesCelsius);
-                        _windSpeed.Value = Convert.ToSingle(result.WindSpeed.MetersPerSecond);
-                        _windGust.Value = Convert.ToSingle(result.WindGust?.MetersPerSecond ?? 0);
-                        _rain.Value = Convert.ToSingle(result.RainfallLastHour?.Millimeters ?? 0);
-                        _snow.Value = Convert.ToSingle(result.SnowfallLastHour?.Millimeters ?? 0);
-                    }
-
-                    _humidity.Value = Convert.ToSingle(result.Humidity.Percent);
-                    _windDeg.Value = Convert.ToSingle(result.WindDirection.Value);
-                    _clouds.Value = Convert.ToSingle(result.Cloudiness.Percent);
+                    ApplyReadings(result);
                 }
             }
             catch (Exception)
             {
             }
+        }
+
+        // Writes one reading into the sensors in the chosen measurement system. Split out of GetWeather so a test
+        // can feed it a reading without calling the OpenWeatherMap service.
+        internal void ApplyReadings(Readings result)
+        {
+            _name.Value = result.CityName;
+
+            if (result.Weather is { Length: > 0 })
+            {
+                _weather.Value = result.Weather[0].Main;
+                _weatherDesc.Value = result.Weather[0].Description;
+                _weatherIcon.Value = result.Weather[0].IconId;
+                _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weather[0].IconId}@2x.png";
+            }
+
+            if (UseImperial)
+            {
+                _temp.Value = Convert.ToSingle(result.Temperature.DegreesFahrenheit);
+                _maxTemp.Value = Convert.ToSingle(result.MaximumTemperature.DegreesFahrenheit);
+                _minTemp.Value = Convert.ToSingle(result.MinimumTemperature.DegreesFahrenheit);
+                _pressure.Value = Convert.ToSingle(result.Pressure.InchesOfMercury);
+                _seaLevel.Value = Convert.ToSingle(result.SeaLevelPressure?.InchesOfMercury ?? 0);
+                _groundLevel.Value = Convert.ToSingle(result.GroundLevelPressure?.InchesOfMercury ?? 0);
+                _feelsLike.Value = Convert.ToSingle(result.FeelsLike.DegreesFahrenheit);
+                _windSpeed.Value = Convert.ToSingle(result.WindSpeed.MilesPerHour);
+                _windGust.Value = Convert.ToSingle(result.WindGust?.MilesPerHour ?? 0);
+                _rain.Value = Convert.ToSingle(result.RainfallLastHour?.Inches ?? 0);
+                _snow.Value = Convert.ToSingle(result.SnowfallLastHour?.Inches ?? 0);
+            }
+            else
+            {
+                _temp.Value = Convert.ToSingle(result.Temperature.DegreesCelsius);
+                _maxTemp.Value = Convert.ToSingle(result.MaximumTemperature.DegreesCelsius);
+                _minTemp.Value = Convert.ToSingle(result.MinimumTemperature.DegreesCelsius);
+                _pressure.Value = Convert.ToSingle(result.Pressure.Hectopascals);
+                _seaLevel.Value = Convert.ToSingle(result.SeaLevelPressure?.Hectopascals ?? 0);
+                _groundLevel.Value = Convert.ToSingle(result.GroundLevelPressure?.Hectopascals ?? 0);
+                _feelsLike.Value = Convert.ToSingle(result.FeelsLike.DegreesCelsius);
+                _windSpeed.Value = Convert.ToSingle(result.WindSpeed.MetersPerSecond);
+                _windGust.Value = Convert.ToSingle(result.WindGust?.MetersPerSecond ?? 0);
+                _rain.Value = Convert.ToSingle(result.RainfallLastHour?.Millimeters ?? 0);
+                _snow.Value = Convert.ToSingle(result.SnowfallLastHour?.Millimeters ?? 0);
+            }
+
+            _humidity.Value = Convert.ToSingle(result.Humidity.Percent);
+            _windDeg.Value = Convert.ToSingle(result.WindDirection.Value);
+            _clouds.Value = Convert.ToSingle(result.Cloudiness.Percent);
         }
     }
 }

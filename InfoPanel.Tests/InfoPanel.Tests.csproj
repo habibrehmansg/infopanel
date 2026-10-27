@@ -19,6 +19,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The Extras plugins are net8.0-windows, which a net10.0 test project can't reference, so the Weather plugin's
+         source is compiled into the tests; OpenWeatherMap.Cache is the package it already uses (central version). -->
+    <Compile Include="..\InfoPanel.Extras\WeatherPlugin.cs" Link="Plugins\Linked\WeatherPlugin.cs" />
+    <PackageReference Include="OpenWeatherMap.Cache" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\InfoPanel\InfoPanel.csproj" />
     <!-- The plugin host (net8.0) whose behaviour 2.0 keeps. -->
     <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
