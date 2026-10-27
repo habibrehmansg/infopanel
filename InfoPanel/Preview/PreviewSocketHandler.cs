@@ -543,11 +543,14 @@ internal sealed class PreviewSession
 
         if (message.TryGetProperty("maxFps", out var fpsElement))
         {
-            if (fpsElement.ValueKind != JsonValueKind.Number || !fpsElement.TryGetInt32(out maxFps) || maxFps < 1)
+            // A whole number in any spelling JSON Schema's integer allows (30, 30.0, 3e1), as every integer the engine reads.
+            if (fpsElement.ValueKind != JsonValueKind.Number || !fpsElement.TryGetDouble(out var fps) || fps != Math.Floor(fps) || fps < 1 || fps > int.MaxValue)
             {
                 SendError("\"maxFps\" must be a whole number of at least 1.");
                 return false;
             }
+
+            maxFps = (int)fps;
         }
 
         request = current with { Scale = scale, MaxFps = maxFps };

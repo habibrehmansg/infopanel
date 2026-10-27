@@ -80,6 +80,27 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
     }
 
     [Fact]
+    public async Task AWholeMaxFps_InTheSpellingsAnIntegerAllows_IsAccepted()
+    {
+        using var api = factory.CreateApiClient();
+        var id = JsonDocument.Parse(await api.GetStringAsync("/api/profiles", Ct)).RootElement[0].GetProperty("id").GetString();
+        await using var client = await PreviewClient.ConnectAsync(factory, Ct);
+        await client.ReceiveTextAsync("hello", Ct);
+
+        // clientMessage's maxFps is a JSON Schema integer, which 10.0 and 1e1 are.
+        await client.SendTextAsync($$"""{"type":"subscribe","profileId":"{{id}}","scale":0.25,"maxFps":10.0}""", Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+        await client.ReceiveFrameAsync(Ct);
+        await client.SendTextAsync("""{"type":"view","maxFps":1e1}""", Ct);
+        // The engine answers messages in order: an error for either would come before the resubscription's doc.
+        await client.SendTextAsync($$"""{"type":"subscribe","profileId":"{{id}}","scale":0.25,"maxFps":3e1}""", Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+
+        Assert.DoesNotContain("error", client.ReceivedTypes);
+        Assert.Equal(["subscribe", "view"], client.SentTypes.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task ThePreviewSocket_SendsOnlyServerMessagesAndFrames()
     {
         using var api = factory.CreateApiClient();
