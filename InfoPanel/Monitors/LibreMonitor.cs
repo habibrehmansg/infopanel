@@ -37,6 +37,24 @@ namespace InfoPanel.Monitors
 
         private LibreMonitor() { }
 
+        /// <summary>
+        /// Stores a sensor by identifier. LibreHardwareMonitor can give two
+        /// sensors one identifier (NVIDIA "GPU Memory" and "GPU Bus" load are
+        /// both load/3, LibreHardwareMonitor#1335): the later keeps the
+        /// identifier, as it always did, and the one it replaces stays under
+        /// "{identifier}/{name}" instead of being lost.
+        /// </summary>
+        internal static void Store(ISensor sensor, Dictionary<string, ISensor> pass)
+        {
+            string id = sensor.Identifier.ToString();
+            if (pass.TryGetValue(id, out var earlier) && !ReferenceEquals(earlier, sensor))
+            {
+                SENSORHASH[$"{id}/{earlier.Name}"] = earlier;
+            }
+            pass[id] = sensor;
+            SENSORHASH[id] = sensor;
+        }
+
         protected override async Task DoWorkAsync(CancellationToken token)
         {
             await Task.Delay(300, token);
@@ -71,6 +89,7 @@ namespace InfoPanel.Monitors
                     while (!token.IsCancellationRequested)
                     {
                         computer.Accept(updateVisitor);
+                        var pass = new Dictionary<string, ISensor>();
 
                         foreach (IHardware hardware in computer.Hardware)
                         {
@@ -84,14 +103,14 @@ namespace InfoPanel.Monitors
                                 foreach (ISensor sensor in subhardware.Sensors)
                                 {
                                     //Trace.WriteLine($"\t\tSensor: {sensor.Name}, value: {sensor.Value} id: {sensor.Identifier}");
-                                    SENSORHASH[sensor.Identifier.ToString()] = sensor;
+                                    Store(sensor, pass);
                                 }
                             }
 
                             foreach (ISensor sensor in hardware.Sensors)
                             {
                                 //Trace.WriteLine($"\tSensor: {sensor.Name}, value: {sensor.Value} id: {sensor.Identifier}");
-                                SENSORHASH[sensor.Identifier.ToString()] = sensor;
+                                Store(sensor, pass);
                             }
                         }
 

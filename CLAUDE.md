@@ -20,6 +20,9 @@ dotnet publish InfoPanel/InfoPanel.csproj -c Release -r win-x64 --self-contained
 # Run the main application
 dotnet run --project InfoPanel/InfoPanel.csproj
 
+# Run the unit tests (stop a running InfoPanel first: the build copies into its plugins folder)
+dotnet test InfoPanel.Tests/InfoPanel.Tests.csproj -p:Platform=x64
+
 # Run plugin simulator for testing plugins
 dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj
 ```

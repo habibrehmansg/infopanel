@@ -81,6 +81,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<InternalsVisibleTo Include="InfoPanel.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<Reference Include="LibreHardwareMonitorLib">
 			<HintPath>Lib\LibreHardwareMonitorLib.dll</HintPath>
 		</Reference>

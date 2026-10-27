@@ -150,6 +150,15 @@ namespace InfoPanel.Models
         private int _webServerRefreshRate = 66;
 
         [ObservableProperty]
+        private bool _dataApi = false;
+
+        [ObservableProperty]
+        private string _dataApiListenIp = "127.0.0.1";
+
+        [ObservableProperty]
+        private int _dataApiListenPort = 3921;
+
+        [ObservableProperty]
         private int _targetFrameRate = 15;
 
         [ObservableProperty]

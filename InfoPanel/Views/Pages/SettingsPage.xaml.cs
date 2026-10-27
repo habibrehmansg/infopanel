@@ -51,6 +51,11 @@ namespace InfoPanel.Views.Pages
                 }
             }
 
+            foreach (var ip in ComboBoxListenIp.Items)
+            {
+                ComboBoxDataApiListenIp.Items.Add(ip);
+            }
+
             ComboBoxListenPort.Items.Add("80");
             ComboBoxListenPort.Items.Add("81");
             ComboBoxListenPort.Items.Add("2020");

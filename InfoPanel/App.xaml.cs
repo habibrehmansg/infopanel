@@ -486,6 +486,10 @@ namespace InfoPanel
                 await WebServerTask.Instance.StartAsync();
             }
 
+            if (ConfigModel.Instance.Settings.DataApi)
+            {
+                await DataApiTask.Instance.StartAsync();
+            }
         }
 
         private static async Task StopPanels()
