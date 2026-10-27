@@ -47,6 +47,56 @@ The 2.0 targets are the seams in `InfoPanel.Core` (`ISensorSource`, `IImageSourc
 | 1.4.x model changes after `8a3062d`: `GuideDisplayItem` (15th item type, editor alignment guides; dropped on read today) and `ImageDisplayItem.RefreshInterval` (ignored on read) | sync into the Core models and the kind manifest, later | `InfoPanel/Models/GuideDisplayItem.cs`, `InfoPanel/Models/ImageDisplayItem.cs` |
 | `FontCache` (system font list for pickers) | `FontRegistry` + `/api/fonts` (M3/M4) | `InfoPanel/Utils/FontCache.cs` |
 
+## 1.4.x commits after `8a3062d` still to port
+
+`8a3062d` is the merge base with `2.0.x` (tip of `1.4.x` when the 2.0 line branched; `1.4.x` is now at `c71f0f0`). Three of the changes made since then applied to `2.0.x` as they were and are ported: the OBS Monitor entry in `plugins.json`, the Weather plugin's Metric/Imperial option (with `PluginSensor.Unit`'s setter) and the plugin host's table-mutation fix in `SensorSnapshotManager`. The 23 commits below touch code that isn't on `2.0.x` yet, so the task that brings each area over ports its changes from the `1.4.x` tip, not from `8a3062d`: read a file as it is there with `git show origin/1.4.x:<path>`, and `git show <sha>` for the change and its reason. Each task adds a test that pins the behaviour it carries over; `1.4.x` has none.
+
+Not ported, on purpose: changes to the WPF windows and pages only (the User Guide tile on the home page, the profile display-assignment dropdown, the editor's multi-select and drag handling), and the Lian Li 8.8 inch panel commit `ec6695d` with its revert `4528850`, which cancel out.
+
+### USB panel families (output panels, `IFrameSink`)
+
+Port the protocol and device code (`JlPanel/*`, `VmaxPanel/*`, `JonsboPanel/*`, `LianLiPanel/*` and the Thermalright model tables); the settings, device lists and hotkey wiring in these commits are WPF and are rewritten against the engine's settings. Land each family's fixes with it: a family ported from the tip already has them.
+
+| Family | Commit | What it does |
+|---|---|---|
+| Jungle Leopard / Hongtai cooler display | `39ac3d4` | New USB serial panel family and its protocol notes (`JL-PROTOCOL.md`, `PANELS.md`) |
+| Thermalright Elite Vision 360 ARGB Black (SPISCRM-V2) | `23d60fb` | New model |
+| | `5a8bd39` | Fix: SPISCRM-V2 identifier parsing, frame type and RGB565 (the panel showed a wrong image) |
+| Thermalright detection | `f7ca672` | Fix: three-pass ChiZhu detection so panels identified by PM stay intact |
+| Thermalright Trofeo Vision | `4d6b2d4` | New model: 11.3 inch (1920x400) |
+| | `689ee3e` | Probes TrofeoBulk byte 20 to tell the 11.3 inch from the 9.16 inch |
+| | `6b23229` | 9.16 inch v2 renders at 480 |
+| | `315ab6f` | Fix: caps HID Trofeo JPEG frames at 400 KB (the 6.86 inch froze at high brightness) |
+| Thermalright Wonder Vision | `d19cc5e` | New model: 360 v2 (SSCRM-V3, SUB=0x20) |
+| VMAX 4.6 inch | `793c03a` | New direct USB family |
+| | `3d24d42` | Fix: colour channel order (BGR) |
+| | `0b43898` | Streaming optimisation, capped at 30 fps |
+| | `0a5c26a` | Removes debug scaffolding |
+| | `80824a7` | Discovery aligned with the other panel types |
+| Jonsbo (DS916, DS339) | `8a617cb` | New USB family |
+| | `a2c8ed0` | Fix: DS339 bulk write timeouts on start-up |
+| | `0f81b8f` | Drives MS9132 panels at the resolution their EDID reports |
+| | `3939e56` | Logs the full MS9132 EDID block |
+| Lian Li LCD | `c3306ca` | New USB family (distinct from the reverted 8.8 inch commit) |
+
+### Plugin host
+
+The host side runs on `2.0.x` (net8.0, not loaded by the engine yet); these two touch the app side, which comes over with `PluginMonitor` and the `plugin-image://` source (see the Sensors and Images tables above).
+
+| Commit | What it does |
+|---|---|
+| `48b3684` | Fix: plugin actions are invoked through the current host connection, so the action buttons keep working after the host restarts (`PluginsViewModel`; port the idea into the `ISensorSource` that replaces `PluginMonitor`) |
+| `1acc815` | Fix: large plugin images (2650x720) starved the window's input under heavy render load. Adds a no-resize fast path for plugin frames in `LockedImage` (port with the `plugin-image://` source); the `DisplayWindow` dispatcher-priority part is WPF only |
+
+### Guide and image-refresh model fields
+
+Both belong with the Core model sync in the Persistence and editing table above (`ProfileSerializer`, `kinds.json`); the behaviour needs an HTTP image provider behind `IImageSource`.
+
+| Commit | What it does |
+|---|---|
+| `4c82f71` | `GuideDisplayItem`, a 15th item kind for editor alignment guides (the same commit's editor changes are WPF only; `2.0.x` documents already have `Guides`) |
+| `1114dac` | `ImageDisplayItem.RefreshInterval`: re-download URL images every N seconds, with `LockedImage.LoadedAtUtc` and the cache logic in `Utils/Cache.cs` |
+
 ## Later
 
 | 1.4.x component | 2.0 target | Source |
