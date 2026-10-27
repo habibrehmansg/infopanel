@@ -326,6 +326,10 @@ const openapiErrors = {
     (d) => { d.components.responses.ghost = { description: 'g', content: { 'application/json': { schema: { $ref: 'urn:t:a:1#/$defs/x' } } } }; getX(d).responses[200] = { description: 'ok' }; },
     [/#\/components\/responses\/ghost/, /used by no operation/]],
   'an unused parameter': [(d) => { d.components.parameters = { ghost: { name: 'g', in: 'query', schema: {} } }; }, [/#\/components\/parameters\/ghost/, /used by no operation/]],
+  'a request body\'s required as a string': [
+    (d) => { getX(d).requestBody = { required: 'true', content: { 'application/json': { schema: { $ref: 'urn:t:a:1#/$defs/x' } } } }; }, [/\/requestBody\/required/, /must be a boolean/]],
+  'a header\'s required as a string': [
+    (d) => { getX(d).responses[200].headers = { 'Content-Length': { required: 'true', schema: { type: 'integer' } } }; }, [/\/headers\/Content-Length\/required/, /must be a boolean/]],
   // D3's body shapes: a JSON body names definitions ($ref, a oneOf of $refs, an array of a $ref or a scalar), never defines one.
   'a body $ref with sibling keys': [
     (d) => { getX(d).responses[200].content['application/json'].schema = { $ref: 'urn:t:a:1#/$defs/x', properties: { a: {} } }; },

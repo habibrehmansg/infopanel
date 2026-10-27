@@ -534,6 +534,7 @@ function checkOpenApi({ file, json: doc }, byId) {
     Object.entries(object(v ?? {}, p, 'headers')).map(([name, h]) => {
       const hp = ptr(p, name);
       fields(h, 'header', hp);
+      if (has(h, 'required') && typeof h.required !== 'boolean') fail(ptr(hp, 'required'), 'required must be a boolean');
       if (!has(h, 'schema')) fail(hp, 'a header needs a schema');
       schema(h.schema, ptr(hp, 'schema'));
       return { name, required: h.required === true, description: h.description };
@@ -583,6 +584,7 @@ function checkOpenApi({ file, json: doc }, byId) {
       let request = null;
       if (has(op, 'requestBody')) {
         const rb = fields(op.requestBody, 'requestBody', ptr(p, 'requestBody'));
+        if (has(rb, 'required') && typeof rb.required !== 'boolean') fail(ptr(p, 'requestBody', 'required'), 'required must be a boolean');
         request = { required: rb.required === true, description: rb.description, content: content(rb.content, ptr(p, 'requestBody', 'content')) };
       }
 
