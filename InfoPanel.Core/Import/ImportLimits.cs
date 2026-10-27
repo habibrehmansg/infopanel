@@ -54,8 +54,14 @@ public sealed class ImportLimits
     /// <summary>The most profile outcomes in the migration record.</summary>
     public int RecordOutcomes { get; init; } = 1_000;
 
-    /// <summary>The largest migration record, in bytes as stored.</summary>
-    public int RecordBytes { get; init; } = 64 * 1024;
+    /// <summary>
+    /// The largest migration record, in bytes as stored: room for <see cref="RecordOutcomes"/> outcomes with ids and
+    /// reasons (an outcome with both ids and no reason is about 115 bytes).
+    /// </summary>
+    public int RecordBytes { get; init; } = 1024 * 1024;
+
+    /// <summary>The longest reason of a profile outcome in the record, in characters.</summary>
+    public int RecordReasonLength { get; init; } = 256;
 
     /// <summary>The most diagnostics one answer lists; one last <c>more</c> diagnostic counts the rest.</summary>
     public int Diagnostics { get; init; } = 1_000;

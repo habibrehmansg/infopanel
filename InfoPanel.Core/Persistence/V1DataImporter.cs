@@ -141,16 +141,7 @@ public static class V1DataImporter
     /// engine checks it before <c>--fresh</c> deletes anything): the error message when importing
     /// <paramref name="v1Root"/> into a store at <paramref name="storeRoot"/> would write into the 1.x data, else null.
     /// </summary>
-    public static string? FindOverlap(string v1Root, string storeRoot)
-    {
-        var v1 = new DataPaths(v1Root);
-        var store = new DataPaths(storeRoot);
-        return v1.Root.IsSubdirectoryOf(store.Root)
-            || store.Root.IsSubdirectoryOf(v1.ProfilesDirectory)
-            || store.Root.IsSubdirectoryOf(v1.AssetsDirectory)
-            ? $"The 2.0 data folder {store.Root} must not be the 1.x folder {v1.Root}, contain it, or be inside its profiles or assets folder."
-            : null;
-    }
+    public static string? FindOverlap(string v1Root, string storeRoot) => Import.V1Folder.FindOverlap(v1Root, storeRoot);
 
     /// <summary>Copies every file under <paramref name="source"/> (if it exists), keeping subfolders. Returns the file count.</summary>
     private static int CopyDirectory(string source, string destination)

@@ -141,8 +141,8 @@ public static class V1Reader
         return envelope with { Diagnostics = diagnostics.ToList() };
     }
 
-    /// <summary>A profile's items file: its bytes, or that it is missing or over the limit.</summary>
-    internal sealed record ItemsInput(string File, byte[]? Bytes, bool Missing, bool OverLimit);
+    /// <summary>A profile's items file: its bytes, or that it is missing, over the limit, or can't be read (<see cref="Problem"/>).</summary>
+    internal sealed record ItemsInput(string File, byte[]? Bytes, bool Missing, bool OverLimit, string? Problem = null);
 
     /// <summary>The envelope of <paramref name="profile"/> with its items and assets; diagnostics go to <paramref name="diagnostics"/>.</summary>
     internal static V1Profile Read(string source, Profile profile, XmlReadReport? profileReport, string profileFile, ItemsInput itemsInput,
@@ -242,6 +242,11 @@ public static class V1Reader
         if (input.Missing)
         {
             diagnostics.Add(ImportDiagnostics.Info, "import.items", "/items", "The profile has no items file: it has no items, as 1.x loads it.", input.File);
+            return ([], null);
+        }
+        if (input.Problem is { } problem)
+        {
+            diagnostics.Add(ImportDiagnostics.Error, "import.items", "/items", $"The items file can't be read: {problem} No items are read.", input.File);
             return ([], null);
         }
         if (input.OverLimit || input.Bytes is null)

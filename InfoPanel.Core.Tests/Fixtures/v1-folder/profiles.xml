@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ArrayOfProfile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Profile>
+    <Guid>6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7</Guid>
+    <Name>Desk Overlay</Name>
+    <Width>800</Width>
+    <Height>480</Height>
+    <Drag>false</Drag>
+    <BackgroundColor>#FF102030</BackgroundColor>
+    <Active>true</Active>
+    <Topmost>true</Topmost>
+    <Font>Consolas</Font>
+    <FontSize>18</FontSize>
+    <Color>#FFEEEEEE</Color>
+    <WindowX>1940</WindowX>
+    <WindowY>-40</WindowY>
+    <TargetWindow>
+      <X>1920</X>
+      <Y>0</Y>
+      <Width>2560</Width>
+      <Height>1440</Height>
+      <DeviceName>\\.\DISPLAY2</DeviceName>
+    </TargetWindow>
+    <Resize>false</Resize>
+    <StrictWindowMatching>true</StrictWindowMatching>
+    <TriggerProcessNames>game.exe, another.exe</TriggerProcessNames>
+    <IsSelected>true</IsSelected>
+    <ShowFps>true</ShowFps>
+    <OpenGL>true</OpenGL>
+    <FontScale>1.5</FontScale>
+  </Profile>
+  <Profile>
+    <Guid>0a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9</Guid>
+    <Name>USB Panel</Name>
+    <Width>480</Width>
+    <Height>320</Height>
+    <Drag>true</Drag>
+    <BackgroundColor>#FF000000</BackgroundColor>
+    <Active>false</Active>
+    <Topmost>false</Topmost>
+    <Font>Arial</Font>
+    <FontSize>26</FontSize>
+    <Color>#FF000000</Color>
+    <WindowX>0</WindowX>
+    <WindowY>0</WindowY>
+    <Resize>true</Resize>
+    <StrictWindowMatching>false</StrictWindowMatching>
+    <IsSelected>false</IsSelected>
+    <ShowFps>false</ShowFps>
+    <OpenGL>false</OpenGL>
+    <FontScale>1.33</FontScale>
+    <RefreshRate>60</RefreshRate>
+  </Profile>
+  <Profile>
+    <Guid>1c2d3e4f-5a6b-4c7d-8e9f-a0b1c2d3e4f5</Guid>
+    <Name>Huge Wall</Name>
+    <Width>20000</Width>
+    <Height>1080</Height>
+    <Active>true</Active>
+    <Font>Arial</Font>
+  </Profile>
+  <Profile>
+    <Guid>0a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9</Guid>
+    <Name>USB Panel (copy)</Name>
+    <Width>320</Width>
+    <Height>240</Height>
+    <Active>false</Active>
+  </Profile>
+  <Profile>
+    <Guid>2d3e4f5a-6b7c-4d8e-9fa0-b1c2d3e4f5a6</Guid>
+    <Name>Empty</Name>
+    <Width>600</Width>
+    <Height>400</Height>
+    <Active>false</Active>
+  </Profile>
+</ArrayOfProfile>

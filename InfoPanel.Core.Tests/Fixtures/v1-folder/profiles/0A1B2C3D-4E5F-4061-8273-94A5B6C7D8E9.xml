@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ArrayOfDisplayItem xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <DisplayItem xsi:type="TextDisplayItem">
+    <Name>Title</Name>
+    <X>10</X>
+    <Y>10</Y>
+    <Font>Arial</Font>
+    <FontSize>24</FontSize>
+    <Color>#FFFFFFFF</Color>
+  </DisplayItem>
+  <DisplayItem xsi:type="GuideDisplayItem">
+    <Name>Centre</Name>
+    <Hidden>false</Hidden>
+    <X>240</X>
+    <Y>0</Y>
+    <IsLocked>false</IsLocked>
+    <Rotation>90</Rotation>
+    <Length>320</Length>
+    <Color>#FFFF00FF</Color>
+  </DisplayItem>
+  <DisplayItem xsi:type="FutureDisplayItem">
+    <Name>From a newer build</Name>
+  </DisplayItem>
+  <DisplayItem xsi:nil="true" />
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Banner</Name>
+    <X>0</X>
+    <Y>200</Y>
+    <Type>FILE</Type>
+    <FilePath>banner.png</FilePath>
+    <RelativePath>true</RelativePath>
+    <RefreshInterval>30</RefreshInterval>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Clip</Name>
+    <Type>FILE</Type>
+    <FilePath>clip.mp4</FilePath>
+    <RelativePath>true</RelativePath>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Bitmap</Name>
+    <Type>FILE</Type>
+    <FilePath>old.bmp</FilePath>
+    <RelativePath>true</RelativePath>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Scripted</Name>
+    <Type>FILE</Type>
+    <FilePath>script.svg</FilePath>
+    <RelativePath>true</RelativePath>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Wallpaper</Name>
+    <Type>FILE</Type>
+    <FilePath>C:\Users\me\Pictures\wall.png</FilePath>
+    <RelativePath>false</RelativePath>
+  </DisplayItem>
+  <DisplayItem xsi:type="ImageDisplayItem">
+    <Name>Sneaky</Name>
+    <Type>FILE</Type>
+    <FilePath>..\6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7\g0.png</FilePath>
+    <RelativePath>true</RelativePath>
+  </DisplayItem>
+  <DisplayItem xsi:type="TextDisplayItem">
+    <Name>Fancy</Name>
+    <Font>Orbitron</Font>
+  </DisplayItem>
+</ArrayOfDisplayItem>
