@@ -6,6 +6,7 @@ using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Serialization;
+using InfoPanel.Import;
 using InfoPanel.Models;
 using Serilog;
 
@@ -55,47 +56,45 @@ public static class ProfileSerializer
     /// Item elements whose <c>xsi:type</c> is not one of the 14 kinds (for example newer 1.4.x
     /// <c>GuideDisplayItem</c>s) are dropped at every item position (top level, group children, gauge frames), and
     /// <c>xsi:nil</c> items are removed, each with a warning; unknown property elements are ignored.
-    /// Callers set the items' profile.
+    /// Callers set the items' profile. The XML is read through <see cref="SafeXml"/>: no DTD, no resolver, bounded
+    /// depth and element count.
     /// </summary>
-    /// <exception cref="InvalidDataException">The XML is malformed or not an item list.</exception>
-    public static List<DisplayItem> ReadItems(Stream stream)
-    {
-        XDocument document;
-        try
-        {
-            document = XDocument.Load(stream, LoadOptions.PreserveWhitespace);
-        }
-        catch (XmlException ex)
-        {
-            throw new InvalidDataException("The items XML is malformed: " + ex.Message, ex);
-        }
-        return ReadItems(document);
-    }
+    /// <exception cref="InvalidDataException">The XML is malformed, refused by <see cref="SafeXml"/> or not an item list.</exception>
+    public static List<DisplayItem> ReadItems(Stream stream) => ReadItems(Load(() => SafeXml.Load(stream), "items"), report: null);
 
     /// <inheritdoc cref="ReadItems(Stream)"/>
-    public static List<DisplayItem> ReadItems(TextReader reader)
+    public static List<DisplayItem> ReadItems(TextReader reader) => ReadItems(Load(() => SafeXml.Load(reader.ReadToEnd()), "items"), report: null);
+
+    /// <summary>Loads through <see cref="SafeXml"/>, a refusal as <see cref="InvalidDataException"/> (malformed XML included).</summary>
+    private static XDocument Load(Func<XDocument> load, string what)
     {
-        XDocument document;
         try
         {
-            document = XDocument.Load(reader, LoadOptions.PreserveWhitespace);
+            return load();
         }
-        catch (XmlException ex)
+        catch (XmlRefusedException ex)
         {
-            throw new InvalidDataException("The items XML is malformed: " + ex.Message, ex);
+            throw new InvalidDataException($"The {what} XML is malformed or refused: {ex.Message}", ex);
         }
-        return ReadItems(document);
     }
 
-    private static List<DisplayItem> ReadItems(XDocument document)
+    /// <summary>
+    /// <see cref="ReadItems(Stream)"/> on a document already loaded (through <see cref="SafeXml"/>, with line
+    /// information), which it changes: dropped item elements are removed from it. When <paramref name="report"/> is
+    /// given, what was dropped or ignored is also recorded there, with its position and line, instead of only logged.
+    /// </summary>
+    /// <exception cref="InvalidDataException">The XML is not an item list.</exception>
+    public static List<DisplayItem> ReadItems(XDocument document, XmlReadReport? report)
     {
-        DropUnknownItemTypes(document);
+        DropUnknownItemTypes(document, report);
 
         List<DisplayItem>? items;
         try
         {
             using var reader = document.CreateReader();
-            items = ItemsSerializer.Deserialize(reader) as List<DisplayItem>;
+            items = (report is null
+                ? ItemsSerializer.Deserialize(reader)
+                : ItemsSerializer.Deserialize(reader, report.Events())) as List<DisplayItem>;
         }
         catch (InvalidOperationException ex)
         {
@@ -104,6 +103,8 @@ public static class ProfileSerializer
         if (items == null)
             throw new InvalidDataException("The items XML is not an item list.");
 
+        if (report is not null && document.Root is { } root)
+            report.Map(root, items);
         RemoveNullItems(items);
         ItemTree.EnsureUniqueIds(items);
         return items;
@@ -115,18 +116,19 @@ public static class ProfileSerializer
     /// wrapper elements are left to XmlSerializer whatever their <c>xsi:type</c>. An item element without
     /// <c>xsi:type</c> is kept, and XmlSerializer reads it as its declared type.
     /// </summary>
-    private static void DropUnknownItemTypes(XDocument document)
+    private static void DropUnknownItemTypes(XDocument document, XmlReadReport? report)
     {
         if (document.Root is not { } root)
             return;
 
         var dropped = new List<string>();
-        DropUnknownItemTypes(root.Elements(), dropped);
+        DropUnknownItemTypes(root.Elements(), null, dropped, report);
         if (dropped.Count > 0)
             Logger.Warning("Skipped {Count} display items of unknown types {Types}", dropped.Count, dropped.Distinct().ToArray());
     }
 
-    private static void DropUnknownItemTypes(IEnumerable<XElement> itemElements, List<string> dropped)
+    /// <param name="parent">The group or gauge element holding <paramref name="itemElements"/>; null at the top level.</param>
+    private static void DropUnknownItemTypes(IEnumerable<XElement> itemElements, XElement? parent, List<string> dropped, XmlReadReport? report)
     {
         foreach (var element in itemElements.ToList())
         {
@@ -136,6 +138,7 @@ public static class ProfileSerializer
             if (IsUnknownItemType(element, type))
             {
                 dropped.Add(type);
+                report?.Dropped(element, LocalName(type), parent);
                 element.Remove();
                 continue;
             }
@@ -146,7 +149,7 @@ public static class ProfileSerializer
                 nameof(GaugeDisplayItem) => element.Elements(nameof(GaugeDisplayItem.Images)).Elements(),
                 _ => [],
             };
-            DropUnknownItemTypes(children, dropped);
+            DropUnknownItemTypes(children, element, dropped, report);
         }
     }
 
@@ -226,9 +229,13 @@ public static class ProfileSerializer
         return new XmlSerializer(typeof(List<DisplayItem>), overrides, [.. ItemTypes], null, null);
     }
 
-    /// <exception cref="InvalidDataException">The XML is malformed or not a profile list.</exception>
-    public static List<Profile> ReadProfiles(Stream stream) =>
-        Deserialize<List<Profile>>(ProfilesSerializer, stream, "profile list");
+    /// <exception cref="InvalidDataException">The XML is malformed, refused (<see cref="SafeXml"/>) or not a profile list.</exception>
+    public static List<Profile> ReadProfiles(Stream stream) => ReadProfiles(Load(() => SafeXml.Load(stream), "profile list"), report: null);
+
+    /// <summary>Reads a profile list from a document already loaded through <see cref="SafeXml"/>; unknown nodes go to <paramref name="report"/>.</summary>
+    /// <exception cref="InvalidDataException">The XML is not a profile list.</exception>
+    public static List<Profile> ReadProfiles(XDocument document, XmlReadReport? report) =>
+        Deserialize<List<Profile>>(ProfilesSerializer, document, report, "profile list");
 
     public static void WriteProfiles(Stream stream, IEnumerable<Profile> profiles)
     {
@@ -237,9 +244,13 @@ public static class ProfileSerializer
     }
 
     /// <summary>Reads a single profile (the archive's <c>Profile.xml</c>).</summary>
-    /// <exception cref="InvalidDataException">The XML is malformed or not a profile.</exception>
-    public static Profile ReadProfile(Stream stream) =>
-        Deserialize<Profile>(SingleProfileSerializer, stream, "profile");
+    /// <exception cref="InvalidDataException">The XML is malformed, refused (<see cref="SafeXml"/>) or not a profile.</exception>
+    public static Profile ReadProfile(Stream stream) => ReadProfile(Load(() => SafeXml.Load(stream), "profile"), report: null);
+
+    /// <summary>Reads a single profile from a document already loaded through <see cref="SafeXml"/>; unknown nodes go to <paramref name="report"/>.</summary>
+    /// <exception cref="InvalidDataException">The XML is not a profile.</exception>
+    public static Profile ReadProfile(XDocument document, XmlReadReport? report) =>
+        Deserialize<Profile>(SingleProfileSerializer, document, report, "profile");
 
     public static void WriteProfile(Stream stream, Profile profile)
     {
@@ -272,12 +283,12 @@ public static class ProfileSerializer
         }
     }
 
-    private static T Deserialize<T>(XmlSerializer serializer, Stream stream, string what) where T : class
+    private static T Deserialize<T>(XmlSerializer serializer, XDocument document, XmlReadReport? report, string what) where T : class
     {
         try
         {
-            using var reader = XmlReader.Create(stream);
-            return serializer.Deserialize(reader) as T
+            using var reader = document.CreateReader();
+            return (report is null ? serializer.Deserialize(reader) : serializer.Deserialize(reader, report.Events())) as T
                 ?? throw new InvalidDataException($"The {what} XML is empty.");
         }
         catch (InvalidOperationException ex)
