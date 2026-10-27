@@ -220,6 +220,36 @@ public class SensorSnapshotManagerTests
         Assert.Empty(Deliver(manager, wrapper));
     }
 
+    // One host loads every plugin in a DLL and they share one manager. Two of them may use the same container and
+    // entry ids: each plugin's entry keeps its own delivered value, so one plugin's update never hides another's.
+    [Fact]
+    public void Two_plugins_with_the_same_container_and_entry_ids_keep_separate_delivered_values()
+    {
+        // Sensors that report only a value (no min, max or average), so A's reading of 2 equals B's.
+        var tempA = new ValueSensor("temp", 1);
+        var tempB = new ValueSensor("temp", 2);
+        var a = WrapAs("plugin-a", tempA);
+        var b = WrapAs("plugin-b", tempB);
+        var manager = new SensorSnapshotManager();
+
+        // One cycle as the update loop runs it: every plugin is read, then every batch is confirmed delivered.
+        var sentA = manager.GetChangedEntries(a);
+        var sentB = manager.GetChangedEntries(b);
+        manager.MarkSent(a.Id, sentA);
+        manager.MarkSent(b.Id, sentB);
+        Assert.Equal(1, Assert.Single(sentA).SensorValue!.Value);
+        Assert.Equal(2, Assert.Single(sentB).SensorValue!.Value);
+
+        tempA.Value = 2;
+
+        var nextA = manager.GetChangedEntries(a);
+        var nextB = manager.GetChangedEntries(b);
+        manager.MarkSent(a.Id, nextA);
+        manager.MarkSent(b.Id, nextB);
+        Assert.Equal(2, Assert.Single(nextA).SensorValue!.Value);
+        Assert.Empty(nextB);
+    }
+
     /// <summary>One host cycle that reaches the client: the changes are read, then confirmed delivered.</summary>
     private static List<EntryUpdateDto> Deliver(SensorSnapshotManager manager, PluginWrapper wrapper)
     {
@@ -228,9 +258,11 @@ public class SensorSnapshotManagerTests
         return updates;
     }
 
-    private static PluginWrapper Wrap(params IPluginData[] entries)
+    private static PluginWrapper Wrap(params IPluginData[] entries) => WrapAs("stub", entries);
+
+    private static PluginWrapper WrapAs(string pluginId, params IPluginData[] entries)
     {
-        var wrapper = new PluginWrapper(new PluginDescriptor("plugin.dll", null), new StubPlugin());
+        var wrapper = new PluginWrapper(new PluginDescriptor("plugin.dll", null), new StubPlugin(pluginId));
         var container = new PluginContainer(Group);
         container.Entries.AddRange(entries);
         wrapper.PluginContainers.Add(container);
@@ -328,6 +360,15 @@ public class SensorSnapshotManagerTests
         }
     }
 
+    /// <summary>A sensor as a plugin may implement it directly: a value and nothing else.</summary>
+    private sealed class ValueSensor(string id, float value) : IPluginSensor
+    {
+        public string Id { get; } = id;
+        public string Name { get; } = id;
+        public string? Unit => null;
+        public float Value { get; set; } = value;
+    }
+
     /// <summary>A sensor whose first read fails as a plugin failure does; every later read is good.</summary>
     private sealed class FailOnceSensor : IPluginSensor
     {
@@ -349,9 +390,9 @@ public class SensorSnapshotManagerTests
         }
     }
 
-    private sealed class StubPlugin : IPlugin
+    private sealed class StubPlugin(string id) : IPlugin
     {
-        public string Id => "stub";
+        public string Id => id;
         public string Name => "Stub";
         public string Description => "";
         public string? ConfigFilePath => null;

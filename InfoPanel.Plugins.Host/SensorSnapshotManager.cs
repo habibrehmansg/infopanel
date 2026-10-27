@@ -16,7 +16,9 @@ namespace InfoPanel.Plugins.Host
         private readonly ConcurrentDictionary<string, object?> _lastValues = new();
         // Per entry key: what GetChangedEntries last returned as a change, until MarkSent confirms it delivered.
         private readonly ConcurrentDictionary<string, object?> _pending = new();
-        private readonly ConcurrentDictionary<(string containerId, string entryId), string> _keyCache = new();
+        // One host loads every plugin in a DLL into one manager, and two of them may use the same container and entry
+        // ids: the plugin id is part of the key, so each keeps its own state.
+        private readonly ConcurrentDictionary<(string pluginId, string containerId, string entryId), string> _keyCache = new();
 
         public List<EntryUpdateDto> GetChangedEntries(PluginWrapper wrapper)
         {
@@ -68,7 +70,7 @@ namespace InfoPanel.Plugins.Host
         }
 
         private string Key(string pluginId, string containerId, string entryId) =>
-            _keyCache.GetOrAdd((containerId, entryId), k => $"{pluginId}/{k.containerId}/{k.entryId}");
+            _keyCache.GetOrAdd((pluginId, containerId, entryId), k => $"{k.pluginId}/{k.containerId}/{k.entryId}");
 
         // A DataTable is not thread-safe: a plugin that changes rows or columns while the host reads them makes the
         // read throw. "Collection was modified" (InvalidOperationException), a removed row (RowNotInTableException, a
