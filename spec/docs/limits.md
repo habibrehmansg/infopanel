@@ -2,7 +2,7 @@
 
 **Limits** are part of the format: every engine that reads version 1 accepts all content within them and refuses content beyond them, with `limit.<name>` ([validation](validation.md)). They are fixed for a major version ([versioning](versioning.md)) and an engine reports them in `GET /api/session`. They bound the worst case: what hostile or careless content can cost.
 
-**Budgets** are the engine's performance targets for ordinary content. They are not part of the format; the engine is measured against them. Costs marked as estimated are measured when the scene runtime exists, and these numbers are revised with a decision record if they are wrong.
+**Budgets** are the engine's performance targets for ordinary content. They are not part of the format; the engine is measured against them. Costs marked as estimated are measured when the scene runtime exists, and these numbers are revised if they are wrong.
 
 ## The reference
 

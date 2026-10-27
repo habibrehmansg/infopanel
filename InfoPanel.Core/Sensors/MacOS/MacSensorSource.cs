@@ -5,8 +5,8 @@ namespace InfoPanel.Sensors.MacOS;
 
 /// <summary>
 /// The macOS sensor source: a <see cref="PolledSensorSource"/> over <see cref="MacSensorSampler"/>, polled once a
-/// second on the thread pool. Keys are <c>plugin:/infopanel.macos/{group}/{sensor}</c> (see
-/// <c>docs/2.0/decisions.md</c> for the catalogue). Everything is read as the normal user, without root or extra privileges;
+/// second on the thread pool. Keys are <c>plugin:/infopanel.macos/{group}/{sensor}</c> (the
+/// catalogue is in the sampler's readers). Everything is read as the normal user, without root or extra privileges;
 /// what the OS refuses reads as <see cref="SensorStatus.PermissionDenied"/>, what isn't there is not listed or reads as
 /// <see cref="SensorStatus.Unavailable"/>.
 /// </summary>

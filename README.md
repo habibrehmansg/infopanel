@@ -29,7 +29,7 @@ dotnet run --project InfoPanel -c Release -- --web-root <folder>   # serves a bu
 
 Without `--web-root`, an engine serves the `wwwroot` folder next to it if that folder contains an `index.html`. Profiles are kept in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows as 2.0 documents (`profiles/{id}/document.json`), with the media they use stored by content hash in `blobs/`; the first start stores an example profile. 1.x profiles aren't imported yet, and the engine never reads or changes a 1.x data folder. The engine listens on 127.0.0.1 only. The API and live preview need the token in the sign-in link the engine prints (or opens); the web client's files, the sign-in link and the health check are open to local requests.
 
-For development and tests, see [`CLAUDE.md`](CLAUDE.md). Design decisions are recorded in [`docs/2.0/decisions.md`](docs/2.0/decisions.md); what still has to come over from 1.x is in [`PORTING.md`](PORTING.md).
+For development and tests, see [`CLAUDE.md`](CLAUDE.md). What still has to come over from 1.x is in [`PORTING.md`](PORTING.md).
 
 ## Features
 

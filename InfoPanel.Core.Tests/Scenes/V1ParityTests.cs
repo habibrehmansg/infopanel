@@ -18,7 +18,7 @@ namespace InfoPanel.Core.Tests.Scenes;
 /// with the sensor values, history, fixture images and clock the step-1 golden used (<see cref="GoldenScene"/>), as a
 /// one-off snapshot (state at init, elapsed 0, as the step-1 goldens draw values at their target), at the case's scale,
 /// and compared with the step-1 golden <c>Golden/{os}/{case}.png</c> under <see cref="GoldenImage"/>'s tolerance.
-/// A case listed in <see cref="Accepted"/> has its own bound and reason (docs/2.0/decisions.md, 2026-10-27).
+/// A case listed in <see cref="Accepted"/> has its own bound and reason.
 /// </summary>
 [Collection(GoldenCollection.Name)]
 [Trait("Category", "Golden")]
