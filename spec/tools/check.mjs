@@ -156,7 +156,8 @@ for (const op of operations) {
     if (!isJsonMedia(media)) continue;
     for (const e of bodyExamples(schema)) source += `export const body${bodies++}: NonNullable<${at}['request']> = ${e};\n`;
   }
-  for (const r of op.responses) {
+  // A HEAD response has no body (ApiOperations types it null): its media types describe the headers only.
+  for (const r of op.method === 'head' ? [] : op.responses) {
     for (const { media, schema } of r.content) {
       if (!isJsonMedia(media)) continue;
       for (const e of bodyExamples(schema)) source += `export const body${bodies++}: ${at}['responses'][${r.status}] = ${e};\n`;

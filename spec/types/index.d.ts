@@ -2055,7 +2055,8 @@ export interface GlowEffect {
 /**
  * The engine API's requests (openapi.json), by `METHOD /path`: each with its path parameters (`params`), its query
  * parameters (`query`), its request body (`request`) and its responses by status. A JSON body is its type, any other
- * body is named by its media type, and `null` is no body; `never` is no request body.
+ * body is named by its media type, and `null` is no body; `never` is no request body. A HEAD response has no body, so
+ * each is `null` (openapi.json's media types describe its headers).
  */
 export interface ApiOperations {
   /**
@@ -2480,11 +2481,11 @@ export interface ApiOperations {
     request: never;
     responses: {
       /** The blob is stored; Content-Length is its size. */
-      200: "application/octet-stream";
+      200: null;
       /** No token, or one the engine doesn't know or has revoked. */
-      401: Problem;
+      401: null;
       /** No such profile, blob or token. */
-      404: Problem;
+      404: null;
     };
   };
   /**

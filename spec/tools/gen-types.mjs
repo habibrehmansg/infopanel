@@ -661,7 +661,8 @@ function paramsType(list, ctx, level) {
 const API_OPERATIONS_DOC = [
   'The engine API\'s requests (openapi.json), by `METHOD /path`: each with its path parameters (`params`), its query',
   'parameters (`query`), its request body (`request`) and its responses by status. A JSON body is its type, any other',
-  'body is named by its media type, and `null` is no body; `never` is no request body.',
+  'body is named by its media type, and `null` is no body; `never` is no request body. A HEAD response has no body, so',
+  'each is `null` (openapi.json\'s media types describe its headers).',
 ];
 
 function apiOperations(operations, ctx) {
@@ -675,7 +676,8 @@ function apiOperations(operations, ctx) {
     else lines.push(`${docBlock({ description: op.request.description }, 2)}    request${op.request.required ? '' : '?'}: ${bodyType(op.request.content, ctx, 2).s};`);
     lines.push('    responses: {');
     for (const r of [...op.responses].sort((a, b) => a.status - b.status)) {
-      lines.push(`${docBlock({ description: r.description }, 3)}      ${r.status}: ${bodyType(r.content, ctx, 3).s};`);
+      const body = op.method === 'head' ? atom('null') : bodyType(r.content, ctx, 3);
+      lines.push(`${docBlock({ description: r.description }, 3)}      ${r.status}: ${body.s};`);
     }
     lines.push('    };');
     lines.push('  };');

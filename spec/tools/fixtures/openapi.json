@@ -22,7 +22,8 @@
         "operationId": "headScene",
         "security": [{"bearer": ["read"]}],
         "responses": {
-          "200": {"description": "It exists.", "headers": {"Content-Length": {"required": true, "schema": {"type": "integer"}}}, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:scene:1"}}}}
+          "200": {"description": "It exists.", "headers": {"Content-Length": {"required": true, "schema": {"type": "integer"}}}, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:scene:1"}}}},
+          "404": {"$ref": "#/components/responses/notFound"}
         }
       }
     },

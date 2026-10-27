@@ -158,7 +158,8 @@ export type WithExtras = ImageItem & {
 /**
  * The engine API's requests (openapi.json), by `METHOD /path`: each with its path parameters (`params`), its query
  * parameters (`query`), its request body (`request`) and its responses by status. A JSON body is its type, any other
- * body is named by its media type, and `null` is no body; `never` is no request body.
+ * body is named by its media type, and `null` is no body; `never` is no request body. A HEAD response has no body, so
+ * each is `null` (openapi.json's media types describe its headers).
  */
 export interface ApiOperations {
   /**
@@ -195,7 +196,9 @@ export interface ApiOperations {
     request: never;
     responses: {
       /** It exists. */
-      200: Scene;
+      200: null;
+      /** No such scene. */
+      404: null;
     };
   };
   /** commitScene: Applies ops. */

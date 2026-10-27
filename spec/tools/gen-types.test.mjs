@@ -119,6 +119,8 @@ test('ApiOperations: one entry per operation, with params, query, request and re
   assert.match(ops, /409: TextItem \| ImageItem;/);
   assert.match(ops, /200: "image\/png" \| Scene;/);
   assert.match(ops, /request\?: "application\/octet-stream";\n {4}responses: \{\n {6}\/\*\* Stored. \*\/\n {6}204: null;/);
+  // A HEAD response has no body, whatever media type its headers describe.
+  assert.match(ops, /"HEAD \/scenes\/\{id\}": \{[^]*?responses: \{\n {6}\/\*\* It exists. \*\/\n {6}200: null;\n {6}\/\*\* No such scene. \*\/\n {6}404: null;\n {4}\};/);
   assert.match(ops, /"GET \/socket": \{[^]*?request: never;\n {4}responses: \{\n {6}\/\*\* Switching protocols. \*\/\n {6}101: null;/);
 });
 
