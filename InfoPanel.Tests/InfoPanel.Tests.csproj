@@ -26,8 +26,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel\InfoPanel.csproj" />
-    <!-- The plugin host (net8.0) whose behaviour 2.0 keeps. -->
-    <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
+    <!-- The plugin host (net8.0) whose behaviour 2.0 keeps. Its internals are visible to these tests, its top-level
+         Program among them, so it is referenced under an alias: Program here is the engine's. -->
+    <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" Aliases="PluginHost" />
   </ItemGroup>
 
 </Project>

@@ -199,12 +199,23 @@ namespace InfoPanel.Plugins.Host
             // Notify main app about loaded plugins
             NotifyPluginsLoaded(metadataList, containersByPluginId);
 
-            // Start update loops
+            StartLoops();
+
+            return metadataList;
+        }
+
+        /// <summary>
+        /// Test entry point: adds a plugin that is already initialised, as <see cref="InitializeAsync"/> does once it
+        /// has loaded it, without loading a DLL.
+        /// </summary>
+        internal void AddInitializedWrapper(PluginWrapper wrapper) => _wrappers.Add(wrapper);
+
+        /// <summary>Starts the update and performance loops, as <see cref="InitializeAsync"/> does once its plugins are loaded.</summary>
+        internal void StartLoops()
+        {
             _updateCts = new CancellationTokenSource();
             _updateTask = Task.Run(() => UpdateLoopAsync(_updateCts.Token));
             _perfUpdateTask = Task.Run(() => PerformanceLoopAsync(_updateCts.Token));
-
-            return metadataList;
         }
 
         public Task<List<PluginConfigPropertyDto>> GetConfigPropertiesAsync(string pluginId)
@@ -407,48 +418,7 @@ namespace InfoPanel.Plugins.Host
             {
                 try
                 {
-                    // Call Update() on sync plugins (UpdateInterval <= 0)
-                    foreach (var wrapper in _wrappers)
-                    {
-                        if (wrapper.IsLoaded)
-                        {
-                            try
-                            {
-                                wrapper.Update();
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Warning(ex, "Error updating plugin {PluginName}", wrapper.Name);
-                            }
-                        }
-                    }
-
-                    // Snapshot and push changed values
-                    batches.Clear();
-
-                    foreach (var wrapper in _wrappers)
-                    {
-                        if (!wrapper.IsLoaded) continue;
-
-                        var updates = _snapshotManager.GetChangedEntries(wrapper);
-                        if (updates.Count > 0)
-                        {
-                            batches.Add(new SensorUpdateBatchDto
-                            {
-                                PluginId = wrapper.Id,
-                                Updates = updates
-                            });
-                        }
-                    }
-
-                    // Only what the client was sent counts as sent: an update that wasn't goes again next cycle.
-                    if (batches.Count > 0 && await NotifySensorUpdateAsync(batches))
-                    {
-                        foreach (var batch in batches)
-                        {
-                            _snapshotManager.MarkSent(batch.PluginId, batch.Updates);
-                        }
-                    }
+                    await RunUpdateCycleAsync(batches, token);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -456,6 +426,53 @@ namespace InfoPanel.Plugins.Host
                 }
 
                 await Task.Delay(100, token);
+            }
+        }
+
+        /// <summary>One cycle of the update loop: updates the sync plugins, then sends what changed and marks it sent.</summary>
+        internal async Task RunUpdateCycleAsync(List<SensorUpdateBatchDto> batches, CancellationToken token)
+        {
+            // Call Update() on sync plugins (UpdateInterval <= 0)
+            foreach (var wrapper in _wrappers)
+            {
+                if (wrapper.IsLoaded)
+                {
+                    try
+                    {
+                        wrapper.Update();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning(ex, "Error updating plugin {PluginName}", wrapper.Name);
+                    }
+                }
+            }
+
+            // Snapshot and push changed values
+            batches.Clear();
+
+            foreach (var wrapper in _wrappers)
+            {
+                if (!wrapper.IsLoaded) continue;
+
+                var updates = _snapshotManager.GetChangedEntries(wrapper);
+                if (updates.Count > 0)
+                {
+                    batches.Add(new SensorUpdateBatchDto
+                    {
+                        PluginId = wrapper.Id,
+                        Updates = updates
+                    });
+                }
+            }
+
+            // Only what the client was sent counts as sent: an update that wasn't goes again next cycle.
+            if (batches.Count > 0 && await NotifySensorUpdateAsync(batches, token))
+            {
+                foreach (var batch in batches)
+                {
+                    _snapshotManager.MarkSent(batch.PluginId, batch.Updates);
+                }
             }
         }
 
@@ -677,16 +694,25 @@ namespace InfoPanel.Plugins.Host
             }
         }
 
-        /// <summary>Sends the updates to the client; true once they are written to the connection.</summary>
-        private async Task<bool> NotifySensorUpdateAsync(List<SensorUpdateBatchDto> updates)
+        /// <summary>
+        /// Sends the updates to the client; true once they are written to the connection. A client that is connected
+        /// but stops reading blocks the write, and NotifyAsync takes no token: cancelling <paramref name="token"/> stops
+        /// the wait (OperationCanceledException), not the write, so shutdown goes on and disposes the connection,
+        /// which releases it. Nothing is marked sent then.
+        /// </summary>
+        private async Task<bool> NotifySensorUpdateAsync(List<SensorUpdateBatchDto> updates, CancellationToken token)
         {
             var jsonRpc = _jsonRpc;
             if (jsonRpc == null) return false;
 
             try
             {
-                await jsonRpc.NotifyAsync(nameof(IPluginClientCallback.OnSensorUpdate), updates);
+                await jsonRpc.NotifyAsync(nameof(IPluginClientCallback.OnSensorUpdate), updates).WaitAsync(token);
                 return true;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {

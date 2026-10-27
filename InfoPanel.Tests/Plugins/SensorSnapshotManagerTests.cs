@@ -1,6 +1,8 @@
+extern alias PluginHost;
+
 using System.Data;
 using InfoPanel.Plugins;
-using InfoPanel.Plugins.Host;
+using PluginHost::InfoPanel.Plugins.Host;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using Xunit;
