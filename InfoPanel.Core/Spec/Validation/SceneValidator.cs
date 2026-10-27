@@ -37,7 +37,7 @@ public static class SceneValidator
         var counts = Counts(scene, limits);
         if (counts.Count > 0) return new SceneCheck(CheckStatus.Invalid, null, counts, SceneCost.Zero);
 
-        var schema = SpecSchemas.Strict.Validate(scene, SpecSchemas.Scene);
+        var schema = SpecSchemas.Strict.Validate(scene, SpecSchemas.Scene, limits.JsonDepth);
         if (!schema.IsValid) return new SceneCheck(CheckStatus.Invalid, null, ValidationText.FromSchema(schema).ToList(), SceneCost.Zero);
 
         Scene parsed;

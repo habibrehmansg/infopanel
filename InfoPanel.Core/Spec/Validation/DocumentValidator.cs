@@ -21,7 +21,14 @@ public sealed record CommitCheck(CommitRequest? Commit, IReadOnlyList<SpecError>
 /// <summary>Checks a stored or imported document (spec/docs/validation.md).</summary>
 public static class DocumentValidator
 {
-    public static DocumentCheck Check(JsonElement document, SpecLimits? limits = null, EngineSupport? support = null)
+    public static DocumentCheck Check(JsonElement document, SpecLimits? limits = null, EngineSupport? support = null) =>
+        Check(document, limits, support, null);
+
+    /// <summary>
+    /// <see cref="Check(JsonElement, SpecLimits?, EngineSupport?)"/> with each scene checked by <paramref name="checkScene"/>
+    /// (null: <see cref="SceneValidator.Check"/>), so that a caller can keep or share the scene checks.
+    /// </summary>
+    internal static DocumentCheck Check(JsonElement document, SpecLimits? limits, EngineSupport? support, Func<JsonElement, SceneCheck>? checkScene)
     {
         limits ??= SpecLimits.Default;
         support ??= EngineSupport.Base;
@@ -37,7 +44,7 @@ public static class DocumentValidator
         if (document.TryGetProperty("items", out var rawItems) && CountItems(rawItems, limits.Items) is var count && count > limits.Items)
             return Invalid([Over("/items", "items", count, limits.Items)]);
 
-        var schema = SpecSchemas.StructureOnly.Validate(document, SpecSchemas.Document);
+        var schema = SpecSchemas.StructureOnly.Validate(document, SpecSchemas.Document, limits.JsonDepth);
         if (!schema.IsValid) return Invalid(ValidationText.FromSchema(schema).ToList());
 
         Document parsed;
@@ -54,7 +61,7 @@ public static class DocumentValidator
         if (parsed.Profile.Editor is { } editor && ValidationText.Utf8Bytes(editor) > limits.EditorBytes)
             errors.Add(Over("/profile/editor", "editorBytes", ValidationText.Utf8Bytes(editor), limits.EditorBytes));
 
-        var tree = new ItemTreeRules(limits, support, new HashSet<string>(StringComparer.Ordinal));
+        var tree = new ItemTreeRules(limits, support, new HashSet<string>(StringComparer.Ordinal), checkScene);
         tree.Walk(parsed.Items, "/items", 1);
         errors.AddRange(tree.Errors);
         if (tree.Count > limits.Items) errors.Add(Over("/items", "items", tree.Count, limits.Items));
@@ -112,7 +119,8 @@ public static class DocumentValidator
         new(path, "limit." + name, $"{actual} is over the limit of {limit} ({name}).");
 
     /// <summary>The rules for a tree of items (a document's, or an inserted one): ids, nesting, sizes and each scene.</summary>
-    internal sealed class ItemTreeRules(SpecLimits limits, EngineSupport support, HashSet<string> ids)
+    internal sealed class ItemTreeRules(SpecLimits limits, EngineSupport support, HashSet<string> ids,
+        Func<JsonElement, SceneCheck>? checkScene = null)
     {
         public List<SpecError> Errors { get; } = [];
         public List<ItemCheck> Problems { get; } = [];
@@ -141,7 +149,7 @@ public static class DocumentValidator
                     if ((scene.Bindings?.Count ?? 0) > limits.Bindings)
                         Errors.Add(Over(p + "/bindings", "bindings", scene.Bindings!.Count, limits.Bindings));
                     CheckSource(scene.Source, p + "/source", limits, Errors);
-                    var check = SceneValidator.Check(scene.Scene, limits, support);
+                    var check = checkScene?.Invoke(scene.Scene) ?? SceneValidator.Check(scene.Scene, limits, support);
                     if (check.Status == CheckStatus.Valid) Costs.Add((p, item.Id, check.Cost));
                     else Problems.Add(new ItemCheck(p, item.Id, check.Status == CheckStatus.Unsupported ? "unsupported" : "invalid",
                         check.Errors.Select(e => e.Under(p + "/scene")).ToList()));
@@ -164,7 +172,14 @@ public static class DocumentValidator
 /// </summary>
 public static class CommitValidator
 {
-    public static CommitCheck Check(JsonElement commit, SpecLimits? limits = null, EngineSupport? support = null)
+    public static CommitCheck Check(JsonElement commit, SpecLimits? limits = null, EngineSupport? support = null) =>
+        Check(commit, limits, support, null);
+
+    /// <summary>
+    /// <see cref="Check(JsonElement, SpecLimits?, EngineSupport?)"/> with each new scene checked by <paramref name="checkScene"/>
+    /// (null: <see cref="SceneValidator.Check"/>), so that the engine applying the commit keeps the scene checks.
+    /// </summary>
+    internal static CommitCheck Check(JsonElement commit, SpecLimits? limits, EngineSupport? support, Func<JsonElement, SceneCheck>? checkScene)
     {
         limits ??= SpecLimits.Default;
         support ??= EngineSupport.Base;
@@ -192,7 +207,7 @@ public static class CommitValidator
             }
         }
 
-        var schema = SpecSchemas.StructureOnly.Validate(commit, SpecSchemas.CommitRequest);
+        var schema = SpecSchemas.StructureOnly.Validate(commit, SpecSchemas.CommitRequest, limits.JsonDepth);
         if (!schema.IsValid) return new CommitCheck(null, ValidationText.FromSchema(schema).ToList(), []);
 
         CommitRequest parsed;
@@ -225,7 +240,7 @@ public static class CommitValidator
                     break;
                 case InsertOp insert:
                 {
-                    var tree = new DocumentValidator.ItemTreeRules(limits, support, new HashSet<string>(StringComparer.Ordinal));
+                    var tree = new DocumentValidator.ItemTreeRules(limits, support, new HashSet<string>(StringComparer.Ordinal), checkScene);
                     tree.WalkItem(insert.Item, p + "/item", 1);
                     errors.AddRange(tree.Errors);
                     foreach (var problem in tree.Problems)
@@ -245,7 +260,7 @@ public static class CommitValidator
 
         void Scene(JsonElement scene, string path, int op, string id)
         {
-            var check = SceneValidator.Check(scene, limits, support);
+            var check = checkScene?.Invoke(scene) ?? SceneValidator.Check(scene, limits, support);
             if (check.Status == CheckStatus.Unsupported)
                 warnings.Add(new CommitWarning { Op = op, Id = id, Code = "unsupported", Message = check.Errors[0].Message });
             else if (check.Status == CheckStatus.Invalid)

@@ -2,6 +2,8 @@
 // Checks that types/index.d.ts is what tools/gen-types.mjs generates from schemas/. With TSC set to a TypeScript
 // compiler (TSC=path/to/tsc), also type-checks the types and every valid example against them: each scene, document,
 // commit and API body under examples/ is assigned to its type as an object literal, so excess or misspelt members fail.
+// Examples nested deeper than tsc can compare with the recursive JSON types (the jsonDepth examples) are left to the
+// engine's tests.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -32,12 +34,27 @@ if (!tsc) {
 }
 
 const list = (dir) => readdirSync(join(examples, dir)).filter((f) => f.endsWith('.json')).sort().map((f) => `${dir}/${f}`);
-const typed = [
+const all = [
   ...list('scene/valid').map((f) => [f, 'Scene']),
   ...list('document/valid').map((f) => [f, 'Document']),
   ...list('commit/valid').map((f) => [f, 'CommitRequest']),
   ...readdirSync(join(examples, 'api')).sort().flatMap((def) => list(`api/${def}`).map((f) => [f, pascalCase(def)])),
 ];
+// Nesting as jsonDepth counts it ([] is 1), without recursion.
+const depth = (value) => {
+  let max = 0;
+  const pending = [[value, 1]];
+  while (pending.length > 0) {
+    const [v, d] = pending.pop();
+    if (v === null || typeof v !== 'object') continue;
+    max = Math.max(max, d);
+    for (const child of Array.isArray(v) ? v : Object.values(v)) pending.push([child, d + 1]);
+  }
+  return max;
+};
+const maxTypedDepth = 32;
+const deep = all.filter(([file]) => depth(JSON.parse(readFileSync(join(examples, file), 'utf8'))) > maxTypedDepth);
+const typed = all.filter((entry) => !deep.includes(entry));
 const names = [...new Set(typed.map(([, t]) => t))].sort();
 let source = `import type { ${names.join(', ')} } from './types';\n\n`;
 typed.forEach(([file, type], i) => {
@@ -55,6 +72,8 @@ try {
     process.exit(1);
   }
   console.log(`The types compile and ${typed.length} examples type-check.`);
+  if (deep.length > 0)
+    console.log(`Not type-checked (nested deeper than ${maxTypedDepth} levels): ${deep.map(([file]) => file).join(', ')}.`);
 } finally {
   for (const f of readdirSync(dir)) unlinkSync(join(dir, f));
   rmdirSync(dir);

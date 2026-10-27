@@ -159,7 +159,9 @@ public class SpecExampleTests
         var check = DocumentValidator.Check(json, Limits(expected), EngineSupport.All);
         Assert.Equal(CheckStatus.Invalid, check.Status);
         AssertHas(check.Errors, expected, rel);
-        Assert.Equal((string)expected["code"]! != "schema", SpecSchemas.StructureOnly.Validate(json, SpecSchemas.Document).IsValid);
+        // A rule example passes the schema; a schema example fails it, and so does one nested deeper than jsonDepth (the
+        // schema validator's depth guard).
+        Assert.Equal((string)expected["code"]! is not ("schema" or "limit.jsonDepth"), SpecSchemas.StructureOnly.Validate(json, SpecSchemas.Document).IsValid);
     }
 
     // ---- commits -----------------------------------------------------------------------------------------------
@@ -315,7 +317,7 @@ public class SpecExampleTests
         var used = new HashSet<string>(StringComparer.Ordinal);
         foreach (var rel in new[] { "scene/valid", "document/valid", "commit/valid" }.SelectMany(FileList)
                      .Concat(FileList("api").Where(f => !IsInvalidApiBody(f))))
-            Collect(JsonNode.Parse(File.ReadAllText(Path.Combine(ExamplesDir, rel))), used);
+            Collect(JsonNode.Parse(File.ReadAllText(Path.Combine(ExamplesDir, rel)), documentOptions: SpecJson.DocumentOptions), used);
         Assert.Empty(declared.Where(d => !used.Contains(d)));
 
         static void Collect(JsonNode? node, HashSet<string> used)
@@ -372,8 +374,8 @@ public class SpecExampleTests
     /// </summary>
     internal static void AssertJsonEqual(JsonElement expected, JsonElement actual, string what)
     {
-        var a = Normalize(JsonNode.Parse(expected.GetRawText()));
-        var b = Normalize(JsonNode.Parse(actual.GetRawText()));
+        var a = Normalize(JsonNode.Parse(expected.GetRawText(), documentOptions: SpecJson.DocumentOptions));
+        var b = Normalize(JsonNode.Parse(actual.GetRawText(), documentOptions: SpecJson.DocumentOptions));
         Assert.True(JsonNode.DeepEquals(a, b), $"{what} doesn't round-trip:\n{a?.ToJsonString()}\n{b?.ToJsonString()}");
         AssertOpaqueKept(expected, actual, "", what);
     }
@@ -414,7 +416,9 @@ public class SpecExampleTests
     }
 
     /// <summary>A value's tokens, written compactly: the same for the same JSON text whatever its whitespace or escapes.</summary>
-    private static string Tokens(JsonElement e) => JsonSerializer.Serialize(e);
+    private static string Tokens(JsonElement e) => JsonSerializer.Serialize(e, Deep);
+
+    private static readonly JsonSerializerOptions Deep = new() { MaxDepth = SpecJson.SchemaDepth };
 
     [Fact]
     public void OpaqueMembers_KeepNullsAndNumberSpelling()

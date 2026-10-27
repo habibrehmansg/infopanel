@@ -53,10 +53,11 @@ public sealed class TickSnapshot : IDisposable
     private readonly double _drawBudgetMs;
     private int _references = 1;
 
-    internal TickSnapshot(long generation, long tick, SceneClock clock, int width, int height, uint background,
+    internal TickSnapshot(long generation, long rev, long tick, SceneClock clock, int width, int height, uint background,
         SnapItem[] items, MediaSample[] samples, IReadOnlyList<SceneDiagnostic> diagnostics, double drawBudgetMs)
     {
         Generation = generation;
+        Rev = rev;
         Tick = tick;
         Clock = clock;
         Width = width;
@@ -70,6 +71,9 @@ public sealed class TickSnapshot : IDisposable
     }
 
     public long Generation { get; }
+
+    /// <summary>The document revision the snapshot shows (<see cref="InfoPanel.Documents.Generation.Rev"/>; a loaded JSON document's <c>rev</c>, else 0).</summary>
+    public long Rev { get; }
     public long Tick { get; }
     public SceneClock Clock { get; }
     public int Width { get; }

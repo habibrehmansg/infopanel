@@ -10,12 +10,14 @@ Every reader checks content in the same order, and reports problems as `{ path, 
 2. Every capability in `requires` is supported, or `unsupported.capability`.
 3. Its size (`limit.sceneBytes`).
 4. Its collection counts, on the raw JSON: `limit.inputs`, `limit.values`, `limit.stateCells`, `limit.nodes` (nodes at every depth).
-5. The schema (`schema`).
+5. Its nesting (`limit.jsonDepth`), then the schema (`schema`).
 6. The rules and limits below.
 
-**Document**: it is UTF-8 JSON (`json`); the same first two steps for the document format; its size; its item count, groups' children included (`limit.items`); the schema with each scene checked only for being an object with a string `format`; ids, nesting and sizes; then each scene on its own (a bad scene makes a placeholder, not a bad document); then the aggregate budgets, in document order.
+**Document**: it is UTF-8 JSON (`json`); the same first two steps for the document format; its size; its item count, groups' children included (`limit.items`); its nesting (`limit.jsonDepth`); the schema with each scene checked only for being an object with a string `format`; ids, nesting and sizes; then each scene on its own (a bad scene makes a placeholder, not a bad document); then the aggregate budgets, in document order.
 
-**Commit**: its size; the op count (`limit.ops`) and each inserted item's count with its children (`limit.items`); the schema (scenes as for documents); each new scene and inserted item on its own (unsupported: a warning; invalid: an error); then, when it is applied, the checks in [commits](commit.md).
+**Commit**: its size; the op count (`limit.ops`) and each inserted item's count with its children (`limit.items`); its nesting (`limit.jsonDepth`); the schema (scenes as for documents); each new scene and inserted item on its own (unsupported: a warning; invalid: an error); then, when it is applied, the checks in [commits](commit.md).
+
+Content nested deeper than `jsonDepth` ([limits](limits.md#nesting-limit)) gets the one error `limit.jsonDepth` at `""` (the root of what was checked), and no schema errors.
 
 **Media asset**: its size (an SVG's `limit.svgBytes` too, before it is read); its header and container structure, without decoding (an SVG is read as a stream, held to the [SVG profile](svg.md), and reading stops past `limit.svgElements`; then its expanded size, references included, is held to `limit.svgElements`, and an accepted SVG is rebuilt into the canonical document that is the only form decoded); its dimensions, frames and duration ([limits](limits.md)).
 
@@ -25,7 +27,7 @@ A check reports at most 100 errors; when there are more than 100 (101 included),
 
 | Code | Meaning |
 |---|---|
-| `json` | Not JSON: a stored or imported document (or other body) that isn't well-formed UTF-8 JSON. |
+| `json` | Not JSON: a stored or imported document (or other body) that isn't well-formed UTF-8 JSON. Content nested too deeply is `limit.jsonDepth`, not `json`. |
 | `schema` | The JSON doesn't match the schema (unknown or missing member, wrong type, value out of the schema's range or pattern). The message names the schema keyword; `complexity` when the content is too complex to check within the validator's work budget ([limits](limits.md#checking-hostile-content)). |
 | `unsupported.format` | A format major version this engine doesn't read. |
 | `unsupported.capability` | A capability in `requires` this engine lacks. |
@@ -45,7 +47,7 @@ A check reports at most 100 errors; when there are more than 100 (101 included),
 | `time.pattern` | A `formatTime` pattern with a reserved letter or an unclosed quote. |
 | `path.syntax` | Path data that isn't valid SVG path data. |
 | `text.box` | A marquee, word wrap or fit on a text node without `w`. |
-| `limit.<name>` | Over the named limit ([limits](limits.md)): `limit.nodes`, `limit.exprWork`, `limit.documentNodes`, `limit.mediaSide`, ... |
+| `limit.<name>` | Over the named limit ([limits](limits.md)): `limit.nodes`, `limit.exprWork`, `limit.documentNodes`, `limit.jsonDepth`, `limit.mediaSide`, ... |
 | `media.format` | Not a supported media format. |
 | `media.truncated`, `media.malformed` | The header or container structure is incomplete or broken. |
 | `media.svg-external` | An SVG outside the [SVG profile](svg.md), an allowlist: an element, attribute, `style` property or value it doesn't list, a reference to anything outside the file (`data:` URIs included) or that doesn't resolve, a reference cycle, a CDATA section or processing instruction, ... |

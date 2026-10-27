@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using InfoPanel.Documents;
 using InfoPanel.Images;
 using InfoPanel.Spec;
 using Serilog;
@@ -84,9 +85,9 @@ public sealed class SceneRuntime : IDisposable
 
     private readonly SceneRuntimeOptions _options;
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, CompiledScene> _compiled = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ItemRuntime> _items = new(StringComparer.Ordinal);
     private SceneDocumentModel? _model;
+    private SceneChecker? _scenes;
     private TickSnapshot? _current;
     private long _generation;
     private long _tick;
@@ -110,15 +111,38 @@ public sealed class SceneRuntime : IDisposable
     public long Generation => Interlocked.Read(ref _generation);
 
     /// <summary>
-    /// Loads a document as the next generation. Items keep their state across generations (by id, cell name and
-    /// definition). Throws <see cref="SceneDocumentException"/> for a document that is unsupported or invalid as a whole.
+    /// Checks a document and loads it as the next generation (<see cref="Load(Generation)"/>), at the document's own
+    /// <c>rev</c> (0 without one); scenes whose JSON is the same as in the previous document checked here are not checked
+    /// or compiled again. Throws <see cref="SceneDocumentException"/> for a document that is unsupported or invalid as a
+    /// whole.
     /// </summary>
     public DocumentCheck Load(JsonElement document)
     {
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var model = SceneDocumentModel.Load(document, _options.Limits, _options.Support, _generation + 1, _compiled, out var check);
+            var load = Check(document, null);
+            Load(load.Generation!);
+            return load.Check;
+        }
+    }
+
+    /// <summary>
+    /// Loads an already-checked generation as the next one. A generation checked with this runtime's limits and support
+    /// keeps its checked and compiled scenes, reused by identity, so a generation that changed one item costs one item's
+    /// work; one checked with others is checked again with this runtime's (its document as JSON), so what is drawn
+    /// doesn't depend on how the generation was made. Items keep their state across generations (by id, cell name and
+    /// definition). Snapshots report the generation's <see cref="Generation.Rev"/>. Throws
+    /// <see cref="SceneDocumentException"/> when the generation's document is unsupported or invalid as a whole here.
+    /// </summary>
+    public void Load(Generation generation)
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!generation.Limits.Equals(_options.Limits) || !SceneChecker.SameSupport(generation.Support, _options.Support))
+                generation = Check(SpecJson.Write(generation.Document), generation.Rev).Generation!;
+            var model = SceneDocumentModel.Load(generation, _generation + 1);
             _generation = model.Generation;
             _model = model;
             Reconcile(model);
@@ -127,8 +151,19 @@ public sealed class SceneRuntime : IDisposable
                 _options.ProcessBudget.Release(_reserved);
                 _reserved = -1;
             }
-            return check;
         }
+    }
+
+    /// <summary>
+    /// Checks a document with this runtime's limits and support, reusing the scenes of the previous check by their JSON
+    /// text; throws <see cref="SceneDocumentException"/> when there is no generation. Under the lock.
+    /// </summary>
+    private GenerationLoad Check(JsonElement document, long? rev)
+    {
+        var load = Documents.Generation.Load(document, rev, _options.Limits, _options.Support, _scenes);
+        if (load.Generation is null) throw new SceneDocumentException(load.Check);
+        _scenes = load.Scenes;
+        return load;
     }
 
     /// <summary>
@@ -265,7 +300,7 @@ public sealed class SceneRuntime : IDisposable
         foreach (var item in model.Items)
             if (Visit(item, SKMatrix.Identity, 0) is { } s) roots.Add(s);
 
-        return new TickSnapshot(model.Generation, tick, clock, model.Width, model.Height, model.Background, roots.ToArray(),
+        return new TickSnapshot(model.Generation, model.Rev, tick, clock, model.Width, model.Height, model.Background, roots.ToArray(),
             services.Retained.ToArray(), diagnostics, _options.ItemBudgetMs);
     }
 

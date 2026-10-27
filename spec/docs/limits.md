@@ -17,6 +17,14 @@ The numbers below are justified from measurements of the current renderer on its
 | Engine process (debug build), one preview at 30 frames a second | 22 % of one core, 113 KB a frame | 74 % of one core, 308 KB a frame |
 | Engine memory (resident, debug build) | idle 147 MB; 200–250 MB while previewing and after 20 thumbnails at 3840 px | |
 
+## Nesting limit
+
+| Limit | Value | Why |
+|---|---|---|
+| `jsonDepth` | 256 levels | Bounds the recursion of every reader and writer of the formats. Within their own limits scenes nest far less (each node level adds two levels, each expression level two). |
+
+`jsonDepth` is the deepest nesting of arrays and objects in any document or request body an engine reads, and in any document a commit would produce: a number, string, boolean or null is at depth 0, and an array or object is one level deeper than its deepest member (`[]` and `{}` are at depth 1, `{"a": [1]}` at depth 2). Content nested deeper gets one error, `limit.jsonDepth` at `""`, in place of the schema's ([validation](validation.md#order)), and is checked no further. Opaque members (editor data, a source's data, an origin, a scene of a newer format) are held to it where they sit: a value a commit carries sits deeper in the document than in the commit's body, under the groups it lands in, so a commit is also checked on the document it would produce ([commits](commit.md#what-the-engine-checks-when-it-applies-a-commit)).
+
 ## Scene limits
 
 | Limit | Value | Why this number |
@@ -62,7 +70,7 @@ Aggregates are admitted in document order: a scene that would take the document 
 
 | Limit | Value |
 |---|---|
-| `commitBytes` | 16 MiB (a commit may carry a whole document's worth of items) |
+| `commitBytes` | 16 MiB of the request body as received, whitespace around the JSON value included (a commit may carry a whole document's worth of items) |
 | `ops` | 1,000 per commit |
 
 ## Media limits (checked from the header, before decoding)

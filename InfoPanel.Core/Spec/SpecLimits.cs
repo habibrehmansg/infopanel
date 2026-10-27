@@ -32,6 +32,9 @@ public sealed record SpecLimits
     public int Sequence { get; init; } = 256;
     public int EffectCost { get; init; } = 64;
 
+    // Per JSON value: every document and request body read, and every document a commit would make.
+    public int JsonDepth { get; init; } = 256;
+
     // Per document.
     public int DocumentBytes { get; init; } = 16_777_216;
     public int Items { get; init; } = 2_000;

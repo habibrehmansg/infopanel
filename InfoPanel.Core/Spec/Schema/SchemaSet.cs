@@ -8,7 +8,10 @@ namespace InfoPanel.Spec.Schema;
 /// <summary>A loaded, immutable, thread-safe set of JSON Schema (draft 2020-12 subset) documents.</summary>
 public sealed class SchemaSet
 {
-    /// <summary>Instances nested deeper than this many arrays/objects are rejected with a <c>depth</c> error.</summary>
+    /// <summary>
+    /// Instances nested deeper than this many arrays/objects are rejected with a <c>depth</c> error, unless a validation
+    /// asks for less (the format's <c>jsonDepth</c> limit).
+    /// </summary>
     public const int MaxInstanceDepth = 256;
 
     private readonly IReadOnlyList<JsonDocument> _docs; // keeps the schema JSON alive
@@ -47,14 +50,16 @@ public sealed class SchemaSet
     /// </summary>
     /// <param name="instance">The JSON value to check.</param>
     /// <param name="schemaRef">An absolute id (<c>urn:infopanel:scene:1</c>) or id plus fragment (<c>urn:infopanel:api:1#/$defs/commitRequest</c>).</param>
+    /// <param name="maxDepth">The deepest nesting accepted (a value nested deeper gets one <c>depth</c> error and nothing else is
+    /// checked); at most <see cref="MaxInstanceDepth"/>.</param>
     /// <exception cref="ArgumentException"><paramref name="schemaRef"/> names no loaded schema.</exception>
-    public SchemaValidationResult Validate(JsonElement instance, string schemaRef)
+    public SchemaValidationResult Validate(JsonElement instance, string schemaRef, int maxDepth = MaxInstanceDepth)
     {
         var node = Find(schemaRef) ?? throw new ArgumentException($"Unknown schema reference \"{schemaRef}\".", nameof(schemaRef));
         var sp = node.Id + "#" + node.Pointer;
         var scan = new List<Err>();
         long values = 0;
-        if (!Scan(instance, InstancePath.Root, 1, scan, sp, ref values))
+        if (!Scan(instance, InstancePath.Root, 1, Math.Min(maxDepth, MaxInstanceDepth), scan, sp, ref values))
             return new SchemaValidationResult(scan.Where(e => e.Keyword == "depth").Take(1).Select(e => e.ToError()).ToList());
 
         var run = new SchemaRun(BaseWork + WorkPerValue * values);
@@ -93,20 +98,20 @@ public sealed class SchemaSet
     /// per value, and one more per <see cref="SchemaRun.CharsPerStep"/> characters of a property name). False when the
     /// instance is too deep. Paths are segment chains: no pointer string is built unless an error is reported.
     /// </summary>
-    private static bool Scan(JsonElement v, InstancePath path, int depth, List<Err> errs, string sp, ref long values)
+    private static bool Scan(JsonElement v, InstancePath path, int depth, int max, List<Err> errs, string sp, ref long values)
     {
         values++;
         if (v.ValueKind is not (JsonValueKind.Array or JsonValueKind.Object)) return true;
-        if (depth > MaxInstanceDepth)
+        if (depth > max)
         {
-            errs.Add(new Err(path, "depth", $"Value is nested deeper than {MaxInstanceDepth} levels.", sp));
+            errs.Add(new Err(path, "depth", $"Value is nested deeper than {max} levels.", sp));
             return false;
         }
         if (v.ValueKind == JsonValueKind.Array)
         {
             var i = 0;
             foreach (var item in v.EnumerateArray())
-                if (!Scan(item, path.Item(i++), depth + 1, errs, sp, ref values)) return false;
+                if (!Scan(item, path.Item(i++), depth + 1, max, errs, sp, ref values)) return false;
             return true;
         }
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -117,7 +122,7 @@ public sealed class SchemaSet
             values += name.Length / SchemaRun.CharsPerStep;
             if (!seen.Add(name) && reported.Add(name) && errs.Count < MaxErrors)
                 errs.Add(new Err(path, "duplicateKey", $"Duplicate property \"{name}\".", sp));
-            if (!Scan(p.Value, path.Prop(name), depth + 1, errs, sp, ref values)) return false;
+            if (!Scan(p.Value, path.Prop(name), depth + 1, max, errs, sp, ref values)) return false;
         }
         return true;
     }

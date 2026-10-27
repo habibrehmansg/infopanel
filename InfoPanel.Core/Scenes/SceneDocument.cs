@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using InfoPanel.Documents;
 using InfoPanel.Spec;
 using SkiaSharp;
 
@@ -43,9 +44,10 @@ internal sealed class DocScene : DocItem
 }
 
 /// <summary>
-/// A document loaded for rendering: one generation. Each scene is checked on its own (a bad scene is a placeholder),
-/// aggregate budgets are admitted in document order, and each valid scene is compiled once (and reused by later
-/// generations while its JSON is unchanged).
+/// A document loaded for rendering: one generation (<see cref="Generation"/>), already checked. Each scene was checked on
+/// its own (a bad scene is a placeholder) and compiled once when the generation got it; aggregate budgets were admitted
+/// in document order. Loading only builds the item tree around them, so a generation that changed one item costs one
+/// item's work.
 /// </summary>
 internal sealed class SceneDocumentModel
 {
@@ -54,19 +56,13 @@ internal sealed class SceneDocumentModel
     public required uint Background;
     public required DocItem[] Items;
     public required long Generation;
+    public required long Rev;
     public required int NodeCount;
 
-    public static SceneDocumentModel Load(JsonElement json, SpecLimits limits, EngineSupport support, long generation,
-        Dictionary<string, CompiledScene> compiled, out DocumentCheck check)
+    /// <summary>The item tree of <paramref name="document"/>, which was checked with the runtime's own limits and support.</summary>
+    public static SceneDocumentModel Load(Generation document, long generation)
     {
-        check = DocumentValidator.Check(json, limits, support);
-        if (check.Status != CheckStatus.Valid || check.Document is not { } doc)
-            throw new SceneDocumentException(check);
-
-        var problems = check.Items.ToDictionary(i => i.Path, StringComparer.Ordinal);
-        // Items the document's check passed but the runtime can't compile, reported with the others.
-        var late = new List<ItemCheck>();
-        var used = new Dictionary<string, CompiledScene>(StringComparer.Ordinal);
+        var content = document.Content;
         var nodes = 0;
         DocItem Build(Item item, string path)
         {
@@ -91,36 +87,20 @@ internal sealed class SceneDocumentModel
                         Rotation = placement.Rotation ?? 0,
                     };
                     d.Local = PlacementMatrix(placement, d.LayoutW is { } lw ? lw / 2 : 0, d.LayoutH is { } lh ? lh / 2 : 0);
-                    if (problems.TryGetValue(path, out var problem))
+                    var facts = content.Entries[s.Id].Design.Scene!;
+                    if (facts.Problem is { } problem)
                     {
-                        d.Problem = problem.Problem;
-                        d.Errors = problem.Errors;
+                        d.Problem = problem;
+                        d.Errors = facts.ErrorsAt(path + "/scene");
                         return d;
                     }
-                    var raw = s.Scene.GetRawText();
-                    if (!used.TryGetValue(raw, out var scene) && !compiled.TryGetValue(raw, out scene))
+                    if (content.OverBudget.TryGetValue(s.Id, out var over))
                     {
-                        var sceneCheck = SceneValidator.Check(s.Scene, limits, support);
-                        if (sceneCheck.Status != CheckStatus.Valid || sceneCheck.Scene is null)
-                        {
-                            d.Problem = sceneCheck.Status == CheckStatus.Unsupported ? "unsupported" : "invalid";
-                            d.Errors = sceneCheck.Errors;
-                            late.Add(new ItemCheck(path, s.Id, d.Problem, d.Errors));
-                            return d;
-                        }
-                        try
-                        {
-                            scene = CompiledScene.Compile(sceneCheck.Scene, sceneCheck.Cost, limits);
-                        }
-                        catch (SceneCompileException e)
-                        {
-                            d.Problem = "invalid";
-                            d.Errors = [new SpecError($"{path}/scene", e.Code, e.Message)];
-                            late.Add(new ItemCheck(path, s.Id, d.Problem, d.Errors));
-                            return d;
-                        }
+                        d.Problem = "budget";
+                        d.Errors = [over];
+                        return d;
                     }
-                    used[raw] = scene;
+                    var scene = facts.Compiled!;
                     d.Scene = scene;
                     nodes += scene.NodeCount;
                     d.Bindings = scene.InputNames.Select(name =>
@@ -132,13 +112,9 @@ internal sealed class SceneDocumentModel
             }
         }
 
+        var doc = document.Document;
         var items = new DocItem[doc.Items.Count];
         for (var i = 0; i < items.Length; i++) items[i] = Build(doc.Items[i], $"/items/{i}");
-        if (late.Count > 0) check = check with { Items = [.. check.Items, .. late] };
-
-        // Keep only the scenes this generation uses, so the cache never outgrows the document.
-        compiled.Clear();
-        foreach (var (k, v) in used) compiled[k] = v;
 
         return new SceneDocumentModel
         {
@@ -148,6 +124,7 @@ internal sealed class SceneDocumentModel
             Background = SceneColor.TryParse(doc.Profile.Background, out var bg) ? bg : 0xFFFFFFFF,
             Items = items,
             Generation = generation,
+            Rev = document.Rev,
             NodeCount = nodes,
         };
     }

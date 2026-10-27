@@ -49,6 +49,7 @@
   "document/invalid/duplicate-id.json": {"code": "id.duplicate", "path": "/items/1/children/0/id"},
   "document/invalid/editor-bytes.json": {"code": "limit.editorBytes", "path": "/profile/editor", "limits": {"editorBytes": 16}},
   "document/invalid/group-depth.json": {"code": "limit.groupDepth", "path": "/items/0/children/0", "limits": {"groupDepth": 1}},
+  "document/invalid/json-depth.json": {"code": "limit.jsonDepth", "path": ""},
   "document/invalid/items.json": {"code": "limit.items", "path": "/items", "limits": {"items": 2}},
   "document/invalid/missing-placement.json": {"code": "schema", "path": "/items/0"},
   "document/invalid/origin-bytes.json": {"code": "limit.originBytes", "path": "/items/0/origin", "limits": {"originBytes": 16}},

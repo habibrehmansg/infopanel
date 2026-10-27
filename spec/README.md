@@ -12,7 +12,7 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 | `types/index.d.ts` | TypeScript types, generated from the schemas (`npm run gen`). |
 | `docs/` | The specification in prose (below). |
 | `examples/` | Valid and invalid documents, scenes, commits, API bodies (`api/{definition}/`, refused ones in its `invalid/`) and media; `examples/expected.json` gives each invalid example's error code and path. |
-| `tools/` | `gen-types.mjs` (schemas to TypeScript, no dependencies), `check.mjs` (the types are current; with `TSC` set, every valid example type-checks). |
+| `tools/` | `gen-types.mjs` (schemas to TypeScript, no dependencies), `check.mjs` (the types are current; with `TSC` set, every valid example type-checks, except those nested deeper than 32 levels, which the compiler can't compare with the recursive JSON types). |
 | `package.json` | `@infopanel/spec`, private for now: use it by path. |
 
 ## The specification
@@ -39,7 +39,7 @@ From `spec/`:
 ```bash
 npm run gen                                  # regenerate types/index.d.ts after a schema change
 npm run check                                # the types are current; the generator's own tests
-TSC=path/to/tsc npm run check                # also type-check the types and every valid example
+TSC=path/to/tsc npm run check                # also type-check the types and the valid examples
 ```
 
 From the repository root, the engine tests check every example against the schemas and the engine's rules, the C# model against the schemas, and (when Node.js is on the PATH) that the types are current:

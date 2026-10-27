@@ -48,11 +48,36 @@ public static class SpecJson
         return options;
     }
 
-    /// <summary>The nesting depth documents may reach (nodes and expressions nest); deeper input is refused by the limits first.</summary>
+    /// <summary>
+    /// The nesting depth the model is read and written at: the format's <c>jsonDepth</c> limit, so every value within the
+    /// limit can be read and written; deeper input is refused by the limits first.
+    /// </summary>
     public const int SchemaDepth = 256;
 
-    /// <summary>Options for <see cref="JsonDocument.Parse(string, JsonDocumentOptions)"/> of spec documents.</summary>
-    public static JsonDocumentOptions DocumentOptions { get; } = new() { MaxDepth = SchemaDepth };
+    /// <summary>
+    /// Options for <see cref="JsonDocument.Parse(string, JsonDocumentOptions)"/> of spec documents and bodies: any depth
+    /// (parsing is not recursive), so that content nested too deeply is the validator's <c>limit.jsonDepth</c>, not
+    /// unreadable JSON.
+    /// </summary>
+    public static JsonDocumentOptions DocumentOptions { get; } = new() { MaxDepth = int.MaxValue };
+
+    /// <summary>
+    /// How deeply a JSON value nests arrays and objects as <c>jsonDepth</c> counts it: 0 for a number, string, boolean or
+    /// null, 1 for an array or object holding none, one more per level. Read without recursion.
+    /// </summary>
+    public static int Depth(ReadOnlySpan<byte> utf8)
+    {
+        var reader = new Utf8JsonReader(utf8, new JsonReaderOptions { MaxDepth = int.MaxValue });
+        var max = 0;
+        while (reader.Read())
+            if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray && reader.CurrentDepth >= max)
+                max = reader.CurrentDepth + 1;
+        return max;
+    }
+
+    /// <summary><see cref="Depth(ReadOnlySpan{byte})"/> of an element's own text; 0 for an absent (undefined) one.</summary>
+    public static int Depth(JsonElement value) =>
+        value.ValueKind == JsonValueKind.Undefined ? 0 : Depth(System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(value));
 
     public static T Read<T>(JsonElement element) => element.Deserialize<T>(Options)
         ?? throw new JsonException($"Expected a {typeof(T).Name}, not null.");
