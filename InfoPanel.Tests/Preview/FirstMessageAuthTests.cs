@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using InfoPanel.Hosting;
 using InfoPanel.Preview;
+using InfoPanel.Tests.Contract;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -68,9 +69,12 @@ public class FirstMessageAuthTests(ShortAuthTimeoutEngineFactory factory) : ICla
             buffer.Write(chunk, 0, result.Count);
             if (!result.EndOfMessage)
                 continue;
+            // What the engine sends is held to the spec: a frame message, or a serverMessage.
             if (result.MessageType == WebSocketMessageType.Binary)
-                return ("binary", "", null);
+                return SocketContract.CheckFrame(buffer.ToArray()) is { } frame ? throw new InvalidOperationException(frame) : ("binary", "", null);
             var text = Encoding.UTF8.GetString(buffer.ToArray());
+            if (SocketContract.CheckServerText(text) is { } outside)
+                throw new InvalidOperationException(outside);
             return (JsonDocument.Parse(text).RootElement.GetProperty("type").GetString()!, text, null);
         }
     }
