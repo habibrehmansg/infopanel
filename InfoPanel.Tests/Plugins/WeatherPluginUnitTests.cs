@@ -121,38 +121,49 @@ public class WeatherPluginUnitTests
         var release = new ManualResetEventSlim();
         Exception? failure = null;
         Thread? fetch = null;
+        Thread? change = null;
         weather.AfterSystemChosen = () =>
         {
             if (Thread.CurrentThread != fetch) return;
             chosen.Set();
-            release.Wait(bound);
+            // A timeout here would let the fetch finish before the switch: it fails the test instead.
+            if (!release.Wait(bound)) throw new TimeoutException("the fetch was never released");
         };
 
         // 27 °C (80.6 °F) instead of the held reading's 21.5 °C, so the result shows which reading was converted.
         var newer = Reading(ServiceJson.Replace("\"temp\": 294.65", "\"temp\": 300.15"));
         fetch = new Thread(() => Capture(ref failure, () => weather.ApplyReadings(newer)));
-        fetch.Start();
-        Assert.True(chosen.Wait(bound), "the fetch never chose its system");
-
-        var change = new Thread(() => Capture(ref failure, () => weather.ApplyConfig("MeasurementSystem", "Imperial")));
-        change.Start();
-        var waited = System.Diagnostics.Stopwatch.StartNew();
-        while (change.IsAlive && (change.ThreadState & ThreadState.WaitSleepJoin) == 0)
+        try
         {
-            Assert.True(waited.Elapsed < bound, "the switch neither finished nor waited");
-            Thread.Yield();
+            fetch.Start();
+            Assert.True(chosen.Wait(bound), "the fetch never chose its system");
+
+            change = new Thread(() => Capture(ref failure, () => weather.ApplyConfig("MeasurementSystem", "Imperial")));
+            change.Start();
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            while (change.IsAlive && (change.ThreadState & ThreadState.WaitSleepJoin) == 0)
+            {
+                Assert.True(waited.Elapsed < bound, "the switch neither finished nor waited");
+                Thread.Yield();
+            }
+
+            release.Set();
+            Assert.True(fetch.Join(bound), "the fetch didn't finish");
+            Assert.True(change.Join(bound), "the switch didn't finish");
+            Assert.Null(failure);
+
+            AssertSensor(sensors, "temp", 80.6f, "°F");
+            AssertSensor(sensors, "max_temp", 77f, "°F");
+            AssertSensor(sensors, "pressure", 29.91f, "inHg");
+            AssertSensor(sensors, "wind_speed", 22.37f, "mph");
+            AssertSensor(sensors, "rain", 1f, "in/h");
         }
-
-        release.Set();
-        Assert.True(fetch.Join(bound), "the fetch didn't finish");
-        Assert.True(change.Join(bound), "the switch didn't finish");
-        Assert.Null(failure);
-
-        AssertSensor(sensors, "temp", 80.6f, "°F");
-        AssertSensor(sensors, "max_temp", 77f, "°F");
-        AssertSensor(sensors, "pressure", 29.91f, "inHg");
-        AssertSensor(sensors, "wind_speed", 22.37f, "mph");
-        AssertSensor(sensors, "rain", 1f, "in/h");
+        finally
+        {
+            release.Set();
+            if (fetch.IsAlive) fetch.Join(bound);
+            if (change is { IsAlive: true }) change.Join(bound);
+        }
     }
 
     private static void Capture(ref Exception? failure, Action action)
