@@ -441,9 +441,13 @@ namespace InfoPanel.Plugins.Host
                         }
                     }
 
-                    if (batches.Count > 0)
+                    // Only what the client was sent counts as sent: an update that wasn't goes again next cycle.
+                    if (batches.Count > 0 && await NotifySensorUpdateAsync(batches))
                     {
-                        NotifySensorUpdate(batches);
+                        foreach (var batch in batches)
+                        {
+                            _snapshotManager.MarkSent(batch.PluginId, batch.Updates);
+                        }
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -673,15 +677,21 @@ namespace InfoPanel.Plugins.Host
             }
         }
 
-        private void NotifySensorUpdate(List<SensorUpdateBatchDto> updates)
+        /// <summary>Sends the updates to the client; true once they are written to the connection.</summary>
+        private async Task<bool> NotifySensorUpdateAsync(List<SensorUpdateBatchDto> updates)
         {
+            var jsonRpc = _jsonRpc;
+            if (jsonRpc == null) return false;
+
             try
             {
-                _jsonRpc?.NotifyAsync(nameof(IPluginClientCallback.OnSensorUpdate), updates);
+                await jsonRpc.NotifyAsync(nameof(IPluginClientCallback.OnSensorUpdate), updates);
+                return true;
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Failed to notify sensor update");
+                return false;
             }
         }
 

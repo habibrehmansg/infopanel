@@ -1,6 +1,7 @@
 using System.Data;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Host;
+using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using Xunit;
 
@@ -75,6 +76,78 @@ public class SensorSnapshotManagerTests
         Assert.Throws<InvalidOperationException>(() => new SensorSnapshotManager().GetChangedEntries(wrapper));
     }
 
+    // A DataTable is not thread-safe. Removing and adding columns while the host reads the table makes the read throw
+    // more than "Collection was modified": a column removed between finding it and reading its storage throws
+    // NullReferenceException from row[i], and a column index past the shrunk collection throws
+    // IndexOutOfRangeException. Each is scripted here, so the interleaving is the same on every run.
+    [Theory]
+    [InlineData(typeof(NullReferenceException))]
+    [InlineData(typeof(IndexOutOfRangeException))]
+    [InlineData(typeof(ArgumentOutOfRangeException))]
+    public void A_table_whose_columns_change_during_the_read_does_not_drop_the_plugins_other_updates(Type failure)
+    {
+        var temp = new PluginSensor("temp", "Temperature", 21);
+        var label = new PluginText("label", "Label", "hello");
+        var table = new FlakyTable("table", [(Exception)Activator.CreateInstance(failure)!]);
+        var wrapper = Wrap(temp, table, label);
+        var manager = new SensorSnapshotManager();
+
+        Assert.Equal(["temp", "label"], Deliver(manager, wrapper).Select(u => u.EntryId).ToArray());
+        Assert.Equal(["table"], Deliver(manager, wrapper).Select(u => u.EntryId).ToArray());
+    }
+
+    [Fact]
+    public void A_cycle_that_fails_part_way_does_not_suppress_the_values_it_had_already_read()
+    {
+        // The cycle reads temp, then a plugin failure aborts it, so temp's value never reaches the client. The next
+        // cycle must still send it: a value counts as sent only once the host has delivered it.
+        var temp = new PluginSensor("temp", "Temperature", 21);
+        var wrapper = Wrap(temp, new FailOnceSensor());
+        var manager = new SensorSnapshotManager();
+
+        Assert.Throws<InvalidOperationException>(() => Deliver(manager, wrapper));
+
+        Assert.Contains("temp", Deliver(manager, wrapper).Select(u => u.EntryId));
+    }
+
+    [Fact]
+    public void An_update_the_host_did_not_deliver_is_sent_again_on_the_next_cycle()
+    {
+        var temp = new PluginSensor("temp", "Temperature", 21);
+        var wrapper = Wrap(temp);
+        var manager = new SensorSnapshotManager();
+
+        Assert.Single(manager.GetChangedEntries(wrapper)); // read, never delivered
+
+        var resent = Assert.Single(manager.GetChangedEntries(wrapper));
+        Assert.Equal(21, resent.SensorValue!.Value);
+    }
+
+    [Fact]
+    public void A_delivered_value_is_not_sent_again_until_it_changes()
+    {
+        var temp = new PluginSensor("temp", "Temperature", 21);
+        var label = new PluginText("label", "Label", "hello");
+        var wrapper = Wrap(temp, label);
+        var manager = new SensorSnapshotManager();
+
+        Assert.Equal(2, Deliver(manager, wrapper).Count);
+        Assert.Empty(Deliver(manager, wrapper));
+
+        temp.Value = 22;
+        var changed = Assert.Single(Deliver(manager, wrapper));
+        Assert.Equal("temp", changed.EntryId);
+        Assert.Empty(Deliver(manager, wrapper));
+    }
+
+    /// <summary>One host cycle that reaches the client: the changes are read, then confirmed delivered.</summary>
+    private static List<EntryUpdateDto> Deliver(SensorSnapshotManager manager, PluginWrapper wrapper)
+    {
+        var updates = manager.GetChangedEntries(wrapper);
+        manager.MarkSent(wrapper.Id, updates);
+        return updates;
+    }
+
     private static PluginWrapper Wrap(params IPluginData[] entries)
     {
         var wrapper = new PluginWrapper(new PluginDescriptor("plugin.dll", null), new StubPlugin());
@@ -123,6 +196,27 @@ public class SensorSnapshotManagerTests
         public string Name => "Bad";
         public string? Unit => null;
         public float Value { get => throw new InvalidOperationException("plugin failure"); set { } }
+    }
+
+    /// <summary>A sensor whose first read fails as a plugin failure does; every later read is good.</summary>
+    private sealed class FailOnceSensor : IPluginSensor
+    {
+        private bool _failed;
+
+        public string Id => "flaky";
+        public string Name => "Flaky";
+        public string? Unit => null;
+
+        public float Value
+        {
+            get
+            {
+                if (_failed) return 1;
+                _failed = true;
+                throw new InvalidOperationException("plugin failure");
+            }
+            set { }
+        }
     }
 
     private sealed class StubPlugin : IPlugin

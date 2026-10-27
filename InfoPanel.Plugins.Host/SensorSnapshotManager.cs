@@ -5,9 +5,17 @@ using InfoPanel.Plugins.Loader;
 
 namespace InfoPanel.Plugins.Host
 {
+    /// <summary>
+    /// Finds the plugin entries whose values changed since the host last delivered them. <see cref="GetChangedEntries"/>
+    /// only reads: what it returns counts as sent once the host confirms delivery with <see cref="MarkSent"/>, so a
+    /// cycle that fails part way, or whose message is never sent, costs no entry its update.
+    /// </summary>
     public class SensorSnapshotManager
     {
+        // Per entry key: what the host last delivered.
         private readonly ConcurrentDictionary<string, object?> _lastValues = new();
+        // Per entry key: what GetChangedEntries last returned as a change, until MarkSent confirms it delivered.
+        private readonly ConcurrentDictionary<string, object?> _pending = new();
         private readonly ConcurrentDictionary<(string containerId, string entryId), string> _keyCache = new();
 
         public List<EntryUpdateDto> GetChangedEntries(PluginWrapper wrapper)
@@ -18,20 +26,16 @@ namespace InfoPanel.Plugins.Host
             {
                 foreach (var entry in container.Entries)
                 {
-                    var key = _keyCache.GetOrAdd(
-                        (container.Id, entry.Id),
-                        k => $"{wrapper.Id}/{k.containerId}/{k.entryId}");
+                    var key = Key(wrapper.Id, container.Id, entry.Id);
                     EntryUpdateDto? update;
                     try
                     {
                         update = CreateUpdateIfChanged(key, container.Id, entry);
                     }
-                    catch (Exception ex) when (entry is IPluginTable && ex is InvalidOperationException or DataException)
+                    catch (Exception ex) when (entry is IPluginTable && IsTableChangedDuringRead(ex))
                     {
-                        // The plugin modified a table while it was being read
-                        // ("Collection was modified", or a row removed mid-read:
-                        // RowNotInTableException). Skip only this entry: its
-                        // last value is not recorded, so it is re-checked next cycle.
+                        // The plugin modified a table while it was being read. Skip only this entry:
+                        // nothing is recorded for it, so it is re-checked next cycle.
                         // Other entry types still surface their errors to the update loop.
                         continue;
                     }
@@ -46,6 +50,34 @@ namespace InfoPanel.Plugins.Host
             return updates;
         }
 
+        /// <summary>
+        /// Records <paramref name="updates"/>, returned by <see cref="GetChangedEntries"/> for the plugin
+        /// <paramref name="pluginId"/>, as delivered: each is compared with later reads and is not sent again until it
+        /// changes. Call it only once the host has sent them.
+        /// </summary>
+        public void MarkSent(string pluginId, IEnumerable<EntryUpdateDto> updates)
+        {
+            foreach (var update in updates)
+            {
+                var key = Key(pluginId, update.ContainerId, update.EntryId);
+                if (_pending.TryRemove(key, out var value))
+                {
+                    _lastValues[key] = value;
+                }
+            }
+        }
+
+        private string Key(string pluginId, string containerId, string entryId) =>
+            _keyCache.GetOrAdd((containerId, entryId), k => $"{pluginId}/{k.containerId}/{k.entryId}");
+
+        // A DataTable is not thread-safe: a plugin that changes rows or columns while the host reads them makes the
+        // read throw. "Collection was modified" (InvalidOperationException), a removed row (RowNotInTableException, a
+        // DataException), a column removed between finding it and reading its storage (NullReferenceException) or an
+        // index past a collection that shrank (IndexOutOfRangeException, ArgumentOutOfRangeException).
+        private static bool IsTableChangedDuringRead(Exception ex) =>
+            ex is InvalidOperationException or DataException or NullReferenceException
+                or IndexOutOfRangeException or ArgumentOutOfRangeException;
+
         private EntryUpdateDto? CreateUpdateIfChanged(string key, string containerId, IPluginData entry)
         {
             if (entry is IPluginSensor sensor)
@@ -54,7 +86,7 @@ namespace InfoPanel.Plugins.Host
                 if (_lastValues.TryGetValue(key, out var lastHash) && lastHash is int lastInt && lastInt == currentHash)
                     return null;
 
-                _lastValues[key] = currentHash;
+                _pending[key] = currentHash;
                 return new EntryUpdateDto
                 {
                     ContainerId = containerId,
@@ -75,7 +107,7 @@ namespace InfoPanel.Plugins.Host
                 if (_lastValues.TryGetValue(key, out var lastVal) && lastVal is string lastStr && lastStr == text.Value)
                     return null;
 
-                _lastValues[key] = text.Value;
+                _pending[key] = text.Value;
                 return new EntryUpdateDto
                 {
                     ContainerId = containerId,
@@ -93,7 +125,7 @@ namespace InfoPanel.Plugins.Host
                 // Convert before recording the hash: if the conversion throws,
                 // the change must still be sent on the next cycle.
                 var tableValue = TableDtoConverter.ConvertTableToDto(table);
-                _lastValues[key] = hash;
+                _pending[key] = hash;
                 return new EntryUpdateDto
                 {
                     ContainerId = containerId,
@@ -139,6 +171,7 @@ namespace InfoPanel.Plugins.Host
         public void Clear()
         {
             _lastValues.Clear();
+            _pending.Clear();
             _keyCache.Clear();
         }
     }
