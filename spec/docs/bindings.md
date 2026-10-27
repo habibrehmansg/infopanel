@@ -23,7 +23,7 @@ Every input also has a `status` and `available` ([expressions](expressions.md)).
 
 `bindings` maps input names to `{ "key", "stat" }`:
 
-- `key` is a sensor key as the engine lists them (`GET /api/sensors`), up to 512 characters. Keys are opaque to the scene format; an engine documents its own (this engine's look like `plugin:/infopanel.mock/cpu/cpu-temp`).
+- `key` is a sensor key as the engine lists them (`GET /api/sensors`, [API](api.md#fonts-and-sensors)), up to 512 characters. Keys are opaque to the scene format; an engine documents its own (this engine's look like `plugin:/infopanel.mock/cpu/cpu-temp`).
 - `stat` (`now`, `min`, `max`, `avg`; default `now`) is the statistic an input's `value` reads. `now`, `min`, `max` and `avg` can always be read explicitly too.
 
 A binding whose name the scene doesn't declare is kept and ignored, so an item can switch between scenes that share some inputs without losing the others. A declared input with no binding is **unbound**.

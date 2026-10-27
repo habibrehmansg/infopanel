@@ -8,10 +8,11 @@
   "types": "./types/index.d.ts",
   "exports": {
     ".": { "types": "./types/index.d.ts" },
+    "./openapi.json": "./openapi.json",
     "./schemas/*": "./schemas/*",
     "./examples/*": "./examples/*"
   },
-  "files": ["schemas", "types", "docs", "examples", "LICENSE", "README.md"],
+  "files": ["openapi.json", "schemas", "types", "docs", "examples", "LICENSE", "README.md"],
   "engines": { "node": ">=22" },
   "scripts": {
     "gen": "node tools/gen-types.mjs --schemas schemas --out types/index.d.ts",

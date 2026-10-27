@@ -1,33 +1,54 @@
 # Engine API
 
-Schema: `urn:infopanel:api:1` (`schemas/api.schema.json`). Examples: `examples/api/`, one folder per definition; each `invalid/` folder holds bodies its definition refuses, or that break a check beyond the schema ([below](#checks-beyond-the-schema)).
+Schema: `urn:infopanel:api:1` (`schemas/api.schema.json`). Requests: `openapi.json` (OpenAPI 3.1.1), every request below with its parameters and every status it answers, by these definitions. Examples: `examples/api/`, one folder per definition; each `invalid/` folder holds bodies its definition refuses, or that break a check beyond the schema ([below](#checks-beyond-the-schema)).
 
-The engine serves a REST API under `/api` and a preview socket at `/ws`. This page specifies the bodies that carry the formats, the tokens that give access to them, and the engine behaviour behind them; commits, undo, redo, revert and save have their own page ([commits](commit.md)). Members are camelCase, and errors are `application/problem+json`. A client ignores members it doesn't know in what the engine sends ([versioning](versioning.md#the-engine-api)).
+The engine serves a REST API under `/api` and a preview socket at `/ws`. This page specifies the bodies that carry the formats, the tokens that give access to them, and the engine behaviour behind them; commits, undo, redo, revert and save have their own page ([commits](commit.md)). Members are camelCase, and errors are `application/problem+json` ([errors](#errors)). A client ignores members it doesn't know in what the engine sends ([versioning](versioning.md#the-engine-api)).
 
-Every request below needs a token ([authentication](#authentication)): without a valid one the engine answers 401, and to a token without the scope the request needs, 403 `scopeProblem`.
+Every request under `/api` needs a token ([authentication](#authentication)): without a valid one the engine answers 401, and to a token without the scope the request needs, 403 `scopeProblem`. The preview socket takes its token its own way ([below](#connecting)); `GET /healthz` and `GET /auth/{token}` need none.
 
 | Request | Body | Answer |
 |---|---|---|
 | `GET /api/session` | | `session` |
+| `GET /api/fonts` | | An array of font family names ([below](#fonts-and-sensors)) |
+| `GET /api/sensors` | | An array of `sensorEntry` ([below](#fonts-and-sensors)) |
+| `GET /api/sensors/values` | | An array of `sensorValue`; 400 for a `history` that isn't a whole number |
 | `GET /api/profiles` | | An array of `profileEntry`, in display order |
 | `POST /api/profiles` | `createProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` ([below](#creating-and-duplicating)) |
 | `POST /api/profiles/{id}/duplicate` | `duplicateProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` |
 | `DELETE /api/profiles/{id}` | | 204 ([below](#deleting)) |
 | `GET /api/profiles/{id}` | | `documentResponse` ([below](#documents)) |
 | `GET /api/profiles/{id}/document` | | The document, to keep or import elsewhere ([below](#exporting)) |
-| `GET /api/profiles/{id}/thumbnail` | | A PNG ([below](#thumbnails)) |
+| `GET /api/profiles/{id}/thumbnail` | | A PNG; 400 for a `w` that isn't a whole number ([below](#thumbnails)) |
 | `POST /api/profiles/{id}/commit` | `commitRequest` | `commitResult`; 409 `conflictProblem` or `expiredProblem`; 422 `invalidProblem` ([commits](commit.md)) |
-| `POST /api/profiles/{id}/undo`, `…/redo`, `…/revert` | `historyRequest` | `commitResult`; 409 `conflictProblem`; 422 `invalidProblem` ([commits](commit.md#undo-redo-revert-and-save)) |
+| `POST /api/profiles/{id}/undo` | `historyRequest` | `commitResult`; 409 `conflictProblem`; 422 `invalidProblem` ([commits](commit.md#undo-redo-revert-and-save)) |
+| `POST /api/profiles/{id}/redo` | `historyRequest` | `commitResult`; 409 `conflictProblem`; 422 `invalidProblem` |
+| `POST /api/profiles/{id}/revert` | `historyRequest` | `commitResult`; 409 `conflictProblem`; 422 `invalidProblem` |
 | `POST /api/profiles/{id}/save` | | `commitResult` |
 | `POST /api/blobs` | The bytes | `blobInfo`: 201 when the blob is new, 200 when it was already stored; 413 over `mediaBytes` |
-| `HEAD /api/blobs/{id}`, `GET /api/blobs/{id}` | | The blob's bytes; 404 when it isn't stored |
+| `HEAD /api/blobs/{id}` | | 200 with the blob's size; 404 when it isn't stored |
+| `GET /api/blobs/{id}` | | The blob's bytes; 404 when it isn't stored |
 | `POST /api/tokens` | `createTokenRequest` | 201 `createdToken`; 422 `invalidProblem` ([below](#integration-tokens)) |
 | `GET /api/tokens` | | An array of `tokenInfo`, oldest first |
 | `DELETE /api/tokens/{id}` | | 204; 404 when there is no such token |
-| `/ws`, the `doc` message | | `docEvent` |
-| `/ws`, a frame message | | A `frameHeader`, then the frame |
+| `GET /ws` | | The preview socket: 101, then `serverMessage`s and frames ([below](#the-preview-socket)) |
+| `GET /healthz` | | 200 `ok` as `text/plain`, without a token |
+| `GET /auth/{token}` | | 302 to `/#token={token}`; 401 for any token but the session token ([below](#signing-in)) |
 
 A request on a profile is checked in this order, and the first failure answers: the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
+
+## Errors
+
+Every error under `/api` is `application/problem+json`: the definition the request names in `openapi.json` for its status, or else `problem`, the HTTP layer's error (`title`, `status`, and `type`, `detail` and `traceId` when given). Besides what the table lists, a request answers:
+
+- 401 `problem` without a valid token, on every request under `/api` and on `/ws`;
+- 403 `scopeProblem` to a token without the scope a request that changes something needs (`edit`), or that only the session token may make (`session`); every token has `read`;
+- 404 `problem` on a request that names a profile, blob or token that doesn't exist;
+- 400 `problem` for a query parameter that isn't a whole number (`w`, `history`);
+- 500 `problem` when the engine fails; the error is in its log.
+
+A path under `/api` that isn't a request above, or a method a path doesn't take, is answered 404 (or 405) `problem`. Under `/ws/` and `/auth`, a path that isn't `/ws` or `/auth/{token}` is answered 404 with no body.
+
+Before any of these, the engine checks where a request comes from ([below](#where-requests-come-from)): a `Host` that isn't a loopback name is answered 400 with no body, and an `Origin` the engine doesn't accept 403 `problem`.
 
 ## Authentication
 
@@ -45,6 +66,16 @@ Only the session token signs in (`GET /auth/{token}` refuses any other token as 
 
 A request without a token, or with one the engine doesn't know or has revoked, is answered 401 with `WWW-Authenticate: Bearer`. A valid token without the scope the request needs is answered 403 `scopeProblem`, whose `scope` is what it lacks: `read`, `edit`, or `session` for what only the session token may do. Both are `application/problem+json`.
 
+### Signing in
+
+`GET /auth/{token}` with the session token answers 302 to `/#token={token}`, so a browser opened from the sign-in link lands on the client with the token in the fragment, which is never sent to a server. Any other token, an integration token included, is answered 401 with a short `text/plain` explanation. Neither answer is cached (`Cache-Control: no-store`), and no cookie is set.
+
+`GET /healthz` answers 200 with the text `ok` (`text/plain`) to anyone: a client can poll it to see that the engine runs before it has a token.
+
+### Where requests come from
+
+The engine listens on the loopback interface only, and answers a request whose `Host` isn't `localhost`, `127.0.0.1` or `[::1]` (any port) with 400 and no body. A request with an `Origin` (a browser's, WebSocket upgrades included) must come from the engine's own origin or one the engine was started to accept; any other is answered 403 `problem`, without CORS headers. An origin the engine was started to accept as a separate client gets CORS on `/api` and `/healthz`: its preflights (`OPTIONS` with `Access-Control-Request-Method`) are answered 204 with no body before the token check, and every other answer carries `Access-Control-Allow-Origin`.
+
 ### Integration tokens
 
 `POST /api/tokens` (`createTokenRequest`) makes a token: `name` is for people (1 to 64 letters, digits, spaces, dots, underscores and hyphens, without a space at either end; names needn't be unique), and `scopes` is `read`, `edit` or both. The answer, 201 `createdToken`, has the token's `id` and its secret, `token`: `ipi_` and 43 base64url characters (256 random bits). That answer is the only place the secret appears: the engine keeps only its SHA-256 and never writes the secret to its logs, so a lost secret can't be recovered; the token is revoked and another one made. A body that breaks `createTokenRequest` is answered 422 `invalidProblem`, and no token is made.
@@ -61,6 +92,14 @@ A request without a token, or with one the engine doesn't know or has revoked, i
 - `instance` is new every time the engine starts. Revisions (a document's `rev`, an item's, a commit's `baseRev`) are only comparable within one instance: those read from an earlier instance mean nothing to the current one, and a commit, undo, redo or revert that names an old instance is refused ([commits](commit.md#baserev-conflicts)).
 - `formatSupport` is what the engine reads: formats, the newest minor version of each, optional capabilities and the limits ([versioning](versioning.md)).
 - `engineVersion`, `platform` (`macos`, `windows`, `linux` or `other`) and `dataDir` (the folder the engine keeps its data in) describe the engine.
+
+## Fonts and sensors
+
+`GET /api/fonts` answers the font families a scene's text can name, as an array of strings: the engine's own families (Inter, and the fonts in its data folder's `fonts/`) first, then the system's, each sorted, each family once whatever its case.
+
+`GET /api/sensors` answers every sensor the engine's sources offer, as an array of `sensorEntry`: its `key`, which a binding names ([bindings](bindings.md#bindings)); its `source`, `group`, `name` and `unit`, for people; and its `status` now: `live`, `stale` (the last value kept), `unavailable`, `permission-denied` (the operating system refused the engine access to it), `simulated` or `missing` (the key isn't well formed). A client treats a status it doesn't know as no reading.
+
+`GET /api/sensors/values?history={n}` answers a `sensorValue` for every listed sensor that has a reading now, in list order: its `key`, `now`, `min`, `max` and `avg` (a value that isn't a finite number is 0), `unit`, `text` for a text or table sensor, and `status`, `live` or `stale`. `history` is a whole number, clamped to 0–4,096 (0 when absent): with 1 or more, each number sensor also has its last `history` samples at most, oldest first, one a second ([bindings](bindings.md#history)). A `history` that isn't a whole number is answered 400 `problem`.
 
 ## Profiles
 
@@ -123,7 +162,43 @@ The engine keeps every blob that a retained version of a document refers to (the
 
 ## The preview socket
 
-A client subscribes to a document on `/ws` at a scale and frame rate. The engine sends text messages, JSON objects with a `type`, and binary frame messages.
+A client subscribes to a document on `/ws` at a scale and frame rate. The engine sends text messages, JSON objects with a `type` (`serverMessage`), and binary frame messages; the client sends text messages (`clientMessage`).
+
+### Connecting
+
+`GET /ws` is a WebSocket upgrade with the subprotocol `infopanel.v1`, and the token either as a second subprotocol, `auth.{token}`, or, when no `auth.*` subprotocol is offered, as the first message (`authMessage`, `{"type": "auth", "token": "…"}`) within 5 seconds. The token is the session token or an integration token. The engine accepts the socket with `infopanel.v1` alone, so the token is never echoed. An upgrade without `infopanel.v1`, or with an `auth.*` subprotocol whose token isn't valid, is answered 401 `problem`; a request to `/ws` that isn't an upgrade, 400 `problem`.
+
+The engine closes a socket with:
+
+| Status | Reason | When |
+|---|---|---|
+| 1008 | `auth timeout` | No `auth` message within 5 seconds of the upgrade (the engine sends nothing before it) |
+| 1008 | `auth rejected` | The `auth` message's token isn't valid |
+| 1008 | `auth expected` | The first message isn't an `auth` message (or isn't text, or is over 4,096 bytes) |
+| 1008 | `token revoked` | The integration token the socket was opened with was revoked; every other socket stays open |
+| 1009 | `Messages are at most 4096 bytes.` | A client message over 4,096 bytes in UTF-8 |
+| 1001 | `The engine is stopping.` | The engine stops |
+| 1000 | | The client closed the socket |
+
+After an `auth` failure, the engine waits at most 2 seconds for the client's close before dropping the connection.
+
+### Messages
+
+A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`clientMessage`):
+
+- `subscribe` (`subscribeMessage`): `profileId`, and optionally `scale` (frame pixels per profile pixel, 1 when absent, [frame size](#frame-size)) and `maxFps` (30 when absent; the engine draws at most 60). It ends any earlier subscription; the engine answers with a `doc` message, then frames.
+- `view` (`viewMessage`): a new `scale` or `maxFps` for the current subscription; a member left out keeps its value.
+- `unsubscribe` (`unsubscribeMessage`): no more `doc` messages or frames until the next `subscribe`.
+- `auth` (`authMessage`): only as the first message, above.
+
+The engine ignores members a message doesn't define. It answers `error` to a message it can't act on and keeps the socket open: one that isn't a JSON object with a string `type`, a binary message, an unknown `type`, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number or a `maxFps` that isn't a whole number of at least 1, or a `view` without a subscription.
+
+The engine sends (`serverMessage`):
+
+- `hello` (`helloMessage`): first, once the socket is authenticated, with `protocol` ([session](#session)).
+- `doc` (`docEvent`): the subscribed document's state ([below](#change-events)).
+- `profiles` (`profilesMessage`): the profile list changed (a profile was created, duplicated or deleted, by any client); the client reads `GET /api/profiles`. `version` is greater for a later change; the engine keeps only the newest to send.
+- `error` (`errorMessage`): a `message` for people about a message the engine couldn't act on, or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted (which also ends the subscription).
 
 ### Change events
 
