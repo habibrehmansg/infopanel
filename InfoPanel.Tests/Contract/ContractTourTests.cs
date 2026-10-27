@@ -219,6 +219,10 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         }
 
         Assert.Equal(Allowlist.Count, Allowlist.Select(a => (a.Operation, a.Status)).Distinct().Count());
+
+        // The allowlist may only shrink: raising a ceiling changes one of these lines, which the gate lists for a reason.
+        Assert.True(Allowlist.Count <= 1, "The allowlist may only shrink: drive the new response in the tour instead.");
+        Assert.True(Allowlist.Count(a => a.Applies) <= (OperatingSystem.IsWindows() ? 1 : 0), "The allowlist may only shrink: drive the new response in the tour instead.");
     }
 
     private static byte[] History(string instance, long baseRev) =>
