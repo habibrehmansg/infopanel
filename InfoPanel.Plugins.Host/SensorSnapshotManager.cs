@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
+using Serilog;
 
 namespace InfoPanel.Plugins.Host
 {
@@ -19,6 +20,20 @@ namespace InfoPanel.Plugins.Host
         // One host loads every plugin in a DLL into one manager, and two of them may use the same container and entry
         // ids: the plugin id is part of the key, so each keeps its own state.
         private readonly ConcurrentDictionary<(string pluginId, string containerId, string entryId), string> _keyCache = new();
+        // Per table key: how many cycles in a row its read has failed and it was skipped.
+        private readonly ConcurrentDictionary<string, int> _skipStreaks = new();
+        private readonly ILogger _logger;
+
+        /// <summary>
+        /// Consecutive skipped reads of one table after which it is reported, once per streak: about 5 s of the host's
+        /// 100 ms cycles.
+        /// </summary>
+        internal const int SkipWarningCycles = 50;
+
+        public SensorSnapshotManager(ILogger? logger = null)
+        {
+            _logger = logger ?? Log.ForContext<SensorSnapshotManager>();
+        }
 
         public List<EntryUpdateDto> GetChangedEntries(PluginWrapper wrapper)
         {
@@ -39,7 +54,13 @@ namespace InfoPanel.Plugins.Host
                         // The plugin modified a table while it was being read. Skip only this entry:
                         // nothing is recorded for it, so it is re-checked next cycle.
                         // Other entry types still surface their errors to the update loop.
+                        ReportSkippedTable(key, ex);
                         continue;
+                    }
+
+                    if (entry is IPluginTable)
+                    {
+                        _skipStreaks.TryRemove(key, out _);
                     }
 
                     if (update != null)
@@ -66,6 +87,19 @@ namespace InfoPanel.Plugins.Host
                 {
                     _lastValues[key] = value;
                 }
+            }
+        }
+
+        // A table changed during a read fails once and reads cleanly next cycle; one whose read keeps failing (a cell
+        // getter that always throws, say) would otherwise stay stale with no trace. Report it once per streak.
+        private void ReportSkippedTable(string key, Exception ex)
+        {
+            // Capped just past the threshold, so a table that never recovers is reported once.
+            var streak = _skipStreaks.AddOrUpdate(key, 1, (_, n) => Math.Min(n + 1, SkipWarningCycles + 1));
+            if (streak == SkipWarningCycles)
+            {
+                _logger.Warning(ex, "Plugin table {TableKey} failed to read for {Cycles} cycles in a row; it is skipped until a read succeeds",
+                    key, streak);
             }
         }
 
@@ -197,6 +231,7 @@ namespace InfoPanel.Plugins.Host
             _lastValues.Clear();
             _pending.Clear();
             _keyCache.Clear();
+            _skipStreaks.Clear();
         }
     }
 }

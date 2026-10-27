@@ -5,6 +5,9 @@ using InfoPanel.Plugins;
 using PluginHost::InfoPanel.Plugins.Host;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 using Xunit;
 
 namespace InfoPanel.Tests.Plugins;
@@ -252,6 +255,46 @@ public class SensorSnapshotManagerTests
         Assert.Empty(nextB);
     }
 
+    // A table whose read keeps failing (here a cell getter that throws NullReferenceException) is skipped every cycle so
+    // the plugin's other entries still go out. That must not be silent: one warning once the streak is long enough.
+    [Fact]
+    public void A_table_that_keeps_failing_to_read_is_reported_once()
+    {
+        const int threshold = SensorSnapshotManager.SkipWarningCycles;
+        var events = new CollectingSink();
+        var manager = new SensorSnapshotManager(new LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(events).CreateLogger());
+        var failure = new NullReferenceException();
+        var wrapper = Wrap(new FlakyTable("table", Enumerable.Repeat<Exception?>(failure, 3 * threshold).ToArray()));
+
+        for (var cycle = 1; cycle < threshold; cycle++) Assert.Empty(Deliver(manager, wrapper));
+        Assert.Empty(events.Events);
+
+        Assert.Empty(Deliver(manager, wrapper));
+        var warning = Assert.Single(events.Events);
+        Assert.Equal(LogEventLevel.Warning, warning.Level);
+        Assert.Same(failure, warning.Exception);
+
+        for (var cycle = threshold; cycle < 2 * threshold; cycle++) Assert.Empty(Deliver(manager, wrapper));
+        Assert.Single(events.Events);
+    }
+
+    [Fact]
+    public void A_good_read_ends_a_streak_of_failed_reads()
+    {
+        const int threshold = SensorSnapshotManager.SkipWarningCycles;
+        var events = new CollectingSink();
+        var manager = new SensorSnapshotManager(new LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(events).CreateLogger());
+        var failures = Enumerable.Repeat<Exception?>(new NullReferenceException(), threshold - 1).ToArray();
+        // Just short of the threshold, one good read, then just short again: neither streak is reported.
+        var wrapper = Wrap(new FlakyTable("table", [.. failures, null, .. failures, null]));
+
+        for (var cycle = 1; cycle < threshold; cycle++) Assert.Empty(Deliver(manager, wrapper));
+        Assert.Equal("table", Assert.Single(Deliver(manager, wrapper)).EntryId);
+        for (var cycle = 1; cycle < threshold; cycle++) Assert.Empty(Deliver(manager, wrapper));
+
+        Assert.Empty(events.Events);
+    }
+
     /// <summary>One host cycle that reaches the client: the changes are read, then confirmed delivered.</summary>
     private static List<EntryUpdateDto> Deliver(SensorSnapshotManager manager, PluginWrapper wrapper)
     {
@@ -301,6 +344,21 @@ public class SensorSnapshotManagerTests
             table.Columns.Add("name", typeof(object));
             table.Rows.Add(new PluginText("cell", "Cell", "value"));
             return table;
+        }
+    }
+
+    private sealed class CollectingSink : ILogEventSink
+    {
+        private readonly List<LogEvent> _events = [];
+
+        public List<LogEvent> Events
+        {
+            get { lock (_events) return [.. _events]; }
+        }
+
+        public void Emit(LogEvent logEvent)
+        {
+            lock (_events) _events.Add(logEvent);
         }
     }
 
