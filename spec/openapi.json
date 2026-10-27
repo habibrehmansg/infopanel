@@ -73,7 +73,7 @@
             "in": "query",
             "required": false,
             "description": "How many of each number sensor's last samples to add, clamped to 0–4,096; 0 when absent.",
-            "schema": {"type": "integer"}
+            "schema": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}
           }
         ],
         "security": [{"bearer": ["read"]}],
@@ -227,7 +227,7 @@
             "in": "query",
             "required": false,
             "description": "The width in pixels, clamped to 16–4,096; 320 when absent.",
-            "schema": {"type": "integer"}
+            "schema": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}
           }
         ],
         "security": [{"bearer": ["read"]}],
@@ -589,7 +589,7 @@
     },
     "responses": {
       "badQuery": {
-        "description": "A query parameter isn't a whole number.",
+        "description": "A query parameter isn't a whole number from −2,147,483,648 to 2,147,483,647.",
         "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
       },
       "unauthorized": {

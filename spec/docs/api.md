@@ -11,14 +11,14 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /api/session` | | `session` |
 | `GET /api/fonts` | | An array of font family names ([below](#fonts-and-sensors)) |
 | `GET /api/sensors` | | An array of `sensorEntry` ([below](#fonts-and-sensors)) |
-| `GET /api/sensors/values` | | An array of `sensorValue`; 400 for a `history` that isn't a whole number |
+| `GET /api/sensors/values` | | An array of `sensorValue`; 400 for a `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 |
 | `GET /api/profiles` | | An array of `profileEntry`, in display order |
 | `POST /api/profiles` | `createProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` ([below](#creating-and-duplicating)) |
 | `POST /api/profiles/{id}/duplicate` | `duplicateProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` |
 | `DELETE /api/profiles/{id}` | | 204 ([below](#deleting)) |
 | `GET /api/profiles/{id}` | | `documentResponse` ([below](#documents)) |
 | `GET /api/profiles/{id}/document` | | The document, to keep or import elsewhere ([below](#exporting)) |
-| `GET /api/profiles/{id}/thumbnail` | | A PNG; 400 for a `w` that isn't a whole number ([below](#thumbnails)) |
+| `GET /api/profiles/{id}/thumbnail` | | A PNG; 400 for a `w` that isn't a whole number from −2,147,483,648 to 2,147,483,647 ([below](#thumbnails)) |
 | `POST /api/profiles/{id}/commit` | `commitRequest` | `commitResult`; 409 `conflictProblem` or `expiredProblem`; 422 `invalidProblem` ([commits](commit.md)) |
 | `POST /api/profiles/{id}/undo` | `historyRequest` | `commitResult`; 409 `conflictProblem`; 422 `invalidProblem` ([commits](commit.md#undo-redo-revert-and-save)) |
 | `POST /api/profiles/{id}/redo` | `historyRequest` | `commitResult`; 409 `conflictProblem`; 422 `invalidProblem` |
@@ -43,7 +43,7 @@ Every error under `/api` is `application/problem+json`: the definition the reque
 - 401 `problem` without a valid token, on every request under `/api` and on `/ws`;
 - 403 `scopeProblem` to a token without the scope a request that changes something needs (`edit`), or that only the session token may make (`session`); every token has `read`;
 - 404 `problem` on a request that names a profile, blob or token that doesn't exist;
-- 400 `problem` for a query parameter that isn't a whole number (`w`, `history`);
+- 400 `problem` for a query parameter that isn't a whole number from −2,147,483,648 to 2,147,483,647 (`w`, `history`);
 - 500 `problem` when the engine fails; the error is in its log.
 
 A path under `/api` that isn't a request above, or a method a path doesn't take, is answered 404 (or 405) `problem`. Under `/ws/` and `/auth`, a path that isn't `/ws` or `/auth/{token}` is answered 404 with no body.
@@ -99,7 +99,7 @@ The engine listens on the loopback interface only, and answers a request whose `
 
 `GET /api/sensors` answers every sensor the engine's sources offer, as an array of `sensorEntry`: its `key`, which a binding names ([bindings](bindings.md#bindings)); its `source`, `group`, `name` and `unit`, for people; and its `status` now: `live`, `stale` (the last value kept), `unavailable`, `permission-denied` (the operating system refused the engine access to it), `simulated` or `missing` (the key isn't well formed). A client treats a status it doesn't know as no reading.
 
-`GET /api/sensors/values?history={n}` answers a `sensorValue` for every listed sensor that has a reading now, in list order: its `key`, `now`, `min`, `max` and `avg` (a value that isn't a finite number is 0), `unit`, `text` for a text or table sensor, and `status`, `live` or `stale`. `history` is a whole number, clamped to 0–4,096 (0 when absent): with 1 or more, each number sensor also has its last `history` samples at most, oldest first, one a second ([bindings](bindings.md#history)). A `history` that isn't a whole number is answered 400 `problem`.
+`GET /api/sensors/values?history={n}` answers a `sensorValue` for every listed sensor that has a reading now, in list order: its `key`, `now`, `min`, `max` and `avg` (a value that isn't a finite number is 0), `unit`, `text` for a text or table sensor, and `status`, `live` or `stale`. `history` is a whole number, clamped to 0–4,096 (0 when absent): with 1 or more, each number sensor also has its last `history` samples at most, oldest first, one a second ([bindings](bindings.md#history)). A `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 is answered 400 `problem`.
 
 ## Profiles
 
@@ -139,7 +139,7 @@ The new profile is stored and saved at once, is added at the end of the list, an
 
 ### Thumbnails
 
-`GET /api/profiles/{id}/thumbnail?w={width}` answers a PNG of the current document, drawn as an output draws it: from the tick a running output of the profile last drew, without advancing it, or else from a one-off snapshot ([identity](identity.md#the-tick-snapshot)). `w` is the width in pixels, 320 when absent, clamped to 16–4,096; the height is the canvas height in proportion, rounded to the nearest pixel and at least 1. When that height would be over 4,096, the height is 4,096 and the width the canvas width in proportion, rounded and at least 1. A profile that isn't `ok` answers 409 `profileStatusProblem`.
+`GET /api/profiles/{id}/thumbnail?w={width}` answers a PNG of the current document, drawn as an output draws it: from the tick a running output of the profile last drew, without advancing it, or else from a one-off snapshot ([identity](identity.md#the-tick-snapshot)). `w` is the width in pixels, 320 when absent, clamped to 16–4,096; the height is the canvas height in proportion, rounded to the nearest pixel and at least 1. When that height would be over 4,096, the height is 4,096 and the width the canvas width in proportion, rounded and at least 1. A `w` that isn't a whole number from −2,147,483,648 to 2,147,483,647 is answered 400 `problem`. A profile that isn't `ok` answers 409 `profileStatusProblem`.
 
 ## Documents
 

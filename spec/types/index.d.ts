@@ -2121,7 +2121,7 @@ export interface ApiOperations {
     responses: {
       /** The readings, in list order. */
       200: SensorValue[];
-      /** A query parameter isn't a whole number. */
+      /** A query parameter isn't a whole number from −2,147,483,648 to 2,147,483,647. */
       400: Problem;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
@@ -2279,7 +2279,7 @@ export interface ApiOperations {
     responses: {
       /** The thumbnail. */
       200: "image/png";
-      /** A query parameter isn't a whole number. */
+      /** A query parameter isn't a whole number from −2,147,483,648 to 2,147,483,647. */
       400: Problem;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;

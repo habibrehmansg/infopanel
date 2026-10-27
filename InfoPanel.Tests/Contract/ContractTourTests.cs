@@ -100,6 +100,11 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", "/api/sensors", 200);
         await Send(session, "GET", "/api/sensors/values?history=5", 200);
         await Send(session, "GET", "/api/sensors/values?history=many", 400);
+        // A query parameter is a whole number from -2^31 to 2^31 - 1 (then clamped); one past it is answered 400.
+        await Send(session, "GET", "/api/sensors/values?history=2147483647", 200);
+        await Send(session, "GET", "/api/sensors/values?history=2147483648", 400);
+        await Send(session, "GET", "/api/sensors/values?history=-2147483648", 200);
+        await Send(session, "GET", "/api/sensors/values?history=-2147483649", 400);
 
         // Profiles: create (from a document and empty), duplicate, list.
         var id = NewId();
@@ -128,6 +133,8 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", $"/api/profiles/{AbsentProfile}/document", 404);
         await Send(session, "GET", $"/api/profiles/{id}/thumbnail?w=64", 200);
         await Send(session, "GET", $"/api/profiles/{id}/thumbnail?w=wide", 400);
+        await Send(session, "GET", $"/api/profiles/{id}/thumbnail?w=2147483647", 200);
+        await Send(session, "GET", $"/api/profiles/{id}/thumbnail?w=2147483648", 400);
         await Send(session, "GET", $"/api/profiles/{AbsentProfile}/thumbnail", 404);
         await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}/thumbnail", 409);
 
