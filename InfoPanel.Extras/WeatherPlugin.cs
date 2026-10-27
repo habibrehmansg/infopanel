@@ -2,6 +2,7 @@ using InfoPanel.Plugins;
 using OpenWeatherMap.Cache;
 using OpenWeatherMap.Cache.Models;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace InfoPanel.Extras
 {
@@ -16,6 +17,9 @@ namespace InfoPanel.Extras
         private string _apiKey = "";
         private string _cityName = "";
         private string _measurementSystem = MetricMeasurementSystem;
+        // The last reading applied, boxed so that replacing it is a single reference write: a switch of measurement
+        // system converts it at once instead of leaving the old system's values under the new units.
+        private StrongBox<Readings>? _lastReadings;
 
         private readonly PluginText _name = new("name", "Name", "-");
         private readonly PluginText _weather = new("weather", "Weather", "-");
@@ -95,6 +99,10 @@ namespace InfoPanel.Extras
                         ? ImperialMeasurementSystem
                         : MetricMeasurementSystem;
                     ApplyMeasurementUnits();
+                    if (_lastReadings is { } last)
+                    {
+                        ApplyReadings(last.Value);
+                    }
                     break;
                 default:
                     return;
@@ -225,6 +233,7 @@ namespace InfoPanel.Extras
         // can feed it a reading without calling the OpenWeatherMap service.
         internal void ApplyReadings(Readings result)
         {
+            _lastReadings = new StrongBox<Readings>(result);
             _name.Value = result.CityName;
 
             if (result.Weather is { Length: > 0 })

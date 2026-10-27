@@ -82,6 +82,29 @@ public class WeatherPluginUnitTests
         AssertSensor(sensors, "rain", 25.4f, "mm/h");
     }
 
+    // The host compares and sends a sensor's value and unit together, so a switch must never leave the old system's
+    // values under the new units: the reading already held is converted at once, without waiting for the next fetch.
+    [Fact]
+    public void A_switch_converts_the_reading_already_held()
+    {
+        var weather = Loaded(out var sensors);
+        weather.ApplyReadings(Reading());
+
+        weather.ApplyConfig("MeasurementSystem", "Imperial");
+
+        AssertSensor(sensors, "temp", 70.7f, "°F");
+        AssertSensor(sensors, "pressure", 29.91f, "inHg");
+        AssertSensor(sensors, "wind_speed", 22.37f, "mph");
+        AssertSensor(sensors, "rain", 1f, "in/h");
+
+        weather.ApplyConfig("MeasurementSystem", "Metric");
+
+        AssertSensor(sensors, "temp", 21.5f, "°C");
+        AssertSensor(sensors, "pressure", 1013f, "hPa");
+        AssertSensor(sensors, "wind_speed", 10f, "m/s");
+        AssertSensor(sensors, "rain", 25.4f, "mm/h");
+    }
+
     [Theory]
     [InlineData("imperial", "°F")]
     [InlineData("IMPERIAL", "°F")]
