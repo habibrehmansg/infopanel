@@ -87,8 +87,9 @@ const header = docLines.findIndex((l) => /^\|\s*Request\s*\|\s*Body\s*\|\s*Answe
 if (header < 0) fail('docs/api.md: no request table (a "| Request | Body | Answer |" header).');
 const rows = new Map();
 const problems = [];
-for (let i = header + 2; i < docLines.length && docLines[i].startsWith('|'); i++) {
-  const cell = docLines[i].split('|')[1].trim();
+// A GFM table row may be indented up to three spaces.
+for (let i = header + 2; i < docLines.length && /^ {0,3}\|/.test(docLines[i]); i++) {
+  const cell = docLines[i].trim().split('|')[1].trim();
   const m = /^`(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|TRACE) (\/[^`\s]*)`$/.exec(cell);
   if (!m) problems.push(`docs/api.md:${i + 1}: a request table row names one request, as \`METHOD /path\`: ${cell}`);
   else if (rows.has(`${m[1]} ${m[2]}`)) problems.push(`docs/api.md:${i + 1}: \`${m[1]} ${m[2]}\` has a row already (line ${rows.get(`${m[1]} ${m[2]}`)})`);
