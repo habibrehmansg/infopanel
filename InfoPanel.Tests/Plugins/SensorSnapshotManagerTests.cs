@@ -204,6 +204,32 @@ public class SensorSnapshotManagerTests
         var columnRenamed = Assert.Single(Deliver(manager, wrapper));
         Assert.Equal(["amount"], columnRenamed.TableValue!.Columns);
 
+        // Another sensor with the same value and unit, under another name.
+        data.Rows[0][0] = new PluginSensor("rainfall", "Rainfall", 0, "in/h");
+        var renamed = Assert.Single(Deliver(manager, wrapper));
+        Assert.Equal("Rainfall", renamed.TableValue!.Rows.Single().Single().SensorName);
+
+        Assert.Empty(Deliver(manager, wrapper));
+    }
+
+    [Fact]
+    public void A_table_whose_read_fails_part_way_through_its_cells_is_sent_whole_on_the_next_cycle()
+    {
+        // The table itself reads fine; its second cell's getter throws once, after the first cell was converted. The
+        // cycle records nothing for the table, the next sends it whole, and the one after has nothing to send.
+        var data = new DataTable();
+        data.Columns.Add("value", typeof(object));
+        data.Rows.Add(new PluginText("first", "First", "a"));
+        data.Rows.Add(new FailOnceSensor());
+        var wrapper = Wrap(new PluginTable("table", "Table", data, ""));
+        var manager = new SensorSnapshotManager();
+
+        Assert.Empty(Deliver(manager, wrapper));
+
+        var table = Assert.Single(Deliver(manager, wrapper)).TableValue!;
+        Assert.Equal("a", table.Rows[0].Single().TextValue);
+        Assert.Equal(1, table.Rows[1].Single().SensorValue!.Value);
+
         Assert.Empty(Deliver(manager, wrapper));
     }
 
