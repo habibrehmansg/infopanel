@@ -1,5 +1,5 @@
 import type {
-  CommitRequest, Item, JsonValue, Labelled, NumberExpr, Op, PinnedText, Range, Scene, Severity, TaggedList,
+  ApiOperations, CommitRequest, Item, JsonValue, Labelled, NumberExpr, Op, PinnedText, Range, Scene, Severity, TaggedList,
 } from './generated';
 
 // Valid values compile.
@@ -44,3 +44,36 @@ export const badSeverity: Severity = 'fatal';
 export const noOps: CommitRequest = { id: 'abc' };
 // @ts-expect-error pinned must be true
 export const notPinned: PinnedText = { kind: 'text', text: 'hi', pinned: false };
+
+// The request index (ApiOperations).
+type GetScene = ApiOperations['GET /scenes/{id}'];
+export const sceneParams: GetScene['params'] = { id: 'main' };
+export const sceneQuery: GetScene['query'] = { w: 320 };
+export const noQuery: GetScene['query'] = {};
+export const found: GetScene['responses'][200] = scene;
+export const notModified: GetScene['responses'][304] = null;
+export const commitBody: ApiOperations['POST /scenes/{id}/commit']['request'] = { id: 'abc', ops: [place] };
+export const applied: ApiOperations['POST /scenes/{id}/commit']['responses'][200] = [place, remove];
+export const conflict: ApiOperations['POST /scenes/{id}/commit']['responses'][409] = { kind: 'image', src: 'a.png' };
+export const png: ApiOperations['GET /scenes/{id}/png']['responses'][200] = 'image/png';
+export const drawn: ApiOperations['GET /scenes/{id}/png']['responses'][200] = scene;
+export const bytes: ApiOperations['PUT /blobs']['request'] = 'application/octet-stream';
+export const noBytes: ApiOperations['PUT /blobs']['request'] = undefined;
+export type Keys = keyof ApiOperations;
+export const everyKey: Keys[] = ['GET /scenes/{id}', 'HEAD /scenes/{id}', 'POST /scenes/{id}/commit', 'GET /scenes/{id}/png', 'PUT /blobs', 'GET /socket'];
+
+// ...and bites: each of these must be rejected.
+// @ts-expect-error an operation the index doesn't have
+export type NoSuchOperation = ApiOperations['DELETE /scenes/{id}'];
+// @ts-expect-error a status the operation doesn't answer
+export type NoSuchStatus = GetScene['responses'][500];
+// @ts-expect-error a path parameter is required
+export const noId: GetScene['params'] = {};
+// @ts-expect-error a query parameter the operation doesn't take
+export const badQuery: GetScene['query'] = { h: 1 };
+// @ts-expect-error a request body where the operation takes none
+export const noBody: GetScene['request'] = { id: 'abc', ops: [] };
+// @ts-expect-error the body is a Scene, not a string
+export const wrongBody: GetScene['responses'][200] = 'scene';
+// @ts-expect-error a media type the response doesn't have
+export const wrongMedia: ApiOperations['GET /scenes/{id}/png']['responses'][200] = 'image/jpeg';

@@ -1,0 +1,89 @@
+{
+  "openapi": "3.1.1",
+  "info": {"title": "Fixture API", "version": "1", "description": "Requests over the fixture schemas, one of each shape gen-types turns into ApiOperations."},
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "servers": [{"url": "http://127.0.0.1:{port}", "variables": {"port": {"default": "8080"}}}],
+  "paths": {
+    "/scenes/{id}": {
+      "parameters": [{"$ref": "#/components/parameters/sceneId"}],
+      "get": {
+        "operationId": "getScene",
+        "summary": "A scene, by id.",
+        "description": "Path and query parameters, a $ref to a schema's root, a shared response and no body.",
+        "parameters": [{"name": "w", "in": "query", "required": false, "description": "A width.", "schema": {"type": "integer", "minimum": 1}}],
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {"description": "The scene.", "content": {"application/json": {"schema": {"$ref": "urn:infopanel:scene:1"}}}},
+          "304": {"description": "Not modified."},
+          "404": {"$ref": "#/components/responses/notFound"}
+        }
+      },
+      "head": {
+        "operationId": "headScene",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {"description": "It exists.", "headers": {"Content-Length": {"required": true, "schema": {"type": "integer"}}}, "content": {"application/json": {}}}
+        }
+      }
+    },
+    "/scenes/{id}/commit": {
+      "post": {
+        "operationId": "commitScene",
+        "summary": "Applies ops.",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"$ref": "urn:infopanel:common:1#/$defs/id"}}],
+        "security": [{"bearer": ["edit"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:common:1#/$defs/commit-request"}}}},
+        "responses": {
+          "200": {"description": "The ops applied.", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "urn:infopanel:scene:1#/$defs/op"}}}}},
+          "409": {
+            "description": "One of two problems.",
+            "content": {"application/problem+json": {"schema": {"oneOf": [{"$ref": "urn:infopanel:scene:1#/$defs/textItem"}, {"$ref": "urn:infopanel:scene:1#/$defs/imageItem"}]}}}
+          }
+        }
+      }
+    },
+    "/scenes/{id}/png": {
+      "parameters": [{"$ref": "#/components/parameters/sceneId"}],
+      "get": {
+        "operationId": "drawScene",
+        "summary": "Two media types for one status.",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {"description": "A PNG, or the scene.", "content": {"image/png": {}, "application/json": {"schema": {"$ref": "urn:infopanel:scene:1"}}}}
+        }
+      }
+    },
+    "/blobs": {
+      "put": {
+        "operationId": "putBlob",
+        "security": [{"bearer": ["edit"]}],
+        "requestBody": {"description": "Any bytes.", "content": {"application/octet-stream": {}}},
+        "responses": {"204": {"description": "Stored."}}
+      }
+    },
+    "/socket": {
+      "get": {
+        "operationId": "socket",
+        "security": [],
+        "responses": {"101": {"description": "Switching protocols."}},
+        "x-infopanel-socket": {
+          "subprotocol": "fixture.v1",
+          "clientMessage": {"$ref": "urn:infopanel:scene:1#/$defs/op"},
+          "serverMessage": {"$ref": "urn:infopanel:scene:1#/$defs/item"},
+          "frameHeader": {"$ref": "urn:infopanel:common:1#/$defs/labels"}
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "sceneId": {"name": "id", "in": "path", "required": true, "description": "The scene's id.", "schema": {"type": "string"}}
+    },
+    "responses": {
+      "notFound": {"description": "No such scene.", "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:common:1#/$defs/labels"}}}}
+    },
+    "securitySchemes": {
+      "bearer": {"type": "http", "scheme": "bearer"}
+    }
+  }
+}

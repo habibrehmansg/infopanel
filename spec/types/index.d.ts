@@ -2049,3 +2049,554 @@ export interface GlowEffect {
   sigma: NumberExpr;
   color: ColorExpr;
 }
+
+// openapi.json (ApiOperations)
+
+/**
+ * The engine API's requests (openapi.json), by `METHOD /path`: each with its path parameters (`params`), its query
+ * parameters (`query`), its request body (`request`) and its responses by status. A JSON body is its type, any other
+ * body is named by its media type, and `null` is no body; `never` is no request body.
+ */
+export interface ApiOperations {
+  /**
+   * getSession: The engine, this run of it and what it supports.
+   *
+   * docs/api.md#session.
+   */
+  "GET /api/session": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The session. */
+      200: Session;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * listFonts: The font families a scene's text can name.
+   *
+   * docs/api.md#fonts-and-sensors.
+   */
+  "GET /api/fonts": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The engine's own families first, then the system's, each sorted, each once whatever its case. */
+      200: string[];
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * listSensors: Every sensor the engine's sources offer, with its status now.
+   *
+   * docs/api.md#fonts-and-sensors.
+   */
+  "GET /api/sensors": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The sensors. */
+      200: SensorEntry[];
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * readSensorValues: The reading of every listed sensor that has one now.
+   *
+   * docs/api.md#fonts-and-sensors.
+   */
+  "GET /api/sensors/values": {
+    params: { [key: string]: never };
+    query: {
+      /** How many of each number sensor's last samples to add, clamped to 0–4,096; 0 when absent. */
+      history?: number;
+    };
+    request: never;
+    responses: {
+      /** The readings, in list order. */
+      200: SensorValue[];
+      /** A query parameter isn't a whole number. */
+      400: Problem;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * listProfiles: Every profile, in display order.
+   *
+   * docs/api.md#profiles.
+   */
+  "GET /api/profiles": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The profiles. */
+      200: ProfileEntry[];
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * createProfile: Creates a profile under a client-chosen id, empty or from a document.
+   *
+   * docs/api.md#creating-and-duplicating.
+   */
+  "POST /api/profiles": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: CreateProfileRequest;
+    responses: {
+      /** The new profile. */
+      201: ProfileEntry;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** A profile with the id exists; nothing was created. */
+      409: ExistsProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * getProfile: The profile's current document and its state.
+   *
+   * docs/api.md#documents.
+   */
+  "GET /api/profiles/{id}": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The document. */
+      200: DocumentResponse;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile's document can't be opened: its status is unsupported or unreadable. */
+      409: ProfileStatusProblem;
+    };
+  };
+  /**
+   * deleteProfile: Deletes the profile, whatever its status, with its document and history.
+   *
+   * docs/api.md#deleting.
+   */
+  "DELETE /api/profiles/{id}": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Deleted. */
+      204: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+    };
+  };
+  /**
+   * duplicateProfile: Copies the profile's current document under a client-chosen id.
+   *
+   * docs/api.md#creating-and-duplicating.
+   */
+  "POST /api/profiles/{id}/duplicate": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: DuplicateProfileRequest;
+    responses: {
+      /** The new profile. */
+      201: ProfileEntry;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** A profile with the new id exists (existsProblem), or this one can't be opened (profileStatusProblem); nothing was created. */
+      409: ExistsProblem | ProfileStatusProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * exportProfile: The profile's document, to keep or to create a profile from elsewhere.
+   *
+   * docs/api.md#exporting.
+   */
+  "GET /api/profiles/{id}/document": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** An ok profile's current document without its rev members, scenes and opaque members as stored (application/json); an unsupported or unreadable profile's stored file, byte for byte (application/octet-stream). */
+      200: ImportDocument | "application/octet-stream";
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile's file can't be read at all. */
+      409: ProfileStatusProblem;
+    };
+  };
+  /**
+   * getThumbnail: A PNG of the current document.
+   *
+   * docs/api.md#thumbnails.
+   */
+  "GET /api/profiles/{id}/thumbnail": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: {
+      /** The width in pixels, clamped to 16–4,096; 320 when absent. */
+      w?: number;
+    };
+    request: never;
+    responses: {
+      /** The thumbnail. */
+      200: "image/png";
+      /** A query parameter isn't a whole number. */
+      400: Problem;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile's document can't be opened: its status is unsupported or unreadable. */
+      409: ProfileStatusProblem;
+    };
+  };
+  /**
+   * commit: Applies ops to the document, all or none, as one undo step.
+   *
+   * docs/commit.md.
+   */
+  "POST /api/profiles/{id}/commit": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: CommitRequest;
+    responses: {
+      /** The commit's result. */
+      200: CommitResult;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile can't be opened (profileStatusProblem), an op conflicts (conflictProblem), or the commit is too old to tell from a retry (expiredProblem); nothing was applied. */
+      409: ProfileStatusProblem | ConflictProblem | ExpiredProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * undo: Undoes the last undo step.
+   *
+   * docs/commit.md#undo-redo-revert-and-save.
+   */
+  "POST /api/profiles/{id}/undo": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: HistoryRequest;
+    responses: {
+      /** The document's state after the step. */
+      200: CommitResult;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied. */
+      409: ProfileStatusProblem | ConflictProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * redo: Redoes the last undone step.
+   *
+   * docs/commit.md#undo-redo-revert-and-save.
+   */
+  "POST /api/profiles/{id}/redo": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: HistoryRequest;
+    responses: {
+      /** The document's state after the step. */
+      200: CommitResult;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied. */
+      409: ProfileStatusProblem | ConflictProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * revert: Returns the document to its saved state, as one undo step.
+   *
+   * docs/commit.md#undo-redo-revert-and-save.
+   */
+  "POST /api/profiles/{id}/revert": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: HistoryRequest;
+    responses: {
+      /** The document's state after the step. */
+      200: CommitResult;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied. */
+      409: ProfileStatusProblem | ConflictProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * save: Saves the current document.
+   *
+   * docs/commit.md#undo-redo-revert-and-save.
+   */
+  "POST /api/profiles/{id}/save": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The document's state after saving. */
+      200: CommitResult;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile's document can't be opened: its status is unsupported or unreadable. */
+      409: ProfileStatusProblem;
+    };
+  };
+  /**
+   * storeBlob: Stores bytes as a blob, named by their SHA-256, and inspects them as media.
+   *
+   * docs/api.md#blobs.
+   */
+  "POST /api/blobs": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    /** The bytes, of any content type. */
+    request: "application/octet-stream";
+    responses: {
+      /** The bytes were already stored. */
+      200: BlobInfo;
+      /** The bytes are stored. */
+      201: BlobInfo;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** The bytes are over mediaBytes; nothing was stored. */
+      413: Problem;
+    };
+  };
+  /**
+   * getBlob: The blob's bytes, exactly as stored.
+   *
+   * docs/api.md#blobs.
+   */
+  "GET /api/blobs/{id}": {
+    params: {
+      /** The blob's id: sha256: and 64 lower-case hex digits. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The bytes. */
+      200: "application/octet-stream";
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No such profile, blob or token. */
+      404: Problem;
+    };
+  };
+  /**
+   * headBlob: The blob's size.
+   *
+   * docs/api.md#blobs.
+   */
+  "HEAD /api/blobs/{id}": {
+    params: {
+      /** The blob's id: sha256: and 64 lower-case hex digits. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The blob is stored; Content-Length is its size. */
+      200: "application/octet-stream";
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No such profile, blob or token. */
+      404: Problem;
+    };
+  };
+  /**
+   * listTokens: The integration tokens, oldest first, without their secrets.
+   *
+   * docs/api.md#integration-tokens.
+   */
+  "GET /api/tokens": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The tokens. */
+      200: TokenInfo[];
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+    };
+  };
+  /**
+   * createToken: Creates an integration token and answers its secret, once.
+   *
+   * docs/api.md#integration-tokens.
+   */
+  "POST /api/tokens": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: CreateTokenRequest;
+    responses: {
+      /** The new token and its secret. */
+      201: CreatedToken;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * revokeToken: Revokes an integration token at once.
+   *
+   * docs/api.md#integration-tokens.
+   */
+  "DELETE /api/tokens/{id}": {
+    params: {
+      /** The token's id (tokenId). */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Revoked; the sockets opened with it are closed. */
+      204: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+    };
+  };
+  /**
+   * previewSocket: The preview socket: a WebSocket with the subprotocol infopanel.v1.
+   *
+   * docs/api.md#the-preview-socket. The upgrade takes no Authorization header: the token comes as the subprotocol auth.{token} or in the first message (authMessage).
+   */
+  "GET /ws": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Switching to the WebSocket: the engine sends serverMessage text messages and binary frames, the client clientMessage text messages. */
+      101: null;
+      /** Not a WebSocket upgrade. */
+      400: Problem;
+      /** No infopanel.v1 subprotocol, or an auth.{token} subprotocol whose token isn't valid. */
+      401: Problem;
+    };
+  };
+  /**
+   * health: Whether the engine runs.
+   *
+   * docs/api.md#signing-in.
+   */
+  "GET /healthz": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The text ok. */
+      200: "text/plain";
+    };
+  };
+  /**
+   * signIn: The sign-in link: hands the session token to the client served by the engine.
+   *
+   * docs/api.md#signing-in.
+   */
+  "GET /auth/{token}": {
+    params: {
+      /** The token from the sign-in link the engine prints. */
+      token: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** To /#token={token}. */
+      302: null;
+      /** Any token but the session token. */
+      401: "text/plain";
+    };
+  };
+}

@@ -152,3 +152,98 @@ export type PinnedText = TextItem & {
 export type WithExtras = ImageItem & {
   alt?: string;
 };
+
+// openapi.json (ApiOperations)
+
+/**
+ * The engine API's requests (openapi.json), by `METHOD /path`: each with its path parameters (`params`), its query
+ * parameters (`query`), its request body (`request`) and its responses by status. A JSON body is its type, any other
+ * body is named by its media type, and `null` is no body; `never` is no request body.
+ */
+export interface ApiOperations {
+  /**
+   * getScene: A scene, by id.
+   *
+   * Path and query parameters, a $ref to a schema's root, a shared response and no body.
+   */
+  "GET /scenes/{id}": {
+    params: {
+      /** The scene's id. */
+      id: string;
+    };
+    query: {
+      /** A width. */
+      w?: number;
+    };
+    request: never;
+    responses: {
+      /** The scene. */
+      200: Scene;
+      /** Not modified. */
+      304: null;
+      /** No such scene. */
+      404: Labels;
+    };
+  };
+  /** headScene */
+  "HEAD /scenes/{id}": {
+    params: {
+      /** The scene's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** It exists. */
+      200: JsonValue;
+    };
+  };
+  /** commitScene: Applies ops. */
+  "POST /scenes/{id}/commit": {
+    params: {
+      id: Id;
+    };
+    query: { [key: string]: never };
+    request: CommitRequest;
+    responses: {
+      /** The ops applied. */
+      200: Op[];
+      /** One of two problems. */
+      409: TextItem | ImageItem;
+    };
+  };
+  /** drawScene: Two media types for one status. */
+  "GET /scenes/{id}/png": {
+    params: {
+      /** The scene's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** A PNG, or the scene. */
+      200: "image/png" | Scene;
+    };
+  };
+  /** putBlob */
+  "PUT /blobs": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    /** Any bytes. */
+    request?: "application/octet-stream";
+    responses: {
+      /** Stored. */
+      204: null;
+    };
+  };
+  /** socket */
+  "GET /socket": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Switching protocols. */
+      101: null;
+    };
+  };
+}

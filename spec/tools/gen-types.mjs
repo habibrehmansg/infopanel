@@ -1,13 +1,15 @@
 #!/usr/bin/env node
-// Turns a set of JSON Schema (draft 2020-12, strict subset) files into one TypeScript declaration file.
-// Dependency-free: Node >= 22, built-ins only.
+// Turns a set of JSON Schema (draft 2020-12, strict subset) files into one TypeScript declaration file, and an OpenAPI
+// 3.1.1 request index over them (strict subset) into its ApiOperations. Dependency-free: Node >= 22, built-ins only.
 //
-//   node tools/gen-types.mjs --schemas <dir> --out <file.d.ts> [--check]
+//   node tools/gen-types.mjs --schemas <dir> --out <file.d.ts> [--openapi <openapi.json>] [--check]
+//
+// Without --openapi, the openapi.json next to the schemas folder is read when there is one.
 //
 // Exit codes: 0 ok, 1 --check found a difference, 2 bad arguments or a schema that can't be translated.
 
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const HEADER =
@@ -62,7 +64,8 @@ const propKey = (k) => (IDENT.test(k) ? k : JSON.stringify(k));
 
 function buildRegistry(schemas) {
   const byId = new Map(); // $id -> { file, json, defs: Map<defName, TypeName>, rootName }
-  const names = new Map([['JsonValue', 'the generated header']]); // TypeName -> location
+  // TypeName -> location. ApiOperations is the request index's (openapi.json).
+  const names = new Map([['JsonValue', 'the generated header'], ['ApiOperations', 'the generated request index']]);
   const entries = [];
 
   for (const { file, json } of schemas) {
@@ -354,16 +357,302 @@ function declaration(name, s, ctx, p) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The request index: an OpenAPI 3.1.1 document (openapi.json) in a strict subset, read and checked like the schemas,
+// and turned into ApiOperations
+// ---------------------------------------------------------------------------------------------
+
+/** The HTTP methods of a path item, in the order ApiOperations lists them. */
+export const METHODS = ['get', 'head', 'post', 'put', 'patch', 'delete', 'options', 'trace'];
+
+/** The fields the subset allows in each OpenAPI object (OAS 3.1.1's field tables, less what the engine API doesn't use). */
+const FIELDS = {
+  document: ['openapi', 'info', 'jsonSchemaDialect', 'servers', 'paths', 'components'],
+  info: ['title', 'summary', 'description', 'version', 'license'],
+  license: ['name', 'identifier', 'url'],
+  server: ['url', 'description', 'variables'],
+  serverVariable: ['enum', 'default', 'description'],
+  pathItem: ['summary', 'description', 'parameters', ...METHODS],
+  operation: ['operationId', 'summary', 'description', 'parameters', 'requestBody', 'responses', 'security', 'deprecated', 'x-infopanel-socket'],
+  parameter: ['name', 'in', 'description', 'required', 'deprecated', 'schema'],
+  requestBody: ['description', 'content', 'required'],
+  mediaType: ['schema'],
+  response: ['description', 'headers', 'content'],
+  header: ['description', 'required', 'deprecated', 'schema'],
+  components: ['parameters', 'responses', 'securitySchemes'],
+  securityScheme: ['type', 'description', 'name', 'in', 'scheme', 'bearerFormat'],
+  reference: ['$ref', 'summary', 'description'],
+  socket: ['subprotocol', 'clientMessage', 'serverMessage', 'frameHeader'],
+};
+
+const JSON_MEDIA = /^application\/([A-Za-z0-9.+-]+\+)?json$/;
+
+/** Whether a media type carries JSON (application/json, application/problem+json). */
+export const isJsonMedia = (media) => JSON_MEDIA.test(media);
+
+/**
+ * Checks an OpenAPI document against the subset and returns its operations, in document order:
+ * `{ key: 'GET /path', method, path, operationId, summary, description, security, params, query, request, responses,
+ * socket, pointer }`, with references resolved. `params` and `query` are `{ name, required, description, schema,
+ * pointer }`; `request` is null or `{ required, description, content }`; each response is `{ status, description,
+ * content, headers, pointer }`; `content` is `[{ media, schema, pointer }]` (schema null when absent). Every Schema
+ * Object is checked like a schema (keywords, `$ref`s by id) against the registry of `schemas`.
+ */
+export function readOperations(openapi, schemas) {
+  const sorted = [...schemas].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+  const byId = buildRegistry(sorted);
+  return checkOpenApi(openapi, byId).operations;
+}
+
+function checkOpenApi({ file, json: doc }, byId) {
+  const entry = { file, json: doc, defs: new Map(), rootName: null, isRootType: false };
+  const fail = (p, text) => {
+    throw new GenError(file, p, text);
+  };
+  const object = (v, p, what) => {
+    if (!isObj(v)) fail(p, `${what} must be an object`);
+    return v;
+  };
+  const fields = (v, kind, p) => {
+    object(v, p, kind);
+    for (const k of Object.keys(v)) {
+      if (!FIELDS[kind].includes(k)) fail(ptr(p, k), `unknown key "${k}" in ${kind === 'document' ? 'the document' : `a ${kind} object`}`);
+    }
+    return v;
+  };
+  const text = (v, p, what, optional = true) => {
+    if (v === undefined && optional) return;
+    if (typeof v !== 'string') fail(p, `${what} must be a string`);
+  };
+  const schema = (s, p) => {
+    validate(s, entry, byId, p);
+    return s;
+  };
+  // A Reference Object to `#/components/<kind>/<name>`, or the object itself.
+  const deref = (v, kind, p) => {
+    if (!isObj(v) || !has(v, '$ref')) return { value: v, pointer: p };
+    fields(v, 'reference', p);
+    const m = typeof v.$ref === 'string' ? /^#\/components\/([^/]+)\/([^/]+)$/.exec(v.$ref) : null;
+    if (!m || m[1] !== kind) fail(ptr(p, '$ref'), `unsupported $ref "${v.$ref}": only #/components/${kind}/<name> is allowed here`);
+    const target = doc.components?.[kind]?.[m[2]];
+    if (target === undefined) fail(ptr(p, '$ref'), `unresolvable $ref "${v.$ref}"`);
+    return { value: target, pointer: ptr('/components', kind, m[2]) };
+  };
+
+  fields(doc, 'document', '');
+  if (doc.openapi !== '3.1.1') fail('/openapi', 'openapi must be "3.1.1"');
+  fields(doc.info, 'info', '/info');
+  text(doc.info.title, '/info/title', 'info.title', false);
+  text(doc.info.version, '/info/version', 'info.version', false);
+  for (const k of ['summary', 'description']) text(doc.info[k], ptr('/info', k), `info.${k}`);
+  if (has(doc.info, 'license')) fields(doc.info.license, 'license', '/info/license');
+  if (has(doc, 'jsonSchemaDialect') && doc.jsonSchemaDialect !== 'https://json-schema.org/draft/2020-12/schema') {
+    fail('/jsonSchemaDialect', 'jsonSchemaDialect must be draft 2020-12, the schemas\' dialect');
+  }
+  if (has(doc, 'servers')) {
+    if (!Array.isArray(doc.servers)) fail('/servers', 'servers must be an array');
+    doc.servers.forEach((server, i) => {
+      const p = ptr('/servers', i);
+      fields(server, 'server', p);
+      text(server.url, ptr(p, 'url'), 'a server\'s url', false);
+      for (const [name, variable] of Object.entries(object(server.variables ?? {}, ptr(p, 'variables'), 'variables'))) {
+        fields(variable, 'serverVariable', ptr(p, 'variables', name));
+        text(variable.default, ptr(p, 'variables', name, 'default'), 'a server variable\'s default', false);
+      }
+    });
+  }
+
+  const components = doc.components === undefined ? {} : fields(doc.components, 'components', '/components');
+  const schemes = object(components.securitySchemes ?? {}, '/components/securitySchemes', 'securitySchemes');
+  for (const [name, scheme] of Object.entries(schemes)) {
+    const p = ptr('/components/securitySchemes', name);
+    fields(scheme, 'securityScheme', p);
+    if (!['http', 'apiKey'].includes(scheme.type)) fail(ptr(p, 'type'), 'a security scheme\'s type must be "http" or "apiKey"');
+  }
+  for (const kind of ['parameters', 'responses']) object(components[kind] ?? {}, ptr('/components', kind), kind);
+
+  const parameter = (raw, p) => {
+    const { value: v, pointer } = deref(raw, 'parameters', p);
+    fields(v, 'parameter', pointer);
+    text(v.name, ptr(pointer, 'name'), 'a parameter\'s name', false);
+    if (!['path', 'query'].includes(v.in)) fail(ptr(pointer, 'in'), 'a parameter is "in" "path" or "query"');
+    if (v.in === 'path' && v.required !== true) fail(ptr(pointer, 'required'), 'a path parameter must be required');
+    if (has(v, 'required') && typeof v.required !== 'boolean') fail(ptr(pointer, 'required'), 'required must be a boolean');
+    text(v.description, ptr(pointer, 'description'), 'a description');
+    if (!has(v, 'schema')) fail(pointer, 'a parameter needs a schema');
+    return { name: v.name, in: v.in, required: v.required === true, description: v.description, schema: schema(v.schema, ptr(pointer, 'schema')), pointer };
+  };
+  const content = (v, p) => {
+    object(v, p, 'content');
+    if (Object.keys(v).length === 0) fail(p, 'content must name at least one media type');
+    return Object.entries(v).map(([media, m]) => {
+      const mp = ptr(p, media);
+      if (!/^[a-z*]+\/[A-Za-z0-9.+*-]+$/.test(media)) fail(mp, `"${media}" is not a media type`);
+      fields(m, 'mediaType', mp);
+      return { media, schema: has(m, 'schema') ? schema(m.schema, ptr(mp, 'schema')) : null, pointer: mp };
+    });
+  };
+  const headers = (v, p) =>
+    Object.entries(object(v ?? {}, p, 'headers')).map(([name, h]) => {
+      const hp = ptr(p, name);
+      fields(h, 'header', hp);
+      if (!has(h, 'schema')) fail(hp, 'a header needs a schema');
+      schema(h.schema, ptr(hp, 'schema'));
+      return { name, required: h.required === true, description: h.description };
+    });
+
+  const operations = [];
+  const ids = new Map();
+  for (const [path, item] of Object.entries(object(doc.paths, '/paths', 'paths'))) {
+    const pp = ptr('/paths', path);
+    if (!/^\/[^?#]*$/.test(path)) fail(pp, `path "${path}" must start with "/"`);
+    fields(item, 'pathItem', pp);
+    const shared = (item.parameters ?? []).map((v, i) => parameter(v, ptr(pp, 'parameters', i)));
+    if (has(item, 'parameters') && !Array.isArray(item.parameters)) fail(ptr(pp, 'parameters'), 'parameters must be an array');
+    const templated = [...path.matchAll(/\{([^}]*)\}/g)].map((m) => m[1]);
+    for (const method of METHODS.filter((m) => has(item, m))) {
+      const op = item[method];
+      const p = ptr(pp, method);
+      fields(op, 'operation', p);
+      if (typeof op.operationId !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(op.operationId)) {
+        fail(ptr(p, 'operationId'), 'every operation needs an operationId of letters and digits');
+      }
+      if (ids.has(op.operationId)) fail(ptr(p, 'operationId'), `duplicate operationId "${op.operationId}" (also at ${ids.get(op.operationId)})`);
+      ids.set(op.operationId, `#${p}`);
+      text(op.summary, ptr(p, 'summary'), 'a summary');
+      text(op.description, ptr(p, 'description'), 'a description');
+      if (has(op, 'parameters') && !Array.isArray(op.parameters)) fail(ptr(p, 'parameters'), 'parameters must be an array');
+      const own = (op.parameters ?? []).map((v, i) => parameter(v, ptr(p, 'parameters', i)));
+      const all = new Map();
+      for (const prm of [...shared, ...own]) all.set(`${prm.in} ${prm.name}`, prm);
+      const pathParams = [...all.values()].filter((prm) => prm.in === 'path');
+      for (const name of templated) {
+        if (!all.has(`path ${name}`)) fail(p, `path parameter {${name}} of "${path}" isn't declared`);
+      }
+      for (const prm of pathParams) {
+        if (!templated.includes(prm.name)) fail(prm.pointer, `path parameter "${prm.name}" isn't in "${path}"`);
+      }
+
+      if (!Array.isArray(op.security)) fail(ptr(p, 'security'), 'every operation states its security: [] for none');
+      op.security.forEach((req, i) => {
+        const rp = ptr(p, 'security', i);
+        for (const [name, roles] of Object.entries(object(req, rp, 'a security requirement'))) {
+          if (!has(schemes, name)) fail(ptr(rp, name), `no security scheme "${name}" in components.securitySchemes`);
+          if (!Array.isArray(roles) || !roles.every((r) => typeof r === 'string')) fail(ptr(rp, name), 'a security requirement lists strings');
+        }
+      });
+
+      let request = null;
+      if (has(op, 'requestBody')) {
+        const rb = fields(op.requestBody, 'requestBody', ptr(p, 'requestBody'));
+        request = { required: rb.required === true, description: rb.description, content: content(rb.content, ptr(p, 'requestBody', 'content')) };
+      }
+
+      const responses = Object.entries(object(op.responses, ptr(p, 'responses'), 'responses')).map(([status, raw]) => {
+        const sp = ptr(p, 'responses', status);
+        if (!/^[1-5][0-9][0-9]$/.test(status)) fail(sp, `response "${status}" must be a status code from 100 to 599`);
+        const { value: r, pointer } = deref(raw, 'responses', sp);
+        fields(r, 'response', pointer);
+        text(r.description, ptr(pointer, 'description'), 'a response\'s description', false);
+        return {
+          status: Number(status),
+          description: r.description,
+          content: has(r, 'content') ? content(r.content, ptr(pointer, 'content')) : [],
+          headers: headers(r.headers, ptr(pointer, 'headers')),
+          pointer: sp,
+        };
+      });
+      if (responses.length === 0) fail(ptr(p, 'responses'), 'an operation answers at least one status');
+
+      let socket = null;
+      if (has(op, 'x-infopanel-socket')) {
+        const xp = ptr(p, 'x-infopanel-socket');
+        const x = fields(op['x-infopanel-socket'], 'socket', xp);
+        text(x.subprotocol, ptr(xp, 'subprotocol'), 'subprotocol', false);
+        for (const k of ['clientMessage', 'serverMessage', 'frameHeader']) {
+          if (!has(x, k)) fail(xp, `x-infopanel-socket needs ${k}`);
+          schema(x[k], ptr(xp, k));
+        }
+        socket = { subprotocol: x.subprotocol, clientMessage: x.clientMessage, serverMessage: x.serverMessage, frameHeader: x.frameHeader };
+      }
+
+      operations.push({
+        key: `${method.toUpperCase()} ${path}`,
+        method,
+        path,
+        operationId: op.operationId,
+        summary: op.summary,
+        description: op.description,
+        security: op.security,
+        params: pathParams,
+        query: [...all.values()].filter((prm) => prm.in === 'query'),
+        request,
+        responses,
+        socket,
+        pointer: p,
+      });
+    }
+  }
+  return { operations, entry };
+}
+
+/** The TypeScript type of a body: a JSON body's type, any other's media type as a string literal, `null` for none. */
+function bodyType(content, ctx, level) {
+  if (content.length === 0) return atom('null');
+  return union(content.map(({ media, schema, pointer }) =>
+    isJsonMedia(media) ? (schema === null ? atom('JsonValue') : conv(schema, level, ctx, ptr(pointer, 'schema'))) : atom(JSON.stringify(media))));
+}
+
+function paramsType(list, ctx, level) {
+  if (list.length === 0) return '{ [key: string]: never }';
+  const pad = '  '.repeat(level + 1);
+  const lines = list.map((prm) => {
+    const doc = docBlock({ description: prm.description }, level + 1);
+    return `${doc}${pad}${propKey(prm.name)}${prm.required ? '' : '?'}: ${conv(prm.schema, level + 1, ctx, ptr(prm.pointer, 'schema')).s};`;
+  });
+  return `{\n${lines.join('\n')}\n${'  '.repeat(level)}}`;
+}
+
+const API_OPERATIONS_DOC = [
+  'The engine API\'s requests (openapi.json), by `METHOD /path`: each with its path parameters (`params`), its query',
+  'parameters (`query`), its request body (`request`) and its responses by status. A JSON body is its type, any other',
+  'body is named by its media type, and `null` is no body; `never` is no request body.',
+];
+
+function apiOperations(operations, ctx) {
+  const lines = [`/**\n${API_OPERATIONS_DOC.map((l) => ` * ${l}`).join('\n')}\n */`, 'export interface ApiOperations {'];
+  for (const op of operations) {
+    const summary = [op.operationId + (op.summary ? `: ${op.summary}` : ''), ...(op.description ? ['', op.description] : [])].join('\n');
+    lines.push(docBlock({ description: summary }, 1) + `  ${propKey(op.key)}: {`);
+    lines.push(`    params: ${paramsType(op.params, ctx, 2)};`);
+    lines.push(`    query: ${paramsType(op.query, ctx, 2)};`);
+    if (op.request === null) lines.push('    request: never;');
+    else lines.push(`${docBlock({ description: op.request.description }, 2)}    request${op.request.required ? '' : '?'}: ${bodyType(op.request.content, ctx, 2).s};`);
+    lines.push('    responses: {');
+    for (const r of [...op.responses].sort((a, b) => a.status - b.status)) {
+      lines.push(`${docBlock({ description: r.description }, 3)}      ${r.status}: ${bodyType(r.content, ctx, 3).s};`);
+    }
+    lines.push('    };');
+    lines.push('  };');
+  }
+  lines.push('}');
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------------------------
 
-/** @param {{file: string, json: unknown}[]} schemas */
-export function generate(schemas) {
+/**
+ * @param {{file: string, json: unknown}[]} schemas
+ * @param {{file: string, json: unknown} | null} [openapi] the request index; adds `ApiOperations` after the schemas' types
+ */
+export function generate(schemas, openapi = null) {
   const sorted = [...schemas].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
   const byId = buildRegistry(sorted);
   const entries = sorted.map((s) => byId.get(s.json.$id));
 
   for (const entry of entries) validate(entry.json, entry, byId, '');
+  const index = openapi ? checkOpenApi(openapi, byId) : null;
 
   const blocks = [HEADER, JSON_VALUE];
   for (const entry of entries) {
@@ -373,6 +662,10 @@ export function generate(schemas) {
     for (const [key, name] of entry.defs) {
       blocks.push(declaration(name, entry.json.$defs[key], ctx, ptr('/$defs', key)));
     }
+  }
+  if (index) {
+    blocks.push(`// ${openapi.file} (ApiOperations)`);
+    blocks.push(apiOperations(index.operations, { entry: index.entry, byId }));
   }
   // Header, JsonValue and each file's marker comment are separated by blank lines like every other block.
   return blocks.join('\n\n') + '\n';
@@ -395,12 +688,26 @@ function readSchemas(dir) {
   });
 }
 
+/** The request index: `file` as given, else the openapi.json next to the schemas folder, if any; null without one. */
+export function readOpenApi(file, schemasDir) {
+  const path = file ?? join(dirname(resolve(schemasDir)), 'openapi.json');
+  if (!existsSync(path)) {
+    if (file) throw new GenError(file, '', 'openapi file does not exist');
+    return null;
+  }
+  try {
+    return { file: basename(path), json: JSON.parse(readFileSync(path, 'utf8')) };
+  } catch (e) {
+    throw new GenError(basename(path), '', `invalid JSON: ${e.message}`);
+  }
+}
+
 function parseArgs(argv) {
-  const opts = { schemas: null, out: null, check: false };
+  const opts = { schemas: null, out: null, openapi: null, check: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--check') opts.check = true;
-    else if (a === '--schemas' || a === '--out') {
+    else if (a === '--schemas' || a === '--out' || a === '--openapi') {
       if (i + 1 >= argv.length) throw new Error(`${a} needs a value`);
       opts[a.slice(2)] = argv[++i];
     } else throw new Error(`unknown argument ${a}`);
@@ -424,7 +731,7 @@ function diffHint(expected, actual) {
 }
 
 export function main(argv) {
-  const usage = 'usage: node tools/gen-types.mjs --schemas <dir> --out <file.d.ts> [--check]';
+  const usage = 'usage: node tools/gen-types.mjs --schemas <dir> --out <file.d.ts> [--openapi <openapi.json>] [--check]';
   let opts;
   try {
     opts = parseArgs(argv);
@@ -434,7 +741,7 @@ export function main(argv) {
   }
   let text;
   try {
-    text = generate(readSchemas(opts.schemas));
+    text = generate(readSchemas(opts.schemas), readOpenApi(opts.openapi, opts.schemas));
   } catch (e) {
     if (e instanceof GenError) {
       console.error(`gen-types: ${e.message}`);

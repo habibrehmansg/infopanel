@@ -5,13 +5,14 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmdirSyn
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { generate } from './gen-types.mjs';
+import { generate, readOperations } from './gen-types.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const tool = join(root, 'tools', 'gen-types.mjs');
 const fixtures = join(root, 'tools', 'fixtures');
 const schemaDir = join(fixtures, 'schemas');
 const expectedPath = join(fixtures, 'expected.d.ts');
+const openapiPath = join(fixtures, 'openapi.json');
 // A TypeScript compiler to type-check the generated fixture types with (optional): TSC=path/to/tsc.
 const TSC = process.env.TSC ?? '';
 
@@ -20,6 +21,8 @@ const loadFixtures = () =>
     .filter((f) => f.endsWith('.schema.json'))
     .sort()
     .map((file) => ({ file, json: JSON.parse(readFileSync(join(schemaDir, file), 'utf8')) }));
+
+const loadOpenApi = () => ({ file: 'openapi.json', json: JSON.parse(readFileSync(openapiPath, 'utf8')) });
 
 const cli = (...args) => spawnSync(process.execPath, [tool, ...args], { encoding: 'utf8' });
 
@@ -52,7 +55,7 @@ function runCli(files, extra = []) {
 const schema = (id, rest) => ({ $id: id, ...rest });
 
 test('fixtures generate exactly expected.d.ts', () => {
-  assert.equal(generate(loadFixtures()), readFileSync(expectedPath, 'utf8'));
+  assert.equal(generate(loadFixtures(), loadOpenApi()), readFileSync(expectedPath, 'utf8'));
 });
 
 test('output has the header, LF endings, a trailing newline and no tabs', () => {
@@ -64,10 +67,16 @@ test('output has the header, LF endings, a trailing newline and no tabs', () => 
 
 test('deterministic: same input, same bytes, whatever the input order', () => {
   const files = loadFixtures();
-  const a = generate(files);
-  assert.equal(generate(files), a);
-  assert.equal(generate([...files].reverse()), a);
-  assert.equal(generate(JSON.parse(JSON.stringify(files))), a);
+  const a = generate(files, loadOpenApi());
+  assert.equal(generate(files, loadOpenApi()), a);
+  assert.equal(generate([...files].reverse(), loadOpenApi()), a);
+  assert.equal(generate(JSON.parse(JSON.stringify(files)), loadOpenApi()), a);
+});
+
+test('without a request index, no ApiOperations', () => {
+  const out = generate(loadFixtures());
+  assert.ok(!out.includes('ApiOperations'));
+  assert.ok(generate(loadFixtures(), loadOpenApi()).startsWith(out));
 });
 
 test('rules, one by one', () => {
@@ -93,6 +102,60 @@ test('rules, one by one', () => {
   assert.match(out, /export interface Closed \{\n {2}a: string;\n\}/);
   assert.match(out, /export type T = string \| number;/);
   assert.match(out, /export type Bare = string \| number;/);
+});
+
+test('ApiOperations: one entry per operation, with params, query, request and responses by status', () => {
+  const out = generate(loadFixtures(), loadOpenApi());
+  const ops = out.slice(out.indexOf('export interface ApiOperations {'));
+  // Every operation, in document order, keyed 'METHOD /path'.
+  const keys = [...ops.matchAll(/^ {2}"([A-Z]+ [^"]+)": \{$/gm)].map((m) => m[1]);
+  assert.deepEqual(keys, ['GET /scenes/{id}', 'HEAD /scenes/{id}', 'POST /scenes/{id}/commit', 'GET /scenes/{id}/png', 'PUT /blobs', 'GET /socket']);
+  // Path parameters from the path item and the operation; query parameters optional unless required.
+  assert.match(ops, /"GET \/scenes\/\{id\}": \{\n {4}params: \{\n {6}\/\*\* The scene's id. \*\/\n {6}id: string;\n {4}\};\n {4}query: \{\n {6}\/\*\* A width. \*\/\n {6}w\?: number;/);
+  assert.match(ops, /"POST \/scenes\/\{id\}\/commit": \{\n {4}params: \{\n {6}id: Id;\n {4}\};\n {4}query: \{ \[key: string\]: never \};\n {4}request: CommitRequest;/);
+  // Bodies: a $ref to a root or a def, an array, a oneOf, a media type, none; several media types are a union.
+  assert.match(ops, /200: Scene;\n {6}\/\*\* Not modified. \*\/\n {6}304: null;\n {6}\/\*\* No such scene. \*\/\n {6}404: Labels;/);
+  assert.match(ops, /200: Op\[\];/);
+  assert.match(ops, /409: TextItem \| ImageItem;/);
+  assert.match(ops, /200: "image\/png" \| Scene;/);
+  assert.match(ops, /request\?: "application\/octet-stream";\n {4}responses: \{\n {6}\/\*\* Stored. \*\/\n {6}204: null;/);
+  assert.match(ops, /"GET \/socket": \{[^]*?request: never;\n {4}responses: \{\n {6}\/\*\* Switching protocols. \*\/\n {6}101: null;/);
+});
+
+test('readOperations: the operations with references resolved', () => {
+  const ops = readOperations(loadOpenApi(), loadFixtures());
+  assert.deepEqual(ops.map((op) => [op.key, op.operationId]), [
+    ['GET /scenes/{id}', 'getScene'], ['HEAD /scenes/{id}', 'headScene'], ['POST /scenes/{id}/commit', 'commitScene'],
+    ['GET /scenes/{id}/png', 'drawScene'], ['PUT /blobs', 'putBlob'], ['GET /socket', 'socket'],
+  ]);
+  const get = ops[0];
+  assert.deepEqual(get.params.map((p) => p.name), ['id']);
+  assert.deepEqual(get.query.map((p) => [p.name, p.required]), [['w', false]]);
+  assert.deepEqual(get.responses.map((r) => [r.status, r.content.map((c) => c.media)]), [[200, ['application/json']], [304, []], [404, ['application/problem+json']]]);
+  assert.equal(get.responses[2].description, 'No such scene.');
+  assert.deepEqual(ops[1].responses[0].headers, [{ name: 'Content-Length', required: true, description: undefined }]);
+  assert.equal(ops[5].socket.subprotocol, 'fixture.v1');
+  assert.deepEqual(ops[5].socket.clientMessage, { $ref: 'urn:infopanel:scene:1#/$defs/op' });
+});
+
+test('the request index is read from next to the schemas folder, or from --openapi', () => {
+  withScratch((dir) => {
+    const sdir = join(dir, 's');
+    mkdirSync(sdir);
+    for (const f of readdirSync(schemaDir)) copyFileSync(join(schemaDir, f), join(sdir, f));
+    const out = join(dir, 'out.d.ts');
+    const plain = cli('--schemas', sdir, '--out', out);
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.ok(!readFileSync(out, 'utf8').includes('ApiOperations'), 'no openapi.json next to the schemas: no ApiOperations');
+    const named = cli('--schemas', sdir, '--out', out, '--openapi', openapiPath);
+    assert.equal(named.status, 0, named.stderr);
+    assert.equal(readFileSync(out, 'utf8'), readFileSync(expectedPath, 'utf8'));
+    const missing = cli('--schemas', sdir, '--out', out, '--openapi', join(dir, 'nope.json'));
+    assert.equal(missing.status, 2);
+    assert.match(missing.stderr, /nope\.json/);
+    for (const f of readdirSync(sdir)) unlinkSync(join(sdir, f));
+    rmdirSync(sdir);
+  });
 });
 
 test('CLI writes the expected file', () => {
@@ -207,6 +270,82 @@ for (const [name, c] of Object.entries(errorCases)) {
   });
 }
 
+/** A small valid request index over `urn:t:a:1#/$defs/x`, changed by `edit` (which may mutate it). */
+function openapiCase(edit) {
+  const doc = {
+    openapi: '3.1.1',
+    info: { title: 't', version: '1' },
+    paths: {
+      '/x/{id}': {
+        get: {
+          operationId: 'getX',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          security: [{ bearer: ['read'] }],
+          responses: { 200: { description: 'ok', content: { 'application/json': { schema: { $ref: 'urn:t:a:1#/$defs/x' } } } } },
+        },
+      },
+    },
+    components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } }, responses: {} },
+  };
+  edit(doc);
+  return doc;
+}
+const getX = (doc) => doc.paths['/x/{id}'].get;
+
+const openapiErrors = {
+  'unknown key in the document': [(d) => { d.webhooks = {}; }, [/openapi\.json/, /#\/webhooks/, /unknown key "webhooks"/]],
+  'an OpenAPI-only keyword in a schema': [
+    (d) => { getX(d).responses[200].content['application/json'].schema = { oneOf: [{ $ref: 'urn:t:a:1#/$defs/x' }], discriminator: { propertyName: 'k' } }; },
+    [/\/paths\/~1x~1\{id\}\/get\/responses\/200\/content\/application~1json\/schema\/discriminator/, /unknown keyword "discriminator"/]],
+  'an example in a media type': [(d) => { getX(d).responses[200].content['application/json'].example = 'a'; }, [/\/content\/application~1json\/example/, /unknown key "example"/]],
+  'a dangling schema $ref': [(d) => { getX(d).responses[200].content['application/json'].schema = { $ref: 'urn:t:a:1#/$defs/nope' }; }, [/\/schema\/\$ref/, /unresolvable/]],
+  'a schema $ref by location': [(d) => { getX(d).responses[200].content['application/json'].schema = { $ref: 'a.schema.json#/$defs/x' }; }, [/\/schema\/\$ref/, /no schema has \$id/]],
+  'a dangling component $ref': [(d) => { getX(d).responses[404] = { $ref: '#/components/responses/missing' }; }, [/\/responses\/404\/\$ref/, /unresolvable \$ref/]],
+  'a component $ref of the wrong kind': [(d) => { getX(d).parameters[0] = { $ref: '#/components/responses/x' }; }, [/\/parameters\/0\/\$ref/, /only #\/components\/parameters/]],
+  'a duplicate operationId': [(d) => { d.paths['/y'] = { get: { ...getX(d), parameters: [] } }; }, [/\/paths\/~1y\/get\/operationId/, /duplicate operationId "getX"/]],
+  'no operationId': [(d) => { delete getX(d).operationId; }, [/\/get\/operationId/, /operationId/]],
+  'an undeclared path parameter': [(d) => { getX(d).parameters = []; }, [/\/paths\/~1x~1\{id\}\/get/, /\{id\}/, /isn't declared/]],
+  'a path parameter not in the path': [(d) => { getX(d).parameters.push({ name: 'other', in: 'path', required: true, schema: {} }); }, [/\/parameters\/1/, /"other" isn't in/]],
+  'an optional path parameter': [(d) => { getX(d).parameters[0].required = false; }, [/\/parameters\/0\/required/, /must be required/]],
+  'a header parameter': [(d) => { getX(d).parameters.push({ name: 'h', in: 'header', schema: {} }); }, [/\/parameters\/1\/in/, /"path" or "query"/]],
+  'a default response': [(d) => { getX(d).responses.default = { description: 'd' }; }, [/\/responses\/default/, /status code/]],
+  'a response without a description': [(d) => { delete getX(d).responses[200].description; }, [/\/responses\/200\/description/, /must be a string/]],
+  'no security': [(d) => { delete getX(d).security; }, [/\/get\/security/, /security/]],
+  'an unknown security scheme': [(d) => { getX(d).security = [{ cookie: [] }]; }, [/\/security\/0\/cookie/, /no security scheme "cookie"/]],
+  'another OpenAPI version': [(d) => { d.openapi = '3.0.3'; }, [/#\/openapi/, /3\.1\.1/]],
+  'another extension': [(d) => { getX(d)['x-other'] = 1; }, [/\/get\/x-other/, /unknown key "x-other"/]],
+  'a socket extension without its messages': [(d) => { getX(d)['x-infopanel-socket'] = { subprotocol: 'p' }; }, [/\/x-infopanel-socket/, /needs clientMessage/]],
+};
+
+for (const [name, [edit, expect]] of Object.entries(openapiErrors)) {
+  test(`openapi.json error exits 2 with file and pointer: ${name}`, () => {
+    const r = withScratch((dir) => {
+      const sdir = join(dir, 's');
+      mkdirSync(sdir);
+      writeFileSync(join(sdir, 'a.schema.json'), JSON.stringify(schema('urn:t:a:1', { $defs: { x: { type: 'string' } } })));
+      writeFileSync(join(dir, 'openapi.json'), JSON.stringify(openapiCase(edit)));
+      const out = join(dir, 'out.d.ts');
+      const res = cli('--schemas', sdir, '--out', out);
+      const wrote = existsSync(out);
+      unlinkSync(join(sdir, 'a.schema.json'));
+      rmdirSync(sdir);
+      return { ...res, wrote };
+    });
+    assert.equal(r.status, 2, r.stderr);
+    assert.equal(r.wrote, false, 'nothing is written on error');
+    for (const re of expect) assert.match(r.stderr, re);
+  });
+}
+
+test('the valid request index of the error cases generates', () => {
+  const out = generate([{ file: 'a.schema.json', json: schema('urn:t:a:1', { $defs: { x: { type: 'string' } } }) }], { file: 'openapi.json', json: openapiCase(() => {}) });
+  assert.match(out, /"GET \/x\/\{id\}": \{/);
+});
+
+test('ApiOperations is a reserved name', () => {
+  assert.throws(() => generate([{ file: 'a.schema.json', json: schema('urn:t:a:1', { $defs: { apiOperations: { type: 'string' } } }) }]), /name clash/);
+});
+
 test('bad arguments exit 2', () => {
   assert.equal(cli().status, 2);
   assert.equal(cli('--schemas', schemaDir).status, 2);
@@ -221,7 +360,7 @@ test('--check also exits 2 on a schema error', () => {
 
 test('generated types compile, and wrong values are rejected (tsc)', { skip: TSC && existsSync(TSC) ? false : 'set TSC to a TypeScript compiler to run' }, () => {
   withScratch((dir) => {
-    writeFileSync(join(dir, 'generated.d.ts'), generate(loadFixtures()));
+    writeFileSync(join(dir, 'generated.d.ts'), generate(loadFixtures(), loadOpenApi()));
     copyFileSync(join(fixtures, 'usage.ts'), join(dir, 'usage.ts'));
     const r = spawnSync(
       process.execPath,
