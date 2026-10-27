@@ -13,7 +13,7 @@ public sealed record ItemKind(string Id, Type ClrType, string Label);
 /// <summary>A property in the kind manifest.</summary>
 public sealed record PropertyManifest(string Name, PropertyJsonType Type, IReadOnlyList<string>? EnumValues, bool ReadOnly);
 
-/// <summary>One kind in <c>GET /api/kinds</c>: its properties and the values of a fresh item.</summary>
+/// <summary>One 1.x kind in the kind manifest (<c>Snapshots/kinds.json</c>): its properties and the values of a fresh item.</summary>
 public sealed record KindManifest(string Kind, string ClrType, string Label, IReadOnlyList<PropertyManifest> Properties, JsonObject Defaults);
 
 /// <summary>The 14 item kinds (plan §6.5), matched by exact model type.</summary>

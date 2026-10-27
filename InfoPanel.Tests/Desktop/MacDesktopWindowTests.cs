@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using InfoPanel.Desktop;
 using InfoPanel.Hosting;
@@ -24,7 +25,7 @@ public sealed class MacDesktopWindowTests
     private static bool Enabled => OperatingSystem.IsMacOS() && Environment.GetEnvironmentVariable("INFOPANEL_WINDOW_TESTS") == "1";
 
     [Fact]
-    public async Task TheEngine_ShowsActiveProfilesAsWindows_AndFollowsApiEdits()
+    public async Task TheEngine_ShowsProfilesWithAWindowAsWindows_AndFollowsCommits()
     {
         Assert.SkipUnless(Enabled, "Opens real windows: set INFOPANEL_WINDOW_TESTS=1 on macOS to run it.");
         if (OperatingSystem.IsMacOS())
@@ -60,37 +61,33 @@ public sealed class MacDesktopWindowTests
             await Until(async () => (await Try(() => api.GetStringAsync("/healthz", Ct))) == "ok", "the engine to listen");
             var scale = MacWindowList.MainDisplayScale();
 
-            // The example profile is active: 1920×480 pixels at the main display's top-left, normal level.
-            var example = (await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct)).EnumerateArray().Single().GetProperty("id").GetString();
-            await Until(() => Task.FromResult(OnScreen(process.Id).Any(w => w.Bounds == new PointRect(0, 0, 1920 / scale, 480 / scale) && w.Layer == 0)),
-                "the example profile's window");
+            // The first run's example profile has no desktop window.
+            var example = (await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct)).EnumerateArray().Single().GetProperty("id").GetString()!;
 
-            // A new profile gets its own window.
-            var created = await api.PostAsJsonAsync("/api/profiles", new { name = "Window test", width = 400, height = 200 }, Ct);
-            created.EnsureSuccessStatusCode();
-            var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetString();
-            await Until(() => Task.FromResult(OnScreen(process.Id).Count == 2), "two windows");
+            // A profile created with its window enabled gets one: 400×200 pixels at the main display's top-left, normal level.
+            var id = await CreateWithWindow(api, "Window test", 400, 200);
+            await Until(() => Task.FromResult(OnScreen(process.Id).Any(w => w.Bounds == new PointRect(0, 0, 400 / scale, 200 / scale) && w.Layer == 0)),
+                "the new profile's window");
+            Assert.Single(OnScreen(process.Id));
 
-            // Moving it and putting it on top through the API (the editor's path).
-            await PatchProfile(api, id!, new { windowX = 200, windowY = 120, topmost = true });
+            // Moving it and putting it on top through a commit (a client's path).
+            await CommitWindow(api, id, new JsonObject { ["x"] = 200, ["y"] = 120, ["topmost"] = true });
             await Until(() => Task.FromResult(OnScreen(process.Id).Any(w =>
                 w.Bounds == new PointRect(200 / scale, 120 / scale, 400 / scale, 200 / scale) && w.Layer == 3)), "the moved, floating window");
 
-            // Not active: its window closes; the example's stays.
-            await PatchProfile(api, id!, new { active = false });
-            await Until(() => Task.FromResult(OnScreen(process.Id).Count == 1), "the window to close");
+            // Its window disabled: the window closes.
+            await CommitWindow(api, id, new JsonObject { ["enabled"] = false });
+            await Until(() => Task.FromResult(OnScreen(process.Id).Count == 0), "the window to close");
 
-            // Moves made by the engine are no edits: the example profile is still clean.
-            var doc = await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{example}", Ct);
-            Assert.False(doc.GetProperty("dirty").GetBoolean());
+            // Moves made by the engine are no edits: the profile has the two commits' revisions only, the example is clean.
+            Assert.Equal(3, (await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct)).GetProperty("rev").GetInt64());
+            Assert.False((await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{example}", Ct)).GetProperty("dirty").GetBoolean());
 
             // Over the frame pixel cap: drawn at half the scale, the layer stretches it (contents scale halved, linear
             // filter). Back under it: one frame pixel per backing pixel, nearest. Read back from the real layer.
-            var huge = await api.PostAsJsonAsync("/api/profiles", new { name = "Over the cap", width = 8192, height = 8192 }, Ct);
-            huge.EnsureSuccessStatusCode();
-            var hugeId = (await huge.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetString();
+            var hugeId = await CreateWithWindow(api, "Over the cap", 8192, 8192);
             Assert.Equal((scale / 2, "linear"), await LayerScaling(output, 0.5));
-            await PatchProfile(api, hugeId!, new { width = 400, height = 200 });
+            await Commit(api, hugeId, new JsonObject { ["width"] = 400, ["height"] = 200 });
             Assert.Equal((scale, "nearest"), await LayerScaling(output, 1));
 
             // A clean stop (SIGTERM: a test runner started from a background shell may ignore SIGINT; the
@@ -133,9 +130,45 @@ public sealed class MacDesktopWindowTests
     [System.Runtime.Versioning.SupportedOSPlatform("macos")]
     private static List<MacWindowList.Window> OnScreen(int pid) => MacWindowList.Of(pid).Where(w => w.OnScreen).ToList();
 
-    private static async Task PatchProfile(HttpClient api, string id, object set)
+    /// <summary>Creates a profile under a new id from a document with no items and its desktop window enabled; returns the id.</summary>
+    private static async Task<string> CreateWithWindow(HttpClient api, string name, int width, int height)
     {
-        using var response = await api.PatchAsJsonAsync($"/api/profiles/{id}", new { set }, Ct);
+        var id = Guid.NewGuid().ToString();
+        var document = new JsonObject
+        {
+            ["format"] = "infopanel.document/1",
+            ["id"] = id,
+            ["profile"] = new JsonObject { ["name"] = name, ["width"] = width, ["height"] = height, ["window"] = new JsonObject { ["enabled"] = true } },
+            ["items"] = new JsonArray(),
+        };
+        using var response = await api.PostAsJsonAsync("/api/profiles", new JsonObject { ["id"] = id, ["document"] = document }, Ct);
+        response.EnsureSuccessStatusCode();
+        return id;
+    }
+
+    /// <summary>A <c>profile</c> commit of the window with the members of <paramref name="set"/> changed, the rest as read.</summary>
+    private static async Task CommitWindow(HttpClient api, string id, JsonObject set)
+    {
+        var doc = await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct);
+        var window = JsonNode.Parse(doc.GetProperty("document").GetProperty("profile").GetProperty("window").GetRawText())!.AsObject();
+        foreach (var (key, value) in set)
+            window[key] = value?.DeepClone();
+        await Commit(api, id, new JsonObject { ["window"] = window });
+    }
+
+    /// <summary>One <c>profile</c> op setting <paramref name="set"/>, based on the revision just read.</summary>
+    private static async Task Commit(HttpClient api, string id, JsonObject set)
+    {
+        var session = await api.GetFromJsonAsync<JsonElement>("/api/session", Ct);
+        var doc = await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct);
+        var body = new JsonObject
+        {
+            ["opId"] = Guid.NewGuid().ToString("N"),
+            ["instance"] = session.GetProperty("instance").GetString(),
+            ["baseRev"] = doc.GetProperty("rev").GetInt64(),
+            ["ops"] = new JsonArray(new JsonObject { ["op"] = "profile", ["set"] = set }),
+        };
+        using var response = await api.PostAsJsonAsync($"/api/profiles/{id}/commit", body, Ct);
         response.EnsureSuccessStatusCode();
     }
 

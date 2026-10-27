@@ -7,8 +7,9 @@ using Xunit;
 namespace InfoPanel.Core.Tests.Editing;
 
 /// <summary>
-/// The kind manifest (<c>GET /api/kinds</c>) against the committed snapshot <c>InfoPanel.Core.Tests/Snapshots/kinds.json</c>,
-/// so a change to the kinds or their properties shows up as a reviewed diff (clients can check their property handling against it).
+/// The 1.x kind manifest against the committed snapshot <c>InfoPanel.Core.Tests/Snapshots/kinds.json</c>: the item JSON
+/// of the 14 1.x kinds (properties and defaults), which a 1.x import reads, so a change to the kinds or their properties
+/// shows up as a reviewed diff. The engine no longer serves it (<c>GET /api/kinds</c> went with step 1's editing API).
 /// <c>UPDATE_SNAPSHOTS=1 dotnet test InfoPanel.slnx --filter KindManifest</c> rewrites the snapshot.
 /// </summary>
 public class KindManifestTests

@@ -23,7 +23,7 @@ public sealed class ProfileStore : IAssetLocator
     /// <summary>One lock per data root (full path, no trailing separator, case-insensitive), for every store on it.</summary>
     private static readonly ConcurrentDictionary<string, Lock> RootLocks = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The largest profile width or height 2.0 creates, edits or imports (<c>Workspace.MaxDimension</c>).</summary>
+    /// <summary>The largest profile width or height a 1.x profile may have here (the document format's canvas limit, <c>Workspace.MaxDimension</c>).</summary>
     public const int MaxDimension = 16384;
 
     private readonly Lock _lock;

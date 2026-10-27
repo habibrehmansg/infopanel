@@ -505,7 +505,7 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             _scale = scale;
             ObjC.SendVoidDouble(_layer, Sel.SetContentsScale, scale * _frameScale);
             ObjC.SendVoidSize(_window, ObjC.Sel("setContentMinSize:"), new NSSize(1 / scale, 1 / scale));
-            var max = InfoPanel.Editing.Workspace.MaxDimension / scale;
+            var max = InfoPanel.Documents.Workspace.MaxDimension / scale;
             ObjC.SendVoidSize(_window, ObjC.Sel("setContentMaxSize:"), new NSSize(max, max));
             return true;
         }

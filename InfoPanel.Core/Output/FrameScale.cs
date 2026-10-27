@@ -2,7 +2,10 @@ using System;
 
 namespace InfoPanel.Output;
 
-/// <summary>How a requested scale becomes the scale a render loop draws at, and the frame's pixel size.</summary>
+/// <summary>
+/// How a requested scale becomes the scale a render loop draws at, and the frame's pixel size: spec/docs/api.md,
+/// "Frame size". Every canvas within the document format's limits fits at 0.25, so the scale is 0.1 or a multiple of 0.25.
+/// </summary>
 public static class FrameScale
 {
     public const float Step = 0.25f;
@@ -18,7 +21,8 @@ public static class FrameScale
     /// <see cref="Min"/>–<see cref="Max"/> (so 0.1 and 0.12 draw at 0.1, 0.2 at 0.25); not finite or not positive
     /// means 1. Then reduced until the frame has at most <see cref="MaxPixels"/>: to the largest multiple of
     /// <see cref="Step"/> that fits, or, below 0.25, the largest hundredth down to <see cref="Min"/> that fits. The cap
-    /// always wins over <see cref="Min"/>: a profile too large for 0.1 (only one over <c>Workspace.MaxDimension</c>)
+    /// always wins over <see cref="Min"/>: a profile too large for 0.1 (only one over <c>Workspace.MaxDimension</c>, which
+    /// the document format doesn't allow)
     /// gets the largest scale under 0.1 that fits, and null if at that scale a side of the profile would be under
     /// 1 pixel (an extreme aspect ratio).
     /// </summary>

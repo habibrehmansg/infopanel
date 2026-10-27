@@ -63,6 +63,9 @@ public sealed record CommitOutcome
 /// <summary>A consistent read of a document: its generation, the document with every <c>rev</c> member set, and its state.</summary>
 public sealed record DocumentState(Generation Generation, Document Document, bool Dirty, bool CanUndo, bool CanRedo);
 
+/// <summary>A document's revision and state, read together (the <c>/ws</c> <c>doc</c> event, the profile list).</summary>
+public readonly record struct DocumentStatus(long Rev, bool Dirty, bool CanUndo, bool CanRedo);
+
 public enum DocumentChange
 {
     Commit,
@@ -72,6 +75,12 @@ public enum DocumentChange
 
     /// <summary>The document was saved: the revision is unchanged.</summary>
     Saved,
+
+    /// <summary>
+    /// The process's history budget evicted steps of this document: the revision is unchanged, and <c>canUndo</c> or
+    /// <c>canRedo</c> may now be false.
+    /// </summary>
+    History,
 }
 
 public sealed class DocumentChangedEventArgs(Generation generation, DocumentChange change) : EventArgs
@@ -127,7 +136,7 @@ public sealed class ProfileDocument : IDisposable
         _current = saved;
         _saved = saved;
         _revisions = new FieldRevisions(saved);
-        _history = new History(_options.Time, _options.HistoryBudget, _options.HistorySteps, _options.HistoryBytes);
+        _history = new History(_options.Time, _options.HistoryBudget, _options.HistorySteps, _options.HistoryBytes, OnHistoryEvicted);
         _ops = new OpLog(_options.RememberedOps);
     }
 
@@ -170,6 +179,15 @@ public sealed class ProfileDocument : IDisposable
     public bool CanRedo
     {
         get { lock (_lock) return _history.CanRedo; }
+    }
+
+    /// <summary>The revision, dirty, canUndo and canRedo of one moment, without building the document as <see cref="Read"/> does.</summary>
+    public DocumentStatus Status
+    {
+        get
+        {
+            lock (_lock) return new DocumentStatus(_current.Rev, DirtyCore, _history.CanUndo, _history.CanRedo);
+        }
     }
 
     /// <summary>Undo and redo steps held, and the bytes charged to them (for tests and diagnostics).</summary>
@@ -297,7 +315,11 @@ public sealed class ProfileDocument : IDisposable
             }
             _ops.Add(request.OpId, prepared.Hash, result);
         }
-        if (published is not null) Raise(published, DocumentChange.Commit);
+        if (published is not null)
+        {
+            Raise(published, DocumentChange.Commit);
+            _options.HistoryBudget.NotifyEvicted();
+        }
         return new CommitOutcome { Result = result };
     }
 
@@ -410,7 +432,11 @@ public sealed class ProfileDocument : IDisposable
                 }
             }
         }
-        if (published is not null) Raise(published, change);
+        if (published is not null)
+        {
+            Raise(published, change);
+            _options.HistoryBudget.NotifyEvicted();
+        }
         return new CommitOutcome { Result = result };
     }
 
@@ -497,6 +523,19 @@ public sealed class ProfileDocument : IDisposable
     {
         Conflict = new ConflictProblem { Title = "Conflict", Detail = detail, Status = 409, Code = "conflict", Rev = rev, Conflicts = conflicts.ToArray() },
     };
+
+    /// <summary>
+    /// The budget evicted steps of this document (told outside every lock): its state may have changed. A document
+    /// disposed since isn't told (its notice is cancelled on disposal, and one already being told is skipped here).
+    /// </summary>
+    private void OnHistoryEvicted()
+    {
+        lock (_lock)
+        {
+            if (_disposed) return;
+        }
+        Raise(_current, DocumentChange.History);
+    }
 
     private void Raise(Generation generation, DocumentChange change)
     {

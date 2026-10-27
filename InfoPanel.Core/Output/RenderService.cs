@@ -1,6 +1,7 @@
-using InfoPanel.Drawing;
-using InfoPanel.Editing;
+using InfoPanel.Documents;
+using InfoPanel.Scenes;
 using Serilog;
+using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,13 +14,12 @@ namespace InfoPanel.Output;
 /// True (the engine): each loop ticks on its own timer. False: loops never tick by themselves and
 /// <see cref="RenderService.Tick"/> drives them, for deterministic tests.
 /// </param>
-/// <param name="Render">The options every loop draws with; <see cref="RenderOptions.Default"/> when null.</param>
-public sealed record RenderServiceOptions(bool AutoTick = true, RenderOptions? Render = null);
+public sealed record RenderServiceOptions(bool AutoTick = true);
 
 /// <summary>
 /// The engine's renderer of live profiles: one <see cref="RenderLoop"/> per profile that has sinks, created on the
-/// first <see cref="Attach"/> and disposed when the last sink detaches, and thumbnails that share the loops'
-/// <see cref="ProfileRenderState"/>s. Thread-safe.
+/// first <see cref="Attach"/> and disposed when the last sink detaches, each with its own <see cref="SceneRuntime"/>
+/// (made with <see cref="SceneOptions"/>), and thumbnails from a running loop's latest tick snapshot. Thread-safe.
 /// <list type="bullet">
 /// <item>A deleted profile (seen on <see cref="Workspace.ProfilesChanged"/>) stops its loop, and each of its sinks
 /// gets <see cref="IFrameSink.OnClosed"/> with <see cref="FrameSinkClosedReason.ProfileDeleted"/>.</item>
@@ -28,6 +28,9 @@ public sealed record RenderServiceOptions(bool AutoTick = true, RenderOptions? R
 /// <item>Closing never waits for a sink: <see cref="IFrameSink.OnClosed"/> is called at once, or, when the sink's
 /// <see cref="IFrameSink.OnFrame"/> is under way, by the render thread right after it returns; no <c>OnFrame</c>
 /// starts once the sink is closed (see <see cref="IFrameSink"/>).</item>
+/// <item>A loop draws one <see cref="ProfileDocument"/> instance (the workspace's lifetime rule): attaching for a
+/// document that is no longer its profile's is refused, and a loop of a deleted document still listed when the id's new
+/// document is attached is stopped first, its sinks closed as deleted.</item>
 /// <item>Lock order: the service lock, then the workspace's; never a document's lock under the service lock.</item>
 /// </list>
 /// </summary>
@@ -36,32 +39,32 @@ public sealed class RenderService : IAsyncDisposable
     private static readonly ILogger Logger = Log.ForContext<RenderService>();
 
     private readonly Workspace _workspace;
-    private readonly ProfileRenderer _renderer;
-    private readonly ProfileRenderStates _states;
-    private readonly ThumbnailRenderer _thumbnails;
     private readonly TimeProvider _time;
     private readonly RenderServiceOptions _options;
     private readonly Lock _lock = new();
-    private readonly Dictionary<Guid, RenderLoop> _loops = [];
+    private readonly Dictionary<string, RenderLoop> _loops = new(StringComparer.Ordinal);
     private readonly Dictionary<IFrameSink, (RenderLoop Loop, AttachedSink Entry)> _sinkLoops = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Guid, Task> _stopping = [];
+    private readonly Dictionary<string, Task> _stopping = new(StringComparer.Ordinal);
     private long _frameId;
     private bool _disposed;
 
-    public RenderService(Workspace workspace, ProfileRenderer renderer, ProfileRenderStates states, ThumbnailRenderer thumbnails,
-        TimeProvider time, RenderServiceOptions? options = null)
+    /// <param name="scenes">
+    /// What every loop's runtime and every one-off thumbnail is made with (inputs, media, limits, support); its limits
+    /// and support must be the workspace's, so a generation is never checked again when it is loaded.
+    /// </param>
+    public RenderService(Workspace workspace, SceneRuntimeOptions scenes, TimeProvider time, RenderServiceOptions? options = null)
     {
         _workspace = workspace;
-        _renderer = renderer;
-        _states = states;
-        _thumbnails = thumbnails;
+        SceneOptions = scenes;
         _time = time;
         _options = options ?? new RenderServiceOptions();
         _workspace.ProfilesChanged += OnProfilesChanged;
     }
 
-    /// <summary>What every loop draws with (the panel path must use the same options to match the preview).</summary>
-    public RenderOptions Options => _options.Render ?? RenderOptions.Default;
+    /// <summary>What every loop's runtime is made with.</summary>
+    public SceneRuntimeOptions SceneOptions { get; }
+
+    internal TimeProvider Time => _time;
 
     /// <summary>The number of profiles being rendered (each has at least one sink).</summary>
     public int LoopCount
@@ -70,13 +73,10 @@ public sealed class RenderService : IAsyncDisposable
     }
 
     /// <summary>True while a loop renders the profile.</summary>
-    public bool IsRendering(Guid profileId)
+    public bool IsRendering(string profileId)
     {
         lock (_lock) return _loops.ContainsKey(profileId);
     }
-
-    /// <summary>The render state the profile's loops and thumbnails share.</summary>
-    public ProfileRenderState GetState(Guid profileId) => _states.Get(profileId);
 
     internal long NextFrameId() => Interlocked.Increment(ref _frameId);
 
@@ -85,26 +85,39 @@ public sealed class RenderService : IAsyncDisposable
     /// False when there is no such profile.
     /// </summary>
     /// <exception cref="InvalidOperationException">The sink is already attached.</exception>
-    /// <exception cref="System.IO.InvalidDataException">The profile's items file can't be read.</exception>
-    public bool Attach(IFrameSink sink)
-    {
-        var doc = _workspace.Open(sink.ProfileId);
-        if (doc == null)
-            return false;
+    /// <remarks>False too when the profile can't be opened (<c>unsupported</c> or <c>unreadable</c>).</remarks>
+    public bool Attach(IFrameSink sink) => _workspace.Open(sink.ProfileId) is { } doc && Attach(sink, doc);
 
+    /// <summary>
+    /// Starts sending <paramref name="document"/>'s frames to <paramref name="sink"/>, for a caller that holds the
+    /// document (it follows that instance's events too). False when the document is no longer its profile's (deleted,
+    /// the id perhaps created again since): nothing is attached, and no other loop is touched.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The sink is already attached.</exception>
+    public bool Attach(IFrameSink sink, ProfileDocument document)
+    {
         RenderLoop loop;
         Task? previous = null;
+        List<AttachedSink> retired = [];
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_sinkLoops.ContainsKey(sink))
                 throw new InvalidOperationException("The sink is already attached.");
 
-            if (!_loops.TryGetValue(doc.Id, out loop!) || loop.Document != doc)
+            // Checked under the service lock: a delete's ProfilesChanged runs after the document left its slot, so either
+            // it finds this loop listed, or this check finds the document gone.
+            if (!_workspace.IsOpen(document))
+                return false;
+
+            if (!_loops.TryGetValue(document.Id, out loop!) || loop.Document != document)
             {
-                previous = _stopping.GetValueOrDefault(doc.Id) ?? Task.CompletedTask;
-                loop = new RenderLoop(this, doc, _renderer, _states.Get(doc.Id), _time, Options);
-                _loops[doc.Id] = loop;
+                // A listed loop of an earlier document of this id was deleted, its ProfilesChanged not handled yet.
+                if (loop != null)
+                    retired = TakeSinks(loop);
+                previous = _stopping.GetValueOrDefault(document.Id) ?? Task.CompletedTask;
+                loop = new RenderLoop(this, document, new SceneRuntime(SceneOptions), _time);
+                _loops[document.Id] = loop;
             }
 
             var entry = new AttachedSink(sink);
@@ -112,14 +125,10 @@ public sealed class RenderService : IAsyncDisposable
             _sinkLoops[sink] = (loop, entry);
         }
 
+        Close(retired, FrameSinkClosedReason.ProfileDeleted);
         if (previous != null && _options.AutoTick)
             loop.Start(previous);
         loop.Wake();
-
-        // Deleted between Open and here: the ProfilesChanged handler may have run before the loop was listed.
-        if (!_workspace.IsOpen(doc))
-            CloseDeleted();
-
         return true;
     }
 
@@ -157,7 +166,7 @@ public sealed class RenderService : IAsyncDisposable
     /// Runs one tick of the profile's loop now, on the calling thread, and returns the number of frames delivered
     /// (0 when nothing is rendering the profile). For tests and hand-driven loops (<see cref="RenderServiceOptions.AutoTick"/> false).
     /// </summary>
-    public int Tick(Guid profileId)
+    public int Tick(string profileId)
     {
         RenderLoop? loop;
         lock (_lock)
@@ -166,20 +175,35 @@ public sealed class RenderService : IAsyncDisposable
     }
 
     /// <summary>
-    /// A PNG thumbnail <paramref name="width"/> pixels wide (<see cref="ThumbnailRenderer"/>). While a loop renders the
-    /// profile it is drawn at the loop's current tick, without advancing it and with the loop's
-    /// <see cref="RenderOptions"/> (smoothing included), so at the profile's width it is the loop's frame pixel for
-    /// pixel and the loop's next frame is unchanged; otherwise it advances the profile's tick, so clocks show the
-    /// current time, and draws values at their target (<see cref="ThumbnailRenderer.Options"/>).
+    /// A PNG thumbnail <paramref name="width"/> pixels wide (<see cref="Thumbnail.Size"/>; spec/docs/api.md,
+    /// "Thumbnails"). While a loop renders the profile it is drawn from the tick snapshot the loop last drew, without
+    /// advancing it, so at the profile's width it is the loop's frame (without the stats overlay, which only live outputs
+    /// draw); otherwise from a one-off snapshot of the current generation (state at init, elapsed 0).
     /// </summary>
     public byte[] RenderOnce(ProfileDocument document, int width)
     {
         RenderLoop? loop;
         lock (_lock)
             _loops.TryGetValue(document.Id, out loop);
-        return loop != null
-            ? _thumbnails.RenderPng(document, width, advanceTick: false, loop.Options)
-            : _thumbnails.RenderPng(document, width, advanceTick: true);
+
+        using var snapshot = loop?.LatestSnapshot() ?? OneOff(document.Current);
+        return Thumbnail.RenderPng(snapshot, width);
+    }
+
+    /// <summary>The snapshot of the latest tick of the profile's loop, retained for the caller; null when no loop has ticked.</summary>
+    public TickSnapshot? LatestSnapshot(string profileId)
+    {
+        RenderLoop? loop;
+        lock (_lock)
+            _loops.TryGetValue(profileId, out loop);
+        return loop?.LatestSnapshot();
+    }
+
+    private TickSnapshot OneOff(Generation generation)
+    {
+        using var runtime = new SceneRuntime(SceneOptions);
+        runtime.Load(generation);
+        return runtime.Snapshot(_time.GetUtcNow());
     }
 
     /// <summary>Stops every loop, closes their sinks (<see cref="FrameSinkClosedReason.Shutdown"/>) and waits for the loops to stop.</summary>
@@ -227,7 +251,6 @@ public sealed class RenderService : IAsyncDisposable
                     continue;
 
                 closed.AddRange(TakeSinks(loop));
-                _states.Remove(loop.ProfileId);
             }
         }
 

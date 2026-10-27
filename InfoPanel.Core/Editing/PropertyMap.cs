@@ -204,7 +204,7 @@ public sealed class PropertyMap
     public const int MaxCoordinate = 1_000_000;
 
     /// <summary>The largest item or profile width and height, and the largest stroke, step, radius and spacing.</summary>
-    public const int MaxSize = Workspace.MaxDimension;
+    public const int MaxSize = InfoPanel.Persistence.ProfileStore.MaxDimension;
 
     /// <summary>
     /// Numeric limits by CLR property name, applied wherever the name occurs. Generous: well past anything a panel

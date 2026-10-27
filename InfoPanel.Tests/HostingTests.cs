@@ -69,6 +69,28 @@ public sealed class HostingTests : IDisposable
     }
 
     [Fact]
+    public void Wipe_OfAV2Folder_KeepsOnlyTheLock()
+    {
+        // --fresh on a folder the 2.0 store wrote: its order file and temp files, profile folders, blobs.
+        var lockPath = Path.Combine(_dir, "engine.lock");
+        using var held = InstanceLock.TryAcquire(lockPath, out _);
+        var profile = Path.Combine(_dir, "profiles", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(profile);
+        File.WriteAllText(Path.Combine(profile, "document.json"), "{}");
+        File.WriteAllText(Path.Combine(_dir, "profiles.json"), """{"order":[]}""");
+        File.WriteAllText(Path.Combine(_dir, $"profiles.json.{Guid.NewGuid():N}.tmp"), "x");
+        Directory.CreateDirectory(Path.Combine(_dir, "blobs"));
+        File.WriteAllText(Path.Combine(_dir, "blobs", new string('a', 64)), "x");
+        Directory.CreateDirectory(Path.Combine(_dir, "assets"));
+        Directory.CreateDirectory(Path.Combine(_dir, "fonts"));
+
+        Assert.Null(DataFolder.CheckWipeable(_dir));
+        DataFolder.Wipe(_dir, lockPath);
+
+        Assert.Equal([lockPath], Directory.GetFileSystemEntries(_dir));
+    }
+
+    [Fact]
     public void Wipe_RefusesAFolderWithForeignFiles_AndDeletesNothing()
     {
         File.WriteAllText(Path.Combine(_dir, "profiles.xml"), "x");

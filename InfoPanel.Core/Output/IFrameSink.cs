@@ -20,7 +20,7 @@ public enum FrameSinkClosedReason
 
     /// <summary>
     /// The profile can't be drawn within <see cref="FrameScale.MaxPixels"/> at any scale (<see cref="FrameScale.Normalize"/>
-    /// is null; only a profile far over <c>Workspace.MaxDimension</c>); the sink is detached.
+    /// is null; no canvas within the document format's limits); the sink is detached.
     /// </summary>
     Unrenderable,
 }
@@ -29,7 +29,7 @@ public enum FrameSinkClosedReason
 /// Receives a profile's rendered frames from its <see cref="RenderLoop"/> (preview sockets now; panels and overlays later).
 /// <list type="bullet">
 /// <item><see cref="OnFrame"/> runs on the render thread and must not block: hand the bytes to your own queue. It
-/// must not take the workspace's or a document's lock either.</item>
+/// must not take the workspace's lock either.</item>
 /// <item><see cref="Request"/> is read on every tick, so a sink may change it at any time; call
 /// <see cref="RenderService.RequestChanged"/> afterwards so the loop picks it up without waiting for its timer. A sink
 /// whose request changed gets the next frame even if nothing in it changed.</item>
@@ -43,7 +43,7 @@ public enum FrameSinkClosedReason
 /// </summary>
 public interface IFrameSink
 {
-    Guid ProfileId { get; }
+    string ProfileId { get; }
 
     FrameRequest Request { get; }
 

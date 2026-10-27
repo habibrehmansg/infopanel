@@ -450,6 +450,52 @@ public sealed class HistoryTests
         Assert.Equal(["Commit:2", "Undo:3", "Redo:4", "Revert:5", "Saved:5"], events);
     }
 
+    [Fact]
+    public void A_document_whose_steps_the_budget_evicts_is_told_once_the_evicting_change_is_done()
+    {
+        var budget = new HistoryBudget(20_000);
+        using var a = Sample(Options(budget: budget));
+        using var b = Sample(Options(budget: budget));
+        a.Ok(Commit(Design("a", BigScene(1))));
+        Assert.True(a.CanUndo);
+        var events = new List<string>();
+        a.Changed += (_, e) => events.Add($"{e.Change}:{e.Generation.Rev}:{a.Status.CanUndo}");
+
+        // The other document's steps take the total over the budget: the oldest, the first document's, is evicted.
+        for (var i = 0; i < 4; i++) b.Ok(Commit(Design("a", BigScene(10 + i))));
+
+        Assert.Equal(["History:2:False"], events);
+        Assert.False(a.CanUndo);
+        Assert.True(b.CanUndo);
+    }
+
+    [Fact]
+    public void A_document_disposed_before_the_evicting_change_tells_it_is_never_told()
+    {
+        var budget = new HistoryBudget(20_000);
+        using var a = Sample(Options(budget: budget));
+        using var b = Sample(Options(budget: budget));
+        a.Ok(Commit(Design("a", BigScene(1))));
+        var events = new List<DocumentChange>();
+        a.Changed += (_, e) => events.Add(e.Change);
+
+        // The commit that evicts the first document's step tells its own handlers before it tells the owners of evicted
+        // steps: the first document is deleted (disposed) in between.
+        var disposed = false;
+        b.Changed += (_, _) =>
+        {
+            if (!disposed && !a.CanUndo)
+            {
+                a.Dispose();
+                disposed = true;
+            }
+        };
+        for (var i = 0; i < 4; i++) b.Ok(Commit(Design("a", BigScene(10 + i))));
+
+        Assert.True(disposed);
+        Assert.Empty(events);
+    }
+
     /// <summary>A valid scene of about 6 KB: many rects.</summary>
     internal static JsonObject BigScene(int seed)
     {

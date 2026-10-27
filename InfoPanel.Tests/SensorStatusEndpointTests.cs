@@ -105,25 +105,4 @@ public sealed class SensorStatusEndpointTests : IDisposable
             ["plugin:/test.status/stale"] = "stale",
         }, values);
     }
-
-    [Fact]
-    public async Task ItemMeta_FollowsTheHub_UnknownKeysSimulatedInMockMode()
-    {
-        using var client = Client();
-        var id = (await client.GetFromJsonAsync<JsonElement>("/api/profiles", Ct))[0].GetProperty("id").GetString();
-
-        async Task<string?> StatusOfNewSensorBoundTo(object binding)
-        {
-            using var response = await client.PostAsJsonAsync($"/api/profiles/{id}/items", new { kind = "sensor", set = binding }, Ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            var result = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
-            return result.GetProperty("items")[0].GetProperty("meta").GetProperty("sensor").GetProperty("status").GetString();
-        }
-
-        Assert.Equal("permission-denied", await StatusOfNewSensorBoundTo(new { sensorType = "Plugin", pluginSensorId = "/test.status/denied" }));
-        Assert.Equal("stale", await StatusOfNewSensorBoundTo(new { sensorType = "Plugin", pluginSensorId = "/test.status/stale" }));
-        Assert.Equal("unavailable", await StatusOfNewSensorBoundTo(new { sensorType = "Plugin", pluginSensorId = "/test.status/nope" }));
-        // EngineFactory runs in mock mode (--mock-seed), so a key no source handles is simulated.
-        Assert.Equal("simulated", await StatusOfNewSensorBoundTo(new { sensorType = "Libre", libreSensorId = "/amdcpu/0/load/0" }));
-    }
 }

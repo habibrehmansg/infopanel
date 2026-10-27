@@ -6,11 +6,14 @@ namespace InfoPanel.Documents;
 
 /// <summary>
 /// One undo or redo step: the content to go back (or forward) to, and the bytes it is charged. The pointer is cleared
-/// when the process budget evicts the step (<see cref="HistoryBudget"/>).
+/// when the process budget evicts the step (<see cref="HistoryBudget"/>), which then tells <see cref="Evicted"/>.
 /// </summary>
-internal sealed class HistoryEntry(GenerationContent target, long bytes)
+internal sealed class HistoryEntry(GenerationContent target, long bytes, Action? evicted = null)
 {
     private GenerationContent? _target = target;
+
+    /// <summary>Called, outside every lock, after the budget evicted this step (the owning document's history changed).</summary>
+    public Action? Evicted { get; } = evicted;
 
     public GenerationContent? Target => Volatile.Read(ref _target);
 
@@ -30,9 +33,10 @@ internal sealed class HistoryEntry(GenerationContent target, long bytes)
 /// across the process by <see cref="HistoryBudget"/>. A commit merges into the previous step when it has the identical
 /// <c>coalesceKey</c> and the key starts with <c>gesture:</c> or the previous commit came less than 1 s earlier; a merged
 /// step is charged the change from its target to the latest content, not every commit it merged. Undo, redo and revert
-/// end any merge. Not thread-safe: the document uses it under its lock.
+/// end any merge. Not thread-safe: the document uses it under its lock. <paramref name="evicted"/> is told when the
+/// budget evicts one of its steps (see <see cref="HistoryBudget.NotifyEvicted"/>).
 /// </summary>
-internal sealed class History(TimeProvider time, HistoryBudget budget, int maxSteps, long maxBytes)
+internal sealed class History(TimeProvider time, HistoryBudget budget, int maxSteps, long maxBytes, Action? evicted = null)
 {
     public const string GesturePrefix = "gesture:";
 
@@ -82,7 +86,7 @@ internal sealed class History(TimeProvider time, HistoryBudget budget, int maxSt
             && (key.StartsWith(GesturePrefix, StringComparison.Ordinal) || time.GetElapsedTime(_lastAt, now) < CoalesceWindow);
         Clear(_redo);
         if (!merge || top!.Target is not { } target || budget.Recharge(top, ChangeSet.Diff(after, target).Bytes) is not { } delta)
-            Push(_undo, new HistoryEntry(before, bytes));
+            Push(_undo, new HistoryEntry(before, bytes, evicted));
         else _bytes += delta;
         _lastKey = key;
         _lastAt = now;
@@ -102,12 +106,13 @@ internal sealed class History(TimeProvider time, HistoryBudget budget, int maxSt
 
     public void Redo(GenerationContent current, long bytes) => Step(_redo, _undo, current, bytes);
 
-    /// <summary>Releases every step (the document is closed).</summary>
+    /// <summary>Releases every step and cancels a notice of evicted steps not yet told (the document is closed).</summary>
     public void Clear()
     {
         Clear(_undo);
         Clear(_redo);
         _lastKey = null;
+        if (evicted is not null) budget.Forget(evicted);
     }
 
     private void Step(LinkedList<HistoryEntry> from, LinkedList<HistoryEntry> to, GenerationContent current, long bytes)
@@ -115,7 +120,7 @@ internal sealed class History(TimeProvider time, HistoryBudget budget, int maxSt
         var entry = from.Last!.Value;
         from.RemoveLast();
         Release(entry);
-        Push(to, new HistoryEntry(current, bytes));
+        Push(to, new HistoryEntry(current, bytes, evicted));
         _lastKey = null;
         Trim();
     }

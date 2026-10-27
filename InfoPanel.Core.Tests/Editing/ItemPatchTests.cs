@@ -201,23 +201,4 @@ public class ItemPatchTests
         Assert.Equal(key, InfoPanel.Sensors.SensorKeys.Of(bar));
         Assert.Equal("GPU Temperature", bar.SensorName);
     }
-
-    [Fact]
-    public void Factory_MirrorsThe1xEditor()
-    {
-        var profile = new Profile("P", 10, 10) { Font = "Menlo", FontSize = 33, Color = "#FF123456" };
-
-        var text = Assert.IsType<TextDisplayItem>(ItemFactory.Create("text", profile));
-        Assert.Equal(("Custom Text", "Menlo", 33, "#FF123456", false), (text.Name, text.Font, text.FontSize, text.Color, text.Uppercase));
-        Assert.True(Assert.IsType<ClockDisplayItem>(ItemFactory.Create("clock", profile)).Uppercase);
-        Assert.True(Assert.IsType<CalendarDisplayItem>(ItemFactory.Create("calendar", profile)).Uppercase);
-        Assert.Equal("New Group", Assert.IsType<GroupDisplayItem>(ItemFactory.Create("group", profile)).Name);
-        Assert.Equal(33, Assert.IsType<SensorDisplayItem>(ItemFactory.Create("sensor", profile)).FontSize);
-        Assert.Equal(GraphDisplayItem.GraphType.LINE, Assert.IsType<GraphDisplayItem>(ItemFactory.Create("graph", profile)).Type);
-        Assert.False(Assert.IsType<DonutDisplayItem>(ItemFactory.Create("donut", profile)).Frame);
-        Assert.All(ItemFactory.CreatableKinds, kind => Assert.Same(profile, ItemFactory.Create(kind, profile).Profile));
-
-        foreach (var kind in new[] { "image", "gauge", "table", "sensorImage", "httpImage", "Text", "nope" })
-            Assert.Equal("kind", Assert.Throws<PatchException>(() => ItemFactory.Create(kind, profile)).Key);
-    }
 }

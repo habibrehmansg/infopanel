@@ -1,4 +1,4 @@
-using InfoPanel.Drawing;
+using InfoPanel.Spec;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
@@ -38,15 +38,15 @@ public sealed class RenderedFrame
         _image = image;
     }
 
-    public required Guid ProfileId { get; init; }
+    public required string ProfileId { get; init; }
 
-    /// <summary>The document revision the frame was drawn from (read under the document's lock).</summary>
-    public required long Revision { get; init; }
+    /// <summary>The document revision the frame was drawn from (the tick snapshot's).</summary>
+    public required long Rev { get; init; }
 
     /// <summary>Goes up by one for every frame the render service emits, across profiles and scales.</summary>
     public required long FrameId { get; init; }
 
-    /// <summary>The profile's render tick the frame was drawn at (<see cref="ProfileRenderState.Tick"/>).</summary>
+    /// <summary>The tick of the snapshot the frame was drawn from (<see cref="InfoPanel.Scenes.TickSnapshot.Tick"/>).</summary>
     public required long Tick { get; init; }
 
     /// <summary>The scale actually rendered (<see cref="FrameScale.Normalize"/> of the request).</summary>
@@ -60,7 +60,7 @@ public sealed class RenderedFrame
 
     public required int ProfileHeight { get; init; }
 
-    /// <summary>Visible items in profile coordinates and draw order (<see cref="ProfileRenderer.MeasureBounds"/>); empty when no sink asked for bounds.</summary>
+    /// <summary>The tick's item bounds in profile pixels and document order (<see cref="InfoPanel.Scenes.TickSnapshot.Bounds"/>); empty when no sink asked for bounds.</summary>
     public required IReadOnlyList<ItemBounds> Bounds { get; init; }
 
     /// <summary>XxHash3 of the pixels and the bounds.</summary>

@@ -4,7 +4,7 @@ using System.Threading.Channels;
 namespace InfoPanel.Preview;
 
 /// <summary>A frame ready to send: the codec prefix (magic, length, header) and the PNG, which go out as one binary message.</summary>
-internal sealed record OutgoingFrame(byte[] Prefix, ReadOnlyMemory<byte> Png, long Revision);
+internal sealed record OutgoingFrame(byte[] Prefix, ReadOnlyMemory<byte> Png, long Rev);
 
 /// <summary>
 /// One subscription of a preview socket to one profile; a new <c>subscribe</c> makes a new sink. <see cref="OnFrame"/>
@@ -14,7 +14,7 @@ internal sealed record OutgoingFrame(byte[] Prefix, ReadOnlyMemory<byte> Png, lo
 /// send loop reads only the current subscription's channel, and <see cref="Retire"/> closes the channel when the
 /// subscription ends, so a late frame of an earlier subscription can never displace the current one's.
 /// </summary>
-internal sealed class WebPreviewSink(Guid profileId, FrameRequest request, Action wake, Action<WebPreviewSink, FrameSinkClosedReason> closed)
+internal sealed class WebPreviewSink(string profileId, FrameRequest request, Action wake, Action<WebPreviewSink, FrameSinkClosedReason> closed)
     : IFrameSink
 {
     private readonly Channel<OutgoingFrame> _frames =
@@ -23,7 +23,7 @@ internal sealed class WebPreviewSink(Guid profileId, FrameRequest request, Actio
     private FrameRequest _request = request;
     private volatile bool _retired;
 
-    public Guid ProfileId { get; } = profileId;
+    public string ProfileId { get; } = profileId;
 
     public FrameRequest Request
     {
@@ -47,8 +47,8 @@ internal sealed class WebPreviewSink(Guid profileId, FrameRequest request, Actio
             return;
 
         var png = frame.GetPng();
-        var prefix = FrameCodec.EncodePrefix(FrameHeader.From(frame, Request.IncludeBounds));
-        if (_frames.Writer.TryWrite(new OutgoingFrame(prefix, png, frame.Revision)))
+        var prefix = FrameCodec.EncodePrefix(FrameHeaders.From(frame, Request.IncludeBounds));
+        if (_frames.Writer.TryWrite(new OutgoingFrame(prefix, png, frame.Rev)))
             wake();
     }
 

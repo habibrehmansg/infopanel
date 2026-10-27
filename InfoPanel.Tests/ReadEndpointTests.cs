@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using InfoPanel.Spec;
 using SkiaSharp;
 using Xunit;
 
@@ -24,47 +25,43 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         return profiles[0].GetProperty("id").GetString()!;
     }
 
+    /// <summary>True when <paramref name="body"/> is a valid <paramref name="definition"/> of the API schema.</summary>
+    internal static bool Valid(JsonElement body, string definition)
+    {
+        var result = SpecSchemas.Strict.Validate(body, SpecSchemas.Api + "#/$defs/" + definition);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.InstancePath} {e.Keyword} {e.Message}")));
+        return true;
+    }
+
     [Fact]
     public async Task Session()
     {
         var session = await GetJson("/api/session");
 
+        Assert.True(Valid(session, "session"));
         Assert.False(string.IsNullOrEmpty(session.GetProperty("engineVersion").GetString()));
-        Assert.Equal(1, session.GetProperty("protocol").GetInt32());
+        Assert.Equal(2, session.GetProperty("protocol").GetInt32());
+        Assert.Matches("^[0-9a-f]{32}$", session.GetProperty("instance").GetString());
         Assert.Equal(factory.DataDir, session.GetProperty("dataDir").GetString());
         Assert.Contains(session.GetProperty("platform").GetString(), new[] { "macos", "windows", "linux", "other" });
+
+        // What the engine reads: format majors 1, no optional capabilities (no media providers), the limits.
+        var support = session.GetProperty("formatSupport");
+        Assert.Equal("""["infopanel.document/1"]""", support.GetProperty("document").GetProperty("formats").GetRawText());
+        Assert.Equal("""["infopanel.scene/1"]""", support.GetProperty("scene").GetProperty("formats").GetRawText());
+        Assert.Equal(0, support.GetProperty("scene").GetProperty("capabilities").GetArrayLength());
+        Assert.Equal(SpecLimits.Default.MediaBytes, support.GetProperty("limits").GetProperty("mediaBytes").GetInt32());
     }
 
-    [Fact]
-    public async Task Kinds_ListsTheFourteenKindsWithPropertiesAndDefaults()
+    [Theory]
+    [InlineData("/api/kinds")]
+    [InlineData("/api/import")]
+    [InlineData("/api/profiles/00000000-0000-4000-8000-000000000001/export")]
+    public async Task TheStep1Endpoints_AreGone(string path)
     {
-        var kinds = await GetJson("/api/kinds");
-
-        var ids = kinds.EnumerateArray().Select(k => k.GetProperty("kind").GetString()).ToList();
-        Assert.Equal(
-            ["text", "sensor", "clock", "calendar", "bar", "graph", "donut", "shape", "group", "table", "image", "sensorImage", "httpImage", "gauge"],
-            ids);
-
-        foreach (var kind in kinds.EnumerateArray())
-        {
-            Assert.False(string.IsNullOrEmpty(kind.GetProperty("clrType").GetString()));
-            Assert.False(string.IsNullOrEmpty(kind.GetProperty("label").GetString()));
-            var properties = kind.GetProperty("properties").EnumerateArray().ToList();
-            Assert.Contains(properties, p => p.GetProperty("name").GetString() == "name");
-            var defaults = kind.GetProperty("defaults");
-            foreach (var property in properties)
-            {
-                var name = property.GetProperty("name").GetString()!;
-                Assert.True(defaults.TryGetProperty(name, out _), $"{name} has no default");
-                Assert.Contains(property.GetProperty("type").GetString(), new[] { "int", "uint", "float", "double", "bool", "string", "enum" });
-                Assert.Equal(property.GetProperty("type").GetString() == "enum", property.TryGetProperty("enumValues", out _));
-                _ = property.GetProperty("readOnly").GetBoolean();
-            }
-        }
-
-        var sensor = kinds.EnumerateArray().Single(k => k.GetProperty("kind").GetString() == "sensor");
-        var sensorType = sensor.GetProperty("properties").EnumerateArray().Single(p => p.GetProperty("name").GetString() == "sensorType");
-        Assert.Equal(["HwInfo", "Libre", "Plugin"], sensorType.GetProperty("enumValues").EnumerateArray().Select(v => v.GetString()));
+        using var client = factory.CreateApiClient();
+        using var response = await client.GetAsync(path, Ct);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -77,7 +74,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     }
 
     [Fact]
-    public async Task Sensors_ListMockSensorsWithBindings()
+    public async Task Sensors_ListMockSensorsByKey()
     {
         var sensors = (await GetJson("/api/sensors")).EnumerateArray().ToList();
 
@@ -89,12 +86,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal("°C", gpuTemp.GetProperty("unit").GetString());
         Assert.Equal("live", gpuTemp.GetProperty("status").GetString());
         Assert.All(sensors, s => Assert.Equal("live", s.GetProperty("status").GetString()));
-        Assert.Equal(["key", "source", "group", "name", "unit", "binding", "status"], gpuTemp.EnumerateObject().Select(p => p.Name));
-
-        var binding = gpuTemp.GetProperty("binding");
-        Assert.Equal("GPU Temperature", binding.GetProperty("sensorName").GetString());
-        Assert.Equal("Plugin", binding.GetProperty("sensorType").GetString());
-        Assert.Equal("/infopanel.mock/gpu/gpu-temp", binding.GetProperty("pluginSensorId").GetString());
+        Assert.Equal(["key", "source", "group", "name", "unit", "status"], gpuTemp.EnumerateObject().Select(p => p.Name));
     }
 
     [Fact]
@@ -132,49 +124,35 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     [Fact]
     public async Task Profiles_ListsTheExampleProfile()
     {
-        var profiles = (await GetJson("/api/profiles")).EnumerateArray().ToList();
+        var profiles = await GetJson("/api/profiles");
 
-        var profile = Assert.Single(profiles);
-        Assert.True(Guid.TryParse(profile.GetProperty("id").GetString(), out _));
-        Assert.Equal("Wide bar", profile.GetProperty("name").GetString());
-        Assert.Equal(1920, profile.GetProperty("width").GetInt32());
-        Assert.Equal(480, profile.GetProperty("height").GetInt32());
-        Assert.Equal(1, profile.GetProperty("revision").GetInt64());
-        Assert.False(profile.GetProperty("dirty").GetBoolean());
+        var profile = Assert.Single(profiles.EnumerateArray());
+        Assert.True(Valid(profile, "profileEntry"));
+        Assert.Equal("""{"id":"3682945e-c157-4ed7-a6b3-60e651328cf5","status":"ok","name":"Wide bar","width":1920,"height":480,"rev":1,"dirty":false}""",
+            profile.GetRawText());
     }
 
     [Fact]
-    public async Task Profile_IsAProfileDoc()
+    public async Task Profile_IsTheDocumentWithItsState()
     {
         var id = await FirstProfileId();
-        var doc = await GetJson($"/api/profiles/{id}");
+        var response = await GetJson($"/api/profiles/{id}");
+        var session = await GetJson("/api/session");
 
-        Assert.Equal(id, doc.GetProperty("id").GetString());
-        Assert.Equal(1, doc.GetProperty("revision").GetInt64());
-        Assert.False(doc.GetProperty("dirty").GetBoolean());
-        Assert.False(doc.GetProperty("canUndo").GetBoolean());
-        Assert.False(doc.GetProperty("canRedo").GetBoolean());
+        Assert.True(Valid(response, "documentResponse"));
+        Assert.Equal(session.GetProperty("instance").GetString(), response.GetProperty("instance").GetString());
+        Assert.Equal((1, false, false, false), (response.GetProperty("rev").GetInt64(), response.GetProperty("dirty").GetBoolean(),
+            response.GetProperty("canUndo").GetBoolean(), response.GetProperty("canRedo").GetBoolean()));
 
-        var profile = doc.GetProperty("profile");
-        Assert.Equal("Wide bar", profile.GetProperty("name").GetString());
-        Assert.Equal(1920, profile.GetProperty("width").GetInt32());
-        Assert.False(profile.TryGetProperty("guid", out _));
-
-        var items = Flatten(doc.GetProperty("items")).ToList();
-        Assert.NotEmpty(items);
-        foreach (var item in items)
-        {
-            Assert.True(Guid.TryParse(item.GetProperty("id").GetString(), out _));
-            Assert.False(string.IsNullOrEmpty(item.GetProperty("kind").GetString()));
-            Assert.Equal(JsonValueKind.Object, item.GetProperty("props").ValueKind);
-            Assert.Equal(JsonValueKind.Object, item.GetProperty("meta").ValueKind);
-        }
-
-        var sensor = items.First(i => i.GetProperty("kind").GetString() == "sensor");
-        var meta = sensor.GetProperty("meta").GetProperty("sensor");
-        Assert.Equal("plugin:/infopanel.mock/gpu/gpu-load", meta.GetProperty("key").GetString());
-        Assert.Equal("live", meta.GetProperty("status").GetString());
-        Assert.Equal("Plugin", sensor.GetProperty("props").GetProperty("sensorType").GetString());
+        var document = response.GetProperty("document");
+        Assert.Equal(id, document.GetProperty("id").GetString());
+        Assert.Equal(1, document.GetProperty("rev").GetInt64());
+        Assert.Equal(1, document.GetProperty("profile").GetProperty("rev").GetInt64());
+        Assert.Equal("Wide bar", document.GetProperty("profile").GetProperty("name").GetString());
+        var items = Flatten(document.GetProperty("items")).ToList();
+        Assert.Equal(56, items.Count);
+        Assert.All(items, item => Assert.Equal(1, item.GetProperty("rev").GetInt64()));
+        Assert.Contains(items, item => item.TryGetProperty("bindings", out var b) && b.ToString().Contains("plugin:/infopanel.mock/gpu/gpu-load"));
     }
 
     private static IEnumerable<JsonElement> Flatten(JsonElement nodes)
@@ -193,7 +171,9 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     [Theory]
     [InlineData("/api/profiles/00000000-0000-0000-0000-000000000001")]
     [InlineData("/api/profiles/not-a-guid")]
+    [InlineData("/api/profiles/3682945E-C157-4ED7-A6B3-60E651328CF5")]
     [InlineData("/api/profiles/00000000-0000-0000-0000-000000000001/thumbnail")]
+    [InlineData("/api/profiles/00000000-0000-0000-0000-000000000001/document")]
     public async Task UnknownProfile_Is404ProblemJson(string path)
     {
         using var client = factory.CreateApiClient();

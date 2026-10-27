@@ -42,8 +42,6 @@ public sealed partial class EngineOptions
     /// </summary>
     public IReadOnlyList<string> AllowOrigins { get; init; } = [];
 
-    /// <summary>A 1.x data folder to import at start-up.</summary>
-    public string? ImportV1 { get; init; }
 
     /// <summary>Wipe the data folder before starting (only with an explicit <see cref="DataDir"/>).</summary>
     public bool Fresh { get; init; }
@@ -141,26 +139,6 @@ public sealed partial class EngineOptions
         if (webRoot != null && !Directory.Exists(webRoot))
             problems.Add($"--web-root '{webRoot}' does not exist.");
 
-        var importV1 = Value(section, "ImportV1");
-        if (importV1 != null && !Directory.Exists(importV1))
-            problems.Add($"--import-v1 '{importV1}' does not exist.");
-        else if (importV1 != null && (dataDir == null || fullDataDir != null))
-        {
-            // The importer's own rule, checked now so nothing (--fresh above all) runs before it fails.
-            var dataRoot = fullDataDir ?? DataPaths.DefaultRoot().Root;
-            var source = Path.GetFullPath(importV1);
-            try
-            {
-                if ((V1DataImporter.FindOverlap(source, dataRoot)
-                        ?? V1DataImporter.FindOverlap(DataFolder.ResolveRealPath(source), DataFolder.ResolveRealPath(dataRoot))) is { } overlap)
-                    problems.Add($"--import-v1: {overlap}");
-            }
-            catch (IOException ex)
-            {
-                problems.Add($"--import-v1 '{importV1}' can't be checked against the data folder: {ex.Message}");
-            }
-        }
-
         errors = problems;
         if (problems.Count > 0)
             return null;
@@ -175,7 +153,6 @@ public sealed partial class EngineOptions
             Token = token ?? NewToken(),
             DevOrigins = devOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             AllowOrigins = allowOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-            ImportV1 = importV1 == null ? null : Path.GetFullPath(importV1),
             Fresh = fresh,
             MockSeed = seed,
             Mock = mock,

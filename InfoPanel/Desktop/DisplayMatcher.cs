@@ -1,33 +1,32 @@
-using InfoPanel.Models;
+using InfoPanel.Spec;
 
 namespace InfoPanel.Desktop;
 
 /// <summary>
-/// Which display a profile's window goes on, and the conversions between a profile's window placement (pixels from
-/// its display's top-left, 1.x's <c>WindowX</c>/<c>WindowY</c>) and desktop points.
+/// Which display a profile's window goes on, and the conversions between a profile's window placement (its
+/// <c>window.x</c>/<c>window.y</c>: pixels from its display's top-left, 1.x's <c>WindowX</c>/<c>WindowY</c>) and desktop points.
 /// </summary>
 public static class DisplayMatcher
 {
     /// <summary>
-    /// 1.x's matching (<c>DisplayWindow.SetWindowPositionRelativeToScreenCore</c>): the display with the target's
-    /// name and pixel size; unless <paramref name="strict"/>, then the first with its name, then the first with its
-    /// size, then the first display. Strict with no exact match (or no target): null, and the window is hidden.
+    /// The window's display (spec/docs/document.md, <c>window.display</c>; 1.x's matching): the display with the
+    /// target's name and pixel size (among several, the one at the target's <c>x</c>/<c>y</c>); unless
+    /// <paramref name="strict"/>, then the first with its name, then the first with its size, then the first display.
+    /// Strict with no exact match: null, and the window is hidden. No target: the main (first) display.
     /// </summary>
-    public static DisplayInfo? Match(IReadOnlyList<DisplayInfo> displays, TargetWindow? target, bool strict)
+    public static DisplayInfo? Match(IReadOnlyList<DisplayInfo> displays, DisplayMatch? target, bool strict)
     {
-        DisplayInfo? match = null;
-        if (target != null)
-        {
-            match = displays.FirstOrDefault(d => d.Name == target.DeviceName && d.PixelWidth == target.Width && d.PixelHeight == target.Height);
-            if (!strict)
-            {
-                match ??= displays.FirstOrDefault(d => d.Name == target.DeviceName);
-                match ??= displays.FirstOrDefault(d => d.PixelWidth == target.Width && d.PixelHeight == target.Height);
-            }
-        }
+        if (target == null)
+            return displays.FirstOrDefault();
 
+        var exact = displays.Where(d => d.Name == target.Name && d.PixelWidth == target.Width && d.PixelHeight == target.Height).ToList();
+        var match = exact.FirstOrDefault(d => (int)Math.Round(d.Frame.X) == target.X && (int)Math.Round(d.Frame.Y) == target.Y) ?? exact.FirstOrDefault();
         if (!strict)
+        {
+            match ??= displays.FirstOrDefault(d => d.Name == target.Name);
+            match ??= displays.FirstOrDefault(d => d.PixelWidth == target.Width && d.PixelHeight == target.Height);
             match ??= displays.FirstOrDefault();
+        }
 
         return match;
     }
@@ -55,11 +54,17 @@ public static class DisplayMatcher
          (int)Math.Round((frame.Y - display.Frame.Y) * display.Scale));
 
     /// <summary>
-    /// The <see cref="TargetWindow"/> 1.x writes after a drag: the display's top-left in desktop points (identity
-    /// only; matching ignores it), its size in backing pixels and its name.
+    /// The <c>window.display</c> written after a drag (1.x's <c>TargetWindow</c>): the display's name, its size in
+    /// backing pixels and its top-left in desktop points (which only tells equal displays apart).
     /// </summary>
-    public static TargetWindow TargetOf(DisplayInfo display) =>
-        new((int)Math.Round(display.Frame.X), (int)Math.Round(display.Frame.Y), display.PixelWidth, display.PixelHeight, display.Name);
+    public static DisplayMatch TargetOf(DisplayInfo display) => new()
+    {
+        Name = display.Name.Length <= 256 ? display.Name : display.Name[..256],
+        Width = display.PixelWidth,
+        Height = display.PixelHeight,
+        X = (int)Math.Round(display.Frame.X),
+        Y = (int)Math.Round(display.Frame.Y),
+    };
 
     /// <summary>True when two frames are the same to within a thousandth of a point.</summary>
     public static bool SameFrame(PointRect a, PointRect b) =>

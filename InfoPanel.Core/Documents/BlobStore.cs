@@ -49,6 +49,9 @@ public sealed partial class BlobStore
     /// <summary>The store's lock, which <see cref="BlobSweep"/> holds for the whole sweep.</summary>
     internal Lock SyncRoot => _lock;
 
+    /// <summary>Tests: called on a thread whose <see cref="Put(ReadOnlyMemory{byte}, out bool)"/> finds the store's lock held by another, before it waits.</summary>
+    internal Action? WaitingForLock;
+
     /// <summary>Whether <see cref="Open"/> ran and nothing has been stored since (or before).</summary>
     internal bool InStartup => _opened && !_changed;
 
@@ -103,14 +106,20 @@ public sealed partial class BlobStore
     /// <exception cref="IOException">
     /// The write, or flushing it to disk, failed; the blob is not stored (or stays as it was), and its id is not returned.
     /// </exception>
-    public string Put(ReadOnlyMemory<byte> content)
+    public string Put(ReadOnlyMemory<byte> content) => Put(content, out _);
+
+    /// <summary>
+    /// <see cref="Put(ReadOnlyMemory{byte})"/>, and whether this call wrote the blob (<paramref name="created"/> false
+    /// when it was already stored), decided under the store's lock: of concurrent identical calls exactly one creates it.
+    /// </summary>
+    public string Put(ReadOnlyMemory<byte> content, out bool created)
     {
         if (content.Length > MaxBytes)
             throw new ArgumentOutOfRangeException(nameof(content), content.Length, $"A blob holds at most {MaxBytes} bytes.");
 
         var id = IdOf(content.Span);
         var path = Paths.BlobFile(id);
-        lock (_lock)
+        using (Locks.Enter(_lock, WaitingForLock))
         {
             _changed = true;
             var existing = new FileInfo(path);
@@ -123,6 +132,7 @@ public sealed partial class BlobStore
 
                     // A Put whose flush of blobs/ failed left the file in place; it is acknowledged only once flushed.
                     AtomicFile.SyncFolder(Paths.BlobsDirectory, _faults);
+                    created = false;
                     return id;
                 }
 
@@ -130,6 +140,7 @@ public sealed partial class BlobStore
             }
 
             AtomicFile.Write(path, content, Paths.Root, _faults);
+            created = true;
             return id;
         }
     }

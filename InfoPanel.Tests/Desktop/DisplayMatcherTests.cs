@@ -1,10 +1,10 @@
 using InfoPanel.Desktop;
-using InfoPanel.Models;
+using InfoPanel.Spec;
 using Xunit;
 
 namespace InfoPanel.Tests.Desktop;
 
-/// <summary>1.x's display matching and the point/pixel conversions.</summary>
+/// <summary>Display matching (<c>window.display</c>, 1.x's rules) and the point/pixel conversions.</summary>
 public sealed class DisplayMatcherTests
 {
     private static readonly DisplayInfo Primary = new("Built-in", new PointRect(0, 0, 1512, 982), 2);       // 3024×1964 px
@@ -12,7 +12,8 @@ public sealed class DisplayMatcherTests
     private static readonly DisplayInfo Twin = new("Monitor", new PointRect(-1920, 0, 1920, 1080), 1);      // 1920×1080 px
     private static readonly DisplayInfo[] All = [Primary, Wide, Twin];
 
-    private static TargetWindow Target(string? name, int width, int height) => new(0, 0, width, height, name);
+    private static DisplayMatch Target(string name, int width, int height, int? x = null, int? y = null) =>
+        new() { Name = name, Width = width, Height = height, X = x, Y = y };
 
     [Theory]
     [InlineData("Monitor", 1920, 1080, false, "Monitor", 1920)]  // name and size: the second "Monitor", not the first
@@ -32,11 +33,23 @@ public sealed class DisplayMatcherTests
     }
 
     [Fact]
-    public void Match_WithoutATarget_IsTheFirstDisplay_OrNothingWhenStrict()
+    public void Match_WithoutATarget_IsTheMainDisplay_StrictOrNot()
     {
+        // spec/docs/document.md: an absent display is the main display.
         Assert.Same(Primary, DisplayMatcher.Match(All, null, strict: false));
-        Assert.Null(DisplayMatcher.Match(All, null, strict: true));
+        Assert.Same(Primary, DisplayMatcher.Match(All, null, strict: true));
         Assert.Null(DisplayMatcher.Match([], Target("Monitor", 1920, 1080), strict: false));
+    }
+
+    [Fact]
+    public void Match_AmongEqualDisplays_IsTheOneAtTheTargetsXAndY()
+    {
+        var left = new DisplayInfo("Panel", new PointRect(-800, 0, 800, 480), 1);
+        var right = new DisplayInfo("Panel", new PointRect(3000, 0, 800, 480), 1);
+        DisplayInfo[] displays = [Primary, left, right];
+        Assert.Same(right, DisplayMatcher.Match(displays, Target("Panel", 800, 480, 3000, 0), strict: true));
+        Assert.Same(left, DisplayMatcher.Match(displays, Target("Panel", 800, 480, 1, 1), strict: true)); // no such place: the first equal one
+        Assert.Same(left, DisplayMatcher.Match(displays, Target("Panel", 800, 480), strict: false));
     }
 
     [Fact]
@@ -64,6 +77,6 @@ public sealed class DisplayMatcherTests
     public void TargetOf_IsTheDisplaysOriginPixelSizeAndName()
     {
         var target = DisplayMatcher.TargetOf(Primary);
-        Assert.Equal((0, 0, 3024, 1964, "Built-in"), (target.X, target.Y, target.Width, target.Height, target.DeviceName));
+        Assert.Equal((0, 0, 3024, 1964, "Built-in"), (target.X, target.Y, target.Width, target.Height, target.Name));
     }
 }

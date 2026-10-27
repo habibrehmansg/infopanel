@@ -1,7 +1,8 @@
-using InfoPanel.Editing;
+using InfoPanel.Documents;
 using InfoPanel.Hosting;
 using InfoPanel.Output;
 using InfoPanel.Security;
+using InfoPanel.Spec;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -31,9 +32,10 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// <list type="bullet">
 /// <item>Client → server (JSON text, at most <see cref="MaxClientMessageBytes"/>): <c>subscribe {profileId, scale?, maxFps?}</c>,
 /// <c>view {scale?, maxFps?}</c>, <c>unsubscribe</c>.</item>
-/// <item>Server → client: <c>hello</c> on connect; <c>doc</c> on subscribe and after every revision change or save of the
-/// subscribed profile, whatever caused it; <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>error</c>
-/// for a bad message, an unknown profile or a deleted one; binary frames (<see cref="FrameCodec"/>).</item>
+/// <item>Server → client: <c>hello</c> on connect (<c>protocol</c> 2); <c>doc</c> (spec/docs/api.md <c>docEvent</c>)
+/// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
+/// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>error</c> for a bad message, an unknown profile,
+/// one that can't be opened or a deleted one; binary frames (<see cref="FrameCodec"/>).</item>
 /// </list>
 /// </summary>
 public static class PreviewSocketHandler
@@ -208,7 +210,7 @@ public static class PreviewSocketHandler
 /// <item><c>error</c> messages, the only expendable ones: a bounded queue that drops the oldest when full.</item>
 /// <item><c>doc</c>: a slot, never evicted. Document events only mark it; the send loop reads the subscribed
 /// document's state when it sends, so the last <c>doc</c> a client gets is always the current state (a save's
-/// <c>dirty:false</c> can't be overtaken by an older snapshot of the same revision). Unchanged states aren't resent,
+/// <c>dirty:false</c> can't be overtaken by an older state of the same revision). Unchanged states aren't resent,
 /// except right after a subscribe.</item>
 /// <item><c>profiles</c>: a slot holding the newest workspace version seen; sent when it is newer than the last one sent.</item>
 /// <item>The newest frame of the current subscription (each subscription has its own sink and one-slot channel).</item>
@@ -248,6 +250,9 @@ internal sealed class PreviewSession
         _render = render;
         _logger = logger;
     }
+
+    /// <summary>Tests: called with the profile's id after a subscribe found its document, before frames are attached.</summary>
+    internal Action<string>? Found;
 
     /// <summary>The current subscription's sink (tests use it to hand an earlier subscription a late frame).</summary>
     internal WebPreviewSink? CurrentSink
@@ -399,33 +404,25 @@ internal sealed class PreviewSession
 
     private void Subscribe(JsonElement message)
     {
-        if (!message.TryGetProperty("profileId", out var idElement) || idElement.ValueKind != JsonValueKind.String
-            || !Guid.TryParse(idElement.GetString(), out var profileId))
+        if (!message.TryGetProperty("profileId", out var idElement) || idElement.ValueKind != JsonValueKind.String)
         {
             SendError("subscribe needs a \"profileId\".");
             return;
         }
+
+        var profileId = idElement.GetString()!;
 
         if (!TryReadRequest(message, new FrameRequest(1, RenderLoop.DefaultFps), out var request))
             return;
 
         Unsubscribe();
 
-        ProfileDocument? doc;
-        try
+        var found = _workspace.Find(profileId);
+        if (found.Document is not { } doc)
         {
-            doc = _workspace.Open(profileId);
-        }
-        catch (InvalidDataException ex)
-        {
-            _logger.LogWarning(ex, "Profile {ProfileGuid} could not be opened for preview", profileId);
-            SendError($"Profile '{profileId}' can't be read.");
-            return;
-        }
-
-        if (doc == null)
-        {
-            SendError($"No profile '{profileId}'.");
+            SendError(found.Problem is { } problem
+                ? $"Profile '{Truncate(profileId)}' can't be opened: it is {problem.Code}."
+                : $"No profile '{Truncate(profileId)}'.");
             return;
         }
 
@@ -441,16 +438,19 @@ internal sealed class PreviewSession
         // The current doc state goes out before the subscription's first frame (the send loop sends the slot first).
         Volatile.Write(ref _docSubscribed, 1);
         Wake();
+        Found?.Invoke(profileId);
         string error;
         try
         {
-            if (_render.Attach(sink))
+            // Frames and doc events come from the one document found: deleted since (its id perhaps created again), the
+            // subscription ends as a delete ends it.
+            if (_render.Attach(sink, doc))
                 return;
-            error = $"No profile '{profileId}'.";
+            error = $"Profile '{Truncate(profileId)}' was deleted.";
         }
-        catch (Exception ex) when (ex is InvalidDataException or ObjectDisposedException)
+        catch (ObjectDisposedException)
         {
-            // Unreadable, or the engine is stopping (the close follows).
+            // The engine is stopping (the close follows).
             error = $"Profile '{profileId}' can't be previewed.";
         }
 
@@ -596,17 +596,16 @@ internal sealed class PreviewSession
         if (doc == null)
             return null;
 
-        long revision;
-        bool dirty, canUndo, canRedo;
-        lock (doc.SyncRoot)
+        var status = doc.Status;
+        return JsonSerializer.Serialize(new DocEvent
         {
-            revision = doc.Revision;
-            dirty = doc.Dirty;
-            canUndo = doc.CanUndo;
-            canRedo = doc.CanRedo;
-        }
-
-        return JsonSerializer.Serialize(new { type = "doc", profileId = doc.Id, revision, dirty, canUndo, canRedo }, Json);
+            Type = "doc",
+            ProfileId = doc.Id,
+            Rev = status.Rev,
+            Dirty = status.Dirty,
+            CanUndo = status.CanUndo,
+            CanRedo = status.CanRedo,
+        }, SpecJson.Options);
     }
 
     private void SendError(string message)
@@ -659,7 +658,7 @@ internal sealed class PreviewSession
     {
         string? lastDoc = null;
         long profilesSent = 0;
-        await SendTextAsync(JsonSerializer.Serialize(new { type = "hello", protocol = 1 }, Json), ct);
+        await SendTextAsync(JsonSerializer.Serialize(new { type = "hello", protocol = Api.ReadEndpoints.Protocol }, Json), ct);
 
         while (true)
         {

@@ -252,50 +252,6 @@ public class EngineOptionsTests
         }
     }
 
-    [Fact]
-    public void ImportV1_InsideTheDataFolder_IsRejected()
-    {
-        var dir = TempDir();
-        Directory.CreateDirectory(Path.Combine(dir, "inner"));
-        try
-        {
-            Assert.Null(Load(["--data-dir", dir, "--import-v1", Path.Combine(dir, "inner")], out var errors));
-            Assert.Contains(errors, e => e.Contains("--import-v1") && e.Contains("must not be the 1.x folder"));
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
-    [Fact]
-    public async Task FreshWithAnOverlappingImport_DeletesNothingAndExits2()
-    {
-        var dir = TempDir();
-        var inner = Path.Combine(dir, "inner");
-        Directory.CreateDirectory(Path.Combine(dir, "profiles"));
-        Directory.CreateDirectory(inner);
-        File.WriteAllText(Path.Combine(dir, "profiles.xml"), "<profiles/>");
-        File.WriteAllText(Path.Combine(dir, "profiles", "a.xml"), "x");
-        File.WriteAllText(Path.Combine(inner, "profiles.xml"), "<profiles/>");
-        try
-        {
-            var main = typeof(Program).Assembly.EntryPoint!;
-            var result = main.Invoke(null, [new[] { "--fresh", "--data-dir", dir, "--import-v1", inner, "--no-browser" }]);
-            var exit = result is Task<int> task ? await task : (int)result!;
-
-            Assert.Equal(2, exit);
-            Assert.True(File.Exists(Path.Combine(dir, "profiles.xml")));
-            Assert.True(File.Exists(Path.Combine(dir, "profiles", "a.xml")));
-            Assert.True(File.Exists(Path.Combine(inner, "profiles.xml")));
-            Assert.False(File.Exists(Path.Combine(dir, "engine.lock")));
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
     [Theory]
     [InlineData("--port", "abc")]
     [InlineData("--port", "65536")]
@@ -303,7 +259,6 @@ public class EngineOptionsTests
     [InlineData("--token", "has space")]
     [InlineData("--token", "a/b")]
     [InlineData("--web-root", "/definitely/not/here")]
-    [InlineData("--import-v1", "/definitely/not/here")]
     public void InvalidValues_AreRejected(string option, string value)
     {
         Assert.Null(Load([option, value], out var errors));
@@ -312,6 +267,7 @@ public class EngineOptionsTests
 
     [Theory]
     [InlineData("--bogus")]
+    [InlineData("--import-v1", "/a/1.x/folder")] // removed: 1.x data is imported through a client
     [InlineData("stray")]
     [InlineData("--port")]
     [InlineData("--port", "--no-browser")]

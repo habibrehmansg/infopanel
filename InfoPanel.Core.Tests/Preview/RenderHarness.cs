@@ -1,39 +1,62 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using InfoPanel.Core.Tests.Documents;
 using InfoPanel.Core.Tests.Persistence;
-using InfoPanel.Drawing;
-using InfoPanel.Editing;
-using InfoPanel.Enums;
-using InfoPanel.Models;
+using InfoPanel.Documents;
 using InfoPanel.Output;
 using InfoPanel.Persistence;
+using InfoPanel.Scenes;
 using InfoPanel.Sensors;
+using InfoPanel.Models;
+using InfoPanel.Spec;
 using Xunit;
 using ManualClock = InfoPanel.Core.Tests.Editing.ManualTimeProvider;
 
 namespace InfoPanel.Core.Tests.Preview;
 
 /// <summary>
-/// A workspace with one profile and a <see cref="RenderService"/> whose loops are driven by hand
+/// A workspace over a temp data folder with one profile, and a <see cref="RenderService"/> whose loops are driven by hand
 /// (<see cref="RenderServiceOptions.AutoTick"/> false) over a manual clock and fake sensors.
 /// </summary>
 internal sealed class RenderHarness : IAsyncDisposable
 {
+    public const string ProfileIdOf = "5f0c8a2e-3b7d-4e19-9a6c-1d2e3f405162";
     public static readonly SensorKey Load = SensorKey.Plugin("/test/load");
 
     private readonly TempDirectory _temp = new();
 
-    public RenderHarness(Profile profile, IEnumerable<DisplayItem> items, bool autoTick = false, TimeProvider? time = null, RenderOptions? options = null)
+    public RenderHarness(JsonObject document, bool autoTick = false, TimeProvider? time = null)
     {
         Time = time ?? new ManualClock();
-        var store = new ProfileStore(new DataPaths(_temp.Path));
-        store.AddProfile(profile, items);
-        Workspace = new Workspace(store, time: Time);
-        ProfileId = profile.Guid;
-        Sensors.Readings[Load] = new SensorReading(0, 100, 0, 0, "%");
-        Renderer = new ProfileRenderer(Sensors, History, new FakeImageSource(), new FakeAssetLocator(_temp.Path), Time);
-        States = new ProfileRenderStates();
-        Service = new RenderService(Workspace, Renderer, States, new ThumbnailRenderer(Renderer, States), Time,
-            new RenderServiceOptions(autoTick, options));
+        var paths = new DataPaths(_temp.Path);
+        var documents = new DocumentStore(paths);
+        var blobs = new BlobStore(paths);
+        documents.Open();
+        blobs.Open();
+        Workspace = new Workspace(documents, blobs, new WorkspaceOptions
+        {
+            Instance = DocKit.Instance,
+            Time = Time,
+            HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes),
+        });
+
+        var created = Workspace.Create(JsonSerializer.SerializeToUtf8Bytes(new JsonObject { ["id"] = ProfileIdOf, ["document"] = document }));
+        Assert.True(created.Entry is not null, string.Join("; ", created.Invalid?.Errors.Select(e => $"{e.Path} {e.Code} {e.Message}") ?? []));
+        ProfileId = ProfileIdOf;
+        SetLoad(50);
+        Service = new RenderService(Workspace, Scenes(Workspace, Sensors, History), Time, new RenderServiceOptions(autoTick));
     }
+
+    /// <summary>The runtime options the engine uses, over fake sensors, with the zone and locale pinned.</summary>
+    public static SceneRuntimeOptions Scenes(Workspace workspace, ISensorReader sensors, ISensorHistory history) => new()
+    {
+        Inputs = new SensorSceneInputs(sensors, history),
+        Limits = workspace.Limits,
+        Support = workspace.Support,
+        LocalZone = TimeZoneInfo.Utc,
+        Locale = CultureInfo.InvariantCulture,
+    };
 
     public TimeProvider Time { get; }
 
@@ -45,17 +68,11 @@ internal sealed class RenderHarness : IAsyncDisposable
 
     public Workspace Workspace { get; }
 
-    public ProfileRenderer Renderer { get; }
-
-    public ProfileRenderStates States { get; }
-
     public RenderService Service { get; }
 
-    public Guid ProfileId { get; }
+    public string ProfileId { get; }
 
     public ProfileDocument Document => Workspace.Open(ProfileId)!;
-
-    public ProfileRenderState State => Service.GetState(ProfileId);
 
     public void SetLoad(double value) => Sensors.Readings[Load] = new SensorReading(0, 100, value, value, "%");
 
@@ -73,34 +90,68 @@ internal sealed class RenderHarness : IAsyncDisposable
         return Service.Tick(ProfileId);
     }
 
-    /// <summary>A 300×100 profile: a black background, a bar bound to <see cref="Load"/> and a still shape.</summary>
-    public static (Profile Profile, List<DisplayItem> Items) BarProfile(int width = 300, int height = 100)
+    /// <summary>Applies a commit of this workspace's instance, based on the current revision.</summary>
+    public CommitResult Commit(params JsonObject[] ops)
     {
-        var profile = new Profile("Bars", width, height) { BackgroundColor = "#FF000000" };
-        var bar = new BarDisplayItem("Bar", profile)
+        var doc = Document;
+        var body = new JsonObject
         {
-            X = 10, Y = 10, Width = 200, Height = 30, Color = "#FFFF0000", BackgroundColor = "#FF00FF00", Gradient = false, Frame = false,
-            SensorType = SensorType.Plugin, PluginSensorId = Load.Id,
+            ["opId"] = Guid.NewGuid().ToString("N"),
+            ["instance"] = doc.Instance,
+            ["baseRev"] = doc.Rev,
+            ["ops"] = new JsonArray(ops.Select(o => (JsonNode)o).ToArray()),
         };
-        var shape = new ShapeDisplayItem("Shape", profile) { X = 220, Y = 50, Width = 40, Height = 40, ShowGradient = false }; // no gradient animation
-        return (profile, [bar, shape]);
+        var outcome = doc.Commit(JsonSerializer.SerializeToUtf8Bytes(body));
+        Assert.True(outcome.Result is not null, DocKit.Describe(outcome));
+        return outcome.Result;
     }
+
+    /// <summary>A scene: a bar <c>2 × load</c> wide and 30 high (a number input <c>v</c>), red.</summary>
+    public static JsonObject BarScene() => JsonNode.Parse("""
+        {"format": "infopanel.scene/1", "inputs": {"v": {"type": "number"}},
+         "nodes": [{"kind": "rect", "w": {"op": "mul", "args": [{"op": "input", "name": "v"}, 2]}, "h": 30, "fill": "#ff0000"}]}
+        """)!.AsObject();
+
+    /// <summary>A scene that animates: a bar that grows 100 pixels a second of elapsed time (a state cell), up to 280.</summary>
+    public static JsonObject GrowingScene() => JsonNode.Parse("""
+        {"format": "infopanel.scene/1",
+         "state": {"t": {"init": 0, "next": {"op": "add", "args": [{"op": "state", "name": "t"}, {"op": "dt"}]}}},
+         "nodes": [{"kind": "rect", "w": {"op": "min", "args": [{"op": "mul", "args": [{"op": "state", "name": "t"}, 100]}, 280]}, "h": 20, "fill": "#ffffff"}]}
+        """)!.AsObject();
+
+    /// <summary>A <paramref name="width"/>×<paramref name="height"/> document on black with <paramref name="items"/>.</summary>
+    public static JsonObject Doc(int width, int height, params JsonObject[] items) => new()
+    {
+        ["format"] = "infopanel.document/1",
+        ["id"] = ProfileIdOf,
+        ["profile"] = new JsonObject { ["name"] = "Bars", ["width"] = width, ["height"] = height, ["background"] = "#000000" },
+        ["items"] = new JsonArray(items.Select(i => (JsonNode)i).ToArray()),
+    };
+
+    /// <summary>A 300×100 document: on black, a bar <c>bar</c> bound to <see cref="Load"/> at (10, 10) and a still 40×40 <c>shape</c>.</summary>
+    public static JsonObject BarDocument(int width = 300, int height = 100) => Doc(width, height,
+        DocKit.Scene("bar", 10, 10, BarScene(), new JsonObject { ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = Load.ToString() } } }),
+        DocKit.Scene("shape", 220, 50, DocKit.Rect("#00ff00", 40, 40)));
+
+    /// <summary>A 300×100 document with one growing bar <c>grow</c> at (10, 40).</summary>
+    public static JsonObject GrowingDocument() => Doc(300, 100, DocKit.Scene("grow", 10, 40, GrowingScene()));
 
     public async ValueTask DisposeAsync()
     {
         await Service.DisposeAsync();
+        Workspace.Dispose();
         _temp.Dispose();
     }
 }
 
 /// <summary>Records what it receives; copies the pixels and PNG while the frame is valid.</summary>
-internal sealed class FakeSink(Guid profileId, FrameRequest request) : IFrameSink
+internal sealed class FakeSink(string profileId, FrameRequest request) : IFrameSink
 {
     private readonly Lock _lock = new();
     private readonly List<Received> _frames = [];
     private readonly List<FrameSinkClosedReason> _closed = [];
 
-    public Guid ProfileId { get; } = profileId;
+    public string ProfileId { get; } = profileId;
 
     public FrameRequest Request { get; set; } = request;
 
@@ -139,12 +190,12 @@ internal sealed class FakeSink(Guid profileId, FrameRequest request) : IFrameSin
 }
 
 /// <summary>Blocks inside <see cref="OnFrame"/> until <see cref="Release"/> is set; records what happens to it, in order.</summary>
-internal sealed class BlockingSink(Guid profileId, FrameRequest request) : IFrameSink
+internal sealed class BlockingSink(string profileId, FrameRequest request) : IFrameSink
 {
     private readonly Lock _lock = new();
     private readonly List<string> _events = [];
 
-    public Guid ProfileId { get; } = profileId;
+    public string ProfileId { get; } = profileId;
 
     public FrameRequest Request { get; } = request;
 

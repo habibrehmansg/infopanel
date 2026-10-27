@@ -1,43 +1,47 @@
+using InfoPanel.Documents;
 using InfoPanel.Drawing;
-using InfoPanel.Editing;
-using InfoPanel.Output;
 using InfoPanel.Persistence;
-using InfoPanel.Security;
 using InfoPanel.Sensors;
+using InfoPanel.Spec;
 using SkiaSharp;
 using System.Reflection;
-using System.Text.Json.Nodes;
 
 namespace InfoPanel.Api;
 
-public sealed record SessionInfo(string EngineVersion, int Protocol, string DataDir, string Platform);
-
-/// <summary>A listed sensor; <c>status</c> is its <see cref="SensorStatus"/> now (added in protocol 1, after the other fields).</summary>
-public sealed record SensorListEntry(string Key, string Source, string Group, string Name, string Unit, JsonObject Binding, SensorStatus Status);
+/// <summary>A listed sensor; <c>status</c> is its <see cref="SensorStatus"/> now. A binding names it by <c>key</c>.</summary>
+public sealed record SensorListEntry(string Key, string Source, string Group, string Name, string Unit, SensorStatus Status);
 
 /// <summary>A listed sensor that has a reading; <c>status</c> is <c>live</c> or <c>stale</c> (the last value).</summary>
 public sealed record SensorValue(string Key, double Now, double Min, double Max, double Avg, string Unit, string? Text, IReadOnlyList<double>? History, SensorStatus Status);
 
-/// <summary>The read side of the REST API (plan §6.3). Everything here is under <c>/api</c> and needs the token.</summary>
+/// <summary>
+/// The engine's session, fonts and sensors (spec/docs/api.md, "Session"). Everything here is under <c>/api</c> and
+/// needs the token.
+/// </summary>
 public static class ReadEndpoints
 {
-    public const int Protocol = 1;
-    public const int DefaultThumbnailWidth = 320;
+    /// <summary>The engine API's version (spec/docs/api.md): 2 since documents are the 2.0 format.</summary>
+    public const int Protocol = 2;
 
     public static void MapReadEndpoints(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/session", (DataPaths paths) =>
-            new SessionInfo(EngineVersion(), Protocol, paths.Root, Platform()));
-
-        api.MapGet("/kinds", () => ItemKinds.BuildManifest());
+        api.MapGet("/session", (DataPaths paths, Workspace workspace) => ApiResults.Json(new Session
+        {
+            EngineVersion = EngineVersion(),
+            Protocol = Protocol,
+            Instance = workspace.Instance,
+            Platform = Platform(),
+            DataDir = paths.Root,
+            FormatSupport = FormatSupportOf(workspace),
+        }));
 
         api.MapGet("/fonts", () => Fonts());
 
         api.MapGet("/sensors", (SensorHub hub) =>
             hub.GetSensors()
-                .Select(s => new SensorListEntry(s.Key.ToString(), s.SourceId, s.Group, s.Name, s.Unit, ItemJson.BindingProps(s.Key, s.Name), hub.GetStatus(s.Key)))
+                .Select(s => new SensorListEntry(s.Key.ToString(), s.SourceId, s.Group, s.Name, s.Unit, hub.GetStatus(s.Key)))
                 .ToList());
 
         api.MapGet("/sensors/values", (int? history, SensorHub hub, SensorHistory sensorHistory) =>
@@ -65,26 +69,15 @@ public static class ReadEndpoints
 
             return values;
         });
-
-        api.MapGet("/profiles", (Workspace workspace) => workspace.ListProfiles());
-
-        api.MapGet("/profiles/{id}", (string id, Workspace workspace) =>
-            Open(workspace, id) is { } doc ? Results.Ok(doc.ToDoc()) : Problems.NotFound($"No profile '{id}'."));
-
-        api.MapGet("/profiles/{id}/thumbnail", (string id, int? w, Workspace workspace, RenderService render, HttpContext context) =>
-        {
-            if (Open(workspace, id) is not { } doc)
-                return Problems.NotFound($"No profile '{id}'.");
-
-            // At the live preview's tick when one is running, so animation never advances twice in a tick.
-            var png = render.RenderOnce(doc, w ?? DefaultThumbnailWidth);
-            context.Response.Headers.CacheControl = "no-store";
-            return Results.File(png, "image/png");
-        });
     }
 
-    private static ProfileDocument? Open(Workspace workspace, string id) =>
-        Guid.TryParse(id, out var guid) ? workspace.Open(guid) : null;
+    /// <summary>What the engine reads: the formats, their newest minor version, the capabilities it has and its limits.</summary>
+    public static FormatSupport FormatSupportOf(Workspace workspace) => new()
+    {
+        Document = new FormatVersion { Formats = ["infopanel.document/1"], Version = "1.0", Capabilities = [.. workspace.Support.DocumentCapabilities.Order(StringComparer.Ordinal)] },
+        Scene = new FormatVersion { Formats = ["infopanel.scene/1"], Version = "1.0", Capabilities = [.. workspace.Support.SceneCapabilities.Order(StringComparer.Ordinal)] },
+        Limits = workspace.Limits.ToDictionary(),
+    };
 
     private static double Finite(double value) => double.IsFinite(value) ? value : 0;
 

@@ -25,10 +25,9 @@ To run 2.0 from source on macOS or Windows, install the [.NET 10 SDK](https://do
 ```bash
 dotnet run --project InfoPanel -c Release                 # the API only: no web client is built from this repo
 dotnet run --project InfoPanel -c Release -- --web-root <folder>   # serves a built web client from <folder> and opens it in your browser
-dotnet run --project InfoPanel -c Release -- --import-v1 <folder>   # optional: bring over a copy of a 1.x data folder
 ```
 
-Without `--web-root`, an engine serves the `wwwroot` folder next to it if that folder contains an `index.html`. Screens are kept in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows, in the 1.x file format. The engine listens on 127.0.0.1 only. The API and live preview need the token in the sign-in link the engine prints (or opens); the web client's files, the sign-in link and the health check are open to local requests.
+Without `--web-root`, an engine serves the `wwwroot` folder next to it if that folder contains an `index.html`. Profiles are kept in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows as 2.0 documents (`profiles/{id}/document.json`), with the media they use stored by content hash in `blobs/`; the first start stores an example profile. 1.x profiles aren't imported yet, and the engine never reads or changes a 1.x data folder. The engine listens on 127.0.0.1 only. The API and live preview need the token in the sign-in link the engine prints (or opens); the web client's files, the sign-in link and the health check are open to local requests.
 
 For development and tests, see [`CLAUDE.md`](CLAUDE.md). Design decisions are recorded in [`docs/2.0/decisions.md`](docs/2.0/decisions.md); what still has to come over from 1.x is in [`PORTING.md`](PORTING.md).
 

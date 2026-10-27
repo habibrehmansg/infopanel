@@ -143,6 +143,18 @@ public sealed partial class DocumentStore
         }
     }
 
+    /// <summary>A profile's saved document for reading as it is, whatever its size (an export). The caller disposes the stream.</summary>
+    /// <exception cref="KeyNotFoundException">No profile has this id.</exception>
+    /// <exception cref="IOException">Its document can't be opened (missing included: <see cref="FileNotFoundException"/>).</exception>
+    public Stream OpenRead(string id)
+    {
+        lock (_lock)
+        {
+            RequireListed(id);
+            return new FileStream(Paths.DocumentFile(id), FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        }
+    }
+
     /// <summary>
     /// Stores a new profile with <paramref name="document"/> as its saved document and appends it to the order. The
     /// document is written in a staging folder that is renamed into place, so the profile exists with its whole document

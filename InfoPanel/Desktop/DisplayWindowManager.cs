@@ -1,24 +1,26 @@
-using InfoPanel.Editing;
+using InfoPanel.Documents;
 using InfoPanel.Hosting;
-using InfoPanel.Models;
 using InfoPanel.Output;
+using InfoPanel.Spec;
 
 namespace InfoPanel.Desktop;
 
 /// <summary>
-/// Shows every profile with <c>Active = true</c> as a borderless desktop window (1.x's <c>DisplayWindow</c>), drawn
-/// by the profile's render loop at scale 1 through a <see cref="DesktopWindowSink"/>.
+/// Shows every profile whose <c>window.enabled</c> is true as a borderless desktop window (1.x's <c>DisplayWindow</c>),
+/// drawn by the profile's render loop at scale 1 through a <see cref="DesktopWindowSink"/>.
 /// <list type="bullet">
 /// <item>Follows the <see cref="Workspace"/>: profiles added, deleted and listed (<see cref="Workspace.ProfilesChanged"/>)
-/// and every document's <see cref="ProfileDocument.Changed"/> (edits, undo, redo, revert). Every profile is opened
-/// so its changes are seen.</item>
-/// <item>Applies <c>Active</c>, <c>Topmost</c>, <c>Drag</c>, <c>Resize</c>, <c>Width</c>, <c>Height</c>,
-/// <c>WindowX</c>, <c>WindowY</c>, <c>TargetWindow</c> and <c>StrictWindowMatching</c> as they change, and re-matches
-/// displays when they change (<see cref="DisplayMatcher"/>). Its own moves never produce edits.</item>
-/// <item>The window's own changes are profile edits (<see cref="ProfileDocument.PlaceWindow"/>: undoable, dirty,
-/// saved by Save): one per finished drag (<c>WindowX</c>, <c>WindowY</c>, <c>TargetWindow</c> of the display holding
-/// the window's top-left), one per resize after <see cref="ResizeQuiet"/> without changes (<c>Width</c>,
-/// <c>Height</c>, and <c>WindowX</c>/<c>WindowY</c> when the top-left moved).</item>
+/// and every document's <see cref="ProfileDocument.Changed"/> (commits, undo, redo, revert). Every profile that can be
+/// opened is opened so its changes are seen; the settings are read from its <see cref="ProfileDocument.Current"/>
+/// generation.</item>
+/// <item>Applies the profile's <c>width</c> and <c>height</c> and its <c>window</c> (<c>enabled</c>, <c>topmost</c>,
+/// <c>draggable</c>, <c>resizable</c>, <c>x</c>, <c>y</c>, <c>display</c>, <c>strict</c>) as they change, and re-matches
+/// displays when they change (<see cref="DisplayMatcher"/>). Its own moves never produce commits.</item>
+/// <item>The window's own changes are <c>profile</c> commits with a <c>gesture:</c> coalescing key of their own and the
+/// revision they read as <c>baseRev</c> (undoable, dirty, saved by Save; read again and retried on a conflict): one per
+/// finished drag (<c>window</c> with the <c>x</c>, <c>y</c> and
+/// <c>display</c> of the display holding the window's top-left), one per resize after <see cref="ResizeQuiet"/>
+/// without changes (<c>width</c>, <c>height</c>, and <c>window.x</c>/<c>y</c> relative to the window's display).</item>
 /// <item>All its state lives on the platform's UI thread: every event is posted there (<see cref="IDesktopPlatform.Post"/>).</item>
 /// </list>
 /// Nothing happens with <c>--no-windows</c>; on a platform that can't show windows it logs
@@ -35,10 +37,20 @@ public sealed class DisplayWindowManager(
     /// <summary>How long a window's size must stay unchanged before a resize becomes an edit (1.x: 300 ms).</summary>
     public static readonly TimeSpan ResizeQuiet = TimeSpan.FromMilliseconds(300);
 
-    private readonly Dictionary<Guid, ProfileDocument> _documents = [];
-    private readonly Dictionary<Guid, WindowEntry> _windows = [];
-    private readonly HashSet<Guid> _unreadable = [];
-    private readonly HashSet<Guid> _reduced = [];
+    /// <summary>How many times a drag's or resize's commit is tried, read again after each conflict.</summary>
+    internal const int CommitAttempts = 3;
+
+    /// <summary>Tests: called with the profile's id after a drag or resize read the profile, before it commits.</summary>
+    internal Action<string>? BeforeCommit;
+
+    private readonly Dictionary<string, ProfileDocument> _documents = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, WindowEntry> _windows = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _unopened = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _reduced = new(StringComparer.Ordinal);
+
+    /// <summary>The random part of this manager's coalescing keys (spec: <c>gesture:{client}:{n}</c>).</summary>
+    private readonly string _gestureClient = Guid.NewGuid().ToString("N");
+    private int _gestures;
     private IReadOnlyList<DisplayInfo>? _displays;
     private bool _running;
     private bool _stopped;
@@ -47,13 +59,13 @@ public sealed class DisplayWindowManager(
     public bool Enabled => !options.NoWindows && platform.IsSupported;
 
     /// <summary>The profiles that have a window (UI thread; for tests).</summary>
-    public IReadOnlyCollection<Guid> WindowProfiles => _windows.Keys;
+    public IReadOnlyCollection<string> WindowProfiles => _windows.Keys;
 
     /// <summary>The profile's window, or null (UI thread; for tests).</summary>
-    public IDesktopWindow? WindowOf(Guid profileId) => _windows.GetValueOrDefault(profileId)?.Window;
+    public IDesktopWindow? WindowOf(string profileId) => _windows.GetValueOrDefault(profileId)?.Window;
 
     /// <summary>The profile's frame sink, or null (UI thread; for tests).</summary>
-    public DesktopWindowSink? SinkOf(Guid profileId) => _windows.GetValueOrDefault(profileId)?.Sink;
+    public DesktopWindowSink? SinkOf(string profileId) => _windows.GetValueOrDefault(profileId)?.Sink;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -111,21 +123,14 @@ public sealed class DisplayWindowManager(
         }
     }
 
-    /// <summary>Profiles are read from <c>profiles.xml</c> as saved: no document is opened just to say this.</summary>
+    /// <summary>Says once that windows can't be shown here, when a profile asks for one.</summary>
     private void LogUnsupported()
     {
         if (platform.UnsupportedMessage is not { } message)
             return;
 
-        try
-        {
-            if (workspace.Store.LoadProfiles().Any(p => p.Active))
-                logger.LogInformation("{Message}", message);
-        }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            // The workspace reports an unreadable list on its own.
-        }
+        if (workspace.List().Any(e => e.Status == "ok" && workspace.Open(e.Id)?.Current.Document.Profile.Window?.Enabled == true))
+            logger.LogInformation("{Message}", message);
     }
 
     private void OnProfilesChanged(object? sender, ProfilesChangedEventArgs e) => platform.Post(SyncProfiles);
@@ -134,7 +139,7 @@ public sealed class DisplayWindowManager(
 
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
     {
-        if (e.Change != DocumentChange.Saved && sender is ProfileDocument doc)
+        if (e.Change is not (DocumentChange.Saved or DocumentChange.History) && sender is ProfileDocument doc)
             platform.Post(() => Reconcile(doc.Id));
     }
 
@@ -145,10 +150,11 @@ public sealed class DisplayWindowManager(
             return;
 
         _displays ??= platform.GetDisplays();
-        var listed = workspace.ListProfiles().Select(p => p.Id).ToHashSet();
+        var listed = workspace.List();
+        var ids = listed.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var (id, doc) in _documents.ToList())
         {
-            if (listed.Contains(id) && workspace.IsOpen(doc))
+            if (ids.Contains(id) && workspace.IsOpen(doc))
                 continue;
 
             doc.Changed -= OnDocumentChanged;
@@ -156,29 +162,20 @@ public sealed class DisplayWindowManager(
             CloseWindow(id);
         }
 
-        foreach (var id in listed)
+        foreach (var entry in listed)
         {
-            if (_documents.ContainsKey(id))
+            if (_documents.ContainsKey(entry.Id))
                 continue;
 
-            ProfileDocument? doc;
-            try
+            if (workspace.Open(entry.Id) is not { } doc)
             {
-                doc = workspace.Open(id);
-            }
-            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
-            {
-                // Tried again on the next sync.
-                if (_unreadable.Add(id))
-                    logger.LogWarning(ex, "Profile {ProfileGuid} can't be read; it gets no desktop window", id);
+                if (_unopened.Add(entry.Id))
+                    logger.LogWarning("Profile {ProfileId} is {Status}; it gets no desktop window", entry.Id, entry.Status);
                 continue;
             }
-
-            if (doc == null)
-                continue;
 
             doc.Changed += OnDocumentChanged;
-            _documents[id] = doc;
+            _documents[entry.Id] = doc;
         }
 
         ReconcileAll();
@@ -208,12 +205,12 @@ public sealed class DisplayWindowManager(
     }
 
     /// <summary>UI thread: makes the profile's window match the profile (open or closed, style, place).</summary>
-    private void Reconcile(Guid id)
+    private void Reconcile(string id)
     {
         if (_stopped || !_documents.TryGetValue(id, out var doc))
             return;
 
-        var settings = WindowSettings.Read(doc);
+        var settings = Settings.Read(doc);
         if (!settings.Active)
         {
             CloseWindow(id);
@@ -228,7 +225,7 @@ public sealed class DisplayWindowManager(
             Place(entry, settings);
     }
 
-    private WindowEntry OpenWindow(Guid id, ProfileDocument doc, WindowSettings settings)
+    private WindowEntry OpenWindow(string id, ProfileDocument doc, Settings settings)
     {
         var displays = platform.GetDisplays();
         var scale = displays.FirstOrDefault()?.Scale ?? 1;
@@ -242,20 +239,20 @@ public sealed class DisplayWindowManager(
 
         try
         {
-            if (!render.Attach(entry.Sink))
+            if (!render.Attach(entry.Sink, doc))
                 entry.Sink = null;
         }
-        catch (Exception ex) when (ex is InvalidDataException or ObjectDisposedException)
+        catch (ObjectDisposedException ex)
         {
-            logger.LogWarning(ex, "Profile {ProfileGuid} can't be rendered to its desktop window", id);
+            logger.LogWarning(ex, "Profile {ProfileId} can't be rendered to its desktop window", id);
             entry.Sink = null;
         }
 
-        logger.LogInformation("Showing profile {ProfileGuid} as a desktop window", id);
+        logger.LogInformation("Showing profile {ProfileId} as a desktop window", id);
         return entry;
     }
 
-    private void CloseWindow(Guid id)
+    private void CloseWindow(string id)
     {
         if (!_windows.Remove(id, out var entry))
             return;
@@ -269,7 +266,7 @@ public sealed class DisplayWindowManager(
         }
 
         entry.Window.Dispose();
-        logger.LogInformation("Closed the desktop window of profile {ProfileGuid}", id);
+        logger.LogInformation("Closed the desktop window of profile {ProfileId}", id);
     }
 
     /// <summary>
@@ -277,7 +274,7 @@ public sealed class DisplayWindowManager(
     /// stays where the user has it: placing it then (a scale or display change, any other profile's sync) would move
     /// it from under the mouse, back to where the profile has it. The release (<see cref="OnUserMoved"/>) places it.
     /// </summary>
-    private void Place(WindowEntry entry, WindowSettings settings)
+    private void Place(WindowEntry entry, Settings settings)
     {
         var window = entry.Window;
         var displays = platform.GetDisplays();
@@ -338,7 +335,7 @@ public sealed class DisplayWindowManager(
         if (!displaysChanged && !entry.ResizePending && entry.Settled != frame && DisplayMatcher.At(platform.GetDisplays(), frame.X, frame.Y) is { } display)
         {
             var (x, y) = DisplayMatcher.Position(display, frame);
-            Edit(entry, new WindowPlacement(x, y, DisplayMatcher.TargetOf(display)), display);
+            Edit(entry, x, y, DisplayMatcher.TargetOf(display), null, display);
         }
 
         // Whether or not anything changed, the window goes to exactly the profile's place, sized for its scale there.
@@ -359,8 +356,8 @@ public sealed class DisplayWindowManager(
     }
 
     /// <summary>
-    /// The size quiet for <see cref="ResizeQuiet"/>: <c>Width</c>/<c>Height</c> from the window's size in backing
-    /// pixels, and <c>WindowX</c>/<c>WindowY</c> relative to the window's display. A timer that fired before a later
+    /// The size quiet for <see cref="ResizeQuiet"/>: <c>width</c>/<c>height</c> from the window's size in backing
+    /// pixels, and <c>window.x</c>/<c>y</c> relative to the window's display. A timer that fired before a later
     /// change of the same resize (its commit already posted) is stale: <paramref name="generation"/> no longer matches.
     /// </summary>
     private void CommitResize(WindowEntry entry, int generation)
@@ -377,7 +374,7 @@ public sealed class DisplayWindowManager(
         Reconcile(entry.ProfileId);
     }
 
-    /// <summary>Ends the pending resize with its edit, from the window's frame and scale at the resize's last change.</summary>
+    /// <summary>Ends the pending resize with its commit, from the window's frame and scale at the resize's last change.</summary>
     private void EditResize(WindowEntry entry)
     {
         entry.ResizeTimer?.Dispose();
@@ -391,35 +388,74 @@ public sealed class DisplayWindowManager(
         if (display != null)
         {
             var (x, y) = DisplayMatcher.Position(display, frame);
-            Edit(entry, new WindowPlacement(x, y, Width: width, Height: height), display);
+            Edit(entry, x, y, null, (width, height), display);
         }
 
         entry.Settled = frame;
     }
 
-    /// <summary>Applies <paramref name="placement"/>, relative to <paramref name="display"/>, as a profile edit.</summary>
-    private void Edit(WindowEntry entry, WindowPlacement placement, DisplayInfo display)
+    /// <summary>
+    /// Commits the window's place (<paramref name="x"/>, <paramref name="y"/> relative to <paramref name="display"/>), its
+    /// display when it was dragged to one, and its size when it was resized, as one <c>profile</c> op with a
+    /// <c>gesture:</c> key of its own. The op sets the whole <c>window</c> as read, so it carries that read's revision
+    /// as its <c>baseRev</c>: when another change to the profile came first (409), the latest window is read and the
+    /// place applied to it again, up to <see cref="CommitAttempts"/> times, so another client's <c>topmost</c>,
+    /// <c>resizable</c> or <c>enabled</c> is never undone. A commit that changes nothing makes no revision.
+    /// </summary>
+    private void Edit(WindowEntry entry, int x, int y, DisplayMatch? target, (int Width, int Height)? size, DisplayInfo display)
     {
-        try
+        var doc = entry.Document;
+        var key = $"gesture:{_gestureClient}:{++_gestures}";
+        Generation current;
+        CommitOutcome outcome;
+        for (var attempt = 1; ; attempt++)
         {
-            var before = entry.Document.Revision;
-            if (entry.Document.PlaceWindow(placement).Revision == before)
-                return;
+            current = doc.Current;
+            var profile = current.Document.Profile;
+            var window = (profile.Window ?? new WindowSettings { Enabled = true }) with { X = x, Y = y };
+            if (target != null)
+                window = window with { Display = target };
 
-            if (placement is { Width: { } width, Height: { } height })
+            BeforeCommit?.Invoke(entry.ProfileId);
+            try
             {
-                logger.LogInformation("The desktop window of profile {ProfileGuid} was resized on the desktop to {Width}×{Height} at ({WindowX}, {WindowY}) on {Display}",
-                    entry.ProfileId, width, height, placement.WindowX, placement.WindowY, display.Name);
+                outcome = doc.Commit(new CommitRequest
+                {
+                    OpId = Guid.NewGuid().ToString("N"),
+                    Instance = doc.Instance,
+                    BaseRev = current.Rev,
+                    CoalesceKey = key,
+                    Ops = [new ProfileOp { BaseRev = current.Rev, Set = new ProfileFields { Window = window, Width = size?.Width, Height = size?.Height } }],
+                });
             }
-            else
+            catch (ObjectDisposedException)
             {
-                logger.LogInformation("The desktop window of profile {ProfileGuid} was moved on the desktop to ({WindowX}, {WindowY}) on {Display}",
-                    entry.ProfileId, placement.WindowX, placement.WindowY, display.Name);
+                return; // deleted meanwhile; the workspace's event closes the window
             }
+
+            if (outcome.Conflict is null && outcome.Expired is null || attempt == CommitAttempts)
+                break;
         }
-        catch (EditException ex)
+
+        if (outcome.Result is not { } result)
         {
-            logger.LogWarning(ex, "The desktop window of profile {ProfileGuid} couldn't update the profile", entry.ProfileId);
+            var reason = outcome.Invalid?.Errors.FirstOrDefault()?.Message ?? outcome.Conflict?.Detail ?? outcome.Expired?.Detail;
+            logger.LogWarning("The desktop window of profile {ProfileId} couldn't update the profile ({Status}: {Reason})", entry.ProfileId, outcome.Status, reason);
+            return;
+        }
+
+        if (result.Rev == current.Rev)
+            return;
+
+        if (size is { } s)
+        {
+            logger.LogInformation("The desktop window of profile {ProfileId} was resized on the desktop to {Width}×{Height} at ({WindowX}, {WindowY}) on {Display}",
+                entry.ProfileId, s.Width, s.Height, x, y, display.Name);
+        }
+        else
+        {
+            logger.LogInformation("The desktop window of profile {ProfileId} was moved on the desktop to ({WindowX}, {WindowY}) on {Display}",
+                entry.ProfileId, x, y, display.Name);
         }
     }
 
@@ -427,7 +463,7 @@ public sealed class DisplayWindowManager(
     {
         if (frame.Scale < 1 && _reduced.Add(entry.ProfileId))
         {
-            logger.LogInformation("Profile {ProfileGuid} is over the frame pixel cap; its desktop window shows it at reduced resolution ({Scale}×), stretched to fill",
+            logger.LogInformation("Profile {ProfileId} is over the frame pixel cap; its desktop window shows it at reduced resolution ({Scale}×), stretched to fill",
                 entry.ProfileId, frame.Scale);
         }
 
@@ -441,13 +477,13 @@ public sealed class DisplayWindowManager(
 
         // Deleted profiles and shutdown close the window through the workspace and StopAsync.
         if (reason == FrameSinkClosedReason.Unrenderable)
-            logger.LogWarning("Profile {ProfileGuid} is too large to render; its desktop window stops updating", entry.ProfileId);
+            logger.LogWarning("Profile {ProfileId} is too large to render; its desktop window stops updating", entry.ProfileId);
         entry.Sink = null;
     }
 
-    private sealed class WindowEntry(Guid profileId, ProfileDocument document, IDesktopWindow window)
+    private sealed class WindowEntry(string profileId, ProfileDocument document, IDesktopWindow window)
     {
-        public Guid ProfileId { get; } = profileId;
+        public string ProfileId { get; } = profileId;
 
         public ProfileDocument Document { get; } = document;
 
@@ -478,19 +514,16 @@ public sealed class DisplayWindowManager(
         public bool Closed { get; set; }
     }
 
-    /// <summary>The profile's window settings, read under the document's lock.</summary>
-    private sealed record WindowSettings(bool Active, DesktopWindowStyle Style, int Width, int Height, int WindowX, int WindowY,
-        TargetWindow? Target, bool Strict)
+    /// <summary>The profile's window settings, from its current generation (no lock).</summary>
+    private sealed record Settings(bool Active, DesktopWindowStyle Style, int Width, int Height, int WindowX, int WindowY,
+        DisplayMatch? Target, bool Strict)
     {
-        public static WindowSettings Read(ProfileDocument doc)
+        public static Settings Read(ProfileDocument doc)
         {
-            lock (doc.SyncRoot)
-            {
-                var p = doc.Profile;
-                var target = p.TargetWindow is { } t ? new TargetWindow(t.X, t.Y, t.Width, t.Height, t.DeviceName) : null;
-                return new WindowSettings(p.Active, new DesktopWindowStyle(p.Topmost, p.Drag, p.Resize), Math.Max(1, p.Width),
-                    Math.Max(1, p.Height), p.WindowX, p.WindowY, target, p.StrictWindowMatching);
-            }
+            var p = doc.Current.Document.Profile;
+            var w = p.Window;
+            return new Settings(w?.Enabled == true, new DesktopWindowStyle(w?.Topmost ?? false, w?.Draggable ?? true, w?.Resizable ?? true),
+                Math.Max(1, p.Width), Math.Max(1, p.Height), w?.X ?? 0, w?.Y ?? 0, w?.Display, w?.Strict ?? false);
         }
     }
 }

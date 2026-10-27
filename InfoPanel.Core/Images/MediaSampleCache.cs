@@ -201,6 +201,24 @@ namespace InfoPanel.Images
             return new MediaLookup(MediaState.Loading, null, asset.Info, null);
         }
 
+        /// <summary>
+        /// Forgets a lookup of <paramref name="hash"/> that failed or is still under way (its blob was stored since, say),
+        /// so the next <see cref="Get"/> reads it again: a lookup under way may have read the store before the blob was
+        /// there, and the failure it then publishes goes to the forgotten asset. An asset that loaded is left alone: its
+        /// bytes are the same.
+        /// </summary>
+        public void Retry(string hash)
+        {
+            lock (_lock)
+            {
+                if (!_assets.TryGetValue(hash, out var asset) || asset.State == MediaState.Ready) return;
+                // As the idle sweep drops an asset; a decode still running on it frees what it holds when it sees Detached.
+                foreach (var node in _frames.Where(f => f.Key.Item1 == hash).Select(f => f.Value).ToList()) Evict(node);
+                asset.Detached = true;
+                _assets.Remove(hash);
+            }
+        }
+
         private void Request(Asset asset, int frame)
         {
             lock (_lock)

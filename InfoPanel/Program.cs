@@ -1,13 +1,14 @@
 using InfoPanel;
 using InfoPanel.Api;
 using InfoPanel.Desktop;
+using InfoPanel.Documents;
 using InfoPanel.Drawing;
-using InfoPanel.Editing;
 using InfoPanel.Hosting;
 using InfoPanel.Images;
 using InfoPanel.Output;
 using InfoPanel.Persistence;
 using InfoPanel.Preview;
+using InfoPanel.Scenes;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.MacOS;
@@ -17,8 +18,8 @@ using Serilog.Events;
 using System.Net;
 using System.Text.Json.Serialization;
 
-// The InfoPanel 2.0 engine: a headless, loopback-only ASP.NET Core host that loads profiles, reads sensors, renders
-// with Core and serves the web client. Exit codes: 0 clean, 1 fatal error, 2 bad arguments, 3 data folder in use.
+// The InfoPanel 2.0 engine: a headless, loopback-only ASP.NET Core host that stores and edits 2.0 documents, reads
+// sensors, renders every output with the scene runtime and serves the web client. Exit codes: 0 clean, 1 fatal error, 2 bad arguments, 3 data folder in use.
 
 var parsed = EngineCommandLine.Parse(args);
 if (parsed.ShowHelp)
@@ -96,28 +97,8 @@ try
     if (options.Fresh)
         Log.Information("Wiped the data folder {DataDir} (--fresh)", paths.Root);
 
-    var store = new ProfileStore(paths);
-    if (options.ImportV1 != null)
-    {
-        var summary = V1DataImporter.ImportFolder(options.ImportV1, store);
-        Log.Information("Imported {Imported} profile(s) from {Source}; skipped {Skipped}",
-            summary.Imported.Count, options.ImportV1, summary.Skipped.Count);
-        foreach (var profile in summary.Imported)
-            Log.Information("  imported {Name} ({Items} items, {Assets} assets){Renamed}", profile.Name, profile.ItemCount,
-                profile.AssetCount, profile.GuidRegenerated ? $" as {profile.Guid}" : "");
-        foreach (var skipped in summary.Skipped)
-            Log.Warning("  skipped {Name} ({Guid}): {Reason}", skipped.Name, skipped.Guid, skipped.Reason);
-    }
-
-    try
-    {
-        if (Workspace.EnsureExampleProfile(store))
-            Log.Information("The data folder had no profiles; created the example profile");
-    }
-    catch (InvalidDataException ex)
-    {
-        Log.Error(ex, "Could not read the profile list");
-    }
+    // The stores are opened and their blobs swept before anything changes them; the first run stores the example.
+    var workspace = Workspace.Start(paths, new WorkspaceOptions { Logger = engineLogger.ForContext<Workspace>() }, DateTimeOffset.UtcNow);
 
     FontRegistry.RegisterEmbedded();
     var userFonts = FontRegistry.RegisterDirectory(paths.FontsDirectory);
@@ -160,8 +141,8 @@ try
     builder.Services.AddSingleton(options);
     builder.Services.AddSingleton(paths);
     builder.Services.AddSingleton(runtime);
-    builder.Services.AddSingleton(store);
-    builder.Services.AddSingleton<IAssetLocator>(store);
+    // Made by a factory so the container disposes it (and every open document) after the services that use it.
+    builder.Services.AddSingleton(_ => workspace);
     builder.Services.AddSingleton(TimeProvider.System);
     // Mock mode: the mock sensors and simulated unknown keys (tests, demos). Otherwise the platform's real sensors (only
     // macOS has a source so far) and unknown keys read as unavailable.
@@ -177,29 +158,31 @@ try
 
     builder.Services.AddSingleton(sp => new SensorHub(sp.GetServices<ISensorSource>(), new SensorHubOptions { SimulateUnknown = options.Mock }));
     builder.Services.AddSingleton<ISensorReader>(sp => sp.GetRequiredService<SensorHub>());
-    builder.Services.AddSingleton(sp => new Workspace(store, sp.GetRequiredService<SensorHub>(), sp.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton(sp =>
     {
         var hub = sp.GetRequiredService<SensorHub>();
         return new SensorHistory(hub, sp.GetRequiredService<TimeProvider>(), hub.GetBackfill);
     });
     builder.Services.AddSingleton<ISensorHistory>(sp => sp.GetRequiredService<SensorHistory>());
-    builder.Services.AddSingleton(_ => new ImageCache());
-    builder.Services.AddSingleton<IImageSource>(sp => sp.GetRequiredService<ImageCache>());
-    builder.Services.AddSingleton(sp => new ProfileRenderer(
-        sp.GetRequiredService<ISensorReader>(),
-        sp.GetRequiredService<ISensorHistory>(),
-        sp.GetRequiredService<IImageSource>(),
-        sp.GetRequiredService<IAssetLocator>(),
-        sp.GetRequiredService<TimeProvider>()));
-    builder.Services.AddSingleton<ProfileRenderStates>();
-    builder.Services.AddSingleton<ThumbnailRenderer>();
-    // Live frames for /ws (and later panels); disposed with the host, which stops every render loop.
+    // One media cache for the process, over the blob store; every render loop's runtime and every thumbnail reads it. A
+    // blob stored after a lookup of it failed is read again, so its missing-media placeholders repair.
+    builder.Services.AddSingleton(_ =>
+    {
+        var media = new MediaSampleCache(new BlobMediaStore(workspace.Blobs), new MediaSampleCacheOptions { Limits = workspace.Limits });
+        workspace.BlobStored += media.Retry;
+        return media;
+    });
+    builder.Services.AddSingleton(sp => new SceneRuntimeOptions
+    {
+        Inputs = new SensorSceneInputs(sp.GetRequiredService<ISensorReader>(), sp.GetRequiredService<ISensorHistory>()),
+        Media = sp.GetRequiredService<MediaSampleCache>(),
+        Limits = workspace.Limits,
+        Support = workspace.Support,
+    });
+    // Live frames for /ws and desktop windows; disposed with the host, which stops every render loop.
     builder.Services.AddSingleton(sp => new RenderService(
         sp.GetRequiredService<Workspace>(),
-        sp.GetRequiredService<ProfileRenderer>(),
-        sp.GetRequiredService<ProfileRenderStates>(),
-        sp.GetRequiredService<ThumbnailRenderer>(),
+        sp.GetRequiredService<SceneRuntimeOptions>(),
         sp.GetRequiredService<TimeProvider>(),
         sp.GetService<RenderServiceOptions>()));
     builder.Services.AddSingleton(new PreviewSocketOptions());
@@ -227,7 +210,8 @@ try
     app.MapGet("/healthz", () => Results.Text("ok", "text/plain"));
     app.MapAuth();
     app.MapReadEndpoints();
-    app.MapEditEndpoints();
+    app.MapProfileEndpoints();
+    app.MapBlobEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);
 

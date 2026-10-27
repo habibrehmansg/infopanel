@@ -11,7 +11,7 @@ namespace InfoPanel.Desktop;
 /// UI thread is behind, older pending frames are dropped. A frame whose content hash, size and scale equal the last
 /// one taken is skipped.
 /// </summary>
-public sealed class DesktopWindowSink(Guid profileId, IDesktopPlatform platform, Action<DesktopFrame> show, Action<FrameSinkClosedReason>? closed = null)
+public sealed class DesktopWindowSink(string profileId, IDesktopPlatform platform, Action<DesktopFrame> show, Action<FrameSinkClosedReason>? closed = null)
     : IFrameSink
 {
     /// <summary>What every desktop window asks for: profile pixels at the default frame rate, without item bounds.</summary>
@@ -24,7 +24,7 @@ public sealed class DesktopWindowSink(Guid profileId, IDesktopPlatform platform,
     private float _lastScale;
     private volatile bool _retired;
 
-    public Guid ProfileId { get; } = profileId;
+    public string ProfileId { get; } = profileId;
 
     public FrameRequest Request => WindowRequest;
 

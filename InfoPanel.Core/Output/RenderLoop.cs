@@ -1,12 +1,13 @@
-using InfoPanel.Drawing;
-using InfoPanel.Editing;
+using InfoPanel.Documents;
+using InfoPanel.Scenes;
+using InfoPanel.Spec;
 using Serilog;
 using SkiaSharp;
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO.Hashing;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,25 +15,25 @@ namespace InfoPanel.Output;
 
 /// <summary>
 /// Renders one profile for its sinks, created and disposed by <see cref="RenderService"/>, and running only while it
-/// has sinks.
+/// has sinks. It holds the profile's <see cref="SceneRuntime"/>.
 /// <list type="bullet">
 /// <item><b>When.</b> A <see cref="PeriodicTimer"/> (over the service's <see cref="TimeProvider"/>) at
 /// 1000 / max(sink fps) ms, and early on <see cref="ProfileDocument.Changed"/>, a new sink or a changed request,
 /// but at most once every <see cref="MinInterval"/>.</item>
 /// <item><b>Which sinks.</b> A sink is due when it is new, its request changed, or 1000 / its fps ms (less half the
 /// loop's period, to absorb timer jitter) have passed since its last frame. No due sink: no tick at all.</item>
-/// <item><b>A tick.</b> <c>state.Tick++</c>; due sinks are grouped by <see cref="FrameScale.Normalize"/>d scale;
-/// under the document's <c>SyncRoot</c> each group is drawn into its reused bitmap and
-/// <see cref="ProfileRenderer.MeasureBounds"/> runs once (profile coordinates, shared by every group); outside the
-/// lock each group's pixels and the bounds are hashed (XxHash3). A due sink gets the group's frame unless it already
-/// has a frame with that hash and revision (new and changed sinks always get it). One <see cref="RenderedFrame"/> per
-/// group, shared by its sinks, PNG-encoded at most once.</item>
-/// <item>Several groups, thumbnails (<see cref="RenderService.RenderOnce"/>) and bounds of one tick all draw at the
-/// same <see cref="ProfileRenderState.Tick"/>, so animation state advances once per tick, and read the same time,
-/// sensor readings and history (frozen per tick by <see cref="ProfileRenderState"/>).</item>
+/// <item><b>A tick.</b> The document's <see cref="ProfileDocument.Current"/> generation (read without its lock) is
+/// loaded into the runtime when it is a new one; the runtime ticks once (elapsed time since the loop's first tick), and
+/// that one <see cref="TickSnapshot"/> is drawn for each group of due sinks with the same
+/// <see cref="FrameScale.Normalize"/>d scale, into the group's reused bitmap, with the stats overlay when the profile
+/// asks for it; its bounds are measured once. Each group's pixels and the bounds are hashed (XxHash3). A due sink gets
+/// the group's frame unless it already has a frame with that hash and revision (new and changed sinks always get it).
+/// One <see cref="RenderedFrame"/> per group, shared by its sinks, PNG-encoded at most once.</item>
+/// <item>Every scale, the bounds and thumbnails of a tick (<see cref="RenderService.RenderOnce"/>) come from the same
+/// snapshot, so they agree pixel for pixel; tick numbers only go up.</item>
 /// <item>A profile too large to draw within <see cref="FrameScale.MaxPixels"/> at any scale
-/// (<see cref="FrameScale.Normalize"/> null) is not drawn: its sinks are closed with
-/// <see cref="FrameSinkClosedReason.Unrenderable"/>.</item>
+/// (<see cref="FrameScale.Normalize"/> null; none within the document format's limits) is not drawn: its sinks are
+/// closed with <see cref="FrameSinkClosedReason.Unrenderable"/>.</item>
 /// </list>
 /// </summary>
 public sealed class RenderLoop
@@ -46,10 +47,9 @@ public sealed class RenderLoop
     private static readonly ILogger Logger = Log.ForContext<RenderLoop>();
 
     private readonly RenderService _service;
-    private readonly ProfileRenderer _renderer;
-    private readonly ProfileRenderState _state;
+    private readonly SceneRuntime _runtime;
     private readonly TimeProvider _time;
-    private readonly RenderOptions _options;
+    private readonly StatsOverlay _stats = new();
     private readonly Lock _sinkLock = new();
     private readonly List<AttachedSink> _sinks = [];
     private readonly Lock _tickLock = new();
@@ -60,22 +60,18 @@ public sealed class RenderLoop
     private bool _started;
     private bool _shutDown;
     private string? _lastError;
+    private Generation? _loaded;
+    private long? _firstTick;
 
-    internal RenderLoop(RenderService service, ProfileDocument document, ProfileRenderer renderer, ProfileRenderState state,
-        TimeProvider time, RenderOptions options)
+    internal RenderLoop(RenderService service, ProfileDocument document, SceneRuntime runtime, TimeProvider time)
     {
         _service = service;
         Document = document;
-        _renderer = renderer;
-        _state = state;
+        _runtime = runtime;
         _time = time;
-        _options = options;
     }
 
-    public Guid ProfileId => Document.Id;
-
-    /// <summary>What the loop draws with (<see cref="RenderService.RenderOnce"/> redraws its tick with the same).</summary>
-    internal RenderOptions Options => _options;
+    public string ProfileId => Document.Id;
 
     public ProfileDocument Document { get; }
 
@@ -145,7 +141,20 @@ public sealed class RenderLoop
         }
     }
 
-    /// <summary>Stops ticking and releases the bitmaps; the task completes when the loop has stopped.</summary>
+    /// <summary>The snapshot of the loop's latest tick, retained for the caller; null before the first tick or once stopped.</summary>
+    internal TickSnapshot? LatestSnapshot()
+    {
+        try
+        {
+            return _runtime.Current;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Stops ticking and releases the bitmaps and the runtime; the task completes when the loop has stopped.</summary>
     internal Task Stop()
     {
         _stop.Cancel();
@@ -214,7 +223,7 @@ public sealed class RenderLoop
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "The render loop of profile {ProfileGuid} stopped on an error", ProfileId);
+            Logger.Error(ex, "The render loop of profile {ProfileId} stopped on an error", ProfileId);
         }
         finally
         {
@@ -225,8 +234,8 @@ public sealed class RenderLoop
 
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
     {
-        // Saving changes neither pixels nor revision.
-        if (e.Change != DocumentChange.Saved)
+        // Saving and history eviction change neither pixels nor revision.
+        if (e.Change is not (DocumentChange.Saved or DocumentChange.History))
             Wake();
     }
 
@@ -241,6 +250,7 @@ public sealed class RenderLoop
             foreach (var surface in _surfaces.Values)
                 surface.Dispose();
             _surfaces.Clear();
+            _runtime.Dispose();
         }
     }
 
@@ -261,9 +271,9 @@ public sealed class RenderLoop
             }
             catch (Exception ex)
             {
-                // Drawing skips items that throw, so this is something else (out of memory, a disposed native object).
+                // The runtime draws a failing item as a placeholder, so this is something else (out of memory, a disposed native object).
                 if (ex.Message != _lastError)
-                    Logger.Error(ex, "A render tick of profile {ProfileGuid} failed", ProfileId);
+                    Logger.Error(ex, "A render tick of profile {ProfileId} failed", ProfileId);
                 _lastError = ex.Message;
                 return 0;
             }
@@ -316,50 +326,47 @@ public sealed class RenderLoop
             return 0;
 
         var includeBounds = due.Exists(d => d.Request.IncludeBounds);
-        List<(float Scale, Surface Surface, List<AttachedSink> Sinks)> groups = [];
-        IReadOnlyList<ItemBounds> bounds = [];
-        long tick = 0, revision = 0;
-        int profileWidth, profileHeight;
-        bool unrenderable;
+        var generation = Document.Current;
+        var profile = generation.Document.Profile;
+        var profileWidth = Math.Max(1, profile.Width);
+        var profileHeight = Math.Max(1, profile.Height);
 
-        lock (Document.SyncRoot)
+        // No scale fits the pixel cap (no canvas within the document format's limits): nothing is drawn.
+        if (FrameScale.Normalize(1, profileWidth, profileHeight) == null)
         {
-            var profile = Document.Profile;
-            profileWidth = Math.Max(1, profile.Width);
-            profileHeight = Math.Max(1, profile.Height);
-
-            // No scale fits the pixel cap (only a profile far over Workspace.MaxDimension): nothing is drawn.
-            unrenderable = FrameScale.Normalize(1, profileWidth, profileHeight) == null;
-            if (!unrenderable)
-            {
-                tick = ++_state.Tick;
-                revision = Document.Revision;
-
-                foreach (var group in due.GroupBy(d => FrameScale.Normalize(d.Request.Scale, profileWidth, profileHeight)!.Value))
-                {
-                    var surface = GetSurface(group.Key, profileWidth, profileHeight);
-                    surface.Canvas.Clear(SKColors.Transparent);
-                    _renderer.Draw(surface.Canvas, profile, Document.Items, _state, _options, group.Key);
-                    surface.Canvas.Flush();
-                    groups.Add((group.Key, surface, group.Select(d => d.Entry).ToList()));
-                }
-
-                if (includeBounds)
-                    bounds = _renderer.MeasureBounds(profile, Document.Items, _state);
-            }
-        }
-
-        if (unrenderable)
-        {
-            Logger.Warning("Profile {ProfileGuid} is {Width}×{Height}, too large to render within {MaxPixels} pixels at any scale; closing its sinks",
+            Logger.Warning("Profile {ProfileId} is {Width}×{Height}, too large to render within {MaxPixels} pixels at any scale; closing its sinks",
                 ProfileId, profileWidth, profileHeight, FrameScale.MaxPixels);
             DropUnusedSurfaces([], profileWidth, profileHeight);
             _service.CloseUnrenderable(this);
             return 0;
         }
 
+        if (!ReferenceEquals(generation, _loaded))
+        {
+            _runtime.Load(generation);
+            _loaded = generation;
+        }
+
+        _firstTick ??= now;
+        var tickStarted = _time.GetTimestamp();
+        using var snapshot = _runtime.Tick(_time.GetElapsedTime(_firstTick.Value, now).TotalSeconds, _time.GetUtcNow());
+        List<(float Scale, Surface Surface, List<AttachedSink> Sinks)> groups = [];
+        (string Left, string Right)? overlay = profile.StatsOverlay == true ? _stats.Text(profile.Name) : null;
+        foreach (var group in due.GroupBy(d => FrameScale.Normalize(d.Request.Scale, profileWidth, profileHeight)!.Value))
+        {
+            var surface = GetSurface(group.Key, profileWidth, profileHeight);
+            surface.Canvas.Clear(SKColors.Transparent);
+            snapshot.Draw(surface.Canvas, group.Key);
+            if (overlay != null)
+                StatsOverlay.Draw(surface.Canvas, group.Key, profileWidth, overlay.Value);
+            surface.Canvas.Flush();
+            groups.Add((group.Key, surface, group.Select(d => d.Entry).ToList()));
+        }
+
+        IReadOnlyList<ItemBounds> bounds = includeBounds ? snapshot.Bounds : [];
+        _stats.Record(_time.GetElapsedTime(tickStarted), _time.GetTimestamp(), _time);
         DropUnusedSurfaces(requests, profileWidth, profileHeight);
-        return Deliver(groups, bounds, tick, revision, profileWidth, profileHeight, now);
+        return Deliver(groups, bounds, snapshot.Tick, snapshot.Rev, profileWidth, profileHeight, now);
     }
 
     /// <summary>Hashes each group and hands its frame to the group's sinks that don't already have that content.</summary>
@@ -382,7 +389,7 @@ public sealed class RenderLoop
             var frame = new RenderedFrame(SKImage.FromPixels(surface.Bitmap.PeekPixels()))
             {
                 ProfileId = ProfileId,
-                Revision = revision,
+                Rev = revision,
                 FrameId = _service.NextFrameId(),
                 Tick = tick,
                 Scale = scale,
@@ -410,7 +417,7 @@ public sealed class RenderLoop
                     catch (Exception ex)
                     {
                         delivered++;
-                        Logger.Error(ex, "A frame sink of profile {ProfileGuid} failed", ProfileId);
+                        Logger.Error(ex, "A frame sink of profile {ProfileId} failed", ProfileId);
                     }
                 }
             }
@@ -474,26 +481,9 @@ public sealed class RenderLoop
         return TimeSpan.FromTicks(TimeSpan.TicksPerSecond / fps);
     }
 
-    /// <summary>The bounds as bytes for the content hash: id, x, y, w, h, rotation (little-endian) and the group flag.</summary>
-    private static byte[] BoundsBytes(IReadOnlyList<ItemBounds> bounds)
-    {
-        const int size = 16 + 5 * 4 + 1;
-        var bytes = new byte[bounds.Count * size];
-        var span = bytes.AsSpan();
-        foreach (var b in bounds)
-        {
-            b.Id.TryWriteBytes(span);
-            BinaryPrimitives.WriteSingleLittleEndian(span[16..], b.X);
-            BinaryPrimitives.WriteSingleLittleEndian(span[20..], b.Y);
-            BinaryPrimitives.WriteSingleLittleEndian(span[24..], b.W);
-            BinaryPrimitives.WriteSingleLittleEndian(span[28..], b.H);
-            BinaryPrimitives.WriteSingleLittleEndian(span[32..], b.Rotation);
-            span[36] = b.IsGroup ? (byte)1 : (byte)0;
-            span = span[size..];
-        }
-
-        return bytes;
-    }
+    /// <summary>The bounds as bytes for the content hash: their JSON, as the frame header carries them.</summary>
+    private static byte[] BoundsBytes(IReadOnlyList<ItemBounds> bounds) =>
+        bounds.Count == 0 ? [] : JsonSerializer.SerializeToUtf8Bytes(bounds, SpecJson.Options);
 
     /// <summary>A reused Rgba8888 premultiplied bitmap and its canvas, one per scale.</summary>
     private sealed class Surface : IDisposable

@@ -1,7 +1,7 @@
 using InfoPanel.Core.Tests.Golden;
-using InfoPanel.Drawing;
-using InfoPanel.Editing;
+using InfoPanel.Documents;
 using InfoPanel.Output;
+using InfoPanel.Scenes;
 using InfoPanel.Sensors;
 using SkiaSharp;
 using System.Diagnostics;
@@ -13,8 +13,9 @@ using Xunit;
 namespace InfoPanel.Core.Tests.Preview;
 
 /// <summary>
-/// Not a check: logs how long the preview path takes for the Wide bar example (1920×480) at scale 1 and 2, to the test
-/// output and <c>TestResults/preview-performance.txt</c>. It never fails on timings.
+/// Not a check: logs how long the preview path takes for the Wide bar example document (1920×480) at scale 1 and 2: a
+/// runtime tick, drawing the snapshot, its bounds, the hash and the PNG encoders, to the test output and
+/// <c>TestResults/preview-performance.txt</c>. It never fails on timings.
 /// </summary>
 public class PreviewPerformanceLog
 {
@@ -24,46 +25,52 @@ public class PreviewPerformanceLog
     [Fact]
     public void WideBar_RenderAndEncodeTimes()
     {
-        var (profile, items) = ExampleProfiles.WideBar();
+        var (_, bytes) = Workspace.ExampleDocuments().Single(e => e.Name == "wide-bar.document.json");
+        using var json = System.Text.Json.JsonDocument.Parse(bytes);
         using var mock = new MockSensorSource(42);
         var hub = new SensorHub([mock]);
         var history = new SensorHistory(hub, TimeProvider.System, hub.GetBackfill);
-        var renderer = new ProfileRenderer(hub, history, new FakeImageSource(), new FakeAssetLocator(Path.GetTempPath()), TimeProvider.System);
-        var state = new ProfileRenderState();
+        using var runtime = new SceneRuntime(new SceneRuntimeOptions { Inputs = new SensorSceneInputs(hub, history) });
+        runtime.Load(json.RootElement);
+        using var first = runtime.Snapshot(DateTimeOffset.UtcNow);
+        var (profileWidth, profileHeight) = (first.Width, first.Height);
+        var elapsed = 0.0;
 
         var report = new StringBuilder();
-        report.AppendLine(CultureInfo.InvariantCulture, $"Wide bar {profile.Width}x{profile.Height}, {Runs} runs after {Warmup} warm-up, {DateTime.UtcNow:u}, {Environment.OSVersion}, {Environment.ProcessorCount} cores");
+        report.AppendLine(CultureInfo.InvariantCulture, $"Wide bar {profileWidth}x{profileHeight}, {Runs} runs after {Warmup} warm-up, {DateTime.UtcNow:u}, {Environment.OSVersion}, {Environment.ProcessorCount} cores");
 
         foreach (var scale in new[] { 1f, 2f })
         {
-            var (width, height) = FrameScale.PixelSize(scale, profile.Width, profile.Height);
+            var (width, height) = FrameScale.PixelSize(scale, profileWidth, profileHeight);
             using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
             using var canvas = new SKCanvas(bitmap);
 
-            double render = 0, bounds = 0, hash = 0;
+            double ticking = 0, render = 0, bounds = 0, hash = 0;
             for (var i = 0; i < Warmup + Runs; i++)
             {
-                state.Tick++;
                 var start = Stopwatch.GetTimestamp();
+                using var snapshot = runtime.Tick(elapsed += 1.0 / 30, DateTimeOffset.UtcNow);
+                var ticked = Stopwatch.GetTimestamp();
                 canvas.Clear(SKColors.Transparent);
-                renderer.Draw(canvas, profile, items, state, RenderOptions.Default, scale);
+                snapshot.Draw(canvas, scale);
                 canvas.Flush();
                 var drawn = Stopwatch.GetTimestamp();
-                renderer.MeasureBounds(profile, items, state);
+                _ = snapshot.Bounds;
                 var measured = Stopwatch.GetTimestamp();
                 XxHash3.HashToUInt64(bitmap.GetPixelSpan());
                 var hashed = Stopwatch.GetTimestamp();
 
                 if (i >= Warmup)
                 {
-                    render += Stopwatch.GetElapsedTime(start, drawn).TotalMilliseconds;
+                    ticking += Stopwatch.GetElapsedTime(start, ticked).TotalMilliseconds;
+                    render += Stopwatch.GetElapsedTime(ticked, drawn).TotalMilliseconds;
                     bounds += Stopwatch.GetElapsedTime(drawn, measured).TotalMilliseconds;
                     hash += Stopwatch.GetElapsedTime(measured, hashed).TotalMilliseconds;
                 }
             }
 
             report.AppendLine(CultureInfo.InvariantCulture,
-                $"scale {scale} ({width}x{height}): render {render / Runs:F2} ms, bounds {bounds / Runs:F2} ms, hash {hash / Runs:F2} ms");
+                $"scale {scale} ({width}x{height}): tick {ticking / Runs:F2} ms, draw {render / Runs:F2} ms, bounds {bounds / Runs:F2} ms, hash {hash / Runs:F2} ms");
 
             using var pixmap = bitmap.PeekPixels();
             foreach (var (name, options) in new[]

@@ -3,6 +3,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using InfoPanel.Documents;
 using InfoPanel.Hosting;
 using InfoPanel.Output;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,28 +26,23 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     {
         var client = await PreviewClient.ConnectAsync(factory, Ct);
         var hello = await client.ReceiveTextAsync("hello", Ct);
-        Assert.Equal(1, hello.GetProperty("protocol").GetInt32());
+        Assert.Equal(2, hello.GetProperty("protocol").GetInt32());
         return client;
     }
 
-    private async Task<Guid> ExampleProfileId()
+    private async Task<string> ExampleProfileId()
     {
         using var api = factory.CreateApiClient();
         var profiles = await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct);
-        return profiles.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wide bar").GetProperty("id").GetGuid();
+        return profiles.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wide bar").GetProperty("id").GetString()!;
     }
 
-    /// <summary>A new 480×320 profile with one shape; returns its id and the shape's.</summary>
-    private async Task<(Guid Profile, string Shape)> CreateProfile(string name)
+    /// <summary>A new 480×320 profile with one shape, <c>shape</c>; returns its id and the shape's.</summary>
+    private async Task<(string Profile, string Shape)> CreateProfile(string name)
     {
         using var api = factory.CreateApiClient();
-        using var created = await api.PostAsJsonAsync("/api/profiles", new { name, width = 480, height = 320 }, Ct);
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetGuid();
-        using var added = await api.PostAsJsonAsync($"/api/profiles/{id}/items", new { kind = "shape" }, Ct);
-        Assert.Equal(HttpStatusCode.OK, added.StatusCode);
-        var shape = (await added.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("items")[0].GetProperty("id").GetString()!;
-        return (id, shape);
+        var id = await TestDocs.CreateAsync(api, TestDocs.Doc(name, 480, 320, TestDocs.Group("box", TestDocs.Scene("shape", 10, 10))), Ct);
+        return (id, "shape");
     }
 
     [Fact]
@@ -55,7 +52,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         Assert.Equal(EngineRuntime.WebSocketProtocol, client.Socket.SubProtocol);
 
         var first = await client.ReceiveAsync(Ct);
-        Assert.Equal("""{"type":"hello","protocol":1}""", first.Json!.Value.GetRawText());
+        Assert.Equal("""{"type":"hello","protocol":2}""", first.Json!.Value.GetRawText());
     }
 
     [Theory]
@@ -76,36 +73,40 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         await client.SendAsync(new { type = "subscribe", profileId = id, scale = 1, maxFps = 30 }, Ct);
 
         var doc = await client.ReceiveTextAsync("doc", Ct);
-        Assert.Equal(id, doc.GetProperty("profileId").GetGuid());
-        Assert.True(doc.GetProperty("revision").GetInt64() >= 1);
-        foreach (var key in new[] { "dirty", "canUndo", "canRedo" })
-            Assert.True(doc.GetProperty(key).ValueKind is JsonValueKind.True or JsonValueKind.False, key);
+        Assert.True(SpecSchemaValid(doc, "docEvent"));
+        Assert.Equal(id, doc.GetProperty("profileId").GetString());
+        Assert.True(doc.GetProperty("rev").GetInt64() >= 1);
 
         var (header, png) = await client.ReceiveFrameAsync(Ct);
         Assert.Equal(id, header.ProfileId);
         Assert.Equal("png", header.Encoding);
-        Assert.Equal((1f, 1920, 480, 1920, 480), (header.Scale, header.PixelWidth, header.PixelHeight, header.ProfileWidth, header.ProfileHeight));
+        Assert.Equal((1.0, 1920, 480, 1920, 480), (header.Scale, header.PixelWidth, header.PixelHeight, header.ProfileWidth, header.ProfileHeight));
+        Assert.Equal(doc.GetProperty("rev").GetInt64(), header.Rev);
+        Assert.True(header.Tick >= 1);
         Assert.True(png.Span.StartsWith(PngSignature));
-        Assert.NotEmpty(header.Bounds);
-        Assert.Contains(header.Bounds, b => b.IsGroup);
+        Assert.NotEmpty(header.ItemBounds);
+        Assert.Equal(header.ItemBounds.Count, header.ItemBounds.Select(b => b.Id).Distinct().Count());
 
         using var bitmap = SKBitmap.Decode(png.ToArray());
         Assert.Equal((1920, 480), (bitmap.Width, bitmap.Height));
     }
 
+    private static bool SpecSchemaValid(JsonElement body, string definition) =>
+        InfoPanel.Spec.SpecSchemas.Strict.Validate(body, InfoPanel.Spec.SpecSchemas.Api + "#/$defs/" + definition).IsValid;
+
     [Fact]
-    public async Task APatch_IsFollowedWithin500ms_ByAFrameOfThatRevision_AndADocEvent()
+    public async Task ACommit_IsFollowedWithin500ms_ByAFrameOfThatRevision_AndADocEvent()
     {
-        var (id, shape) = await CreateProfile("Patch preview");
+        var (id, shape) = await CreateProfile("Commit preview");
         await using var client = await Connect();
         await client.SendAsync(new { type = "subscribe", profileId = id, scale = 1, maxFps = 30 }, Ct);
         await client.ReceiveFrameAsync(Ct);
 
+        // Another client's edit: over the API, not this socket.
         using var api = factory.CreateApiClient();
-        using var response = await api.PatchAsJsonAsync($"/api/profiles/{id}/items",
-            new { patches = new[] { new { id = shape, set = new { x = 200 } } } }, Ct);
+        using var response = await TestDocs.CommitAsync(api, id, Ct, TestDocs.Place(shape, 200, 10));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var revision = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("revision").GetInt64();
+        var revision = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("rev").GetInt64();
         var acknowledged = Stopwatch.StartNew();
 
         var gotFrame = false;
@@ -113,12 +114,12 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         while (!(gotFrame && gotDoc))
         {
             var message = await client.ReceiveAsync(Ct, TimeSpan.FromMilliseconds(500) - acknowledged.Elapsed);
-            if (message.Frame is { } header && header.Revision >= revision)
+            if (message.Frame is { } header && header.Rev >= revision)
             {
-                Assert.Contains(header.Bounds, b => b.Id == Guid.Parse(shape) && b.X == 200);
+                Assert.Contains(header.ItemBounds, b => b.Id == shape && b.Frame.X == 200);
                 gotFrame = true;
             }
-            else if (message.Json is { } json && json.GetProperty("type").GetString() == "doc" && json.GetProperty("revision").GetInt64() >= revision)
+            else if (message.Json is { } json && json.GetProperty("type").GetString() == "doc" && json.GetProperty("rev").GetInt64() >= revision)
             {
                 Assert.True(json.GetProperty("dirty").GetBoolean());
                 Assert.True(json.GetProperty("canUndo").GetBoolean());
@@ -128,11 +129,70 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
 
         Assert.True(acknowledged.ElapsedMilliseconds < 500, $"{acknowledged.ElapsedMilliseconds} ms");
 
-        // Undo (another cause of a revision change) also sends a doc event.
-        using var undo = await api.PostAsync($"/api/profiles/{id}/undo", null, Ct);
-        var undone = (await undo.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("revision").GetInt64();
-        var doc = await client.ReceiveTextAsync("doc", Ct, d => d.GetProperty("revision").GetInt64() == undone);
+        // Undo (another cause of a revision change) also sends a doc event, and so does a save (dirty changes).
+        using var second = await TestDocs.CommitAsync(api, id, Ct, TestDocs.Place(shape, 300, 10));
+        var instance = await TestDocs.InstanceAsync(api, Ct);
+        var current = (await second.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("rev").GetInt64();
+        using var undo = await api.PostAsync($"/api/profiles/{id}/undo", TestDocs.Json(new JsonObject { ["instance"] = instance, ["baseRev"] = current }), Ct);
+        var undone = (await undo.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("rev").GetInt64();
+        var doc = await client.ReceiveTextAsync("doc", Ct, d => d.GetProperty("rev").GetInt64() == undone);
         Assert.True(doc.GetProperty("canRedo").GetBoolean());
+        Assert.True(doc.GetProperty("dirty").GetBoolean());
+
+        using var saved = await api.PostAsync($"/api/profiles/{id}/save", null, Ct);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        await client.ReceiveTextAsync("doc", Ct, d => d.GetProperty("rev").GetInt64() == undone && !d.GetProperty("dirty").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TwoSubscribers_BothGetTheDocEventOfAnEdit_AndFramesWhoseTicksNeverGoDown()
+    {
+        var (id, shape) = await CreateProfile("Two subscribers");
+        await using var one = await Connect();
+        await using var two = await Connect();
+        await one.SendAsync(new { type = "subscribe", profileId = id }, Ct);
+        await two.SendAsync(new { type = "subscribe", profileId = id }, Ct);
+        await one.ReceiveFrameAsync(Ct);
+        await two.ReceiveFrameAsync(Ct);
+
+        using var api = factory.CreateApiClient();
+        long revision = 0;
+        for (var x = 20; x <= 60; x += 20)
+        {
+            using var response = await TestDocs.CommitAsync(api, id, Ct, TestDocs.Place(shape, x, 10));
+            revision = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("rev").GetInt64();
+        }
+
+        foreach (var client in new[] { one, two })
+        {
+            await client.ReceiveTextAsync("doc", Ct, d => d.GetProperty("rev").GetInt64() == revision);
+            var ticks = new List<long>();
+            while (true)
+            {
+                var (header, _) = await client.ReceiveFrameAsync(Ct);
+                ticks.Add(header.Tick);
+                if (header.Rev == revision)
+                    break;
+            }
+            Assert.Equal(ticks.Order(), ticks);
+        }
+    }
+
+    [Fact]
+    public async Task SubscribingToAProfileThatCantBeOpened_IsAnError()
+    {
+        var workspace = factory.Services.GetRequiredService<Workspace>();
+        var id = TestDocs.NewId();
+        var folder = Path.Combine(factory.DataDir, "profiles", id);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "document.json"), """{"format":"infopanel.document/9"}""");
+        workspace.Documents.Open(); // lists the folder, as the next start would
+
+        await using var client = await Connect();
+        await client.SendAsync(new { type = "subscribe", profileId = id }, Ct);
+        var error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Contains("unsupported", error.GetProperty("message").GetString());
+        Assert.True(workspace.Delete(id));
     }
 
     [Fact]
@@ -145,7 +205,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         Assert.Equal((480, 320), (first.PixelWidth, first.PixelHeight));
 
         await client.SendAsync(new { type = "view", scale = 0.5, maxFps = 10 }, Ct);
-        var (half, png) = await client.ReceiveFrameAsync(Ct, h => h.Scale == 0.5f);
+        var (half, png) = await client.ReceiveFrameAsync(Ct, h => h.Scale == 0.5);
         Assert.Equal((240, 160), (half.PixelWidth, half.PixelHeight));
         using var bitmap = SKBitmap.Decode(png.ToArray());
         Assert.Equal(240, bitmap.Width);
@@ -160,9 +220,9 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     {
         await using var client = await Connect();
         using var api = factory.CreateApiClient();
-        var before = factory.Services.GetRequiredService<InfoPanel.Editing.Workspace>().Version;
+        var before = factory.Services.GetRequiredService<Workspace>().Version;
 
-        using var created = await api.PostAsJsonAsync("/api/profiles", new { name = "Profiles event", width = 100, height = 100 }, Ct);
+        using var created = await api.PostAsJsonAsync("/api/profiles", new { id = TestDocs.NewId(), name = "Profiles event", width = 100, height = 100 }, Ct);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
         var message = await client.ReceiveTextAsync("profiles", Ct, m => m.GetProperty("version").GetInt64() > before);
@@ -171,7 +231,8 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
 
     [Theory]
     [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000"}""", "No profile")]
-    [InlineData("""{"type":"subscribe","profileId":"nope"}""", "profileId")]
+    [InlineData("""{"type":"subscribe","profileId":"nope"}""", "No profile 'nope'")]
+    [InlineData("""{"type":"subscribe","profileId":7}""", "profileId")]
     [InlineData("""{"type":"subscribe"}""", "profileId")]
     [InlineData("""not json""", "JSON")]
     [InlineData("""[1]""", "JSON")]

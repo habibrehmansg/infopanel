@@ -23,7 +23,6 @@ public static class EngineCommandLine
         ["--data-dir"] = "DataDir",
         ["--web-root"] = "WebRoot",
         ["--token"] = "Token",
-        ["--import-v1"] = "ImportV1",
         ["--mock-seed"] = "MockSeed",
     };
 
@@ -66,7 +65,6 @@ public static class EngineCommandLine
           --allow-origin <url>  Exact origin of a web client served elsewhere that may call the
                                 engine cross-origin (CORS, /ws), e.g. https://client.example; http
                                 only on a loopback host (repeatable)
-          --import-v1 <dir>     Import a 1.x data folder at start-up
           --fresh               Wipe the data folder first (needs --data-dir)
           --mock                Mock sensors, and simulated values for sensors no source has
           --mock-seed <n>       Seed for the mock sensors (implies --mock)

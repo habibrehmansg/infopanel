@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using InfoPanel.Hosting;
 using InfoPanel.Preview;
+using InfoPanel.Spec;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 

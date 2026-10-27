@@ -1,11 +1,10 @@
 using System.Collections.Concurrent;
-using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Desktop;
-using InfoPanel.Editing;
-using InfoPanel.Models;
+using InfoPanel.Documents;
 using InfoPanel.Output;
-using InfoPanel.Persistence;
+using InfoPanel.Spec;
 using InfoPanel.Tests.Preview;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -18,7 +17,8 @@ namespace InfoPanel.Tests.Desktop;
 
 /// <summary>
 /// <see cref="DisplayWindowManager"/> on the engine host with a <see cref="FakeDesktopPlatform"/>, a manual clock and
-/// hand-driven render loops, and the manager's log captured. Displays: "Built-in" (1512×982 points at 2×, the primary) and "External" (2560×1440 at
+/// hand-driven render loops, and the manager's log captured. The data folder starts with "Wide bar" (1920×480, its
+/// desktop window enabled). Displays: "Built-in" (1512×982 points at 2×, the primary) and "External" (2560×1440 at
 /// 1×, above and to the left).
 /// </summary>
 public sealed class DisplayWindowManagerTests : IAsyncLifetime
@@ -34,10 +34,26 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     private FakeDesktopPlatform _platform = new(BuiltIn, External);
     private WebApplicationFactory<Program> _factory = null!;
 
+    private const string WideBarId = "7d3e2a10-5b4c-4e8f-9a1b-2c3d4e5f6a70";
+
     public ValueTask InitializeAsync()
     {
+        var wideBar = TestDocs.Doc("Wide bar", 1920, 480, TestDocs.Scene("bar", 10, 10, TestDocs.Rect("#ff0000", 400, 40)));
+        wideBar["id"] = WideBarId;
+        wideBar["profile"]!["window"] = new JsonObject { ["enabled"] = true };
+        Seed(WideBarId, wideBar.ToJsonString());
         _factory = Create(_platform);
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Stores a document in the data folder before the host starts (the store lists every profile folder).</summary>
+    private void Seed(string id, string json)
+    {
+        var folder = Path.Combine(_base.DataDir, "profiles", id);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "document.json"), json);
+        if (!File.Exists(Path.Combine(_base.DataDir, "profiles.json")))
+            File.WriteAllText(Path.Combine(_base.DataDir, "profiles.json"), $$"""{"order":["{{id}}"]}""");
     }
 
     public async ValueTask DisposeAsync()
@@ -67,23 +83,61 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
 
     private RenderService Render => _factory.Services.GetRequiredService<RenderService>();
 
-    /// <summary>Starts the host and waits for the manager's first pass; returns the example profile.</summary>
+    /// <summary>Starts the host and waits for the manager's first pass; returns "Wide bar".</summary>
     private async Task<ProfileDocument> Start()
     {
         _ = _factory.Services;
         await _platform.IdleAsync();
-        var id = Workspace.ListProfiles().Single(p => p.Name == "Wide bar").Id;
-        return Workspace.Open(id)!;
+        return Workspace.Open(WideBarId)!;
     }
 
-    private Task<FakeWindow?> WindowOf(Guid id) => _platform.InvokeAsync(() => Manager.WindowOf(id) as FakeWindow);
+    private Task<FakeWindow?> WindowOf(string id) => _platform.InvokeAsync(() => Manager.WindowOf(id) as FakeWindow);
 
-    private async Task<FakeWindow> RequireWindow(Guid id) => await WindowOf(id) ?? throw new Xunit.Sdk.XunitException($"No window for {id}");
+    private async Task<FakeWindow> RequireWindow(string id) => await WindowOf(id) ?? throw new Xunit.Sdk.XunitException($"No window for {id}");
 
+    private static DocumentProfile P(ProfileDocument doc) => doc.Current.Document.Profile;
+
+    private static WindowSettings W(ProfileDocument doc) => P(doc).Window!;
+
+    /// <summary>
+    /// A client's <c>profile</c> commit: <c>width</c> and <c>height</c> set on the profile, every other member of
+    /// <paramref name="set"/> on its <c>window</c> (the rest of the window kept).
+    /// </summary>
     private async Task Patch(ProfileDocument doc, JsonObject set)
     {
-        doc.PatchProfile(set);
+        var window = JsonNode.Parse(JsonSerializer.Serialize(P(doc).Window ?? new WindowSettings { Enabled = true }, SpecJson.Options))!.AsObject();
+        var profile = new JsonObject();
+        foreach (var (key, value) in set)
+        {
+            if (key is "width" or "height")
+                profile[key] = value?.DeepClone();
+            else
+                window[key] = value?.DeepClone();
+        }
+
+        profile["window"] = window;
+        TestDocs.Commit(doc, TestDocs.Profile(profile));
         await _platform.IdleAsync();
+    }
+
+    /// <summary>A client's commit of the window's place on <paramref name="display"/> (as a drag writes it).</summary>
+    private static void PlaceOn(ProfileDocument doc, int x, int y, DisplayInfo display)
+    {
+        var window = (P(doc).Window ?? new WindowSettings { Enabled = true }) with { X = x, Y = y, Display = DisplayMatcher.TargetOf(display) };
+        var json = JsonNode.Parse(JsonSerializer.Serialize(window, SpecJson.Options))!;
+        TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = json }));
+    }
+
+    private static void Undo(ProfileDocument doc) => Assert.NotNull(doc.Undo(new HistoryRequest { Instance = doc.Instance, BaseRev = doc.Rev }).Result);
+
+    private static void Redo(ProfileDocument doc) => Assert.NotNull(doc.Redo(new HistoryRequest { Instance = doc.Instance, BaseRev = doc.Rev }).Result);
+
+    /// <summary>A new profile with its desktop window enabled; returns its id.</summary>
+    private string CreateActive(string name, int width, int height)
+    {
+        var doc = TestDocs.Doc(name, width, height);
+        doc["profile"]!["window"] = new JsonObject { ["enabled"] = true };
+        return TestDocs.Create(Workspace, doc);
     }
 
     private static PointRect Rect(double x, double y, double w, double h) => new(x, y, w, h);
@@ -99,7 +153,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         Assert.True(window.Visible);
         Assert.Equal(Rect(0, 0, 960, 240), window.Frame); // 1920×480 pixels at 2×
         Assert.Equal(new DesktopWindowStyle(Topmost: false, Movable: true, Resizable: true), window.Style);
-        Assert.Equal(1, doc.Revision);
+        Assert.Equal(1, doc.Rev);
         Assert.True(Render.IsRendering(doc.Id));
         AssertNoErrors();
     }
@@ -110,21 +164,21 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         var doc = await Start();
         var first = await RequireWindow(doc.Id);
 
-        await Patch(doc, new JsonObject { ["active"] = false });
+        await Patch(doc, new JsonObject { ["enabled"] = false });
         Assert.True(first.Disposed);
         Assert.Null(await WindowOf(doc.Id));
         Assert.False(Render.IsRendering(doc.Id));
 
-        await Patch(doc, new JsonObject { ["active"] = true });
+        await Patch(doc, new JsonObject { ["enabled"] = true });
         var second = await RequireWindow(doc.Id);
         Assert.NotSame(first, second);
         Assert.True(second.Visible);
 
         // Undo turns it off again; redo on.
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
         Assert.Null(await WindowOf(doc.Id));
-        doc.Redo();
+        Redo(doc);
         await _platform.IdleAsync();
         Assert.NotNull(await WindowOf(doc.Id));
         AssertNoErrors();
@@ -134,15 +188,15 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     public async Task AProfileCreatedActive_GetsAWindow_AndLosesItWhenDeleted()
     {
         await Start();
-        var created = Workspace.Create("New", 100, 50);
+        var created = CreateActive("New", 100, 50);
         await _platform.IdleAsync();
-        var window = await RequireWindow(created.Id);
+        var window = await RequireWindow(created);
         Assert.Equal(Rect(0, 0, 50, 25), window.Frame);
 
-        Workspace.Delete(created.Id);
+        Workspace.Delete(created);
         await _platform.IdleAsync();
         Assert.True(window.Disposed);
-        Assert.Null(await WindowOf(created.Id));
+        Assert.Null(await WindowOf(created));
         AssertNoErrors();
     }
 
@@ -150,7 +204,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     public async Task Shutdown_ClosesEveryWindow()
     {
         await Start();
-        Workspace.Create("Second", 100, 50);
+        CreateActive("Second", 100, 50);
         await _platform.IdleAsync();
         var windows = await _platform.InvokeAsync(() => _platform.Created.ToList());
         Assert.Equal(2, windows.Count);
@@ -166,7 +220,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
 
-        await Patch(doc, new JsonObject { ["topmost"] = true, ["drag"] = false, ["resize"] = false });
+        await Patch(doc, new JsonObject { ["topmost"] = true, ["draggable"] = false, ["resizable"] = false });
         Assert.Equal(new DesktopWindowStyle(Topmost: true, Movable: false, Resizable: false), window.Style);
 
         await Patch(doc, new JsonObject { ["width"] = 1000, ["height"] = 300 });
@@ -181,21 +235,21 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
 
-        await Patch(doc, new JsonObject { ["windowX"] = 200, ["windowY"] = 100 });
+        await Patch(doc, new JsonObject { ["x"] = 200, ["y"] = 100 });
         Assert.Equal(Rect(100, 50, 960, 240), window.Frame); // pixels of the 2× display
 
-        doc.PlaceWindow(new WindowPlacement(30, 40, new TargetWindow(-408, -1440, 2560, 1440, "External")));
+        PlaceOn(doc, 30, 40, External);
         await _platform.IdleAsync();
         Assert.Equal(Rect(-378, -1400, 1920, 480), window.Frame); // the 1× display: one point per pixel
 
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
         Assert.Equal(Rect(100, 50, 960, 240), window.Frame);
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
         Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
-        doc.Redo();
-        doc.Redo();
+        Redo(doc);
+        Redo(doc);
         await _platform.IdleAsync();
         Assert.Equal(Rect(-378, -1400, 1920, 480), window.Frame);
         AssertNoErrors();
@@ -206,11 +260,11 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
-        doc.PlaceWindow(new WindowPlacement(10, 20, new TargetWindow(-408, -1440, 2560, 1440, "External")));
-        await Patch(doc, new JsonObject { ["strictWindowMatching"] = true });
+        PlaceOn(doc, 10, 20, External);
+        await Patch(doc, new JsonObject { ["strict"] = true });
         Assert.True(window.Visible);
         Assert.Equal(Rect(-398, -1420, 1920, 480), window.Frame);
-        var revision = doc.Revision;
+        var revision = doc.Rev;
 
         await _platform.ChangeDisplaysAsync(BuiltIn); // unplugged
         Assert.False(window.Visible);
@@ -221,11 +275,11 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         Assert.Equal(Rect(-398, -1420, 1920, 480), window.Frame);
 
         // Not strict: without its display the window goes to the first one, at the same offset.
-        await Patch(doc, new JsonObject { ["strictWindowMatching"] = false });
+        await Patch(doc, new JsonObject { ["strict"] = false });
         await _platform.ChangeDisplaysAsync(BuiltIn);
         Assert.True(window.Visible);
         Assert.Equal(Rect(5, 10, 960, 240), window.Frame);
-        Assert.Equal(revision + 1, doc.Revision); // display changes never edit the profile
+        Assert.Equal(revision + 1, doc.Rev); // display changes never edit the profile
         AssertNoErrors();
     }
 
@@ -239,30 +293,50 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
         await _platform.IdleAsync();
 
-        Assert.Equal(2, doc.Revision);
+        Assert.Equal(2, doc.Rev);
         Assert.True(doc.Dirty);
         Assert.True(doc.CanUndo);
-        TargetWindow target;
-        lock (doc.SyncRoot)
-        {
-            Assert.Equal((120, 64), (doc.Profile.WindowX, doc.Profile.WindowY));
-            target = doc.Profile.TargetWindow!;
-        }
-
-        Assert.Equal((-408, -1440, 2560, 1440, "External"), (target.X, target.Y, target.Width, target.Height, target.DeviceName));
+        Assert.Equal((120, 64), (W(doc).X, W(doc).Y));
+        var target = W(doc).Display!;
+        Assert.Equal((-408, -1440, 2560, 1440, "External"), (target.X, target.Y, target.Width, target.Height, target.Name));
 
         // On the 1× display the window is resized to keep its pixels (the manager's own change, not an edit).
         Assert.Equal(Rect(-288, -1376, 1920, 480), window.Frame);
-        Assert.Equal(2, doc.Revision);
+        Assert.Equal(2, doc.Rev);
         Assert.True(window.FrameChanges > changes);
 
-        Assert.NotNull(Workspace.Save(doc.Id));
-        var saved = Workspace.Store.LoadProfiles().Single(p => p.Guid == doc.Id);
-        Assert.Equal((120, 64, "External", 2560), (saved.WindowX, saved.WindowY, saved.TargetWindow?.DeviceName, saved.TargetWindow?.Width));
+        doc.Save();
+        var saved = JsonNode.Parse(File.ReadAllText(Path.Combine(_base.DataDir, "profiles", doc.Id, "document.json")))!["profile"]!["window"]!;
+        Assert.Equal((120, 64, "External", 2560), (saved["x"]!.GetValue<int>(), saved["y"]!.GetValue<int>(), saved["display"]!["name"]!.GetValue<string>(), saved["display"]!["width"]!.GetValue<int>()));
 
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
         Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ADrag_WhileAnotherClientChangesTheWindow_KeepsThatChange_AndIsOneUndoableStep()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        // After the drop read the profile, before its commit: another client makes the window floating and fixed-size.
+        Manager.BeforeCommit = _ =>
+        {
+            Manager.BeforeCommit = null;
+            var changed = JsonNode.Parse(JsonSerializer.Serialize(W(doc) with { Topmost = true, Resizable = false }, SpecJson.Options))!;
+            TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = changed }));
+        };
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal((3L, 120, 64, "External", true, false), (doc.Rev, W(doc).X, W(doc).Y, W(doc).Display!.Name, W(doc).Topmost, W(doc).Resizable));
+
+        // Undoing the drag leaves the other client's change.
+        Undo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal((null, true, false), (W(doc).Display, W(doc).Topmost, W(doc).Resizable));
         AssertNoErrors();
     }
 
@@ -271,14 +345,14 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
-        doc.PlaceWindow(new WindowPlacement(0, 0, new TargetWindow(0, 0, 3024, 1964, "Built-in")));
+        PlaceOn(doc, 0, 0, BuiltIn);
         await _platform.IdleAsync();
-        var revision = doc.Revision;
+        var revision = doc.Rev;
 
         // Less than half a pixel away: the same WindowX and WindowY.
         await _platform.InvokeAsync(() => window.UserMove(Rect(0.2, 0.2, 960, 240)));
         await _platform.IdleAsync();
-        Assert.Equal(revision, doc.Revision);
+        Assert.Equal(revision, doc.Rev);
         Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
         AssertNoErrors();
     }
@@ -297,20 +371,19 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         });
         await _platform.IdleAsync();
         Assert.Equal(Rect(-288, -1376, 960, 240), window.Frame);
-        Assert.Equal(1, doc.Revision);
+        Assert.Equal(1, doc.Rev);
 
         // Still mid-drag, another profile is created and a display is plugged in: both reconcile every window.
-        Workspace.Create("Second", 100, 50);
+        CreateActive("Second", 100, 50);
         await _platform.IdleAsync();
         await _platform.ChangeDisplaysAsync(BuiltIn, External, new DisplayInfo("Projector", Rect(1512, 0, 1920, 1080), 1));
         Assert.Equal(Rect(-288, -1376, 960, 240), window.Frame);
-        Assert.Equal(1, doc.Revision);
+        Assert.Equal(1, doc.Rev);
 
         await _platform.InvokeAsync(window.EndUserMove);
         await _platform.IdleAsync();
-        Assert.Equal(2, doc.Revision);
-        lock (doc.SyncRoot)
-            Assert.Equal((120, 64, "External"), (doc.Profile.WindowX, doc.Profile.WindowY, doc.Profile.TargetWindow?.DeviceName));
+        Assert.Equal(2, doc.Rev);
+                Assert.Equal((120, 64, "External"), (W(doc).X, W(doc).Y, W(doc).Display?.Name));
         Assert.Equal(Rect(-288, -1376, 1920, 480), window.Frame);
         Assert.Single(_log.Messages, m => m.Contains(" moved "));
         AssertNoErrors();
@@ -332,7 +405,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         await _platform.InvokeAsync(window.EndUserMove);
         await _platform.IdleAsync();
         Assert.Equal(Rect(0, 0, 1920, 480), window.Frame); // 1920×480 pixels at 1×
-        Assert.Equal(1, doc.Revision);
+        Assert.Equal(1, doc.Rev);
         Assert.False(doc.CanUndo);
         Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
 
@@ -345,7 +418,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         });
         await _platform.IdleAsync();
         Assert.Equal(changes, await _platform.InvokeAsync(() => window.FrameChanges));
-        Assert.Equal(1, doc.Revision);
+        Assert.Equal(1, doc.Rev);
         Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
         AssertNoErrors();
     }
@@ -362,15 +435,14 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         _clock.Advance(TimeSpan.FromMilliseconds(200));
         await _platform.InvokeAsync(() => window.UserResize(Rect(0, 0, 700.5, 260)));
         await _platform.IdleAsync();
-        Assert.Equal(1, doc.Revision);
+        Assert.Equal(1, doc.Rev);
 
         _clock.Advance(DisplayWindowManager.ResizeQuiet);
         await _platform.IdleAsync();
         await _platform.IdleAsync();
-        Assert.Equal(2, doc.Revision);
+        Assert.Equal(2, doc.Rev);
         Assert.True(doc.Dirty);
-        lock (doc.SyncRoot)
-            Assert.Equal((1401, 520, 0, 0), (doc.Profile.Width, doc.Profile.Height, doc.Profile.WindowX, doc.Profile.WindowY));
+                Assert.Equal((1401, 520, 0, 0), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y));
         Assert.Equal(Rect(0, 0, 700.5, 260), window.Frame);
 
         // A resize from the top-left edge also moves the position.
@@ -378,11 +450,10 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         _clock.Advance(DisplayWindowManager.ResizeQuiet);
         await _platform.IdleAsync();
         await _platform.IdleAsync();
-        Assert.Equal(3, doc.Revision);
-        lock (doc.SyncRoot)
-            Assert.Equal((1381, 510, 20, 10), (doc.Profile.Width, doc.Profile.Height, doc.Profile.WindowX, doc.Profile.WindowY));
+        Assert.Equal(3, doc.Rev);
+                Assert.Equal((1381, 510, 20, 10), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y));
 
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
         Assert.Equal(Rect(0, 0, 700.5, 260), window.Frame);
         AssertNoErrors();
@@ -403,14 +474,13 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
             window.EndUserMove();
         });
         await _platform.IdleAsync();
-        Assert.Equal(1, doc.Revision);
+        Assert.Equal(1, doc.Rev);
 
         _clock.Advance(DisplayWindowManager.ResizeQuiet);
         await _platform.IdleAsync();
         await _platform.IdleAsync();
-        Assert.Equal(2, doc.Revision);
-        lock (doc.SyncRoot)
-            Assert.Equal((1900, 480, 20, 0), (doc.Profile.Width, doc.Profile.Height, doc.Profile.WindowX, doc.Profile.WindowY));
+        Assert.Equal(2, doc.Rev);
+                Assert.Equal((1900, 480, 20, 0), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y));
         Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
         AssertNoErrors();
     }
@@ -431,14 +501,13 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         gate.Set();
         await next;
         await _platform.IdleAsync();
-        Assert.Equal(1, doc.Revision);
+        Assert.Equal(1, doc.Rev);
 
         _clock.Advance(DisplayWindowManager.ResizeQuiet);
         await _platform.IdleAsync();
         await _platform.IdleAsync();
-        Assert.Equal(2, doc.Revision);
-        lock (doc.SyncRoot)
-            Assert.Equal((1600, 500), (doc.Profile.Width, doc.Profile.Height));
+        Assert.Equal(2, doc.Rev);
+                Assert.Equal((1600, 500), (P(doc).Width, P(doc).Height));
         AssertNoErrors();
     }
 
@@ -457,15 +526,15 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         _clock.Advance(DisplayWindowManager.ResizeQuiet);
         await _platform.IdleAsync();
         await _platform.IdleAsync();
-        Assert.Equal(2, doc.Revision);
+        Assert.Equal(2, doc.Rev);
 
         await _platform.InvokeAsync(window.EndUserMove);
         await _platform.IdleAsync();
-        Assert.Equal(2, doc.Revision);
+        Assert.Equal(2, doc.Rev);
         Assert.Equal(Rect(0, 0, 900, 240), window.Frame);
         Assert.DoesNotContain(_log.Messages, m => m.Contains(" moved "));
 
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
         Assert.False(doc.CanUndo);
         Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
@@ -487,26 +556,24 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         });
         await _platform.InvokeAsync(() => window.UserMove(Rect(100, 50, 900, 240)));
         await _platform.IdleAsync();
-        Assert.Equal(3, doc.Revision);
-        lock (doc.SyncRoot)
-            Assert.Equal((1800, 480, 200, 100), (doc.Profile.Width, doc.Profile.Height, doc.Profile.WindowX, doc.Profile.WindowY));
+        Assert.Equal(3, doc.Rev);
+                Assert.Equal((1800, 480, 200, 100), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y));
         Assert.Equal(Rect(100, 50, 900, 240), window.Frame);
 
         // The resize's timer has nothing left to commit.
         _clock.Advance(DisplayWindowManager.ResizeQuiet);
         await _platform.IdleAsync();
         await _platform.IdleAsync();
-        Assert.Equal(3, doc.Revision);
+        Assert.Equal(3, doc.Rev);
 
         // Undo takes back the drag alone, then the resize.
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
-        lock (doc.SyncRoot)
-            Assert.Equal((1800, 480, 0, 0), (doc.Profile.Width, doc.Profile.Height, doc.Profile.WindowX, doc.Profile.WindowY));
+                Assert.Equal((1800, 480, 0, 0), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y));
         Assert.Equal(Rect(0, 0, 900, 240), window.Frame);
         Assert.True(doc.CanUndo);
 
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
         Assert.False(doc.CanUndo);
         Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
@@ -518,10 +585,10 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
-        doc.PlaceWindow(new WindowPlacement(10, 20, new TargetWindow(-408, -1440, 2560, 1440, "External")));
+        PlaceOn(doc, 10, 20, External);
         await _platform.IdleAsync();
         Assert.Equal(Rect(-398, -1420, 1920, 480), window.Frame);
-        var revision = doc.Revision;
+        var revision = doc.Rev;
 
         // The button goes down on the window and its display is unplugged before it is up: the system moves the window
         // onto the built-in display, under the still pressed button.
@@ -531,9 +598,8 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
 
         await _platform.InvokeAsync(window.EndUserMove);
         await _platform.IdleAsync();
-        Assert.Equal(revision, doc.Revision);
-        lock (doc.SyncRoot)
-            Assert.Equal((10, 20, "External"), (doc.Profile.WindowX, doc.Profile.WindowY, doc.Profile.TargetWindow?.DeviceName));
+        Assert.Equal(revision, doc.Rev);
+                Assert.Equal((10, 20, "External"), (W(doc).X, W(doc).Y, W(doc).Display?.Name));
 
         // Not strict: without its display the window goes to the first one, at the same offset.
         Assert.True(window.Visible);
@@ -569,21 +635,21 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Makes a profile unreadable through Unix file modes.");
 
-        // Listed first, so that today's pass reaches it before the readable one.
-        var store = new ProfileStore(new DataPaths(_base.DataDir));
-        var unreadable = new Profile("Unreadable", 100, 50);
-        var readable = new Profile("Readable", 200, 100);
-        store.AddProfile(unreadable, []);
-        store.AddProfile(readable, []);
+        var unreadable = TestDocs.NewId();
+        var readable = TestDocs.Doc("Readable", 200, 100);
+        readable["profile"]!["window"] = new JsonObject { ["enabled"] = true };
+        Seed(unreadable, TestDocs.Doc("Unreadable", 100, 50).ToJsonString());
+        Seed(readable["id"]!.GetValue<string>(), readable.ToJsonString());
         if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(store.Paths.ProfileItemsFile(unreadable.Guid), UnixFileMode.None);
+            File.SetUnixFileMode(Path.Combine(_base.DataDir, "profiles", unreadable, "document.json"), UnixFileMode.None);
 
         _ = _factory.Services;
         await _platform.IdleAsync();
 
-        var window = await RequireWindow(readable.Guid);
+        var window = await RequireWindow(readable["id"]!.GetValue<string>());
         Assert.True(window.Visible);
-        Assert.Null(await WindowOf(unreadable.Guid));
+        Assert.Null(await WindowOf(unreadable));
+        Assert.Equal(("unreadable", "io"), (Workspace.Entry(unreadable)!.Status, Workspace.Entry(unreadable)!.Problem!.Code));
         AssertNoErrors();
     }
 
@@ -593,13 +659,13 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
 
-        await Patch(doc, new JsonObject { ["windowX"] = 50 });
+        await Patch(doc, new JsonObject { ["x"] = 50 });
         await _platform.ChangeDisplaysAsync(External, BuiltIn);
         await _platform.ChangeDisplaysAsync(BuiltIn, External);
         _clock.Advance(TimeSpan.FromSeconds(5));
         await _platform.IdleAsync();
 
-        Assert.Equal(2, doc.Revision);
+        Assert.Equal(2, doc.Rev);
         Assert.True(window.FrameChanges >= 2);
         AssertNoErrors();
     }
@@ -636,7 +702,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
 
         var shown = await _platform.InvokeAsync(() => window.LastFrame);
         Assert.NotNull(shown);
-        Assert.Equal((1f, 1920, 480), (header.Scale, header.PixelWidth, header.PixelHeight));
+        Assert.Equal((1.0, 1920, 480), (header.Scale, header.PixelWidth, header.PixelHeight));
         Assert.Equal((1920, 480), (shown.Width, shown.Height));
 
         using var decoded = SKBitmap.Decode(png.ToArray(), new SKImageInfo(1920, 480, SKColorType.Rgba8888, SKAlphaType.Unpremul));
@@ -652,9 +718,9 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     public async Task AFrameWithUnchangedPixels_IsNotCopiedAgain()
     {
         await Start();
-        var created = Workspace.Create("Plain", 64, 32); // nothing on it moves
+        var created = CreateActive("Plain", 64, 32); // nothing on it moves
         await _platform.IdleAsync();
-        var doc = Workspace.Open(created.Id)!;
+        var doc = Workspace.Open(created)!;
         var window = await RequireWindow(doc.Id);
         var sink = await _platform.InvokeAsync(() => Manager.SinkOf(doc.Id)!);
         Assert.Equal(1, Render.Tick(doc.Id));
@@ -675,10 +741,10 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     public async Task AProfileOverTheFramePixelCap_IsRenderedSmaller_AndStretchedToFillItsWindow()
     {
         await Start();
-        var created = Workspace.Create("Huge", 4097, 4096); // 16 781 312 pixels: over FrameScale.MaxPixels at scale 1
+        var created = CreateActive("Huge", 4097, 4096); // 16 781 312 pixels: over FrameScale.MaxPixels at scale 1
         await _platform.IdleAsync();
-        var window = await RequireWindow(created.Id);
-        Assert.Equal(1, Render.Tick(created.Id));
+        var window = await RequireWindow(created);
+        Assert.Equal(1, Render.Tick(created));
         await _platform.IdleAsync();
 
         var (shown, backing, frame) = await _platform.InvokeAsync(() => (window.LastFrame, window.BackingScale, window.Frame));
@@ -697,9 +763,9 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     public async Task AResizeAcrossTheFramePixelCap_WithUnchangedPixels_ReachesTheWindowAtItsNewScale()
     {
         await Start();
-        var created = Workspace.Create("Square", 4096, 4096); // exactly FrameScale.MaxPixels: scale 1
+        var created = CreateActive("Square", 4096, 4096); // exactly FrameScale.MaxPixels: scale 1
         await _platform.IdleAsync();
-        var doc = Workspace.Open(created.Id)!;
+        var doc = Workspace.Open(created)!;
         var window = await RequireWindow(doc.Id);
 
         async Task<float> ShownScale()
@@ -721,10 +787,10 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         await Patch(doc, new JsonObject { ["width"] = 4096, ["height"] = 4096 });
         Assert.Equal(1f, await ShownScale());
 
-        doc.Undo();
+        Undo(doc);
         await _platform.IdleAsync();
         Assert.Equal(0.5f, await ShownScale());
-        doc.Redo();
+        Redo(doc);
         await _platform.IdleAsync();
         Assert.Equal(1f, await ShownScale());
         AssertNoErrors();

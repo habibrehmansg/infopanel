@@ -5,20 +5,23 @@ namespace InfoPanel.Hosting;
 /// <summary>Start-up chores on the data folder.</summary>
 public static partial class DataFolder
 {
-    /// <summary>Top-level files the engine writes in its data folder.</summary>
+    /// <summary>
+    /// Top-level files the engine writes in its data folder: the 2.0 store's profile order, the runtime file and the
+    /// lock, and step-1's profile list (which this engine leaves alone).
+    /// </summary>
     private static readonly HashSet<string> EngineFiles = new(StringComparer.OrdinalIgnoreCase)
     {
-        "profiles.xml", "runtime.json", "engine.lock",
+        "profiles.json", "runtime.json", "engine.lock", "profiles.xml",
     };
 
-    /// <summary>Top-level folders the engine writes in its data folder.</summary>
+    /// <summary>Top-level folders the engine writes in its data folder (<c>assets</c> is step-1's).</summary>
     private static readonly HashSet<string> EngineFolders = new(StringComparer.OrdinalIgnoreCase)
     {
-        "profiles", "assets", "fonts", "logs",
+        "profiles", "blobs", "fonts", "logs", "assets",
     };
 
     /// <summary>A temp file left by an interrupted write of an engine file (<c>{name}.{guid:N}.tmp</c>).</summary>
-    [GeneratedRegex("^(profiles\\.xml|runtime\\.json)\\.[0-9a-f]{32}\\.tmp$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("^(profiles\\.json|profiles\\.xml|runtime\\.json)\\.[0-9a-f]{32}\\.tmp$", RegexOptions.IgnoreCase)]
     private static partial Regex EngineTempFile();
 
     /// <summary>Owner-only (0700) for folders the engine creates on Unix.</summary>
@@ -93,9 +96,9 @@ public static partial class DataFolder
     /// <summary>
     /// Whether <c>--fresh</c> may wipe <paramref name="root"/>: null when it may, else why not. Checked on the real
     /// path (links resolved): it must not be a filesystem root, the home folder or a folder above it, and it may hold
-    /// only what the engine itself writes there (<c>profiles.xml</c>, <c>profiles/</c>, <c>assets/</c>,
-    /// <c>fonts/</c>, <c>logs/</c>, <c>runtime.json</c>, <c>engine.lock</c> and their write temp files). A folder
-    /// that doesn't exist yet may be wiped.
+    /// only what the engine writes there (<c>profiles.json</c>, <c>profiles/</c>, <c>blobs/</c>, <c>fonts/</c>,
+    /// <c>logs/</c>, <c>runtime.json</c>, <c>engine.lock</c>, step-1's <c>profiles.xml</c> and <c>assets/</c>, and their
+    /// write temp files). A folder that doesn't exist yet may be wiped.
     /// </summary>
     public static string? CheckWipeable(string root)
     {

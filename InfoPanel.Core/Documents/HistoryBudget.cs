@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -7,7 +8,8 @@ namespace InfoPanel.Documents;
 /// The process's undo history budget (spec/docs/limits.md, process budgets: 256 MiB for all documents together): every
 /// document's history steps in the order they were recorded, oldest evicted first when the total is over. Has its own
 /// lock, taken only after a document's (never the other way round): eviction clears the step's pointer and never takes
-/// a document's lock, and the document drops the step when it next looks.
+/// a document's lock, and the document drops the step when it next looks. The owners of evicted steps are told by
+/// <see cref="NotifyEvicted"/>, outside every lock, so a document whose last step went can say it has nothing to undo.
 /// </summary>
 public sealed class HistoryBudget(long maxBytes)
 {
@@ -18,6 +20,7 @@ public sealed class HistoryBudget(long maxBytes)
 
     private readonly Lock _lock = new();
     private readonly LinkedList<HistoryEntry> _entries = new();
+    private readonly HashSet<Action> _evicted = [];
     private long _used;
 
     public long MaxBytes { get; } = maxBytes;
@@ -80,6 +83,30 @@ public sealed class HistoryBudget(long maxBytes)
             oldest.Value.Node = null;
             _used -= oldest.Value.Bytes;
             oldest.Value.Evict();
+            if (oldest.Value.Evicted is { } owner)
+                _evicted.Add(owner);
         }
+    }
+
+    /// <summary>Cancels <paramref name="owner"/>'s notice of evicted steps not yet told (its document is closed).</summary>
+    internal void Forget(Action owner)
+    {
+        lock (_lock) _evicted.Remove(owner);
+    }
+
+    /// <summary>
+    /// Tells the owner of every step evicted since the last call, once each. Called by a document after a change that
+    /// may have evicted steps (any document's), once it holds no lock.
+    /// </summary>
+    public void NotifyEvicted()
+    {
+        Action[] owners;
+        lock (_lock)
+        {
+            if (_evicted.Count == 0) return;
+            owners = [.. _evicted];
+            _evicted.Clear();
+        }
+        foreach (var owner in owners) owner();
     }
 }

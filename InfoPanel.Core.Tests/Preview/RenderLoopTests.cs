@@ -1,9 +1,6 @@
-using InfoPanel.Drawing;
-using InfoPanel.Editing;
-using InfoPanel.Models;
-using InfoPanel.Enums;
+using InfoPanel.Core.Tests.Documents;
 using InfoPanel.Output;
-using InfoPanel.Sensors;
+using InfoPanel.Spec;
 using SkiaSharp;
 using System.Text.Json.Nodes;
 using Xunit;
@@ -12,14 +9,18 @@ namespace InfoPanel.Core.Tests.Preview;
 
 public class RenderLoopTests
 {
-    /// <summary>The bar profile, drawn without smoothing unless <paramref name="smoothing"/> (so unchanged inputs give unchanged frames).</summary>
-    private static RenderHarness Bars(bool autoTick = false, TimeProvider? time = null, bool smoothing = false)
-    {
-        var (profile, items) = RenderHarness.BarProfile();
-        return new RenderHarness(profile, items, autoTick, time, new RenderOptions(Smoothing: smoothing));
-    }
+    /// <summary>The bar document (unchanged inputs give unchanged frames).</summary>
+    private static RenderHarness Bars(bool autoTick = false, TimeProvider? time = null) =>
+        new(RenderHarness.BarDocument(), autoTick, time);
 
-    private static Guid ShapeId(RenderHarness h) => h.Document.Items.OfType<ShapeDisplayItem>().Single().Guid;
+    /// <summary>The growing bar: every tick draws new pixels.</summary>
+    private static RenderHarness Growing() => new(RenderHarness.GrowingDocument());
+
+    private static byte[] Pixels(byte[] png, int width, int height)
+    {
+        using var bitmap = SKBitmap.Decode(png, new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        return bitmap.GetPixelSpan().ToArray();
+    }
 
     [Theory]
     [InlineData(1f, 1f)]
@@ -85,49 +86,57 @@ public class RenderLoopTests
     }
 
     [Theory]
+    [InlineData(10, 6, 0.25f, 2, 2)]   // spec/docs/api.md: halves to the even integer at multiples of 0.25
+    [InlineData(25, 25, 0.1f, 3, 3)]   // at 0.1 halves up (0.1 in single precision is a little over 0.1)
+    [InlineData(1, 1, 0.1f, 1, 1)]     // at least 1
+    [InlineData(1920, 480, 1.25f, 2400, 600)]
+    public void FrameSides_AreRoundedAsTheApiSays(int width, int height, float scale, int expectedWidth, int expectedHeight)
+    {
+        Assert.Equal((expectedWidth, expectedHeight), FrameScale.PixelSize(scale, width, height));
+    }
+
+    [Theory]
     [InlineData(1_000_000, 1_000_000, 320, 320, 320)]
     [InlineData(int.MaxValue, int.MaxValue, 4096, 4096, 4096)]
-    [InlineData(1, int.MaxValue, 320, 1, ThumbnailRenderer.MaxHeight)]
+    [InlineData(1, int.MaxValue, 320, 1, Thumbnail.MaxHeight)]
     [InlineData(int.MaxValue, 1, 4096, 4096, 1)]
-    [InlineData(16, 1_000_000_000, 4096, 1, ThumbnailRenderer.MaxHeight)]
+    [InlineData(16, 1_000_000_000, 4096, 1, Thumbnail.MaxHeight)]
+    [InlineData(1, 16384, 320, 1, 4096)]     // the document format's extremes
+    [InlineData(16384, 1, 320, 320, 1)]
+    [InlineData(16384, 1, 99_999, 4096, 1)]
+    [InlineData(1, 1, 5, 16, 16)]
+    [InlineData(300, 100, 320, 320, 107)]
     public void ThumbnailSizes_AreBoundedInBothDimensions(int width, int height, int requested, int expectedWidth, int expectedHeight)
     {
-        var (w, h, scale) = ThumbnailRenderer.Size(width, height, requested);
+        var (w, h, scale) = Thumbnail.Size(width, height, requested);
         Assert.Equal((expectedWidth, expectedHeight), (w, h));
-        Assert.True(w <= ThumbnailRenderer.MaxWidth && h <= ThumbnailRenderer.MaxHeight && (long)w * h <= FrameScale.MaxPixels);
+        Assert.True(w <= Thumbnail.MaxWidth && h <= Thumbnail.MaxHeight && (long)w * h <= FrameScale.MaxPixels);
         Assert.True(scale > 0);
     }
 
     [Fact]
-    public async Task AHugeProfile_IsRenderedWithinThePixelCap_AndSoIsItsThumbnail()
+    public async Task TheLargestCanvas_IsRenderedAtAQuarter_AndSoIsItsThumbnailBounded()
     {
-        var profile = new Profile("Imported long ago", 1_000_000, 1_000_000) { BackgroundColor = "#FF000000" };
-        await using var h = new RenderHarness(profile, []);
+        await using var h = new RenderHarness(RenderHarness.Doc(16384, 16384));
         var sink = h.Attach(scale: 1);
 
         Assert.Equal(1, h.Tick());
 
         var frame = Assert.Single(sink.Frames).Frame;
-        Assert.True(frame.Scale < FrameScale.Min);
-        Assert.True((long)frame.PixelWidth * frame.PixelHeight <= FrameScale.MaxPixels);
+        Assert.Equal((0.25f, 4096, 4096), (frame.Scale, frame.PixelWidth, frame.PixelHeight));
 
         using var thumbnail = SKBitmap.Decode(h.Service.RenderOnce(h.Document, 320));
         Assert.Equal((320, 320), (thumbnail.Width, thumbnail.Height));
     }
 
-    [Fact]
-    public async Task AProfileNoScaleCanFit_IsNotDrawn_AndItsSinksAreClosed()
+    [Theory]
+    [InlineData(1, 16384, 1, 4096)]
+    [InlineData(16384, 1, 4096, 1)]
+    public async Task ThinCanvases_GiveThumbnailsWithinTheCaps(int width, int height, int expectedWidth, int expectedHeight)
     {
-        var profile = new Profile("Ribbon", 1_000_000_000, 10) { BackgroundColor = "#FF000000" };
-        await using var h = new RenderHarness(profile, []);
-        var sink = h.Attach(scale: 1);
-
-        Assert.Equal(0, h.Tick());
-
-        Assert.Empty(sink.Frames);
-        Assert.Equal([FrameSinkClosedReason.Unrenderable], sink.Closed);
-        Assert.False(h.Service.IsRendering(h.ProfileId));
-        Assert.Equal(0, h.State.Tick);
+        await using var h = new RenderHarness(RenderHarness.Doc(width, height));
+        using var thumbnail = SKBitmap.Decode(h.Service.RenderOnce(h.Document, 4096));
+        Assert.Equal((expectedWidth, expectedHeight), (thumbnail.Width, thumbnail.Height));
     }
 
     [Fact]
@@ -149,20 +158,20 @@ public class RenderLoopTests
         Assert.Equal((2f, 600, 200), (fc.Scale, fc.PixelWidth, fc.PixelHeight));
         Assert.Equal((300, 100), (fc.ProfileWidth, fc.ProfileHeight));
         Assert.Equal(fa.Tick, fc.Tick);
-        Assert.Equal(1, h.State.Tick);
+        Assert.Equal(1, fa.Tick);
         Assert.NotEqual(fa.FrameId, fc.FrameId);
 
         // Bounds are measured once per tick, in profile coordinates, and shared by every group.
         Assert.Same(fa.Bounds, fc.Bounds);
-        Assert.Equal(2, fa.Bounds.Count);
-        Assert.Equal(new ItemBounds(h.Document.Items[0].Guid, 10, 10, 200, 30, 0, false), fa.Bounds[0]);
+        Assert.Equal(["bar", "shape"], fa.Bounds.Select(b => b.Id));
+        Assert.Equal(new BoundsRect { X = 10, Y = 10, W = 100, H = 30 }, fa.Bounds[0].Frame);
+        Assert.Equal(new BoundsRect { X = 220, Y = 50, W = 40, H = 40 }, fa.Bounds[1].Frame);
     }
 
     [Fact]
     public async Task AFrameOver16Mpx_IsRenderedAtAReducedScale()
     {
-        var profile = new Profile("Huge", 4097, 4096) { BackgroundColor = "#FF000000" };
-        await using var h = new RenderHarness(profile, []);
+        await using var h = new RenderHarness(RenderHarness.Doc(4097, 4096));
         var sink = h.Attach(scale: 1);
 
         h.Tick();
@@ -184,9 +193,9 @@ public class RenderLoopTests
         Assert.Single(sink.Frames);
 
         // A change that draws the same pixels (a shape's name) still bumps the revision: one more frame.
-        var revision = h.Document.PatchItems([new ItemPatch(ShapeId(h), new JsonObject { ["name"] = "Renamed" })]).Revision;
+        var revision = h.Commit(DocKit.Attrs("shape", name: "Renamed")).Rev;
         Assert.Equal(1, h.Tick());
-        Assert.Equal(revision, sink.Frames[^1].Frame.Revision);
+        Assert.Equal(revision, sink.Frames[^1].Frame.Rev);
         Assert.Equal(sink.Frames[0].Pixels, sink.Frames[^1].Pixels);
         Assert.Equal(0, h.Tick());
 
@@ -253,12 +262,10 @@ public class RenderLoopTests
     [Fact]
     public async Task AnimationState_AdvancesOncePerTick_WithSeveralScalesAndThumbnails()
     {
-        // The same profile in two services: one renders a single scale, the other three scales and a thumbnail
-        // between ticks. Their scale-1 frames must match tick for tick while smoothed bars animate.
-        await using var single = Bars(smoothing: true);
-        await using var many = Bars(smoothing: true);
-        single.SetLoad(100);
-        many.SetLoad(100);
+        // The same document in two services: one renders a single scale, the other three scales and a thumbnail
+        // between ticks. Their scale-1 frames must match tick for tick while the bar grows.
+        await using var single = Growing();
+        await using var many = Growing();
 
         var reference = single.Attach(scale: 1);
         var one = many.Attach(scale: 1);
@@ -271,48 +278,44 @@ public class RenderLoopTests
             many.Tick();
             Assert.NotEmpty(many.Service.RenderOnce(many.Document, 150));
 
-            Assert.Equal(tick, single.State.Tick);
-            Assert.Equal(tick, many.State.Tick);
+            Assert.Equal(tick, reference.Frames[^1].Frame.Tick);
+            Assert.Equal(tick, one.Frames[^1].Frame.Tick);
             Assert.Equal(reference.Frames[^1].Pixels, one.Frames[^1].Pixels);
         }
 
         Assert.Equal(6, one.Frames.Count);
-        Assert.NotEqual(one.Frames[0].Pixels, one.Frames[^1].Pixels); // the bar did animate
+        Assert.NotEqual(one.Frames[0].Pixels, one.Frames[^1].Pixels); // the bar did grow
     }
 
     [Fact]
-    public async Task RenderOnce_AdvancesTheTick_OnlyWhenNoLoopRuns()
+    public async Task RenderOnce_WithoutALoop_IsAOneOffSnapshotAtInit()
     {
-        await using var h = Bars();
-        h.Service.RenderOnce(h.Document, 100);
-        h.Service.RenderOnce(h.Document, 100);
-        Assert.Equal(2, h.State.Tick);
+        await using var h = Growing();
+        var first = h.Service.RenderOnce(h.Document, 300);
+        h.Clock.Advance(1000);
+        Assert.Equal(first, h.Service.RenderOnce(h.Document, 300)); // elapsed 0, state at init, whatever the time
 
+        // A loop, then the loop's frames; once it has stopped, the one-off again.
         var sink = h.Attach();
-        h.Tick();
-        Assert.Equal(3, h.State.Tick);
-        h.Service.RenderOnce(h.Document, 100);
-        Assert.Equal(3, h.State.Tick);
+        h.Tick(500);
+        h.Tick(500);
+        Assert.NotEqual(Pixels(first, 300, 100), sink.Frames[^1].Pixels);
+        Assert.Equal(sink.Frames[^1].Pixels, Pixels(h.Service.RenderOnce(h.Document, 300), 300, 100));
 
         h.Service.Detach(sink);
-        h.Service.RenderOnce(h.Document, 100);
-        Assert.Equal(4, h.State.Tick);
+        Assert.Equal(first, h.Service.RenderOnce(h.Document, 300));
     }
 
     [Fact]
     public async Task RenderOnce_WhileALoopRuns_IsTheLoopsFrameAtItsTick_AndLeavesItsNextFrameUnchanged()
     {
-        // Two identical services tick in step while a smoothed bar eases from 0 to 100; one also takes thumbnails at
-        // the profile's width after each tick. Each thumbnail is that tick's frame byte for byte (smoothing included),
-        // and the loop's following frames match the service that took none.
-        await using var h = Bars(smoothing: true);
-        await using var reference = Bars(smoothing: true);
+        // Two identical services tick in step while the bar grows; one also takes thumbnails at the profile's width
+        // after each tick. Each thumbnail is that tick's frame byte for byte, and the loop's following frames match the
+        // service that took none.
+        await using var h = Growing();
+        await using var reference = Growing();
         var sink = h.Attach();
         var referenceSink = reference.Attach();
-        h.Tick();
-        reference.Tick();
-        h.SetLoad(100);
-        reference.SetLoad(100);
 
         for (var i = 0; i < 4; i++)
         {
@@ -320,30 +323,62 @@ public class RenderLoopTests
             reference.Tick();
             Assert.Equal(referenceSink.Frames[^1].Pixels, sink.Frames[^1].Pixels);
 
-            var tick = h.State.Tick;
+            var tick = sink.Frames[^1].Frame.Tick;
             for (var repeat = 0; repeat < 2; repeat++)
-            {
-                using var thumbnail = SKBitmap.Decode(h.Service.RenderOnce(h.Document, 300),
-                    new SKImageInfo(300, 100, SKColorType.Rgba8888, SKAlphaType.Premul));
-                Assert.Equal(sink.Frames[^1].Pixels, thumbnail.GetPixelSpan().ToArray());
-            }
+                Assert.Equal(sink.Frames[^1].Pixels, Pixels(h.Service.RenderOnce(h.Document, 300), 300, 100));
 
-            Assert.Equal(tick, h.State.Tick);
+            h.Tick();
+            reference.Tick();
+            Assert.Equal(tick + 1, sink.Frames[^1].Frame.Tick);
+            Assert.Equal(referenceSink.Frames[^1].Pixels, sink.Frames[^1].Pixels);
         }
 
-        // The bar was mid-ease throughout: each frame differed from the last, and an unsmoothed draw (the bar at 100)
-        // differs from the last frame.
-        Assert.Equal(5, sink.Frames.Count);
+        Assert.Equal(8, sink.Frames.Count);
         Assert.Equal(sink.Frames.Count, sink.Frames.Select(f => Convert.ToHexString(f.Pixels)).Distinct().Count());
-        await using var target = Bars();
-        target.SetLoad(100);
-        var targetSink = target.Attach();
-        target.Tick();
-        Assert.NotEqual(targetSink.Frames[^1].Pixels, sink.Frames[^1].Pixels);
+    }
 
+    [Fact]
+    public async Task EachNewGeneration_IsLoaded_AndTicksNeverGoDown()
+    {
+        await using var h = Bars();
+        var sink = h.Attach();
         h.Tick();
-        reference.Tick();
-        Assert.Equal(referenceSink.Frames[^1].Pixels, sink.Frames[^1].Pixels);
+        Assert.Equal(1, sink.Frames[^1].Frame.Rev);
+
+        var moved = h.Commit(DocKit.Place("shape", 100, 50)).Rev;
+        h.Tick();
+        var frame = sink.Frames[^1].Frame;
+        Assert.Equal(moved, frame.Rev);
+        Assert.Equal(new BoundsRect { X = 100, Y = 50, W = 40, H = 40 }, frame.Bounds.Single(b => b.Id == "shape").Frame);
+
+        // Undo is a new revision over the earlier content: drawn as it was, at the newer revision.
+        var doc = h.Document;
+        var undone = doc.Undo(new HistoryRequest { Instance = doc.Instance, BaseRev = moved }).Result!.Rev;
+        h.Tick();
+        Assert.Equal(undone, sink.Frames[^1].Frame.Rev);
+        Assert.Equal(sink.Frames[0].Pixels, sink.Frames[^1].Pixels);
+
+        var ticks = sink.Frames.Select(f => f.Frame.Tick).ToList();
+        Assert.Equal(ticks.Order(), ticks);
+        Assert.Equal(ticks.Count, ticks.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task TheStatsOverlay_IsDrawnOnLiveFrames_NotOnThumbnails()
+    {
+        await using var plain = Bars();
+        await using var h = Bars();
+        h.Commit(DocKit.Profile(new JsonObject { ["statsOverlay"] = true }));
+        var plainSink = plain.Attach();
+        var sink = h.Attach();
+        plain.Tick();
+        h.Tick();
+
+        // The band covers the top 15 rows; below it the frames are the same.
+        Assert.NotEqual(plainSink.Frames[^1].Pixels, sink.Frames[^1].Pixels);
+        var row = 300 * 4;
+        Assert.Equal(plainSink.Frames[^1].Pixels.AsSpan(16 * row).ToArray(), sink.Frames[^1].Pixels.AsSpan(16 * row).ToArray());
+        Assert.Equal(Pixels(plain.Service.RenderOnce(plain.Document, 300), 300, 100), Pixels(h.Service.RenderOnce(h.Document, 300), 300, 100));
     }
 
     [Fact]
@@ -374,7 +409,7 @@ public class RenderLoopTests
     public async Task Attach_ToAnUnknownProfile_IsFalse()
     {
         await using var h = Bars();
-        Assert.False(h.Service.Attach(new FakeSink(Guid.NewGuid(), new FrameRequest(1, 30))));
+        Assert.False(h.Service.Attach(new FakeSink(Guid.NewGuid().ToString(), new FrameRequest(1, 30))));
         Assert.Equal(0, h.Service.LoopCount);
     }
 
@@ -391,6 +426,71 @@ public class RenderLoopTests
         Assert.False(h.Service.IsRendering(h.ProfileId));
         Assert.Equal(0, h.Service.Tick(h.ProfileId));
         h.Service.Detach(sink); // already detached: a no-op
+    }
+
+    private static byte[] CreatedAgain(RenderHarness h) =>
+        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new JsonObject { ["id"] = h.ProfileId, ["document"] = RenderHarness.BarDocument() });
+
+    [Fact]
+    public async Task AttachingADeletedDocument_IsRefused_AndLeavesTheLoopOfItsIdsNewDocumentAlone()
+    {
+        await using var h = Bars();
+        var deleted = h.Document;
+        Assert.True(h.Workspace.Delete(h.ProfileId));
+        Assert.Equal(201, h.Workspace.Create(CreatedAgain(h)).Status);
+        var current = h.Attach();
+
+        // A caller that read the deleted document before the id was created again.
+        var late = new FakeSink(h.ProfileId, new FrameRequest(1, 30));
+        Assert.False(h.Service.Attach(late, deleted));
+
+        Assert.Equal(1, h.Tick());
+        Assert.Single(current.Frames);
+        Assert.Empty(late.Frames);
+        Assert.True(h.Workspace.Delete(h.ProfileId));
+        Assert.Equal([FrameSinkClosedReason.ProfileDeleted], current.Closed);
+        Assert.Equal(0, h.Service.LoopCount);
+    }
+
+    [Fact]
+    public async Task ALoopOfADeletedDocument_StillListed_IsStoppedWhenItsIdsNewDocumentIsAttached()
+    {
+        await using var h = Bars();
+        RenderService? service = null;
+        var replacement = new FakeSink(h.ProfileId, new FrameRequest(1, 30));
+        var events = 0;
+        // Subscribed before the service, so each event reaches this handler first.
+        h.Workspace.ProfilesChanged += (_, _) =>
+        {
+            switch (++events)
+            {
+                case 1: // the delete, not yet seen by the service: the id is created again
+                    Assert.Equal(201, h.Workspace.Create(CreatedAgain(h)).Status);
+                    break;
+                case 2: // the create, before the service has seen either: the new document is attached
+                    Assert.True(service!.Attach(replacement));
+                    break;
+            }
+        };
+        service = new RenderService(h.Workspace, RenderHarness.Scenes(h.Workspace, h.Sensors, h.History), h.Time, new RenderServiceOptions(AutoTick: false));
+        try
+        {
+            var old = new FakeSink(h.ProfileId, new FrameRequest(1, 30));
+            Assert.True(service.Attach(old));
+            Assert.Equal(1, service.Tick(h.ProfileId));
+
+            Assert.True(h.Workspace.Delete(h.ProfileId));
+
+            Assert.Equal([FrameSinkClosedReason.ProfileDeleted], old.Closed);
+            Assert.Equal(1, service.LoopCount);
+            Assert.Equal(1, service.Tick(h.ProfileId));
+            Assert.Single(replacement.Frames);
+            Assert.Single(old.Frames);
+        }
+        finally
+        {
+            await service.DisposeAsync();
+        }
     }
 
     [Fact]
@@ -450,69 +550,17 @@ public class RenderLoopTests
         h.Attach(scale: 0.5f);
 
         Assert.Equal(3, h.Tick());
-        Assert.NotEmpty(h.Service.RenderOnce(h.Document, 300)); // at the loop's tick
+        var thumbnail = h.Service.RenderOnce(h.Document, 300); // from the loop's tick
         Assert.Equal(1, reads); // three scales, the bounds and a thumbnail: one read
 
-        // The panel path at the same tick draws what the loop drew, though the sensor has changed since.
-        Assert.Equal(one.Frames[^1].Pixels, DrawAtCurrentTick(h));
+        // The thumbnail at the profile's width draws what the loop drew, though the sensor has changed since.
+        Assert.Equal(one.Frames[^1].Pixels, Pixels(thumbnail, 300, 100));
+        Assert.Equal(100, one.Frames[^1].Frame.Bounds[0].Frame.W); // 2 × 50, the value read
 
         // The next tick reads the new value.
         Assert.Equal(3, h.Tick());
         Assert.Equal(2, reads);
         Assert.NotEqual(one.Frames[0].Pixels, one.Frames[^1].Pixels);
-    }
-
-    [Fact]
-    public void DrawAndMeasureBounds_AtOneTick_ShowTheFirstReading()
-    {
-        var profile = new Profile("Text", 300, 100) { BackgroundColor = "#FF000000" };
-        var text = new SensorDisplayItem("Load", profile)
-        {
-            X = 10, Y = 10, Font = "Inter", FontSize = 20, Color = "#FFFFFFFF", SensorType = SensorType.Plugin, PluginSensorId = RenderHarness.Load.Id,
-        };
-        var sensors = new FakeSensorReader();
-        var values = new Queue<double>([5, 100, 5, 100, 5, 100]);
-        void Next() => sensors.Readings[RenderHarness.Load] = new SensorReading(0, 100, values.Peek(), values.Dequeue(), "%");
-        Next();
-        sensors.AfterRead = _ => Next();
-        var renderer = new ProfileRenderer(sensors, new FakeSensorHistory(), new FakeImageSource(), new FakeAssetLocator(Path.GetTempPath()),
-            new InfoPanel.Core.Tests.Editing.ManualTimeProvider());
-        var state = new ProfileRenderState { Tick = 1 };
-
-        var first = Draw(renderer, profile, text, state);
-        var bounds = renderer.MeasureBounds(profile, [text], state);
-        Assert.Equal(first, Draw(renderer, profile, text, state));
-        Assert.Equal(bounds, renderer.MeasureBounds(profile, [text], state));
-
-        state.Tick++;
-        Assert.NotEqual(first, Draw(renderer, profile, text, state));
-        Assert.NotEqual(bounds[0].W, renderer.MeasureBounds(profile, [text], state)[0].W);
-    }
-
-    private static byte[] Draw(ProfileRenderer renderer, Profile profile, DisplayItem item, ProfileRenderState state)
-    {
-        using var bitmap = new SKBitmap(new SKImageInfo(profile.Width, profile.Height, SKColorType.Rgba8888, SKAlphaType.Premul));
-        using (var canvas = new SKCanvas(bitmap))
-        {
-            canvas.Clear(SKColors.Transparent);
-            renderer.Draw(canvas, profile, [item], state, new RenderOptions(Smoothing: false), 1);
-        }
-
-        return bitmap.GetPixelSpan().ToArray();
-    }
-
-    private static byte[] DrawAtCurrentTick(RenderHarness h)
-    {
-        var doc = h.Document;
-        using var bitmap = new SKBitmap(new SKImageInfo(300, 100, SKColorType.Rgba8888, SKAlphaType.Premul));
-        lock (doc.SyncRoot)
-        {
-            using var canvas = new SKCanvas(bitmap);
-            canvas.Clear(SKColors.Transparent);
-            h.Renderer.Draw(canvas, doc.Profile, doc.Items, h.State, h.Service.Options, 1);
-        }
-
-        return bitmap.GetPixelSpan().ToArray();
     }
 
     [Fact]
@@ -594,8 +642,8 @@ public class RenderLoopTests
         var ct = TestContext.Current.CancellationToken;
 
         await WaitUntil(() => sink.Frames.Count >= 1, ct);
-        var revision = h.Document.PatchItems([new ItemPatch(ShapeId(h), new JsonObject { ["x"] = 100 })]).Revision;
-        await WaitUntil(() => sink.Frames.Count > 0 && sink.Frames[^1].Frame.Revision == revision, ct);
+        var revision = h.Commit(DocKit.Place("shape", 100, 50)).Rev;
+        await WaitUntil(() => sink.Frames.Count > 0 && sink.Frames[^1].Frame.Rev == revision, ct);
 
         h.Service.Detach(sink);
         Assert.False(h.Service.IsRendering(h.ProfileId));

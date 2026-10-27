@@ -1,11 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using InfoPanel.Drawing;
-using InfoPanel.Editing;
 using InfoPanel.Models;
 using InfoPanel.Output;
 using InfoPanel.Sensors;
+using InfoPanel.Spec;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,13 +14,13 @@ using Xunit;
 namespace InfoPanel.Tests.Preview;
 
 /// <summary>
-/// Preview = panel, with a clock that moves only when the test moves it, constant sensors and render loops driven by
-/// hand. What these tests prove, and no more:
+/// Preview = panel, on the example document (a 2.0 document), with a clock that moves only when the test moves it,
+/// constant sensors and render loops driven by hand. What these tests prove, and no more:
 /// <list type="bullet">
 /// <item><see cref="TheScale1Frame_IsByteIdenticalToADirectDraw"/>: the scale-1 frame decoded from <c>/ws</c> has
-/// exactly the pixels a separate <see cref="ProfileRenderer.Draw"/> into a fresh <see cref="SKBitmap"/> produces for
-/// the same document, render state, tick and <see cref="RenderOptions"/>. So the loop and the PNG round trip add
-/// nothing to <c>Draw</c>, compared unpremultiplied (the form PNG stores).</item>
+/// exactly the pixels a separate <see cref="InfoPanel.Scenes.TickSnapshot.Draw"/> of the loop's tick snapshot into a
+/// fresh <see cref="SKBitmap"/> produces, and its bounds are the snapshot's. So the loop and the PNG round trip add
+/// nothing to the runtime's drawing, compared unpremultiplied (the form PNG stores).</item>
 /// <item><see cref="APanelSinkAndAPreviewSocket_OnOneLoop_GetIdenticalPixelsForTheSameFrame"/>: a panel-style
 /// <see cref="IFrameSink"/> at scale 1 and a <c>/ws</c> subscriber at scale 1 on the same loop receive the same
 /// <see cref="RenderedFrame"/> (same <c>FrameId</c>), and the pixels the panel sink copies during <c>OnFrame</c> equal
@@ -57,15 +56,15 @@ public sealed class PreviewParityTests : IAsyncLifetime
 
     private RenderService Render => _factory.Services.GetRequiredService<RenderService>();
 
-    private async Task<Guid> ExampleProfileId()
+    private async Task<string> ExampleProfileId()
     {
         using var api = _factory.CreateClient();
         api.DefaultRequestHeaders.Authorization = new("Bearer", EngineFactory.Token);
         var profiles = await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct);
-        return profiles.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wide bar").GetProperty("id").GetGuid();
+        return profiles.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wide bar").GetProperty("id").GetString()!;
     }
 
-    private async Task<PreviewClient> Subscribe(Guid id, float scale)
+    private async Task<PreviewClient> Subscribe(string id, float scale)
     {
         var client = await PreviewClient.ConnectAsync(_factory, Ct);
         await client.ReceiveTextAsync("hello", Ct);
@@ -84,26 +83,22 @@ public sealed class PreviewParityTests : IAsyncLifetime
         var id = await ExampleProfileId();
         await using var client = await Subscribe(id, 1);
 
-        // Two ticks a frame apart, so smoothed bars and donuts are mid-animation, not at their first value.
+        // Two ticks a second apart, so the clock shows another time and animated scenes have moved on.
         Assert.Equal(1, Render.Tick(id));
         await client.ReceiveFrameAsync(Ct);
-        _clock.Advance(TimeSpan.FromMilliseconds(34));
+        _clock.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(1, Render.Tick(id));
         var (header, png) = await client.ReceiveFrameAsync(Ct);
-        Assert.Equal((1f, 1920, 480), (header.Scale, header.PixelWidth, header.PixelHeight));
+        Assert.Equal((1.0, 1920, 480), (header.Scale, header.PixelWidth, header.PixelHeight));
 
-        // A direct Draw, at the same tick with the same state and options (no tick runs in between: ticks are manual).
-        var workspace = _factory.Services.GetRequiredService<Workspace>();
-        var renderer = _factory.Services.GetRequiredService<ProfileRenderer>();
-        var doc = workspace.Open(id)!;
-        var state = Render.GetState(id);
-        Assert.Equal(2, state.Tick);
+        // A direct draw of the loop's tick snapshot (no tick runs in between: ticks are manual).
+        using var snapshot = Render.LatestSnapshot(id)!;
+        Assert.Equal((2L, header.Tick, header.Rev), (snapshot.Tick, snapshot.Tick, snapshot.Rev));
         using var panel = new SKBitmap(new SKImageInfo(1920, 480, SKColorType.Rgba8888, SKAlphaType.Premul));
-        lock (doc.SyncRoot)
+        using (var canvas = new SKCanvas(panel))
         {
-            using var canvas = new SKCanvas(panel);
             canvas.Clear(SKColors.Transparent);
-            renderer.Draw(canvas, doc.Profile, doc.Items, state, Render.Options, 1);
+            snapshot.Draw(canvas, 1);
         }
 
         // PNG stores unpremultiplied pixels, so compare both sides unpremultiplied (identical to premultiplied for opaque pixels).
@@ -116,9 +111,8 @@ public sealed class PreviewParityTests : IAsyncLifetime
         Assert.True(firstDifference == expected.Length,
             $"pixels differ from byte {firstDifference} (pixel {firstDifference / 4 % 1920}, {firstDifference / 4 / 1920})");
 
-        // The frame's bounds are the renderer's.
-        lock (doc.SyncRoot)
-            Assert.Equal(renderer.MeasureBounds(doc.Profile, doc.Items, state), header.Bounds);
+        // The frame's bounds are the snapshot's.
+        Assert.Equal(JsonSerializer.Serialize(snapshot.Bounds, SpecJson.Options), JsonSerializer.Serialize(header.ItemBounds, SpecJson.Options));
     }
 
     [Fact]
@@ -129,17 +123,17 @@ public sealed class PreviewParityTests : IAsyncLifetime
         var panel = new PanelSink(id);
         Assert.True(Render.Attach(panel));
 
-        // Two ticks a frame apart, so smoothed bars and donuts are mid-animation; both sinks get both frames.
+        // Two ticks a second apart, so the second frame differs from the first; both sinks get both frames.
         Assert.Equal(2, Render.Tick(id));
         await client.ReceiveFrameAsync(Ct);
-        _clock.Advance(TimeSpan.FromMilliseconds(34));
+        _clock.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(2, Render.Tick(id));
         var (header, png) = await client.ReceiveFrameAsync(Ct);
         Render.Detach(panel);
 
         var (frameId, expected) = panel.Last!;
         Assert.Equal(frameId, header.FrameId);
-        Assert.Equal((1f, 1920, 480), (header.Scale, header.PixelWidth, header.PixelHeight));
+        Assert.Equal((1.0, 1920, 480), (header.Scale, header.PixelWidth, header.PixelHeight));
         using var decoded = SKBitmap.Decode(png.ToArray(), new SKImageInfo(1920, 480, SKColorType.Rgba8888, SKAlphaType.Unpremul));
         var actual = decoded.GetPixelSpan().ToArray();
 
@@ -150,20 +144,30 @@ public sealed class PreviewParityTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AThumbnail_WhilePreviewing_RendersAtTheLoopsTick()
+    public async Task AThumbnail_WhilePreviewing_IsTheLoopsTick_WithoutAdvancingIt()
     {
         var id = await ExampleProfileId();
         await using var client = await Subscribe(id, 1);
         Render.Tick(id);
-        await client.ReceiveFrameAsync(Ct);
-        var state = Render.GetState(id);
-        var tick = state.Tick;
+        var (_, png) = await client.ReceiveFrameAsync(Ct);
+        long Tick()
+        {
+            using var latest = Render.LatestSnapshot(id)!;
+            return latest.Tick;
+        }
+        var tick = Tick();
 
         using var api = _factory.CreateClient();
         api.DefaultRequestHeaders.Authorization = new("Bearer", EngineFactory.Token);
-        using var thumbnail = await api.GetAsync($"/api/profiles/{id}/thumbnail?w=320", Ct);
+        using var thumbnail = await api.GetAsync($"/api/profiles/{id}/thumbnail?w=1920", Ct);
         Assert.Equal(HttpStatusCode.OK, thumbnail.StatusCode);
-        Assert.Equal(tick, state.Tick);
+        Assert.Equal(tick, Tick());
+
+        // At the profile's width, the thumbnail is the frame.
+        var info = new SKImageInfo(1920, 480, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+        using var frame = SKBitmap.Decode(png.ToArray(), info);
+        using var drawn = SKBitmap.Decode(await thumbnail.Content.ReadAsByteArrayAsync(Ct), info);
+        Assert.True(frame.GetPixelSpan().SequenceEqual(drawn.GetPixelSpan()));
 
         await client.SendAsync(new { type = "unsubscribe" }, Ct);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
@@ -171,8 +175,10 @@ public sealed class PreviewParityTests : IAsyncLifetime
         while (Render.IsRendering(id))
             await Task.Delay(5, timeout.Token);
 
+        // Nothing previews it: a one-off snapshot.
         using var again = await api.GetAsync($"/api/profiles/{id}/thumbnail?w=320", Ct);
-        Assert.Equal(tick + 1, state.Tick); // nothing previews it: the thumbnail advances the tick
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Null(Render.LatestSnapshot(id));
     }
 
     private static byte[] Unpremultiplied(SKBitmap bitmap)
@@ -186,11 +192,11 @@ public sealed class PreviewParityTests : IAsyncLifetime
     }
 
     /// <summary>A panel-style sink at scale 1: copies each frame's pixels during <c>OnFrame</c>, unpremultiplied (as PNG stores them).</summary>
-    private sealed class PanelSink(Guid profileId) : IFrameSink
+    private sealed class PanelSink(string profileId) : IFrameSink
     {
         private Copy? _last;
 
-        public Guid ProfileId { get; } = profileId;
+        public string ProfileId { get; } = profileId;
 
         public FrameRequest Request { get; } = new(1, 30, IncludeBounds: false);
 

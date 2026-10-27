@@ -101,7 +101,7 @@ public class FirstMessageAuthTests(ShortAuthTimeoutEngineFactory factory) : ICla
         await Task.Delay(ShortAuthTimeoutEngineFactory.AuthTimeout, Ct);
         using var api = factory.CreateApiClient();
         var profiles = await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct);
-        var id = profiles[0].GetProperty("id").GetGuid();
+        var id = profiles[0].GetProperty("id").GetString();
         await Send(socket, JsonSerializer.Serialize(new { type = "subscribe", profileId = id, scale = 1 }));
         var doc = await Receive(socket);
         Assert.Equal("doc", doc.Kind);

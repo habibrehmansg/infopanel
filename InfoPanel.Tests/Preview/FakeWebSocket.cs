@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using InfoPanel.Preview;
+using InfoPanel.Spec;
 
 namespace InfoPanel.Tests.Preview;
 

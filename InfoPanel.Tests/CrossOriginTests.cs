@@ -37,7 +37,7 @@ public class CrossOriginTests(EngineFactory factory) : IClassFixture<EngineFacto
     }
 
     [Theory]
-    [InlineData("/api/profiles/00000000-0000-0000-0000-000000000001/items", "PATCH")]
+    [InlineData("/api/profiles/00000000-0000-0000-0000-000000000001/commit", "POST")]
     [InlineData("/api/session", "GET")]
     [InlineData("/api/profiles", "POST")]
     [InlineData("/api/profiles/00000000-0000-0000-0000-000000000001", "DELETE")]
