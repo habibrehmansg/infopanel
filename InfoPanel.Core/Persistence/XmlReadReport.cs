@@ -56,10 +56,17 @@ public sealed class XmlReadReport
 
     internal void Dropped(XElement element, string type, XElement? parent) => _dropped.Add((element, type, parent));
 
+    private const string XsiNamespace = "http://www.w3.org/2001/XMLSchema-instance", XmlnsNamespace = "http://www.w3.org/2000/xmlns/";
+
     internal XmlDeserializationEvents Events() => new()
     {
         OnUnknownElement = (_, e) => Unknown.Add(new UnknownXmlNode(e.Element.Name, false, e.LineNumber > 0 ? e.LineNumber : null, e.ObjectBeingDeserialized)),
-        OnUnknownAttribute = (_, e) => Unknown.Add(new UnknownXmlNode(e.Attr.Name, true, e.LineNumber > 0 ? e.LineNumber : null, e.ObjectBeingDeserialized)),
+        // The serializer passes xsi:type and xsi:nil (which it reads) and namespace declarations on as unknown attributes.
+        OnUnknownAttribute = (_, e) =>
+        {
+            if (e.Attr.NamespaceURI is not (XsiNamespace or XmlnsNamespace))
+                Unknown.Add(new UnknownXmlNode(e.Attr.Name, true, e.LineNumber > 0 ? e.LineNumber : null, e.ObjectBeingDeserialized));
+        },
     };
 
     /// <summary>
