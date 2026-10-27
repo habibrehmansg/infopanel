@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace InfoPanel.Tests.Contract;
@@ -79,6 +80,44 @@ public class ConformanceTests(EngineFactory factory) : IClassFixture<EngineFacto
             """{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.5","title":"Not Found","status":404,"detail":"No profile 'x'.","traceId":"00-1"}""")));
         Assert.Contains("isn't problem", Check("GET /api/profiles/{id}", Response("GET /api/profiles/x", 404, "application/problem+json",
             """{"title":"Not Found","status":404,"code":"missing"}""")));
+    }
+
+    private static string Example(string def, string file) => File.ReadAllText(Path.Combine(ApiContract.FindSpecDir(), "examples", "api", def, file)).Trim();
+
+    private static string Nested(int arrays) => new string('[', arrays) + new string(']', arrays);
+
+    /// <summary>The example documentResponse with one more item: a scene kept as sent, 252 arrays deep, so the document is 256 levels deep and the body 257.</summary>
+    private static string DeepDocumentResponse(Action<JsonObject>? edit = null)
+    {
+        var example = JsonNode.Parse(Example("documentResponse", "desk.json"))!.AsObject();
+        edit?.Invoke(example);
+        var deep = $$$"""{"kind":"scene","id":"deep","rev":1,"placement":{"x":0,"y":0},"scene":{"format":"infopanel.scene/2","x":{{{Nested(252)}}}}},""";
+        return example.ToJsonString().Replace("\"items\":[", "\"items\":[" + deep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ABodyNestedPastTheValidatorsDepth_IsAViolation()
+    {
+        var session = Example("session", "engine.json");
+        var deep = session[..session.LastIndexOf('}')] + $$$""", "extra": {{{Nested(257)}}}}""";
+        Assert.Null(Check("GET /api/session", Response("GET /api/session", 200, "application/json", session)));
+        Assert.Contains("depth", Check("GET /api/session", Response("GET /api/session", 200, "application/json", deep)));
+    }
+
+    [Fact]
+    public void ADocumentResponse_WithADocumentOfTheWholeJsonDepth_IsCheckedInTwoParts()
+    {
+        const string key = "GET /api/profiles/{id}";
+        var request = "GET /api/profiles/3dd19c0e-675a-4591-b096-83417853861f";
+        Assert.Null(Check(key, Response(request, 200, "application/json", DeepDocumentResponse())));
+
+        // The envelope, without the document: its rev is missing.
+        var noRev = DeepDocumentResponse(b => b.Remove("rev"));
+        Assert.Contains("rev", Check(key, Response(request, 200, "application/json", noRev)));
+
+        // The document alone: its profile has no name.
+        var noName = DeepDocumentResponse(b => b["document"]!["profile"]!.AsObject().Remove("name"));
+        Assert.Contains("/document/profile", Check(key, Response(request, 200, "application/json", noName)));
     }
 
     [Fact]

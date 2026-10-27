@@ -265,14 +265,61 @@ internal static class ContractCheck
 
         using (json)
         {
-            var result = contract.Schemas.Validate(json.RootElement, schema);
-            // A body nested deeper than the validator reads (a document of the whole jsonDepth in an envelope) is left unchecked.
-            if (result.IsValid || result.Errors is [{ Keyword: "depth" }])
+            var (result, at) = (contract.Schemas.Validate(json.RootElement, schema), "");
+            // A documentResponse around a document of the whole jsonDepth is one level deeper than the validator reads:
+            // the document is checked alone, then the envelope with a small document in its place. Any other body nested
+            // past the validator's depth is a violation.
+            if (result.Errors is [{ Keyword: "depth" }] && schema == DocumentResponseSchema && json.RootElement.ValueKind == JsonValueKind.Object
+                && json.RootElement.TryGetProperty("document", out var document))
+            {
+                (result, at) = (contract.Schemas.Validate(document, ResponseDocumentSchema), "/document");
+                if (result.IsValid)
+                {
+                    using var envelope = JsonDocument.Parse(WithSmallDocument(json.RootElement));
+                    (result, at) = (contract.Schemas.Validate(envelope.RootElement, schema), "");
+                }
+            }
+
+            if (result.IsValid)
                 return null;
             var name = schema.StartsWith(SpecSchemas.Api, StringComparison.Ordinal) ? schema[(schema.LastIndexOf('/') + 1)..] : "its declared schema";
             return $"{what} answered {r.Status} {r.MediaType} that isn't {name}: "
-                + string.Join("; ", result.Errors.Take(5).Select(e => $"{(e.InstancePath.Length == 0 ? "(root)" : e.InstancePath)} {e.Keyword}: {e.Message}"))
+                + string.Join("; ", result.Errors.Take(5).Select(e => $"{(at + e.InstancePath is { Length: > 0 } path ? path : "(root)")} {e.Keyword}: {e.Message}"))
                 + r.Excerpt;
         }
+    }
+
+    private const string DocumentResponseSchema = SpecSchemas.Api + "#/$defs/documentResponse";
+    private const string ResponseDocumentSchema = SpecSchemas.Api + "#/$defs/responseDocument";
+
+    /// <summary>A valid responseDocument: the spec's example documentResponse's document.</summary>
+    private static readonly Lazy<string> SmallDocument = new(() =>
+    {
+        using var example = JsonDocument.Parse(File.ReadAllText(Path.Combine(ApiContract.FindSpecDir(), "examples", "api", "documentResponse", "desk.json")));
+        return example.RootElement.GetProperty("document").GetRawText();
+    });
+
+    /// <summary>The members of a documentResponse body as they are, but its <c>document</c> replaced by <see cref="SmallDocument"/>.</summary>
+    private static byte[] WithSmallDocument(JsonElement body)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            foreach (var member in body.EnumerateObject())
+            {
+                if (member.NameEquals("document"))
+                {
+                    writer.WritePropertyName(member.Name);
+                    writer.WriteRawValue(SmallDocument.Value);
+                }
+                else
+                    member.WriteTo(writer);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        return stream.ToArray();
     }
 }
