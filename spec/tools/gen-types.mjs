@@ -434,6 +434,8 @@ function checkOpenApi({ file, json: doc }, byId) {
     validate(s, entry, byId, p);
     return s;
   };
+  // Every component an operation refers to, as `<kind>/<name>`: one no operation refers to is refused below.
+  const used = new Set();
   // A Reference Object to `#/components/<kind>/<name>`, or the object itself.
   const deref = (v, kind, p) => {
     if (!isObj(v) || !has(v, '$ref')) return { value: v, pointer: p };
@@ -442,6 +444,7 @@ function checkOpenApi({ file, json: doc }, byId) {
     if (!m || m[1] !== kind) fail(ptr(p, '$ref'), `unsupported $ref "${v.$ref}": only #/components/${kind}/<name> is allowed here`);
     const target = doc.components?.[kind]?.[m[2]];
     if (target === undefined) fail(ptr(p, '$ref'), `unresolvable $ref "${v.$ref}"`);
+    used.add(`${kind}/${m[2]}`);
     return { value: target, pointer: ptr('/components', kind, m[2]) };
   };
 
@@ -627,6 +630,12 @@ function checkOpenApi({ file, json: doc }, byId) {
         socket,
         pointer: p,
       });
+    }
+  }
+  // An unused component would be checked by nothing and could keep an otherwise unused definition in use.
+  for (const kind of ['parameters', 'responses']) {
+    for (const name of Object.keys(components[kind] ?? {})) {
+      if (!used.has(`${kind}/${name}`)) fail(ptr('/components', kind, name), `components.${kind}.${name} is used by no operation`);
     }
   }
   return { operations, entry };

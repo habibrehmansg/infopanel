@@ -315,6 +315,15 @@ const openapiErrors = {
   'another OpenAPI version': [(d) => { d.openapi = '3.0.3'; }, [/#\/openapi/, /3\.1\.1/]],
   'another extension': [(d) => { getX(d)['x-other'] = 1; }, [/\/get\/x-other/, /unknown key "x-other"/]],
   'a socket extension without its messages': [(d) => { getX(d)['x-infopanel-socket'] = { subprotocol: 'p' }; }, [/\/x-infopanel-socket/, /needs clientMessage/]],
+  // Every component is used by an operation, so every one is checked, and none keeps a definition in use on its own.
+  'an unused response with an unknown key': [(d) => { d.components.responses.ghost = { description: 'g', bogus: 1 }; }, [/#\/components\/responses\/ghost/, /used by no operation/]],
+  'an unused response with a dangling schema $ref': [
+    (d) => { d.components.responses.ghost = { description: 'g', content: { 'application/json': { schema: { $ref: 'urn:t:a:1#/$defs/nope' } } } }; },
+    [/#\/components\/responses\/ghost/, /used by no operation/]],
+  'an unused response that is the only user of a definition': [
+    (d) => { d.components.responses.ghost = { description: 'g', content: { 'application/json': { schema: { $ref: 'urn:t:a:1#/$defs/x' } } } }; getX(d).responses[200] = { description: 'ok' }; },
+    [/#\/components\/responses\/ghost/, /used by no operation/]],
+  'an unused parameter': [(d) => { d.components.parameters = { ghost: { name: 'g', in: 'query', schema: {} } }; }, [/#\/components\/parameters\/ghost/, /used by no operation/]],
   // D3's body shapes: a JSON body names definitions ($ref, a oneOf of $refs, an array of a $ref or a scalar), never defines one.
   'a body $ref with sibling keys': [
     (d) => { getX(d).responses[200].content['application/json'].schema = { $ref: 'urn:t:a:1#/$defs/x', properties: { a: {} } }; },
