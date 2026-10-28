@@ -411,6 +411,24 @@ public sealed class V1FolderTests : IDisposable
     }
 
     [Fact]
+    public void Profiles_ANilProfile_IsLeftOut_WithAnInfo()
+    {
+        // The fixture's first two profiles with an xsi:nil one between them.
+        var text = File.ReadAllText(Path.Combine(_root, "profiles.xml"));
+        var firstEnd = text.IndexOf("</Profile>", StringComparison.Ordinal) + "</Profile>".Length;
+        var secondEnd = text.IndexOf("</Profile>", firstEnd, StringComparison.Ordinal) + "</Profile>".Length;
+        Write("profiles.xml", text[..firstEnd] + "\n  <Profile xsi:nil=\"true\" />" + text[firstEnd..secondEnd] + "\n</ArrayOfProfile>");
+
+        var state = Folder().GetState(_kit.Data);
+
+        Assert.Equal([Desk, Usb], state.Profiles!.Select(p => p.Id));
+        var nil = Assert.Single(state.Diagnostics!, d => d.Code == "import.nil");
+        Assert.Equal(("info", "/profiles", "profiles.xml"), (nil.Severity, nil.Path, nil.File!));
+        Assert.NotNull(Folder().ReadProfile(Guid.Parse(Desk), _kit.Context()));
+        Assert.NotNull(Folder().ReadProfile(Guid.Parse(Usb), _kit.Context()));
+    }
+
+    [Fact]
     public void Profiles_OverTheLimits_AreLeftOut()
     {
         var state = Folder(new ImportLimits { Profiles = 2 }).GetState(_kit.Data);

@@ -174,6 +174,12 @@ public sealed class V1Folder
             return ([], null);
         }
 
+        // An xsi:nil <Profile/> deserializes as a null entry: it is left out, as nil items are.
+        var nils = profiles.RemoveAll(p => p is null);
+        if (nils > 0)
+            diagnostics.Add(ImportDiagnostics.Info, "import.nil", "/profiles",
+                $"{nils} empty (xsi:nil) {(nils == 1 ? "profile is" : "profiles are")} left out of {ProfilesFile}.", ProfilesFile);
+
         if (profiles.Count > Limits.Profiles)
         {
             diagnostics.Add(ImportDiagnostics.Warning, "import.profiles", "/profiles",
