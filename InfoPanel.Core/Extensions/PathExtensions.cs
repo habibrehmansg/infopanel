@@ -9,48 +9,71 @@ namespace InfoPanel.Extensions
 {
     public static class PathExtensions
     {
+        /// <summary>The most links <see cref="ResolveRealPath"/> follows before it gives up on a loop.</summary>
+        private const int MaxLinkHops = 64;
+
         /// <summary>
         /// The path with every symbolic link in it (the folder itself and each ancestor) replaced by its final target,
-        /// as <c>realpath</c> does; components that don't exist yet are kept as they are.
+        /// as <c>realpath</c> does; components that don't exist yet are kept as they are. Resolved one component at a
+        /// time in the order the filesystem does: a link is followed before the <c>..</c> after it applies, so
+        /// <c>..</c> leaves the link's target, not the folder that holds the link. That is Unix's order; on Windows the
+        /// path and each link's target are made full first, which collapses <c>..</c> as Windows itself does. After a
+        /// component that doesn't exist, <c>..</c> removes it.
         /// </summary>
-        /// <exception cref="IOException">The links loop.</exception>
+        /// <exception cref="IOException">The links loop (more than 64 followed).</exception>
         public static string ResolveRealPath(string path)
         {
-            var full = Path.GetFullPath(path);
-            for (var hops = 0; hops < 64; hops++)
-            {
-                var next = ResolveFirstLink(full);
-                if (next == null)
-                    return Path.TrimEndingDirectorySeparator(full) is { Length: > 0 } trimmed ? trimmed : full;
-                full = next;
-            }
-
-            throw new IOException($"Too many levels of symbolic links in '{path}'.");
-        }
-
-        /// <summary>The path with its first link component (from the root down) replaced by the link's target, or null when none is a link.</summary>
-        private static string? ResolveFirstLink(string full)
-        {
-            var root = Path.GetPathRoot(full) ?? "";
-            var parts = full[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+            // Windows collapses ".." in a path (a link's target included) before the filesystem sees it; Unix resolves
+            // each ".." in the filesystem, against the real folder it is reached from.
+            var windows = OperatingSystem.IsWindows();
+            var start = windows ? Path.GetFullPath(path) : Path.IsPathRooted(path) ? path : Path.Combine(Directory.GetCurrentDirectory(), path);
+            var root = Path.GetPathRoot(start) ?? "";
             var current = root;
-            for (var i = 0; i < parts.Length; i++)
+            var pending = new Stack<string>(Components(start[root.Length..]).Reverse());
+            var hops = 0;
+            var exists = true; // whether current exists, so its children may be links
+            while (pending.Count > 0)
             {
-                current = Path.Combine(current, parts[i]);
-                FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
-                var target = LinkTargetOf(info);
-                if (target == null && !info.Exists)
-                    return null; // the rest doesn't exist yet
-                if (target != null)
+                var part = pending.Pop();
+                if (part == ".")
+                    continue;
+                if (part == "..")
                 {
-                    // A relative target is relative to the folder that holds the link.
-                    var resolved = Path.GetFullPath(target, Path.GetDirectoryName(current) ?? root);
-                    return Path.GetFullPath(Path.Combine([resolved, .. parts[(i + 1)..]]));
+                    current = Path.GetDirectoryName(current) ?? root;
+                    exists = exists || Directory.Exists(current);
+                    continue;
                 }
+
+                var next = Path.Combine(current, part);
+                var target = exists ? LinkTargetOf(Directory.Exists(next) ? new DirectoryInfo(next) : new FileInfo(next)) : null;
+                if (target == null)
+                {
+                    current = next;
+                    exists = exists && Path.Exists(next);
+                    continue;
+                }
+
+                if (++hops > MaxLinkHops)
+                    throw new IOException($"Too many levels of symbolic links in '{path}'.");
+                // The target's components come next: from its root when rooted, else from the folder that holds the link.
+                if (windows)
+                    target = Path.GetFullPath(target, current);
+                if (Path.IsPathRooted(target))
+                {
+                    root = Path.GetPathRoot(target) ?? "";
+                    current = root;
+                    target = target[root.Length..];
+                }
+
+                foreach (var component in Components(target).Reverse())
+                    pending.Push(component);
             }
 
-            return null;
+            return Path.TrimEndingDirectorySeparator(current) is { Length: > 0 } trimmed ? trimmed : current;
         }
+
+        private static string[] Components(string path) =>
+            path.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
 
         /// <summary>The link's target as stored, or null when <paramref name="info"/> isn't a link (or is gone).</summary>
         public static string? LinkTargetOf(FileSystemInfo info)

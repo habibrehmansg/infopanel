@@ -4,6 +4,7 @@ using System.Text.Json;
 using InfoPanel.Core.Tests.Persistence;
 using InfoPanel.Documents;
 using InfoPanel.Editing;
+using InfoPanel.Extensions;
 using InfoPanel.Import;
 using InfoPanel.Persistence;
 using InfoPanel.Spec;
@@ -238,6 +239,40 @@ public sealed class V1FolderTests : IDisposable
             (true, true, true, false),
             (V1Folder.FindOverlap(v1, intoAssets) is not null, V1Folder.FindOverlap(v1, Path.Combine(intoAssets, "not-yet")) is not null,
                 V1Folder.FindOverlap(v1Link, data) is not null, V1Folder.FindOverlap(relocated, Path.Combine(relocated, "v2")) is not null));
+    }
+
+    [Fact]
+    public void Overlap_ResolvesDotDotAfterTheLinkBeforeIt()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");
+        var v1 = _kit.Temp.Combine("InfoPanel");
+        Directory.CreateDirectory(Path.Combine(v1, "hop"));
+        Directory.CreateDirectory(Path.Combine(v1, "assets"));
+        var safe = _kit.Temp.Combine("safe");
+        Directory.CreateDirectory(safe);
+        Directory.CreateSymbolicLink(Path.Combine(safe, "jump"), Path.Combine(v1, "hop"));
+
+        // data → safe/jump/../assets: ".." applies to jump's target (InfoPanel/hop), so data is really InfoPanel/assets.
+        var data = _kit.Temp.Combine("data-link");
+        Directory.CreateSymbolicLink(data, Path.Combine(safe, "jump", "..", "assets"));
+        var assets = PathExtensions.ResolveRealPath(Path.Combine(v1, "assets"));
+
+        Assert.Equal(
+            (assets, assets, Path.Combine(assets, "not-yet"), true),
+            (PathExtensions.ResolveRealPath(data), PathExtensions.ResolveRealPath(Path.Combine(safe, "jump", "..", "assets")),
+                PathExtensions.ResolveRealPath(Path.Combine(data, "not-yet")), V1Folder.FindOverlap(v1, data) is not null));
+    }
+
+    [Fact]
+    public void Overlap_LinksThatLoopAreRefusedNotFollowedForever()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");
+        var a = _kit.Temp.Combine("a");
+        Directory.CreateSymbolicLink(a, "b");
+        Directory.CreateSymbolicLink(_kit.Temp.Combine("b"), Path.Combine(".", "c", "..", "a"));
+        Directory.CreateDirectory(_kit.Temp.Combine("c"));
+
+        Assert.Throws<IOException>(() => PathExtensions.ResolveRealPath(Path.Combine(a, "x")));
     }
 
     // ---- settings -----------------------------------------------------------------------------------------------
