@@ -273,6 +273,108 @@ public sealed class V1FolderTests : IDisposable
         Directory.CreateDirectory(_kit.Temp.Combine("c"));
 
         Assert.Throws<IOException>(() => PathExtensions.ResolveRealPath(Path.Combine(a, "x")));
+        Assert.NotNull(V1Folder.FindOverlap(_kit.Temp.Combine("v1"), Path.Combine(a, "x")));
+    }
+
+    [Fact]
+    public void Overlap_IsCheckedOnTheProtectedFoldersAndTheDataFoldersEntriesToo()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");
+
+        // Each case in a folder of its own: a 1.x folder T/InfoPanel with assets and profiles, and a data folder.
+        var cases = 0;
+        (string V1, string T) Case()
+        {
+            var t = _kit.Temp.Combine($"case-{++cases}");
+            var v1 = Path.Combine(t, "InfoPanel");
+            Directory.CreateDirectory(Path.Combine(v1, "assets"));
+            Directory.CreateDirectory(Path.Combine(v1, "profiles"));
+            File.WriteAllText(Path.Combine(v1, "profiles.xml"), "<x/>");
+            return (v1, t);
+        }
+        string? Overlap(string v1, string data) => V1Folder.FindOverlap(v1, data);
+
+        // 1.x assets is a link to T/shared; the data folder T/shared/v2 (or a folder under it that doesn't exist yet).
+        var (v1, t) = Case();
+        Directory.CreateDirectory(Path.Combine(t, "shared"));
+        Directory.Delete(Path.Combine(v1, "assets"));
+        Directory.CreateSymbolicLink(Path.Combine(v1, "assets"), Path.Combine(t, "shared"));
+        var underAssets = (Overlap(v1, Path.Combine(t, "shared", "v2")), Overlap(v1, Path.Combine(t, "shared", "not-yet", "v2")));
+
+        // 1.x profiles is a link to the data folder itself.
+        (v1, t) = Case();
+        Directory.CreateDirectory(Path.Combine(t, "data"));
+        Directory.Delete(Path.Combine(v1, "profiles"));
+        Directory.CreateSymbolicLink(Path.Combine(v1, "profiles"), Path.Combine(t, "data"));
+        var profilesIsData = Overlap(v1, Path.Combine(t, "data"));
+
+        // 1.x assets is a link into the data folder's blobs.
+        (v1, t) = Case();
+        Directory.CreateDirectory(Path.Combine(t, "data", "blobs"));
+        Directory.Delete(Path.Combine(v1, "assets"));
+        Directory.CreateSymbolicLink(Path.Combine(v1, "assets"), Path.Combine(t, "data", "blobs"));
+        var assetsIsBlobs = Overlap(v1, Path.Combine(t, "data"));
+
+        // 1.x assets is a link to a folder inside the data folder's fonts (whose contents the engine writes and wipes).
+        (v1, t) = Case();
+        Directory.CreateDirectory(Path.Combine(t, "data", "fonts", "shared"));
+        Directory.Delete(Path.Combine(v1, "assets"));
+        Directory.CreateSymbolicLink(Path.Combine(v1, "assets"), Path.Combine(t, "data", "fonts", "shared"));
+        var assetsInFonts = Overlap(v1, Path.Combine(t, "data"));
+
+        // The data folder's blobs is a link to 1.x assets; its fonts a link to the folder above the 1.x folder.
+        (v1, t) = Case();
+        Directory.CreateDirectory(Path.Combine(t, "data"));
+        Directory.CreateSymbolicLink(Path.Combine(t, "data", "blobs"), Path.Combine(v1, "assets"));
+        var blobsIsAssets = Overlap(v1, Path.Combine(t, "data"));
+        (v1, t) = Case();
+        Directory.CreateDirectory(Path.Combine(t, "data"));
+        Directory.CreateSymbolicLink(Path.Combine(t, "data", "fonts"), t);
+        var fontsHoldsV1 = Overlap(v1, Path.Combine(t, "data"));
+
+        // The data folder's lock is a link to a 1.x file (outside the data folder, inside the 1.x folder).
+        (v1, t) = Case();
+        Directory.CreateDirectory(Path.Combine(t, "data"));
+        File.CreateSymbolicLink(Path.Combine(t, "data", "engine.lock"), Path.Combine(v1, "profiles.xml"));
+        var lockIsV1File = Overlap(v1, Path.Combine(t, "data"));
+
+        // A profile folder in the data folder is a link to 1.x profiles.
+        (v1, t) = Case();
+        Directory.CreateDirectory(Path.Combine(t, "data", "profiles"));
+        Directory.CreateSymbolicLink(Path.Combine(t, "data", "profiles", Desk), Path.Combine(v1, "profiles"));
+        var profileIsV1Profiles = Overlap(v1, Path.Combine(t, "data"));
+
+        // Allowed: the default layout with every entry the engine writes in place, and a data folder whose blobs live
+        // elsewhere through a link.
+        (v1, t) = Case();
+        var v2 = Path.Combine(v1, "v2");
+        Directory.CreateDirectory(Path.Combine(v2, "profiles", Desk));
+        Directory.CreateDirectory(Path.Combine(v2, "blobs"));
+        File.WriteAllText(Path.Combine(v2, "profiles.json"), "{}");
+        var defaultLayout = Overlap(v1, v2);
+        Directory.CreateDirectory(Path.Combine(t, "elsewhere", "blobs"));
+        Directory.CreateDirectory(Path.Combine(t, "data"));
+        Directory.CreateSymbolicLink(Path.Combine(t, "data", "blobs"), Path.Combine(t, "elsewhere", "blobs"));
+        var blobsElsewhere = Overlap(v1, Path.Combine(t, "data"));
+
+        Assert.Equal(
+            (true, true, true, true, true, true, true, true, true, false, false),
+            (underAssets.Item1 is not null, underAssets.Item2 is not null, profilesIsData is not null, assetsIsBlobs is not null, assetsInFonts is not null,
+                blobsIsAssets is not null, fontsHoldsV1 is not null, lockIsV1File is not null, profileIsV1Profiles is not null,
+                defaultLayout is not null, blobsElsewhere is not null));
+    }
+
+    [Fact]
+    public void Overlap_FindsThe1xFoldersByNameIgnoringCase()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");
+        // The import finds 1.x folders ignoring case, so on a case-sensitive filesystem "Assets" is the assets folder.
+        var v1 = _kit.Temp.Combine("InfoPanel");
+        Directory.CreateDirectory(v1);
+        Directory.CreateDirectory(_kit.Temp.Combine("shared"));
+        Directory.CreateSymbolicLink(Path.Combine(v1, "Assets"), _kit.Temp.Combine("shared"));
+
+        Assert.NotNull(V1Folder.FindOverlap(v1, _kit.Temp.Combine("shared", "v2")));
     }
 
     // ---- settings -----------------------------------------------------------------------------------------------

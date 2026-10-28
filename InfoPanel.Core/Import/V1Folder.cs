@@ -61,26 +61,83 @@ public sealed class V1Folder
     /// <summary>The run-once record of the engine whose data folder is <paramref name="data"/>.</summary>
     public static string RecordFile(DataPaths data) => Path.Combine(data.Root, RecordFileName);
 
+    /// <summary>The 1.x folders the engine must never write into, by name (found ignoring case, as the import reads them).</summary>
+    private static readonly string[] ProtectedFolders = ["profiles", "assets"];
+
+    /// <summary>
+    /// The top-level entries the engine writes in its data folder: the store, the tokens, the runtime file, the lock,
+    /// fonts, logs, step-1's files and the run-once record. A file the engine writes by renaming a temp file over it
+    /// replaces a link instead of writing through it; the folders and the lock are written through.
+    /// </summary>
+    private static readonly string[] DataEntries =
+        ["profiles.json", "tokens.json", "runtime.json", "engine.lock", "profiles.xml", RecordFileName, "profiles", "blobs", "fonts", "logs", "assets"];
+
     /// <summary>
     /// Why a 1.x folder at <paramref name="v1Root"/> can't be used with the data folder <paramref name="dataRoot"/>, or
     /// null: the data folder must not be the 1.x folder, contain it, or be inside its <c>profiles</c> or <c>assets</c>
     /// folder. A data folder elsewhere inside the 1.x folder is allowed: the default layout puts it in <c>InfoPanel/v2</c>.
     /// Checked on the paths as given and on their real paths (links resolved, components that don't exist yet kept), so
-    /// a link can't alias one folder into the other.
+    /// a link can't alias one folder into the other. With links resolved the complete paths are compared: the 1.x
+    /// <c>profiles</c> and <c>assets</c> folders (each entry of that name, ignoring case) must neither hold nor be
+    /// inside the data folder or any entry the engine writes in it (its top-level entries and each existing profile
+    /// folder), and none of those entries may be or hold the 1.x folder, or be elsewhere inside it than in the data
+    /// folder. A path that can't be resolved (links that loop, a folder that can't be read) is refused.
     /// </summary>
     public static string? FindOverlap(string v1Root, string dataRoot)
     {
         var v1 = Path.GetFullPath(v1Root);
         var data = Path.GetFullPath(dataRoot);
-        return Overlaps(v1, data) || Overlaps(PathExtensions.ResolveRealPath(v1), PathExtensions.ResolveRealPath(data))
-            ? $"The 2.0 data folder {data} must not be the 1.x folder {v1}, contain it, or be inside its profiles or assets folder, " +
-              "on the paths as given or with links resolved."
-            : null;
+        var problem = $"The 2.0 data folder {data} must not be the 1.x folder {v1}, contain it, or be inside its profiles or assets folder, " +
+            "on the paths as given or with links resolved.";
+        if (Overlaps(v1, [.. ProtectedFolders.Select(name => Path.Combine(v1, name))], data, []))
+            return problem;
 
-        static bool Overlaps(string v1, string data) =>
+        try
+        {
+            var realV1 = PathExtensions.ResolveRealPath(v1Root);
+            var realData = PathExtensions.ResolveRealPath(dataRoot);
+            return Overlaps(realV1, RealProtectedFolders(v1Root, realV1), realData, RealDataEntries(dataRoot)) ? problem : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"The 2.0 data folder {data} and the 1.x folder {v1} can't be checked with links resolved: {ex.Message}";
+        }
+
+        static bool Overlaps(string v1, IReadOnlyList<string> protectedFolders, string data, IEnumerable<string> entries) =>
             v1.IsSubdirectoryOf(data)
-            || data.IsSubdirectoryOf(Path.Combine(v1, "profiles"))
-            || data.IsSubdirectoryOf(Path.Combine(v1, "assets"));
+            || protectedFolders.Any(folder => Nested(folder, data))
+            || entries.Any(entry =>
+                v1.IsSubdirectoryOf(entry)
+                || protectedFolders.Any(folder => Nested(folder, entry))
+                || (entry.IsSubdirectoryOf(v1) && !entry.IsSubdirectoryOf(data)));
+
+        static bool Nested(string a, string b) => a.IsSubdirectoryOf(b) || b.IsSubdirectoryOf(a);
+    }
+
+    /// <summary>The real paths of the 1.x <c>profiles</c> and <c>assets</c> folders, and of every entry with those names ignoring case.</summary>
+    private static List<string> RealProtectedFolders(string v1Root, string realV1)
+    {
+        var folders = ProtectedFolders.Select(name => PathExtensions.ResolveRealPath(Path.Combine(v1Root, name))).ToList();
+        if (Directory.Exists(realV1))
+        {
+            foreach (var entry in Directory.EnumerateFileSystemEntries(realV1))
+            {
+                if (ProtectedFolders.Contains(Path.GetFileName(entry), StringComparer.OrdinalIgnoreCase))
+                    folders.Add(PathExtensions.ResolveRealPath(entry));
+            }
+        }
+
+        return folders;
+    }
+
+    /// <summary>The real paths of the entries the engine writes in the data folder, and of each existing profile folder.</summary>
+    private static List<string> RealDataEntries(string dataRoot)
+    {
+        var entries = DataEntries.Select(name => PathExtensions.ResolveRealPath(Path.Combine(dataRoot, name))).ToList();
+        var profiles = PathExtensions.ResolveRealPath(Path.Combine(dataRoot, "profiles"));
+        if (Directory.Exists(profiles))
+            entries.AddRange(Directory.EnumerateFileSystemEntries(profiles).Select(PathExtensions.ResolveRealPath));
+        return entries;
     }
 
     /// <summary>Whether the folder has 1.x data: <c>profiles.xml</c> or <c>settings.xml</c>.</summary>
