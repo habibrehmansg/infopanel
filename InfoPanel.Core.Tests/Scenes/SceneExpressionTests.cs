@@ -10,9 +10,13 @@ public sealed class SceneExpressionTests
 {
     private const string Inputs = "{'v':{'type':'number'},'s':{'type':'text'},'t':{'type':'table'},'u':{'type':'number'}}";
 
-    internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) Eval(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5)
+    internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) Eval(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5) =>
+        EvalJson(expr.Replace('\'', '"'), setup, elapsed);
+
+    /// <summary>An expression written as JSON (no quote replacement), evaluated as the named value <c>x</c> of a scene.</summary>
+    internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) EvalJson(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5)
     {
-        var json = SceneKit.Json($"{{'format':'infopanel.scene/1','inputs':{Inputs},'values':{{'x':{expr}}},'nodes':[]}}");
+        var json = SceneKit.Json("{'format':'infopanel.scene/1','inputs':" + Inputs + ",'values':{'x':" + expr.Replace("'", "\\u0027") + "},'nodes':[]}");
         var check = SceneValidator.Check(json);
         Assert.True(check.Status == CheckStatus.Valid, string.Join("; ", check.Errors.Select(e => $"{e.Code} {e.Path} {e.Message}")));
         var scene = CompiledScene.Compile(check.Scene!, check.Cost, SpecLimits.Default);
@@ -64,6 +68,15 @@ public sealed class SceneExpressionTests
     // A literal -0 reads as 0 (spec/docs/validation.md#numbers): the angle of (-1, 0) is 180, not -180.
     [InlineData("{'op':'atan2','args':[-0,-1]}", 180)]
     [InlineData("{'op':'atan2','args':[-0.0e3,-1]}", 180)]
+    // No result is negative zero (spec/docs/expressions.md, "Numbers and strings"): mul(-1, 0) is 0, so the angle is 180.
+    [InlineData("{'op':'atan2','args':[{'op':'mul','args':[-1,0]},-1]}", 180)]
+    [InlineData("{'op':'atan2','args':[{'op':'neg','args':[0]},-1]}", 180)]
+    [InlineData("{'op':'mul','args':[-1,0]}", 0)]
+    [InlineData("{'op':'neg','args':[0]}", 0)]
+    [InlineData("{'op':'ceil','args':[-0.5]}", 0)]
+    [InlineData("{'op':'round','args':[-0.4]}", 0)]
+    [InlineData("{'op':'sqrt','args':[{'op':'neg','args':[0]}]}", 0)]
+    [InlineData("{'op':'steps','value':-5,'at':[0],'out':[{'op':'mul','args':[-1,0]},1]}", 0)]
     [InlineData("{'op':'neg','args':[2]}", -2)]
     [InlineData("{'op':'abs','args':[-2]}", 2)]
     [InlineData("{'op':'floor','args':[-1.5]}", -2)]
@@ -120,7 +133,19 @@ public sealed class SceneExpressionTests
     [InlineData("{'op':'history','input':'v','fn':'last','count':4}", 10)]
     [InlineData("{'op':'history','input':'v','fn':'count','count':100}", 5)]
     [InlineData("{'op':'history','input':'u','fn':'avg','count':100}", 0)]
-    public void Numbers(string expr, double expected) => Assert.Equal(expected, Num(expr), 9);
+    public void Numbers(string expr, double expected) => AssertExact(expected, Num(expr), expr);
+
+    /// <summary>The same double, bit for bit: exact (no rounding to some places) and with the same sign of zero.</summary>
+    internal static void AssertExact(double expected, double actual, string what) =>
+        Assert.True(BitConverter.DoubleToInt64Bits(expected) == BitConverter.DoubleToInt64Bits(actual),
+            $"{what}: expected {expected:R} ({BitConverter.DoubleToInt64Bits(expected):x16}), got {actual:R} ({BitConverter.DoubleToInt64Bits(actual):x16})");
+
+    [Fact]
+    public void A_negative_zero_input_reading_reads_as_zero()
+    {
+        var (v, _, _) = Eval("{'op':'atan2','args':[{'op':'input','name':'v','field':'now'},-1]}", f => f.Number("test:v", -0.0, "%", 0, 0, 0));
+        AssertExact(180, v.N, "atan2(input -0, -1)");
+    }
 
     [Theory]
     [InlineData("{'op':'lt','args':[1,2]}", true)]
@@ -140,6 +165,10 @@ public sealed class SceneExpressionTests
     [InlineData("{'op':'not','args':[true]}", false)]
     [InlineData("{'op':'input','name':'v','field':'available'}", true)]
     [InlineData("{'op':'input','name':'u','field':'available'}", false)]
+    // steps has an output of each of the four types, bool too.
+    [InlineData("{'op':'steps','value':1,'at':[1],'out':[false,true]}", true)]
+    [InlineData("{'op':'steps','value':0,'at':[1],'out':[false,true]}", false)]
+    [InlineData("{'op':'steps','value':5,'at':[1,9],'out':[true,{'op':'lt','args':[2,1]},true]}", false)]
     [InlineData("{'op':'eq','args':[{'op':'input','name':'v','field':'status'},'live']}", true)]
     [InlineData("{'op':'eq','args':[{'op':'input','name':'u','field':'status'},'unbound']}", true)]
     [InlineData("{'op':'eq','args':[{'op':'input','name':'t','field':'status'},'unavailable']}", true)]

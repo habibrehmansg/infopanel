@@ -1155,7 +1155,7 @@ export type NumberExpr = number | NumberUnaryOp | NumberBinaryOp | NumberVariadi
 export type StringExpr = string | ConcatOp | CaseOp | FormatOp | FormatTimeOp | StringInputOp | StringIfOp | StringStepsOp | ValueRefOp | StateRefOp;
 
 /** An expression of type bool. */
-export type BoolExpr = boolean | CompareOp | EqualOp | LogicOp | NotOp | BoolInputOp | BoolIfOp | ValueRefOp | StateRefOp;
+export type BoolExpr = boolean | CompareOp | EqualOp | LogicOp | NotOp | BoolInputOp | BoolIfOp | BoolStepsOp | ValueRefOp | StateRefOp;
 
 /** An expression of type color. A literal is #RRGGBB or #RRGGBBAA. */
 export type ColorExpr = ColorLiteral | RgbaOp | AlphaOp | ColorLerpOp | ColorIfOp | ColorStepsOp | ValueRefOp | StateRefOp;
@@ -1198,7 +1198,7 @@ export interface CompareOp {
   args: [NumberExpr, NumberExpr];
 }
 
-/** eq, ne: compare two values of the same type (numbers exactly, strings by code point, colours by their 8-digit form). */
+/** eq, ne: compare two values as their common type, a string when both can be strings (see docs/expressions.md, Equality): numbers exactly, strings by code point, colours by their 8-digit form. */
 export interface EqualOp {
   op: "eq" | "ne";
   /** Items: ≥ 2. */
@@ -1225,7 +1225,7 @@ export interface ConcatOp {
   args: StringExpr[];
 }
 
-/** upper, lower: case conversion with invariant (locale-independent) rules. The result is cut to its first 4,096 Unicode scalar values. */
+/** upper, lower: Unicode simple case mapping, code point by code point, with no locale rules (see docs/expressions.md, Case mapping). The result is cut to its first 4,096 Unicode scalar values. */
 export interface CaseOp {
   op: "upper" | "lower";
   /** Items: ≥ 1. */
@@ -1346,21 +1346,21 @@ export interface StateRefOp {
   name: Name;
 }
 
-/** A colour from red, green, blue (0–255) and alpha (0–1), each clamped. */
+/** A colour from red, green, blue (0–255) and alpha (0–1), each clamped, every channel rounded half away from zero to 0–255. */
 export interface RgbaOp {
   op: "rgba";
   /** Items: ≥ 4. */
   args: [NumberExpr, NumberExpr, NumberExpr, NumberExpr];
 }
 
-/** The colour with its alpha replaced (0–1, clamped). */
+/** The colour with its alpha replaced (0–1, clamped, rounded half away from zero to 0–255). */
 export interface AlphaOp {
   op: "alpha";
   /** Items: ≥ 2. */
   args: [ColorExpr, NumberExpr];
 }
 
-/** Mixes two colours per channel in sRGB, unpremultiplied: a + (b − a)·t, t clamped to 0–1. */
+/** Mixes two colours per channel in sRGB, unpremultiplied: a + (b − a)·t, t clamped to 0–1, each channel rounded half away from zero. */
 export interface ColorLerpOp {
   op: "lerp";
   /** Items: ≥ 3. */
@@ -1413,6 +1413,16 @@ export interface StringStepsOp {
   at: NumberExpr[];
   /** Items: 2–33. */
   out: StringExpr[];
+}
+
+/** Piecewise constant bool; see numberStepsOp. */
+export interface BoolStepsOp {
+  op: "steps";
+  value: NumberExpr;
+  /** Items: 1–32. */
+  at: NumberExpr[];
+  /** Items: 2–33. */
+  out: BoolExpr[];
 }
 
 /** Piecewise constant colour (colour rules); see numberStepsOp. */

@@ -34,7 +34,8 @@ internal readonly struct Val
         C = c;
     }
 
-    public static Val Num(double n) => new(SceneMath.Finite(n), null, 0);
+    /// <summary>A number: finite (anything else reads 0) and with no sign on a zero (spec/docs/expressions.md, "Numbers and strings").</summary>
+    public static Val Num(double n) => new(n == 0 || !double.IsFinite(n) ? 0 : n, null, 0);
 
     public static Val Bool(bool b) => new(b ? 1 : 0, null, 0);
 

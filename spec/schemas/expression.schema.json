@@ -48,6 +48,7 @@
         { "$ref": "#/$defs/notOp" },
         { "$ref": "#/$defs/boolInputOp" },
         { "$ref": "#/$defs/boolIfOp" },
+        { "$ref": "#/$defs/boolStepsOp" },
         { "$ref": "#/$defs/valueRefOp" },
         { "$ref": "#/$defs/stateRefOp" }
       ]
@@ -146,7 +147,7 @@
       }
     },
     "equalOp": {
-      "description": "eq, ne: compare two values of the same type (numbers exactly, strings by code point, colours by their 8-digit form).",
+      "description": "eq, ne: compare two values as their common type, a string when both can be strings (see docs/expressions.md, Equality): numbers exactly, strings by code point, colours by their 8-digit form.",
       "type": "object",
       "required": ["op", "args"],
       "additionalProperties": false,
@@ -195,7 +196,7 @@
       }
     },
     "caseOp": {
-      "description": "upper, lower: case conversion with invariant (locale-independent) rules. The result is cut to its first 4,096 Unicode scalar values.",
+      "description": "upper, lower: Unicode simple case mapping, code point by code point, with no locale rules (see docs/expressions.md, Case mapping). The result is cut to its first 4,096 Unicode scalar values.",
       "type": "object",
       "required": ["op", "args"],
       "additionalProperties": false,
@@ -350,7 +351,7 @@
       }
     },
     "rgbaOp": {
-      "description": "A colour from red, green, blue (0–255) and alpha (0–1), each clamped.",
+      "description": "A colour from red, green, blue (0–255) and alpha (0–1), each clamped, every channel rounded half away from zero to 0–255.",
       "type": "object",
       "required": ["op", "args"],
       "additionalProperties": false,
@@ -365,7 +366,7 @@
       }
     },
     "alphaOp": {
-      "description": "The colour with its alpha replaced (0–1, clamped).",
+      "description": "The colour with its alpha replaced (0–1, clamped, rounded half away from zero to 0–255).",
       "type": "object",
       "required": ["op", "args"],
       "additionalProperties": false,
@@ -380,7 +381,7 @@
       }
     },
     "colorLerpOp": {
-      "description": "Mixes two colours per channel in sRGB, unpremultiplied: a + (b − a)·t, t clamped to 0–1.",
+      "description": "Mixes two colours per channel in sRGB, unpremultiplied: a + (b − a)·t, t clamped to 0–1, each channel rounded half away from zero.",
       "type": "object",
       "required": ["op", "args"],
       "additionalProperties": false,
@@ -476,6 +477,18 @@
         "value": { "$ref": "#/$defs/numberExpr" },
         "at": { "type": "array", "items": { "$ref": "#/$defs/numberExpr" }, "minItems": 1, "maxItems": 32 },
         "out": { "type": "array", "items": { "$ref": "#/$defs/stringExpr" }, "minItems": 2, "maxItems": 33 }
+      }
+    },
+    "boolStepsOp": {
+      "description": "Piecewise constant bool; see numberStepsOp.",
+      "type": "object",
+      "required": ["op", "value", "at", "out"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "steps" },
+        "value": { "$ref": "#/$defs/numberExpr" },
+        "at": { "type": "array", "items": { "$ref": "#/$defs/numberExpr" }, "minItems": 1, "maxItems": 32 },
+        "out": { "type": "array", "items": { "$ref": "#/$defs/boolExpr" }, "minItems": 2, "maxItems": 33 }
       }
     },
     "colorStepsOp": {

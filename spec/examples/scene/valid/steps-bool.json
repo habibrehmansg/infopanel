@@ -1,0 +1,21 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number", "label": "Load"}},
+  "values": {
+    "high": {"op": "steps", "value": {"op": "input", "name": "v"}, "at": [80], "out": [false, true]}
+  },
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": 20,
+      "h": 20,
+      "fill": "#ef4444",
+      "visible": {
+        "op": "steps",
+        "value": {"op": "mod", "args": [{"op": "time", "field": "elapsed"}, 1]},
+        "at": [0.5],
+        "out": [true, {"op": "not", "args": [{"op": "value", "name": "high"}]}]
+      }
+    }
+  ]
+}

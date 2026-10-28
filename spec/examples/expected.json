@@ -193,6 +193,7 @@
   "scene/invalid/state-type.json": {"code": "type.mismatch", "path": "/state/a/next"},
   "scene/invalid/state-value-in-next.json": {"code": "context.state", "path": "/state/a/next"},
   "scene/invalid/steps-arity.json": {"code": "steps.arity", "path": "/nodes/0/w/out"},
+  "scene/invalid/steps-bool-output.json": {"code": "schema", "path": "/nodes/0/visible/out/1"},
   "scene/invalid/string-work.json": {"code": "limit.exprWork", "path": "", "limits": {"exprWork": 15}},
   "scene/invalid/table-nodes.json": {"code": "limit.tableNodes", "path": "/nodes", "limits": {"tableNodes": 1}},
   "scene/invalid/text-nodes.json": {"code": "limit.textNodes", "path": "/nodes", "limits": {"textNodes": 1}},

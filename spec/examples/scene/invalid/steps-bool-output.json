@@ -1,0 +1,6 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "rect", "w": 20, "h": 20, "fill": "#ffffff", "visible": {"op": "steps", "value": 1, "at": [1], "out": [true, 1]}}
+  ]
+}

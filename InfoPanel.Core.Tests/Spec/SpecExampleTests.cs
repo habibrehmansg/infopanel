@@ -324,8 +324,11 @@ public class SpecExampleTests
             .ToList();
         string[] folders = ["scene/valid/", "scene/unsupported/", "scene/invalid/", "document/valid/", "document/placeholder/",
             "document/unsupported/", "document/invalid/", "commit/valid/", "commit/warning/", "commit/invalid/", "api/",
-            "media/valid/", "media/invalid/"];
+            "media/valid/", "media/invalid/", "expressions/"];
         Assert.Empty(files.Where(f => !folders.Any(f.StartsWith)));
+        // The expression vectors (run by ExpressionVectorTests) are the only file there; it carries its own results.
+        Assert.Equal(["expressions/vectors.json"], files.Where(f => f.StartsWith("expressions/", StringComparison.Ordinal)));
+        files.Remove("expressions/vectors.json");
         // API bodies are api/{definition}/*.json, and the ones a definition refuses api/{definition}/invalid/*.json.
         var misplaced = files.Where(f => f.StartsWith("api/", StringComparison.Ordinal) && f.Split('/').Length != 3 && !IsInvalidApiBody(f)).ToList();
         Assert.True(misplaced.Count == 0, "Misplaced API examples: " + string.Join(", ", misplaced));
