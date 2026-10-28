@@ -131,7 +131,8 @@ internal sealed class TextLayout
 
     /// <summary>
     /// The glyph outlines' total length and contour count (every contour of every glyph drawn), for the dash budget of
-    /// a stroked text. Measured once per layout, each distinct glyph of a run once.
+    /// a stroked text: a bound at any resolution (<see cref="SceneMath.Outline"/>). Measured once per layout, each
+    /// distinct glyph of a run once.
     /// </summary>
     public (double Length, double Contours) GlyphOutline
     {
@@ -153,9 +154,8 @@ internal sealed class TextLayout
                             using var path = font.GetGlyphPath(glyph);
                             if (path is not null && !path.IsEmpty)
                             {
-                                using var measure = new SKPathMeasure(path, false);
-                                do outline = (outline.Length + measure.Length, outline.Contours + 1);
-                                while (measure.NextContour());
+                                var (length, n, _) = SceneMath.Outline(path);
+                                outline = (length, n);
                             }
                             measured[glyph] = outline;
                         }

@@ -227,6 +227,7 @@ public sealed class SceneRuntime : IDisposable
         var diagnostics = new List<SceneDiagnostic>();
         var present = new HashSet<string>(StringComparer.Ordinal);
         var nowTicks = Stopwatch.GetTimestamp();
+        var largestScale = TickSnapshot.LargestScale(model.Width, model.Height);
 
         SnapItem? Visit(DocItem item, SKMatrix parent, double parentRotation)
         {
@@ -272,7 +273,7 @@ public sealed class SceneRuntime : IDisposable
                     try
                     {
                         var evaluator = new SceneEvaluator(scene, rt, services, inputs, clock, d.LayoutW ?? 0, d.LayoutH ?? 0, diag,
-                            Math.Max(1, _options.Limits.ExprWork) * 2);
+                            Math.Max(1, _options.Limits.ExprWork) * 2, largestScale, world);
                         snap.Nodes = evaluator.Run(advance);
                         snap.Runtime = advance ? rt : null;
                     }
@@ -301,7 +302,7 @@ public sealed class SceneRuntime : IDisposable
             if (Visit(item, SKMatrix.Identity, 0) is { } s) roots.Add(s);
 
         return new TickSnapshot(model.Generation, model.Rev, tick, clock, model.Width, model.Height, model.Background, roots.ToArray(),
-            services.Retained.ToArray(), diagnostics, _options.ItemBudgetMs);
+            services.Retained.ToArray(), services.Owned.ToArray(), diagnostics, _options.ItemBudgetMs);
     }
 
     private ItemRuntime Runtime(string id)

@@ -112,6 +112,55 @@ internal static class SceneMath
     /// </summary>
     public static float F(double x) => (float)Math.Clamp(Finite(x), -1e9, 1e9);
 
+    /// <summary>
+    /// The most <paramref name="m"/> stretches any length (its largest singular value; affine part only): a length
+    /// of 1 in its coordinates is at most this long after it.
+    /// </summary>
+    public static double MaxStretch(in SKMatrix m)
+    {
+        double a = m.ScaleX, b = m.SkewY, c = m.SkewX, d = m.ScaleY;
+        var sum = a * a + b * b + c * c + d * d;
+        var det = a * d - b * c;
+        return Math.Sqrt((sum + Math.Sqrt(Math.Max(0, sum * sum - 4 * det * det))) / 2);
+    }
+
+    /// <summary>
+    /// An upper bound on the length of <paramref name="path"/>'s outline at any resolution, its contours, and whether
+    /// it has curves: the length of its control polygon (a curve is never longer than its control points' polygon, and
+    /// Skia measures a curve as chords of it), closing segments included. Without curves the length is exact.
+    /// </summary>
+    public static (double Length, int Contours, bool Curved) Outline(SKPath path)
+    {
+        double length = 0;
+        var contours = 0;
+        var curved = false;
+        SKPoint start = default, last = default;
+        var points = new SKPoint[4];
+        using var it = path.CreateRawIterator();
+        SKPathVerb verb;
+        while ((verb = it.Next(points)) != SKPathVerb.Done)
+        {
+            var n = verb switch { SKPathVerb.Line => 2, SKPathVerb.Quad or SKPathVerb.Conic => 3, SKPathVerb.Cubic => 4, _ => 0 };
+            switch (verb)
+            {
+                case SKPathVerb.Move:
+                    start = last = points[0];
+                    contours++;
+                    break;
+                case SKPathVerb.Close:
+                    length += SKPoint.Distance(last, start);
+                    last = start;
+                    break;
+                default:
+                    for (var i = 1; i < n; i++) length += SKPoint.Distance(points[i - 1], points[i]);
+                    last = points[n - 1];
+                    curved |= n > 2;
+                    break;
+            }
+        }
+        return (length, Math.Max(1, contours), curved);
+    }
+
     public static double Deg(double radians) => radians * (180 / Math.PI);
 
     /// <summary>sin and cos of degrees, exact at multiples of 90°.</summary>

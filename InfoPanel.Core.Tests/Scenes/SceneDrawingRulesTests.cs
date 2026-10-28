@@ -122,16 +122,32 @@ public sealed class SceneDrawingRulesTests
     }
 
     [Theory]
-    // An outline's length for the dash budget is the length Skia draws, never negative, so lengths never cancel.
+    // An outline's length for the dash budget is the control polygon of the path Skia draws: at least the length it
+    // draws (exactly it for a rectangle), never negative, so lengths never cancel. An ellipse's is its four conics'
+    // control points, the oval's bounding rectangle.
     [InlineData("rect", 0, 0, -500, 1000, 3000)]
     [InlineData("rect", 0, 0, 500, -1000, 3000)]
     [InlineData("rect", 0, 0, -500, -1000, 3000)]
-    [InlineData("ellipse", 0, 0, -10, -10, 62.83185307179586)]
-    [InlineData("ellipse", 0, 0, 10, -10, 62.83185307179586)]
+    [InlineData("ellipse", 0, 0, -10, -10, 80)]
+    [InlineData("ellipse", 0, 0, 10, -10, 80)]
     public void An_outline_length_is_never_negative(string kind, float x, float y, float a, float b, double expected)
     {
         RGeom geom = kind == "rect" ? new RectGeom(x, y, a, b, null) : new EllipseGeom(x, y, a, b);
-        Assert.Equal(expected, geom.Length, 3);
+        var owner = new List<IDisposable>();
+        try
+        {
+            var (length, _, _) = geom.Measure(owner);
+            Assert.Equal(expected, length, 3);
+            double drawn = 0;
+            using (var measure = new SKPathMeasure(geom.Drawn!, false, 1000))
+                do drawn += measure.Length;
+                while (measure.NextContour());
+            Assert.InRange(drawn, Math.Min(expected, 62.8), length + 1e-3);
+        }
+        finally
+        {
+            foreach (var o in owner) o.Dispose();
+        }
     }
 
     private static SKBitmap Gradient(string stops, string spread = "pad")

@@ -7,7 +7,8 @@ namespace InfoPanel.Scenes;
 
 // A scene evaluated for one tick: every expression replaced by its value. Immutable, so one evaluation is drawn at every
 // scale, on every output and measured for bounds, from any thread. Skia objects are created while drawing and disposed
-// right after, except the static paths of path nodes and clips, which belong to the compiled scene and are only read.
+// right after, except the static paths of path nodes and clips, which belong to the compiled scene, and the path a
+// dashed outline is drawn from, built while evaluating and released with the tick; both are only read once built.
 
 /// <summary>An outline in a node's coordinates.</summary>
 internal abstract class RGeom
@@ -15,14 +16,38 @@ internal abstract class RGeom
     /// <summary>The outline's bounds (control points for curves of static paths), without any stroke.</summary>
     public abstract SKRect Bounds { get; }
 
-    /// <summary>
-    /// The outline's length, for the dash budget (an estimate for curves): the length Skia strokes, never negative, so
-    /// lengths summed over several outlines never cancel.
-    /// </summary>
-    public abstract double Length { get; }
+    private SKPath? _drawn;
+    private (double Length, int Contours, bool Curved) _measured;
 
-    /// <summary>The outline's contours, for the dash budget: a dash pattern starts again on each.</summary>
-    public virtual int Contours => 1;
+    /// <summary>
+    /// The path a dashed stroke of this outline is drawn from: built and measured once by <see cref="Measure"/>, then
+    /// only read, at every scale and on every output; null before.
+    /// </summary>
+    public virtual SKPath? Drawn => _drawn;
+
+    /// <summary>
+    /// Builds the path a dashed stroke of the outline is drawn from (<see cref="ToPath"/>, once; <paramref name="owner"/>
+    /// disposes it with the tick) and measures it for the dash budget (<see cref="SceneMath.Outline"/>): its control
+    /// polygon's length, at least what Skia strokes at any resolution, and never negative, so lengths summed over
+    /// several outlines never cancel; its contours, on each of which a dash pattern starts again; and whether it has
+    /// curves, which Skia trims by parameter, so only an outline without them keeps the trim fraction of its length.
+    /// A length of 0 is a zero-length outline, which draws undashed.
+    /// </summary>
+    public virtual (double Length, int Contours, bool Curved) Measure(List<IDisposable> owner)
+    {
+        if (_drawn is null)
+        {
+            var path = ToPath();
+            _ = path.Bounds; // computed now, so drawing from several threads never mutates the path
+            owner.Add(path);
+            _measured = SceneMath.Outline(path);
+            _drawn = path;
+        }
+        return _measured;
+    }
+
+    /// <summary>What <see cref="Measure"/> measured; only read once <see cref="Drawn"/> is set.</summary>
+    public virtual (double Length, int Contours, bool Curved) Measured => _measured;
 
     /// <summary>Whether the outline has corners where a miter join can reach past the stroke's half width.</summary>
     public virtual bool HasCorners => true;
@@ -42,7 +67,6 @@ internal sealed class RectGeom(float x, float y, float w, float h, SKPoint[]? ra
     public SKPoint[]? Radii { get; } = radii;
 
     public override SKRect Bounds => Rect;
-    public override double Length => 2.0 * (Math.Abs(Rect.Width) + Math.Abs(Rect.Height)); // Skia strokes a reversed rectangle in full
     public override bool HasCorners => false; // right angles: a miter reaches exactly the rectangle grown by half the width
 
     public override SKPath ToPath()
@@ -78,15 +102,6 @@ internal sealed class EllipseGeom(float cx, float cy, float rx, float ry) : RGeo
     public override SKRect Bounds => Oval;
     public override bool HasCorners => false;
 
-    public override double Length
-    {
-        get
-        {
-            double a = Math.Abs(Oval.Width) / 2, b = Math.Abs(Oval.Height) / 2;
-            return Math.PI * (3 * (a + b) - Math.Sqrt((3 * a + b) * (a + 3 * b))); // Ramanujan
-        }
-    }
-
     public override SKPath ToPath()
     {
         var p = new SKPath();
@@ -113,16 +128,6 @@ internal sealed class ArcGeom(float cx, float cy, float r, float inner, float st
     public bool Open { get; } = open;
 
     public override bool HasCorners => !Open && Math.Abs(Sweep) < 360;
-    public override int Contours => !Open && Inner > 0 && Math.Abs(Sweep) >= 360 ? 2 : 1;
-
-    public override double Length
-    {
-        get
-        {
-            var arc = Math.Abs(Sweep) * Math.PI / 180;
-            return Open ? R * arc : (R + Inner) * arc + 2 * (R - Inner);
-        }
-    }
 
     public override SKRect Bounds
     {
@@ -196,7 +201,6 @@ internal sealed class LineGeom(float x1, float y1, float x2, float y2) : RGeom
     public SKPoint P1 { get; } = new(x1, y1);
     public SKPoint P2 { get; } = new(x2, y2);
     public override SKRect Bounds => new(Math.Min(P1.X, P2.X), Math.Min(P1.Y, P2.Y), Math.Max(P1.X, P2.X), Math.Max(P1.Y, P2.Y));
-    public override double Length => SKPoint.Distance(P1, P2);
     public override bool HasCorners => false;
 
     public override SKPath ToPath()
@@ -215,22 +219,26 @@ internal sealed class LineGeom(float x1, float y1, float x2, float y2) : RGeom
     }
 }
 
-/// <summary>A static path (a path node's or clip's <c>d</c>), parsed once per compiled scene and only read afterwards.</summary>
+/// <summary>
+/// A static path (a path node's or clip's <c>d</c>), parsed and measured once per compiled scene and only read
+/// afterwards: it is the path drawn, with or without a path effect.
+/// </summary>
 internal sealed class StaticPathGeom : RGeom
 {
     private readonly SKPath _path;
+    private readonly (double Length, int Contours, bool Curved) _outline;
 
-    public StaticPathGeom(SKPath path, double length, int contours)
+    private StaticPathGeom(SKPath path)
     {
         _path = path;
-        Length = length;
-        Contours = contours;
-        Bounds = path.Bounds;
+        _outline = SceneMath.Outline(path);
+        Bounds = path.Bounds; // computed now, so drawing never mutates the shared path
     }
 
     public override SKRect Bounds { get; }
-    public override double Length { get; }
-    public override int Contours { get; }
+    public override SKPath? Drawn => _path;
+    public override (double Length, int Contours, bool Curved) Measure(List<IDisposable> owner) => _outline;
+    public override (double Length, int Contours, bool Curved) Measured => _outline;
 
     public override SKPath ToPath() => new(_path);
 
@@ -244,17 +252,7 @@ internal sealed class StaticPathGeom : RGeom
     {
         var path = PathParser.Parse(d);
         path.FillType = fill;
-        double length = 0;
-        var contours = 1;
-        using (var measure = new SKPathMeasure(path, false))
-        {
-            do
-            {
-                length += measure.Length;
-            } while (measure.NextContour() && ++contours < 100_000);
-        }
-        _ = path.Bounds; // computed now, so drawing never mutates the shared path
-        return new StaticPathGeom(path, length, contours);
+        return new StaticPathGeom(path);
     }
 }
 
@@ -275,17 +273,6 @@ internal sealed class PolyGeom(SKPoint[] points, bool closed, SKPathFillType fil
                 l = Math.Min(l, p.X); t = Math.Min(t, p.Y); r = Math.Max(r, p.X); b = Math.Max(b, p.Y);
             }
             return new SKRect(l, t, r, b);
-        }
-    }
-
-    public override double Length
-    {
-        get
-        {
-            double s = 0;
-            for (var i = 1; i < Points.Length; i++) s += SKPoint.Distance(Points[i - 1], Points[i]);
-            if (Closed && Points.Length > 1) s += SKPoint.Distance(Points[^1], Points[0]);
-            return s;
         }
     }
 
@@ -424,16 +411,46 @@ internal sealed record RStroke(RPaint Paint, float Width, SKStrokeCap Cap, SKStr
     }
 
     /// <summary>
-    /// The dash segments this stroke draws along <paramref name="contours"/> contours of <paramref name="length"/> in
-    /// all; 0 without a dash. Dashes follow the trimmed outline (trimming comes first, and keeps the same fraction of
-    /// each path's length), and the pattern starts again on each contour, so each counts at least one (partial) period.
+    /// The floor of a dash or gap, in device pixels (spec/docs/scene.md, strokes): each length of a pattern is at least
+    /// this after the stroke's whole transform, so the dashes Skia draws are bounded by the outline's device length.
     /// </summary>
-    public double DashSegments(double length, double contours)
+    public const double DashFloor = 0.125;
+
+    /// <summary>
+    /// The shortest dash or gap, in the stroke's coordinates, where they are drawn at most <paramref name="scale"/>
+    /// device pixels a unit: <see cref="DashFloor"/> device pixels, at most 10⁹ (a collapsed transform); 0 when the
+    /// scale isn't known (not a number), so nothing is floored.
+    /// </summary>
+    public static double DashFloorAt(double scale) => double.IsNaN(scale) ? 0 : Math.Min(DashFloor / Math.Max(0, scale), 1e9);
+
+    /// <summary>The pattern drawn at <paramref name="scale"/> device pixels a unit: every length floored (<see cref="DashFloorAt"/>).</summary>
+    public float[]? DashAt(double scale)
+    {
+        if (Dash is not { } dash) return null;
+        var floor = DashFloorAt(scale);
+        var drawn = new float[dash.Length];
+        for (var i = 0; i < dash.Length; i++) drawn[i] = (float)Math.Max(dash[i], floor);
+        return drawn;
+    }
+
+    /// <summary>
+    /// The dash segments this stroke draws along <paramref name="contours"/> contours of <paramref name="length"/> in
+    /// all, drawn at no more than <paramref name="scale"/> device pixels a unit (along the transform's largest stretch);
+    /// 0 without a dash. The pattern is the floored one, so the count is at most the outline's length times the scale
+    /// over the floor however fine the pattern; a larger scale never gives fewer. Dashes follow the trimmed outline
+    /// (trimming comes first): an outline without curves keeps the trim fraction of its length exactly, a
+    /// <paramref name="curved"/> one is counted whole, since Skia trims curves by parameter at its default resolution,
+    /// which can keep more than the fraction. The pattern starts again on each contour, so each counts at least one
+    /// (partial) period.
+    /// </summary>
+    public double DashSegments(double length, double contours, double scale, bool curved)
     {
         if (Dash is not { Length: > 0 } dash) return 0;
+        var floor = DashFloorAt(scale);
         double sum = 0;
-        foreach (var d in dash) sum += d;
-        return (length * (TrimEnd - TrimStart) / sum + Math.Max(1, contours)) * dash.Length;
+        foreach (var d in dash) sum += Math.Max(d, floor);
+        var kept = curved ? 1 : TrimEnd - TrimStart;
+        return (length * kept / sum + Math.Max(1, contours)) * dash.Length;
     }
 }
 

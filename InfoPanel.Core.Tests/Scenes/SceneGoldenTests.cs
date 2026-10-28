@@ -82,6 +82,7 @@ public sealed class SceneGoldenTests
         ["fx-media"] = new("media.json", 420, 130, 0, 0, null, null),
         ["fx-series"] = new("series.json", 330, 100, 0, 0, null, null, Load),
         ["fx-shapes"] = new("shapes.json", 360, 120, 0, 0, null, null),
+        ["fx-dash-floor"] = new("dash-floor.json", 320, 80, 0, 0, null, null),
     };
 
     public static TheoryData<string> ExampleNames() => new(Examples.Keys.Order(StringComparer.Ordinal));

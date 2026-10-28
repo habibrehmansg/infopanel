@@ -40,7 +40,8 @@ internal sealed class SnapScene : SnapItem
 /// One tick of one document generation (spec/docs/identity.md, "The tick snapshot"): the clock, every input, the text
 /// layouts and the media frames the tick read, evaluated once. Everything drawn or measured for the tick uses it: every
 /// output at every scale, thumbnails and bounds, so they agree pixel for pixel. Immutable and safe to draw from several
-/// threads at once. Reference counted: it owns its media samples and releases them when the last holder disposes it.
+/// threads at once. Reference counted: it owns its media samples and the paths its dashed outlines are drawn from, and
+/// releases them when the last holder disposes it.
 /// </summary>
 public sealed class TickSnapshot : IDisposable
 {
@@ -49,12 +50,13 @@ public sealed class TickSnapshot : IDisposable
 
     private readonly SnapItem[] _items;
     private readonly MediaSample[] _samples;
+    private readonly IDisposable[] _owned;
     private readonly Lazy<IReadOnlyList<ItemBounds>> _bounds;
     private readonly double _drawBudgetMs;
     private int _references = 1;
 
     internal TickSnapshot(long generation, long rev, long tick, SceneClock clock, int width, int height, uint background,
-        SnapItem[] items, MediaSample[] samples, IReadOnlyList<SceneDiagnostic> diagnostics, double drawBudgetMs)
+        SnapItem[] items, MediaSample[] samples, IDisposable[] owned, IReadOnlyList<SceneDiagnostic> diagnostics, double drawBudgetMs)
     {
         Generation = generation;
         Rev = rev;
@@ -65,6 +67,7 @@ public sealed class TickSnapshot : IDisposable
         Background = background;
         _items = items;
         _samples = samples;
+        _owned = owned;
         Diagnostics = diagnostics;
         _drawBudgetMs = drawBudgetMs;
         _bounds = new Lazy<IReadOnlyList<ItemBounds>>(() => BoundsOf(_items), LazyThreadSafetyMode.ExecutionAndPublication);
@@ -107,9 +110,18 @@ public sealed class TickSnapshot : IDisposable
     {
         var left = Interlocked.Decrement(ref _references);
         if (left == 0)
+        {
             foreach (var s in _samples) s.Release();
+            foreach (var o in _owned) o.Dispose();
+        }
         else if (left < 0) Interlocked.Exchange(ref _references, 0);
     }
+
+    /// <summary>
+    /// More than any scale a frame of <paramref name="width"/> × <paramref name="height"/> is drawn at: its largest
+    /// within <see cref="MaxFramePixels"/>, plus 1 for sides rounded to whole pixels. For the dash budget.
+    /// </summary>
+    internal static double LargestScale(int width, int height) => Math.Sqrt(MaxFramePixels / ((double)Math.Max(1, width) * Math.Max(1, height))) + 1;
 
     /// <summary>The scale actually drawn for <paramref name="scale"/>: reduced so the frame stays within <see cref="MaxFramePixels"/>.</summary>
     public float EffectiveScale(float scale)

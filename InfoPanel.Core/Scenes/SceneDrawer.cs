@@ -12,6 +12,12 @@ internal static class SceneDrawer
     private static readonly SKSamplingOptions Linear = new(SKFilterMode.Linear, SKMipmapMode.Linear);
     private static readonly SKSamplingOptions Nearest = new(SKFilterMode.Nearest, SKMipmapMode.None);
 
+    /// <summary>
+    /// A test hook: called on the drawing thread for every stroke drawn with a path effect, with the outline (a text
+    /// run's glyph outlines), the paint and the canvas matrix, so a test can count what Skia draws.
+    /// </summary>
+    [ThreadStatic] internal static Action<RStroke, SKPath, SKPaint, SKMatrix>? StrokeProbe;
+
     public static void Draw(SKCanvas canvas, RNode[] nodes)
     {
         foreach (var n in nodes) Draw(canvas, n);
@@ -91,7 +97,12 @@ internal static class SceneDrawer
         return paint;
     }
 
-    private static void ApplyStroke(SKPaint paint, RStroke s)
+    /// <summary>
+    /// Sets <paramref name="s"/> on <paramref name="paint"/> for drawing under <paramref name="total"/>: the dash
+    /// pattern floored at drawing resolution (<see cref="RStroke.DashAt"/>), none for a zero-length outline, which
+    /// draws as an undashed stroke would (its caps).
+    /// </summary>
+    private static void ApplyStroke(SKPaint paint, RStroke s, in SKMatrix total, bool zeroLength)
     {
         paint.StrokeWidth = s.Width;
         paint.StrokeCap = s.Cap;
@@ -99,7 +110,7 @@ internal static class SceneDrawer
         paint.StrokeMiter = s.Miter;
         SKPathEffect? effect = null;
         if (s.Trimmed) effect = SKPathEffect.CreateTrim(s.TrimStart, s.TrimEnd, SKTrimPathEffectMode.Normal);
-        if (s.Dash is { } dash)
+        if (!zeroLength && s.DashAt(SceneMath.MaxStretch(total)) is { } dash)
         {
             var d = SKPathEffect.CreateDash(dash, s.DashOffset);
             if (effect is null) effect = d;
@@ -133,7 +144,9 @@ internal static class SceneDrawer
             canvas.SaveLayer(hint, lp);
             opacity = 1;
         }
-        SKPath? path = null;
+        // The path a dashed outline was measured on is drawn as it is (never disposed here); otherwise one is built.
+        SKPath? built = null;
+        SKPath Path() => s.Geom.Drawn ?? (built ??= s.Geom.ToPath());
         try
         {
             if (s.Fill is { } fill && s.Geom is not LineGeom)
@@ -141,11 +154,7 @@ internal static class SceneDrawer
                 var paint = MakePaint(fill, opacity, SKPaintStyle.Fill);
                 try
                 {
-                    if (!s.Geom.TryDrawFast(canvas, paint))
-                    {
-                        path ??= s.Geom.ToPath();
-                        canvas.DrawPath(path, paint);
-                    }
+                    if (!s.Geom.TryDrawFast(canvas, paint)) canvas.DrawPath(Path(), paint);
                 }
                 finally
                 {
@@ -157,12 +166,11 @@ internal static class SceneDrawer
                 var paint = MakePaint(stroke.Paint, opacity, SKPaintStyle.Stroke);
                 try
                 {
-                    ApplyStroke(paint, stroke);
-                    if (paint.PathEffect is not null || !s.Geom.TryDrawFast(canvas, paint))
-                    {
-                        path ??= s.Geom.ToPath();
-                        canvas.DrawPath(path, paint);
-                    }
+                    // Zero length as measured on the path drawn (the budget's), not as the geometry asks for it.
+                    var zeroLength = stroke.Dash is not null && s.Geom.Drawn is not null && s.Geom.Measured.Length == 0;
+                    ApplyStroke(paint, stroke, canvas.TotalMatrix, zeroLength);
+                    if (StrokeProbe is { } probe && paint.PathEffect is not null) probe(stroke, Path(), paint, canvas.TotalMatrix);
+                    if (paint.PathEffect is not null || !s.Geom.TryDrawFast(canvas, paint)) canvas.DrawPath(Path(), paint);
                 }
                 finally
                 {
@@ -172,7 +180,7 @@ internal static class SceneDrawer
         }
         finally
         {
-            path?.Dispose();
+            built?.Dispose();
             if (layered) canvas.Restore();
         }
     }
@@ -237,7 +245,16 @@ internal static class SceneDrawer
                         if (stroke is null)
                         {
                             stroke = MakePaint(s.Paint, opacity, SKPaintStyle.Stroke);
-                            ApplyStroke(stroke, s);
+                            ApplyStroke(stroke, s, canvas.TotalMatrix, zeroLength: false);
+                        }
+                        if (StrokeProbe is { } probe && stroke.PathEffect is not null && run.Typeface is not null)
+                        {
+                            using var font = TextLayoutEngine.MakeFont(run.Typeface, run.FontSize);
+                            using var glyphs = new SKPath();
+                            foreach (var g in run.Glyphs)
+                                using (var outline = font.GetGlyphPath(g))
+                                    if (outline is not null) glyphs.AddPath(outline);
+                            probe(s, glyphs, stroke, canvas.TotalMatrix);
                         }
                         canvas.DrawText(run.Blob, x, y, stroke);
                     }

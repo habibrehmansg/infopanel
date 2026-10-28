@@ -77,6 +77,9 @@ internal sealed class TickServices
     public IReadOnlyDictionary<string, IMediaProvider> Providers = new Dictionary<string, IMediaProvider>();
     public readonly List<MediaSample> Retained = [];
 
+    /// <summary>What the tick's nodes hold until the snapshot is released: the paths dashed outlines are drawn from.</summary>
+    public readonly List<IDisposable> Owned = [];
+
     /// <summary>Text layouts left for this tick across the document (cache misses only).</summary>
     public int LayoutsLeft = int.MaxValue;
 
@@ -100,7 +103,7 @@ internal sealed class BudgetExceeded(string code, string message) : Exception(me
 /// </summary>
 internal sealed class SceneEvaluator
 {
-    /// <summary>Most dash segments one stroke may produce; more is over budget.</summary>
+    /// <summary>Most dash segments one item's dashed strokes may produce in a tick, all together; more is over budget.</summary>
     public const int MaxDashSegments = 100_000;
 
     /// <summary>Most text layouts one item may make in a tick (cache misses).</summary>
@@ -116,10 +119,29 @@ internal sealed class SceneEvaluator
     private readonly (TextLayout Layout, float? W, float? H)?[] _textLayouts;
     private int _layouts;
 
+    /// <summary>The dash segments the item's dashed strokes resolved so far would draw (each stroke's estimate, summed).</summary>
+    private double _dashSegments;
+
+    /// <summary>More than any scale the frame is drawn at, for the dash budget.</summary>
+    private readonly double _frameScale;
+
+    /// <summary>
+    /// The transform of the nodes being resolved to the frame: the item's placement and every enclosing group's, as the
+    /// drawer concatenates them, for the dash budget.
+    /// </summary>
+    private SKMatrix _matrix;
+
+    /// <param name="frameScale">
+    /// More than any scale the item's frame is drawn at; unknown (infinite) leaves dash patterns unfloored in the
+    /// budget's estimate, the most it can be.
+    /// </param>
+    /// <param name="world">The item's placement in the frame.</param>
     public SceneEvaluator(CompiledScene scene, ItemRuntime rt, TickServices services, InputSnap[] inputs, SceneClock clock,
-        double boxW, double boxH, ItemDiagnostics diag, int workLimit)
+        double boxW, double boxH, ItemDiagnostics diag, int workLimit, double frameScale = double.PositiveInfinity, SKMatrix? world = null)
     {
         _scene = scene;
+        _frameScale = frameScale;
+        _matrix = world ?? SKMatrix.Identity;
         _rt = rt;
         _services = services;
         _elapsed = clock.Elapsed;
@@ -256,13 +278,26 @@ internal sealed class SceneEvaluator
             if (fx.Kind == EffectKind.Blur && sigma <= 0) continue;
             effects.Add(new REffect(fx.Kind, dx, dy, sigma, color));
         }
+        var clip = g.Clip is null ? null : ResolveClip(g.Clip);
+        // The children are drawn through the group's transform, concatenated as the drawer does.
+        var outer = _matrix;
+        _matrix = _matrix.PreConcat(m);
+        RNode[] children;
+        try
+        {
+            children = Resolve(g.Children);
+        }
+        finally
+        {
+            _matrix = outer;
+        }
         return new RGroup
         {
             Matrix = m,
-            Clip = g.Clip is null ? null : ResolveClip(g.Clip),
+            Clip = clip,
             Blend = g.Blend,
             Effects = effects.ToArray(),
-            Children = Resolve(g.Children),
+            Children = children,
         };
     }
 
@@ -409,20 +444,30 @@ internal sealed class SceneEvaluator
         var trimEnd = s.TrimEnd is { } te ? (float)Math.Clamp(te.Num(_e), 0, 1) : 1;
         if (!(width > 0) || trimEnd <= trimStart) return null;
         var stroke = new RStroke(paint, width, s.Cap, s.Join, s.Miter, dash, offset, trimStart, trimEnd);
-        if (geom is not null) CheckDash(stroke, geom.Length, geom.Contours);
+        if (geom is not null) CheckDash(stroke, geom);
         return stroke;
     }
 
-    /// <summary>
-    /// The dash budget: a dashed stroke along <paramref name="contours"/> contours of <paramref name="length"/> in all
-    /// that would draw too many dashes is over budget.
-    /// </summary>
-    private static void CheckDash(RStroke? stroke, double length, double contours)
+    /// <summary>The dash budget of a stroke along <paramref name="geom"/>, measured on the path it is drawn from (<see cref="RGeom.Measure"/>).</summary>
+    private void CheckDash(RStroke? stroke, RGeom geom)
     {
         if (stroke?.Dash is null) return;
-        var segments = stroke.DashSegments(length, contours);
-        if (!(segments <= MaxDashSegments))
-            throw new BudgetExceeded("budget.dash", $"A dashed stroke would draw {segments:0} dashes; at most {MaxDashSegments} are drawn.");
+        var (length, contours, curved) = geom.Measure(_services.Owned);
+        CheckDash(stroke, length, contours, curved);
+    }
+
+    /// <summary>
+    /// The dash budget, one total per item: a dashed stroke along <paramref name="contours"/> contours of
+    /// <paramref name="length"/> in all, its pattern floored at the most device pixels a unit it can be drawn at (the
+    /// largest frame scale times the largest stretch of the nodes' whole transform), adds its estimate to the item's
+    /// dashed strokes so far (in every group); an item whose strokes together would draw too many dashes is over budget.
+    /// </summary>
+    private void CheckDash(RStroke? stroke, double length, double contours, bool curved)
+    {
+        if (stroke?.Dash is null) return;
+        _dashSegments += stroke.DashSegments(length, contours, _frameScale * SceneMath.MaxStretch(_matrix), curved);
+        if (!(_dashSegments <= MaxDashSegments))
+            throw new BudgetExceeded("budget.dash", $"The item's dashed strokes would draw {_dashSegments:0} dashes; at most {MaxDashSegments} are drawn.");
     }
 
     // ---- text --------------------------------------------------------------------------------------------------
@@ -549,7 +594,7 @@ internal sealed class SceneEvaluator
         {
             var (length, contours) = layout.GlyphOutline;
             var copies = marquee ? 2 : 1;
-            CheckDash(r.Stroke, length * copies, contours * copies);
+            CheckDash(r.Stroke, length * copies, contours * copies, curved: true);
         }
 
         var clipped = r.ClipRect is not null;
@@ -643,7 +688,7 @@ internal sealed class SceneEvaluator
         // One stroke per series, evaluated once per tick however many bars it outlines; its dashes are counted along
         // everything it strokes (the line, or every bar's outline).
         var stroke = Stroke(s.Stroke, null);
-        if (s.Mode != SeriesMode.Bars) CheckDash(stroke, line.Length, line.Contours);
+        if (s.Mode != SeriesMode.Bars) CheckDash(stroke, line);
         switch (s.Mode)
         {
             case SeriesMode.Line:
@@ -665,14 +710,20 @@ internal sealed class SceneEvaluator
                 // A bar is a rectangle: with a negative width it draws nothing, so no bar is drawn or counted.
                 if (barWidth < 0) break;
                 double length = 0, contours = 0;
+                var curved = false;
                 foreach (var p in points)
                 {
                     var bar = new RectGeom(p.X - barWidth, p.Y, barWidth, bottom - p.Y, null);
-                    length += bar.Length;
-                    contours += bar.Contours;
+                    if (stroke?.Dash is not null)
+                    {
+                        var outline = bar.Measure(_services.Owned);
+                        length += outline.Length;
+                        contours += outline.Contours;
+                        curved |= outline.Curved;
+                    }
                     children.Add(new RShape { Geom = bar, Fill = fill, Stroke = stroke });
                 }
-                CheckDash(stroke, length, contours);
+                CheckDash(stroke, length, contours, curved);
                 break;
             }
         }
@@ -755,7 +806,7 @@ internal sealed class SceneEvaluator
                 length += outline.Length;
                 contours += outline.Contours;
             }
-            CheckDash(stroke, length, contours);
+            CheckDash(stroke, length, contours, curved: true);
         }
         var totalWidth = widths.Sum() + gap * Math.Max(0, widths.Length - 1);
         var bounds = new SKRect(x, y, x + Math.Max(0, totalWidth), y + row * rowHeight);
