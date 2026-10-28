@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Text.Json;
 
 namespace InfoPanel.Spec.Schema;
@@ -48,27 +46,31 @@ internal static class Json
     public static bool IsInteger(JsonElement v) => JsonNumber.IsInteger(v);
 
     public static double ToDouble(JsonElement v) =>
-        v.TryGetDouble(out var x) ? x : double.Parse(v.GetRawText(), NumberStyles.Float, CultureInfo.InvariantCulture);
+        v.TryGetDouble(out var x) ? x : double.Parse(JsonMarshal.GetRawUtf8Value(v), NumberStyles.Float, CultureInfo.InvariantCulture);
 
     /// <summary>Compares two JSON numbers by value (<see cref="JsonNumber"/>).</summary>
     public static int CompareNumbers(JsonElement a, JsonElement b) => JsonNumber.Compare(a, b);
 
-    /// <summary>Deep JSON equality: numbers by value, object property order irrelevant.</summary>
-    public static bool DeepEquals(JsonElement a, JsonElement b)
+    /// <summary>
+    /// Deep JSON equality: numbers by value, object property order irrelevant. Each pair of numbers is charged to
+    /// <paramref name="run"/> by its length (<see cref="SchemaRun.ChargeNumbers"/>) before it is compared: false, with the
+    /// run exhausted, once the budget is spent.
+    /// </summary>
+    public static bool DeepEquals(JsonElement a, JsonElement b, SchemaRun run)
     {
         long visited = 0;
-        return DeepEquals(a, b, ref visited);
+        return DeepEquals(a, b, run, ref visited);
     }
 
-    /// <summary>As <see cref="DeepEquals(JsonElement, JsonElement)"/>, counting the pairs of values compared in <paramref name="visited"/>.</summary>
-    public static bool DeepEquals(JsonElement a, JsonElement b, ref long visited)
+    /// <summary>As <see cref="DeepEquals(JsonElement, JsonElement, SchemaRun)"/>, counting the pairs of values compared in <paramref name="visited"/>.</summary>
+    public static bool DeepEquals(JsonElement a, JsonElement b, SchemaRun run, ref long visited)
     {
         visited++;
         if (a.ValueKind != b.ValueKind) return false;
         switch (a.ValueKind)
         {
             case JsonValueKind.Number:
-                return CompareNumbers(a, b) == 0;
+                return run.ChargeNumbers(a, b) && CompareNumbers(a, b) == 0;
             case JsonValueKind.String:
                 return string.Equals(a.GetString(), b.GetString(), StringComparison.Ordinal);
             case JsonValueKind.Array:
@@ -76,12 +78,12 @@ internal static class Json
                 using (var ea = a.EnumerateArray().GetEnumerator())
                 using (var eb = b.EnumerateArray().GetEnumerator())
                     while (ea.MoveNext() && eb.MoveNext())
-                        if (!DeepEquals(ea.Current, eb.Current, ref visited)) return false;
+                        if (!DeepEquals(ea.Current, eb.Current, run, ref visited)) return false;
                 return true;
             case JsonValueKind.Object:
                 if (a.GetPropertyCount() != b.GetPropertyCount()) return false;
                 foreach (var p in a.EnumerateObject())
-                    if (!b.TryGetProperty(p.Name, out var bv) || !DeepEquals(p.Value, bv, ref visited)) return false;
+                    if (!b.TryGetProperty(p.Name, out var bv) || !DeepEquals(p.Value, bv, run, ref visited)) return false;
                 return true;
             default:
                 return true;
@@ -189,11 +191,12 @@ public static class JsonNumber
     }
 
     /// <summary>
-    /// A number as ±0.<see cref="Digits"/> × 10^<see cref="Magnitude"/>: its significant digits as written, from the first
-    /// one that isn't zero to the last (with the point when it falls between them; nothing for zero), and the power of ten
-    /// just above them.
+    /// A number as ±0.<see cref="Digits"/> × 10^(<see cref="Above"/> + the exponent): its significant digits as written,
+    /// from the first one that isn't zero to the last (with the point when it falls between them; nothing for zero), how
+    /// many of them are left of the point, and the exponent as written. Nothing is copied or converted: an exponent of any
+    /// length is compared from its text, so reading a number allocates nothing and costs time in its length only.
     /// </summary>
-    private readonly ref struct Exact(int sign, ReadOnlySpan<byte> digits, BigInteger magnitude)
+    private readonly ref struct Exact(int sign, ReadOnlySpan<byte> digits, long above, bool negativeExponent, ReadOnlySpan<byte> exponent)
     {
         /// <summary>-1, 0 or 1.</summary>
         public int Sign { get; } = sign;
@@ -202,12 +205,28 @@ public static class JsonNumber
 
         public ReadOnlySpan<byte> Digits { get; } = digits;
 
-        public BigInteger Magnitude { get; } = magnitude;
+        /// <summary>The significant digits left of the point (negative: minus the zeros between the point and the first).</summary>
+        public long Above { get; } = above;
+
+        /// <summary>Whether the exponent is negative (never for 0).</summary>
+        public bool NegativeExponent { get; } = negativeExponent;
+
+        /// <summary>The exponent's digits without its sign and leading zeros (empty for 0).</summary>
+        public ReadOnlySpan<byte> Exponent { get; } = exponent;
 
         /// <summary>How many significant digits there are.</summary>
         public int Count => Digits.Length - (Digits.Contains((byte)'.') ? 1 : 0);
 
-        public bool IsInteger => IsZero || Magnitude >= Count;
+        public bool IsInteger => IsZero || (Exponent.Length <= ShortExponent ? Above + ShortValue(this) >= Count : !NegativeExponent);
+
+        /// <summary>
+        /// The longest exponent read as a <see langword="long"/>: under 10^18, so it and <see cref="Above"/> (whose size is
+        /// at most the text's length) add up without overflow.
+        /// </summary>
+        private const int ShortExponent = 18;
+
+        /// <summary>A difference of exponents past this is decided by its sign alone: <see cref="Above"/> can't make it up.</summary>
+        private const long Far = 100_000_000_000_000_000;
 
         /// <summary>Reads a number as JSON writes it (<c>-?int(.frac)?([eE][+-]?exp)?</c>; the reader has checked it).</summary>
         public static Exact Parse(ReadOnlySpan<byte> text)
@@ -216,27 +235,82 @@ public static class JsonNumber
             var mantissa = e < 0 ? text : text[..e];
             var first = mantissa.IndexOfAnyExcept("-0."u8);
             if (first < 0)
-                return new Exact(0, [], BigInteger.Zero);
+                return new Exact(0, [], 0, false, []);
             var last = mantissa.LastIndexOfAnyExcept("0."u8);
 
-            var exponent = BigInteger.Zero;
+            ReadOnlySpan<byte> exponent = [];
+            var negative = false;
             if (e >= 0)
             {
-                var digits = text[(e + 1)..];
-                var negative = digits[0] == (byte)'-';
-                if (digits[0] is (byte)'-' or (byte)'+')
-                    digits = digits[1..];
-                exponent = digits.Length <= 18 ? long.Parse(digits, NumberStyles.None, CultureInfo.InvariantCulture)
-                    : BigInteger.Parse(Encoding.ASCII.GetString(digits), NumberStyles.None, CultureInfo.InvariantCulture);
-                if (negative)
-                    exponent = -exponent;
+                exponent = text[(e + 1)..];
+                negative = exponent[0] == (byte)'-';
+                if (exponent[0] is (byte)'-' or (byte)'+')
+                    exponent = exponent[1..];
+                var significant = exponent.IndexOfAnyExcept((byte)'0');
+                exponent = significant < 0 ? [] : exponent[significant..];
+                negative &= !exponent.IsEmpty;
             }
 
             // The integral digits from the first significant one, or minus the zeros after the point before it.
             var point = mantissa.IndexOf((byte)'.');
             var integralEnd = point < 0 ? mantissa.Length : point;
             var above = first < integralEnd ? integralEnd - first : -(first - point - 1);
-            return new Exact(mantissa[0] == (byte)'-' ? -1 : 1, mantissa[first..(last + 1)], above + exponent);
+            return new Exact(mantissa[0] == (byte)'-' ? -1 : 1, mantissa[first..(last + 1)], above, negative, exponent);
+        }
+
+        /// <summary>A short exponent's value (<see cref="ShortExponent"/> digits at most).</summary>
+        private static long ShortValue(Exact x)
+        {
+            long value = 0;
+            foreach (var d in x.Exponent)
+                value = value * 10 + (d - '0');
+            return x.NegativeExponent ? -value : value;
+        }
+
+        /// <summary>Compares the powers of ten just above two nonzero numbers' digits, <see cref="Above"/> plus the exponent.</summary>
+        private static int CompareMagnitudes(Exact a, Exact b)
+        {
+            if (a.Exponent.Length <= ShortExponent && b.Exponent.Length <= ShortExponent)
+                return (a.Above + ShortValue(a)).CompareTo(b.Above + ShortValue(b));
+            // One exponent is 10^18 or more. Their difference, exact within ±Far, is compared with that of the Aboves,
+            // which is within ±2^32.
+            var difference = ExponentDifference(a, b);
+            return Math.Abs(difference) > Far ? Math.Sign(difference) : difference.CompareTo(b.Above - a.Above);
+        }
+
+        /// <summary>The exponent of <paramref name="a"/> minus that of <paramref name="b"/>; ±(<see cref="Far"/> + 1) when it is further than <see cref="Far"/> from 0.</summary>
+        private static long ExponentDifference(Exact a, Exact b)
+        {
+            if (a.NegativeExponent != b.NegativeExponent && !a.Exponent.IsEmpty && !b.Exponent.IsEmpty)
+                return a.NegativeExponent ? -(Far + 1) : Far + 1; // the sum of their sizes, one of them over Far
+            var sign = a.NegativeExponent || b.NegativeExponent ? -1 : 1;
+            return sign * SizeDifference(a.Exponent, b.Exponent);
+        }
+
+        /// <summary>
+        /// <paramref name="x"/> minus <paramref name="y"/>, both digits without leading zeros, read from the first digit
+        /// with the shorter padded on the left; ±(<see cref="Far"/> + 1) as soon as the part read is further than
+        /// <see cref="Far"/> from 0 (the digits left can't bring it back: they add less than one in the last place read).
+        /// </summary>
+        private static long SizeDifference(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+        {
+            if (x.Length - y.Length > ShortExponent)
+                return Far + 1;
+            if (y.Length - x.Length > ShortExponent)
+                return -(Far + 1);
+            var n = Math.Max(x.Length, y.Length);
+            int xi = x.Length - n, yi = y.Length - n;
+            long difference = 0;
+            for (var i = 0; i < n; i++, xi++, yi++)
+            {
+                difference = difference * 10 + (xi >= 0 ? x[xi] - '0' : 0) - (yi >= 0 ? y[yi] - '0' : 0);
+                if (difference > Far)
+                    return Far + 1;
+                if (difference < -Far)
+                    return -(Far + 1);
+            }
+
+            return difference;
         }
 
         public static int Compare(Exact a, Exact b)
@@ -245,7 +319,7 @@ public static class JsonNumber
                 return a.Sign.CompareTo(b.Sign);
             if (a.IsZero)
                 return 0;
-            var magnitude = a.Magnitude.CompareTo(b.Magnitude);
+            var magnitude = CompareMagnitudes(a, b);
             if (magnitude == 0)
                 magnitude = CompareDigits(a.Digits, b.Digits);
             return a.Sign * magnitude;

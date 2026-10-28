@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -75,7 +76,8 @@ internal sealed class EnumRule : Rule
     public JsonElement[] Values => _values.EnumerateArray().ToArray();
     public override void Apply(JsonElement v, InstancePath path, Errs errs)
     {
-        foreach (var e in _values.EnumerateArray()) if (Json.DeepEquals(e, v)) return;
+        foreach (var e in _values.EnumerateArray()) if (Json.DeepEquals(e, v, errs.Run)) return;
+        if (errs.Run.Exhausted) return;
         Fail(errs, path, "Value must be one of: " + string.Join(", ", _values.EnumerateArray().Select(e => e.GetRawText())) + ".");
     }
 }
@@ -86,7 +88,7 @@ internal sealed class ConstRule : Rule
     public JsonElement Value { get; }
     public override void Apply(JsonElement v, InstancePath path, Errs errs)
     {
-        if (!Json.DeepEquals(Value, v)) Fail(errs, path, $"Value must be {Value.GetRawText()}.");
+        if (!Json.DeepEquals(Value, v, errs.Run) && !errs.Run.Exhausted) Fail(errs, path, $"Value must be {Value.GetRawText()}.");
     }
 }
 
@@ -96,7 +98,7 @@ internal sealed class NumberRule : Rule
     public NumberRule(string keyword, string sp, JsonElement limit) : base(keyword, sp) { _limit = limit; }
     public override void Apply(JsonElement v, InstancePath path, Errs errs)
     {
-        if (v.ValueKind != JsonValueKind.Number) return;
+        if (v.ValueKind != JsonValueKind.Number || !errs.Run.ChargeNumbers(v, _limit)) return;
         var c = Json.CompareNumbers(v, _limit);
         var (ok, text) = Keyword switch
         {
@@ -168,8 +170,8 @@ internal sealed class UniqueRule : Rule
     {
         if (v.ValueKind != JsonValueKind.Array) return;
         // Items are bucketed by a per-process seeded hash; every comparison inside a bucket is charged to the run's work
-        // budget by the values it compares, so items that share a hash (numbers equal as doubles but not as decimals)
-        // can't make this quadratic for free.
+        // budget by the values it compares (numbers by their length, before they are compared), so items that share a
+        // hash (numbers equal as doubles but not as decimals) can't make this quadratic for free.
         var seen = new Dictionary<int, List<(JsonElement El, int Index)>>();
         var i = 0;
         foreach (var item in v.EnumerateArray())
@@ -179,7 +181,7 @@ internal sealed class UniqueRule : Rule
             foreach (var (el, index) in bucket)
             {
                 long visited = 0;
-                var equal = Json.DeepEquals(el, item, ref visited);
+                var equal = Json.DeepEquals(el, item, errs.Run, ref visited);
                 if (!errs.Run.ChargeSteps(visited)) return;
                 if (!equal) continue;
                 Fail(errs, path, $"Items at indexes {index} and {i} are equal.");
@@ -393,7 +395,7 @@ internal sealed class UnionRule : Rule
         {
             hasDisc = v.TryGetProperty(disc, out dv);
             // A branch without a discriminator of its own (e.g. a nested union) stays a candidate.
-            cand = cand.Where(i => _allowed[i] == null || (hasDisc && _allowed[i]!.Any(a => Json.DeepEquals(a, dv)))).ToList();
+            cand = cand.Where(i => _allowed[i] == null || (hasDisc && _allowed[i]!.Any(a => Json.DeepEquals(a, dv, errs.Run)))).ToList();
         }
 
         var trials = new List<Errs>();
@@ -509,7 +511,14 @@ internal sealed class SchemaRun(long budget)
     /// <summary>Counts reading one instance property name: one step per <see cref="CharsPerStep"/> characters; false once the budget is spent.</summary>
     public bool ChargeName(int length) => Charge(length / CharsPerStep);
 
-    /// <summary>Characters of a property name that cost one step of work (and add one value's worth of budget).</summary>
+    /// <summary>
+    /// Counts comparing two numbers: one step per <see cref="CharsPerStep"/> characters of their text, before they are
+    /// compared (an exact comparison reads them whole); false once the budget is spent.
+    /// </summary>
+    public bool ChargeNumbers(JsonElement a, JsonElement b) =>
+        Charge(((long)JsonMarshal.GetRawUtf8Value(a).Length + JsonMarshal.GetRawUtf8Value(b).Length) / CharsPerStep);
+
+    /// <summary>Characters of a property name (or of two numbers compared) that cost one step of work; a name's add one value's worth of budget.</summary>
     public const int CharsPerStep = 64;
 
     private bool Charge(long steps)

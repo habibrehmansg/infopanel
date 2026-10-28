@@ -429,6 +429,59 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void UniqueItemsOverHugeExponents_IsBounded()
+    {
+        // The review's reproduction: 400 distinct numbers with 40,000-digit exponents in a document's requires (16 MB,
+        // under the document limit). All are infinite as doubles, so they share one hash and uniqueItems compares 79,800
+        // pairs exactly. Each comparison is charged to the work budget by the numbers' length before it is made and
+        // reads the exponents in place: the check is a complexity error within the usual bound (1 s, 100 baselines;
+        // under 1 GiB allocated), not gigabytes of temporary exponents.
+        var numbers = Enumerable.Range(0, 400).Select(i => "1e" + new string('9', 39_997) + i.ToString("D3"));
+        var document = Parse($$"""
+            {"format": "infopanel.document/1", "id": "3dd19c0e-675a-4591-b096-83417853861f",
+             "requires": [{{string.Join(", ", numbers)}}], "profile": {"name": "P", "width": 1, "height": 1}, "items": []}
+            """);
+        var check = Bounded(() => DocumentValidator.Check(document));
+        Assert.Equal(CheckStatus.Invalid, check.Status);
+        Assert.EndsWith("(complexity)", Assert.Single(check.Errors).Message);
+
+        // The same numbers under uniqueItems alone, and against a bound: a comparison with a bound is charged by length too
+        // (400 × 625 steps, over a budget of 100,000 + 64 × 401).
+        var array = Parse("[" + string.Join(", ", numbers) + "]");
+        var unique = SchemaSet.Load(["""{"$id": "urn:t:unique-exp", "uniqueItems": true}"""]);
+        Assert.Equal("complexity", Assert.Single(Bounded(() => unique.Validate(array, "urn:t:unique-exp")).Errors).Keyword);
+        var bound = SchemaSet.Load(["""{"$id": "urn:t:max-exp", "items": {"maximum": 1e400}}"""]);
+        Assert.Equal("complexity", Assert.Single(Bounded(() => bound.Validate(array, "urn:t:max-exp")).Errors).Keyword);
+    }
+
+    [Fact]
+    public void ExactComparison_ReadsExponentsOfAnyLength()
+    {
+        // Exponents compared from their text, with the digits around the point counted in.
+        var set = SchemaSet.Load(["""{"$id": "urn:t:unique-exact", "uniqueItems": true}"""]);
+        var big = new string('9', 30);
+        var zeros = new string('0', 30);
+        foreach (var dup in new[]
+        {
+            $"[1e{big}, 10e{big[..^1]}8]", $"[0.1e1{zeros}, 1e{big}]", $"[1e-{big}, 10e-1{zeros}]", $"[1e+0{big}, 1e{big}]",
+            $"[123.4e{big}, 1234e{big[..^1]}8]", "[1e0000000000000000000000002, 100]", "[1e-0000000000000000000000002, 0.01]",
+        })
+            Assert.Equal("uniqueItems", Assert.Single(set.Validate(Parse(dup), "urn:t:unique-exact").Errors).Keyword);
+        foreach (var distinct in new[]
+        {
+            $"[1e{big}, 1e{big[..^1]}8]", $"[1e{big}, 1e-{big}]", $"[1e1{big}, 1e{big}]", $"[-1e{big}, 1e{big}]",
+            $"[1e9223372036854775808, 1e9223372036854775807]", $"[1e{big}, 0]", $"[1e-{big}, 0]",
+        })
+            Assert.Empty(set.Validate(Parse(distinct), "urn:t:unique-exact").Errors);
+
+        var max = SchemaSet.Load(["""{"$id": "urn:t:max-exact", "maximum": 1e400}"""]);
+        foreach (var ok in new[] { "1e400", "10e399", "1e399", $"1e-{big}", $"-1e{big}", "0.1e401", "1e0000000000000000000000400" })
+            Assert.Empty(max.Validate(Parse(ok), "urn:t:max-exact").Errors);
+        foreach (var over in new[] { "1.0000000000000000000000000000001e400", "1e401", $"1e{big}", "0.1e402", "1e0000000000000000000000401" })
+            Assert.Equal("maximum", Assert.Single(max.Validate(Parse(over), "urn:t:max-exact").Errors).Keyword);
+    }
+
+    [Fact]
     public void UniqueItems_StillFindsEqualNumbersAndObjects()
     {
         var set = SchemaSet.Load(["""{"$id": "urn:t:unique2", "uniqueItems": true}"""]);
