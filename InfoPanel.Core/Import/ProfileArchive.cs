@@ -96,7 +96,8 @@ public static partial class ProfileArchive
                 var references = scanned is null ? [] : References(scanned);
                 foreach (var blob in references.Where(r => r != NoImage).Order(StringComparer.Ordinal))
                 {
-                    if (ReadVerified(workspace.Blobs, blob) is not { } bytes)
+                    // Hashed here, not taken on the store's remembered verdict: these are the bytes the archive carries.
+                    if (workspace.Blobs.ReadHashed(blob) is not { } bytes)
                         continue;
                     if (1 + written.Count + 1 > limits.Entries)
                         throw TooManyEntries(limits);
@@ -161,17 +162,6 @@ public static partial class ProfileArchive
         return keeping ? kept.ToArray() : null;
     }
 
-    /// <summary>A stored blob's bytes when they hash to its id; null when it is missing, too large or corrupt.</summary>
-    private static byte[]? ReadVerified(BlobStore blobs, string id)
-    {
-        using var stream = blobs.OpenRead(id);
-        if (stream is null || stream.Length > blobs.MaxBytes)
-            return null;
-        var bytes = new byte[stream.Length];
-        stream.ReadExactly(bytes);
-        return BlobStore.IdOf(bytes) == id ? bytes : null;
-    }
-
     /// <summary>Every <c>sha256:</c> id in a document's text, as the blob sweep finds them (malformed JSON: its plain text).</summary>
     internal static HashSet<string> References(byte[] document)
     {
@@ -207,7 +197,8 @@ public static partial class ProfileArchive
 
     /// <summary>
     /// Opens a profile archive (a seekable stream: the body in a temporary file): checks it, stores its blobs, and answers
-    /// its document, the blobs, and the ids the document refers to that are neither in the archive nor stored here.
+    /// its document, the blobs, and the ids the document refers to that are neither in the archive nor stored here (a
+    /// stored file that doesn't hash to its id counts as not stored).
     /// </summary>
     /// <exception cref="ImportRefusal">
     /// A guard (<c>archive.*</c>, <see cref="ArchiveReader"/>); a 1.x archive (<c>archive.v1</c>); an entry other than
@@ -280,7 +271,7 @@ public static partial class ProfileArchive
 
             var carried = blobs.Select(b => b.Id).ToHashSet(StringComparer.Ordinal);
             var missing = references
-                .Where(r => r != NoImage && !carried.Contains(r) && !workspace.Blobs.Exists(r))
+                .Where(r => r != NoImage && !carried.Contains(r) && workspace.Blobs.StoredSize(r) is null)
                 .Order(StringComparer.Ordinal)
                 .ToList();
 

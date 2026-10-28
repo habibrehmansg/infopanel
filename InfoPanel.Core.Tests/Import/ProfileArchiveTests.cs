@@ -297,6 +297,60 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.DoesNotContain(ProfileArchive.NoImage, contents.Missing);
     }
 
+    /// <summary>
+    /// The export hashes the bytes it puts in the archive, whatever the store remembers: a blob file changed after a
+    /// checked read, to other bytes of the same length with its time set back, is left out.
+    /// </summary>
+    [Fact]
+    public void Export_ABlobChangedAfterACheckedRead_IsHashedAgain_AndLeftOut()
+    {
+        var source = Source();
+        var id = BlobStore.IdOf(Gif);
+        var file = source.Blobs.Paths.BlobFile(id);
+        Assert.Equal(Gif, source.Blobs.ReadVerified(id));
+        var written = File.GetLastWriteTimeUtc(file);
+        var damaged = (byte[])Gif.Clone();
+        damaged[^1] ^= 1;
+        File.WriteAllBytes(file, damaged);
+        File.SetLastWriteTimeUtc(file, written);
+
+        var (archive, _) = ProfileArchive.Export(source, Id, Now);
+        byte[] zip;
+        using (archive)
+        {
+            Assert.Equal([BlobStore.IdOf(Png), BlobStore.IdOf(Template)], archive!.Blobs.Order(StringComparer.Ordinal));
+            zip = Bytes(archive);
+        }
+
+        Assert.DoesNotContain("blobs/" + Hex(Gif), Names(zip));
+        Assert.Equal([id], Open(zip, NewWorkspace("target")).Missing);
+    }
+
+    /// <summary>A local copy that doesn't hash to its id is not stored: an import that doesn't carry the blob reports it missing.</summary>
+    [Fact]
+    public void Import_ABlobNotCarried_WhoseLocalCopyIsCorrupt_IsMissing()
+    {
+        var source = Source();
+        File.Delete(source.Blobs.Paths.BlobFile(BlobStore.IdOf(Template)));
+        var (archive, _) = ProfileArchive.Export(source, Id, Now);
+        byte[] zip;
+        using (archive)
+            zip = Bytes(archive!);
+
+        var target = NewWorkspace("target");
+        target.PutBlob(Template);
+        var file = target.Blobs.Paths.BlobFile(BlobStore.IdOf(Template));
+        var written = File.GetLastWriteTimeUtc(file);
+        var damaged = (byte[])Template.Clone();
+        damaged[0] ^= 1;
+        File.WriteAllBytes(file, damaged);
+        File.SetLastWriteTimeUtc(file, written.AddSeconds(1));
+
+        Assert.Equal([BlobStore.IdOf(Template)], Open(zip, target).Missing);
+        target.PutBlob(Template);
+        Assert.Empty(Open(zip, target).Missing);
+    }
+
     [Fact]
     public void Export_AMissingBlob_IsLeftOut_AndIsNotMissingWhereItIsStored()
     {

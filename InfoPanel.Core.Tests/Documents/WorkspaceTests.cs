@@ -506,6 +506,42 @@ public sealed class WorkspaceTests : IDisposable
         found.Sample!.Release();
     }
 
+    /// <summary>
+    /// A media blob whose stored file is another image draws as missing media: the stored bytes never reach the decoder
+    /// unchecked. Uploading the right bytes repairs it.
+    /// </summary>
+    [Fact]
+    public void AMediaBlobThatDoesNotHashToItsId_DrawsAsMissingMedia_UntilItIsStoredAgain()
+    {
+        var workspace = With();
+        using var media = new InfoPanel.Images.MediaSampleCache(new BlobMediaStore(workspace.Blobs), new InfoPanel.Images.MediaSampleCacheOptions { Synchronous = true });
+        workspace.BlobStored += media.Retry;
+        var png = Png();
+        var id = workspace.PutBlob(png).Info.Id;
+        var file = Paths.BlobFile(id);
+        var written = File.GetLastWriteTimeUtc(file);
+        File.WriteAllBytes(file, Png(SkiaSharp.SKColors.Blue));
+        File.SetLastWriteTimeUtc(file, written.AddSeconds(1));
+        var document = InfoPanel.Core.Tests.Scenes.SceneKit.Doc(InfoPanel.Core.Tests.Scenes.SceneKit.Json(
+            $"{{'format':'infopanel.scene/1','nodes':[{{'kind':'media','w':2,'h':3,'source':{{'asset':'{id}'}}}}]}}"), 2, 3);
+        var options = InfoPanel.Core.Tests.Scenes.SceneKit.Options(media: media);
+
+        using (var corrupt = SceneRuntime.RenderOnce(document, InfoPanel.Core.Tests.Scenes.SceneKit.Now, options))
+        {
+            Assert.Contains(corrupt.Diagnostics, d => d.Code == "media.missing");
+            Assert.Equal(0, corrupt.SampleCount);
+        }
+
+        workspace.PutBlob(png);
+        using (var repaired = SceneRuntime.RenderOnce(document, InfoPanel.Core.Tests.Scenes.SceneKit.Now, options))
+        {
+            Assert.DoesNotContain(repaired.Diagnostics, d => d.Code.StartsWith("media.", StringComparison.Ordinal));
+            Assert.Equal(1, repaired.SampleCount);
+            using var drawn = repaired.Render();
+            Assert.Equal(SkiaSharp.SKColors.Red, drawn.GetPixel(1, 1));
+        }
+    }
+
     [Fact]
     public void StoringABlob_RepairsALookupOfItThatFoundItMissingJustBefore()
     {
@@ -542,10 +578,12 @@ public sealed class WorkspaceTests : IDisposable
         }
     }
 
-    private static byte[] Png()
+    private static byte[] Png() => Png(SkiaSharp.SKColors.Red);
+
+    private static byte[] Png(SkiaSharp.SKColor color)
     {
         using var bitmap = new SkiaSharp.SKBitmap(2, 3);
-        bitmap.Erase(SkiaSharp.SKColors.Red);
+        bitmap.Erase(color);
         using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
         return image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100).ToArray();
     }

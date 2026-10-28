@@ -788,29 +788,11 @@ public sealed class Workspace : IDisposable
 }
 
 /// <summary>
-/// The blob store as the media cache's <see cref="IMediaAssetStore"/>: a blob's bytes by its <c>sha256:</c> id. A blob
-/// file over <c>mediaBytes</c> (only a file changed on disk can be) is no media: refused from its size, unread.
+/// The blob store as the media cache's <see cref="IMediaAssetStore"/>: a blob's bytes by its <c>sha256:</c> id, through
+/// <see cref="BlobStore.ReadVerified"/>. A blob file over <c>mediaBytes</c> (only a file changed on disk can be) is no
+/// media: refused from its size, unread; a file whose bytes don't hash to its id is missing media too.
 /// </summary>
 public sealed class BlobMediaStore(BlobStore blobs) : IMediaAssetStore
 {
-    private static readonly ILogger Logger = Log.ForContext<BlobMediaStore>();
-
-    public byte[]? Read(string hash)
-    {
-        if (!BlobStore.IsValidId(hash))
-            return null;
-        using var stream = blobs.OpenRead(hash);
-        if (stream is null)
-            return null;
-        if (stream.Length > blobs.MaxBytes)
-        {
-            Logger.Warning("Blob {BlobId} is {Bytes} bytes on disk, over the {MaxBytes}-byte limit; it is drawn as missing media", hash, stream.Length, blobs.MaxBytes);
-            return null;
-        }
-
-        // The open file keeps its length: a blob is only ever replaced by a rename.
-        var bytes = new byte[stream.Length];
-        stream.ReadExactly(bytes);
-        return bytes;
-    }
+    public byte[]? Read(string hash) => BlobStore.IsValidId(hash) ? blobs.ReadVerified(hash) : null;
 }

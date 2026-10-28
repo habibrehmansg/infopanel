@@ -95,4 +95,44 @@ public sealed class DocumentPerformanceTests(ITestOutputHelper output)
         output.WriteLine($"setDesign commit (one donut): p50 {p50:0.000} ms, p95 {p95:0.000} ms, p99 {p99:0.000} ms");
         Assert.True(p95 < 20, "setDesign commit p95");
     }
+
+    /// <summary>
+    /// A blob read's hash check: the first read of a file version in a run (a cold store) hashes the bytes it read; a
+    /// later one at the same version only reads them. At 100 KiB, 2 MiB and <c>mediaBytes</c> (32 MiB).
+    /// </summary>
+    [Fact]
+    public void A_blob_read_hashes_only_the_first_time_it_meets_a_file()
+    {
+        using var temp = new InfoPanel.Core.Tests.Persistence.TempDirectory();
+        var paths = new InfoPanel.Persistence.DataPaths(temp.Path);
+        foreach (var size in new[] { 100 * 1024, 2 * 1024 * 1024, SpecLimits.Default.MediaBytes })
+        {
+            var content = new byte[size];
+            new Random(size).NextBytes(content);
+            var id = new BlobStore(paths).Put(content);
+            var warm = new BlobStore(paths);
+            Assert.NotNull(warm.ReadVerified(id));
+
+            List<double> cold = [], cached = [];
+            for (var i = 0; i < 25; i++)
+            {
+                var store = new BlobStore(paths);
+                var t0 = Stopwatch.GetTimestamp();
+                Assert.NotNull(store.ReadVerified(id));
+                var t1 = Stopwatch.GetTimestamp();
+                Assert.NotNull(warm.ReadVerified(id));
+                var t2 = Stopwatch.GetTimestamp();
+                if (i < 5) continue;
+                cold.Add(Stopwatch.GetElapsedTime(t0, t1).TotalMilliseconds);
+                cached.Add(Stopwatch.GetElapsedTime(t1, t2).TotalMilliseconds);
+            }
+            Assert.Equal(1, warm.Hashes);
+            foreach (var (name, list) in new[] { ("first read (hashed)", cold), ("later read (cached)", cached) })
+            {
+                var (p50, p95, p99) = ScenePerformanceTests.Percentiles(list);
+                output.WriteLine($"blob {size / 1024} KiB {name}: p50 {p50:0.000} ms, p95 {p95:0.000} ms, p99 {p99:0.000} ms");
+            }
+            Assert.True(ScenePerformanceTests.Percentiles(cold).P95 < 1_000, "first blob read p95");
+        }
+    }
 }
