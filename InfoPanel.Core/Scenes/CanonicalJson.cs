@@ -3,12 +3,14 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using InfoPanel.Spec.Schema;
 
 namespace InfoPanel.Scenes;
 
 /// <summary>
 /// RFC 8785 (JCS) canonical JSON: members sorted by their UTF-16 code units, no whitespace, strings with the minimal
-/// escapes, numbers in the ECMAScript shortest form. A state cell's definition is keyed by it (spec/docs/identity.md).
+/// escapes, numbers as the doubles nearest their text (<c>-0</c> as 0; spec/docs/validation.md#numbers) in the
+/// ECMAScript shortest form. A state cell's definition is keyed by it (spec/docs/identity.md).
 /// </summary>
 internal static class CanonicalJson
 {
@@ -48,7 +50,7 @@ internal static class CanonicalJson
                 sb.Append(']');
                 break;
             case JsonValueKind.String: WriteString(e.GetString()!, sb); break;
-            case JsonValueKind.Number: sb.Append(Number(e.GetDouble())); break;
+            case JsonValueKind.Number: sb.Append(Number(JsonNumber.Value(e))); break;
             case JsonValueKind.True: sb.Append("true"); break;
             case JsonValueKind.False: sb.Append("false"); break;
             default: sb.Append("null"); break;

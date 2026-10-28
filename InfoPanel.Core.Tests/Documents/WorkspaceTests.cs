@@ -269,6 +269,28 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Equal([A, B], workspace.List().Select(e => e.Id));
     }
 
+    [Theory]
+    [InlineData("1e400")]
+    [InlineData("-1e400")]
+    [InlineData("[1, 2e400]")]
+    public void Create_And_TheImportCheck_ReadTheDocumentsNumbers_BeforeReplacingItsId(string id)
+    {
+        // The document's own id is replaced by the request's, but only after its numbers are read: a number that rounds
+        // to ±∞ is json at /document/id, as anywhere else in the document (spec/docs/validation.md#numbers).
+        var workspace = With();
+        var document = JsonNode.Parse(DocJson("ffffffff-0000-4000-8000-000000000000", Scene("ok")))!.AsObject();
+        document["id"] = JsonNode.Parse(id);
+        var path = id.StartsWith('[') ? "/document/id/1" : "/document/id";
+
+        var created = workspace.Create(Bytes(new JsonObject { ["id"] = A, ["document"] = document }));
+        Assert.Equal(422, created.Status);
+        Assert.Equal(("json", path), (created.Invalid!.Errors[0].Code, created.Invalid.Errors[0].Path));
+        Assert.Empty(workspace.List());
+
+        var check = workspace.CheckImportDocument(Element(document));
+        Assert.Equal(("json", path), (Assert.Single(check).Code, check[0].Path));
+    }
+
     [Fact]
     public void Duplicate_CopiesTheCurrentDocument_WithAFreshHistory()
     {

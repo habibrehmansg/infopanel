@@ -249,6 +249,32 @@ public sealed class SceneRuntimeTests
     }
 
     [Fact]
+    public void A_cell_whose_definition_differs_only_in_how_its_numbers_are_written_keeps_its_state()
+    {
+        // A number is the double nearest its text and -0 reads as 0: init -0, 0.0 or 1e-400 is the cell defined with 0.
+        static JsonElement Counter(string init) => SceneKit.Doc(SceneKit.Json(
+            "{'format':'infopanel.scene/1','state':{'c':{'init':" + init + ",'next':{'op':'add','args':[{'op':'state','name':'c'},1]}}},"
+            + "'nodes':[{'kind':'rect','w':{'op':'state','name':'c'},'h':10,'fill':'#ffffff'}]}"), 100, 20);
+        using var runtime = new SceneRuntime(SceneKit.Options(new FakeSceneInputs()));
+        runtime.Load(Counter("0"));
+        runtime.Tick(0, SceneKit.Now).Dispose();
+        runtime.Tick(0.1, SceneKit.Now).Dispose();
+        var counted = runtime.CellValue("item", "c")!.Value;
+        var t = 0.1;
+        foreach (var same in new[] { "-0", "0.0", "1e-400", "-0e5" })
+        {
+            runtime.Load(Counter(same));
+            runtime.Tick(t += 0.1, SceneKit.Now).Dispose();
+            Assert.Equal(++counted, runtime.CellValue("item", "c")!.Value);
+        }
+
+        // Another value is another definition: it starts again.
+        runtime.Load(Counter("5"));
+        runtime.Tick(t + 0.1, SceneKit.Now).Dispose();
+        Assert.Equal(5, runtime.CellValue("item", "c")!.Value);
+    }
+
+    [Fact]
     public void Removing_an_item_drops_its_state_even_when_it_comes_back_before_a_tick()
     {
         var fake = new FakeSceneInputs();

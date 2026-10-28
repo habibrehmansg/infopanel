@@ -484,7 +484,9 @@ public sealed class Workspace : IDisposable
                 if (Check(envelope.RootElement, IdOnlySchema) is { } invalid)
                     return Invalid(invalid);
                 id = root.GetProperty("id").GetString()!;
-                // The document's own id is replaced by the request's.
+                // The document's own id is replaced by the request's, after its numbers are read as sent.
+                if (InfiniteNumbers(given) is { } infinite)
+                    return Invalid(infinite);
                 document = given.ValueKind == JsonValueKind.Object ? WithId(given, id) : JsonDocument.Parse(given.GetRawText(), SpecJson.DocumentOptions);
             }
             else
@@ -520,6 +522,8 @@ public sealed class Workspace : IDisposable
     public IReadOnlyList<SpecError> CheckImportDocument(JsonElement document)
     {
         const string AnyId = "00000000-0000-4000-8000-000000000000";
+        if (InfiniteNumbers(document) is { } infinite)
+            return ValidationText.Cap(infinite);
         using var copy = document.ValueKind == JsonValueKind.Object
             ? WithId(document, AnyId)
             : JsonDocument.Parse(document.GetRawText(), SpecJson.DocumentOptions);
@@ -722,6 +726,16 @@ public sealed class Workspace : IDisposable
     {
         var result = SpecSchemas.StructureOnly.Validate(body, schema, Limits.JsonDepth);
         return result.IsValid ? null : ValidationText.FromSchema(result).ToList();
+    }
+
+    /// <summary>
+    /// The numbers of a create's or an import's document as received, read before its <c>id</c> is replaced: a <c>json</c>
+    /// error under <c>/document</c> at each one whose text rounds to ±∞ (spec/docs/validation.md#numbers), or null.
+    /// </summary>
+    private List<SpecError>? InfiniteNumbers(JsonElement document)
+    {
+        var result = Spec.Schema.SchemaSet.CheckNumbers(document, Limits.JsonDepth);
+        return result.IsValid ? null : ValidationText.FromSchema(result, "/document").ToList();
     }
 
     /// <summary>An object with its root member <paramref name="name"/> left out (values copied as their raw text).</summary>

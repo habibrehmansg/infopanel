@@ -50,8 +50,10 @@ public sealed class SceneRegressionTests
     }
 
     [Fact]
-    public void A_non_finite_literal_makes_its_item_a_placeholder_and_the_others_load()
+    public void A_literal_that_rounds_to_infinity_makes_the_document_unreadable()
     {
+        // 1e400 isn't a number the formats read (it rounds to infinity as a double): the document is refused as json at
+        // the literal, not loaded with a placeholder.
         var bad = SceneKit.Json("{'format':'infopanel.scene/1','state':{'c':{'init':1e400,'next':{'op':'state','name':'c'}}},'nodes':[{'kind':'rect','w':{'op':'state','name':'c'},'h':10,'fill':'#ffffff'}]}");
         var good = SceneKit.Example("scene/valid/shapes.json");
         var doc = JsonNode.Parse(SceneKit.Doc(good, 300, 200).GetRawText())!;
@@ -60,15 +62,12 @@ public sealed class SceneRegressionTests
         item["scene"] = JsonNode.Parse(bad.GetRawText());
         doc["items"]!.AsArray().Add(item);
         using var runtime = new SceneRuntime(SceneKit.Options());
-        var check = runtime.Load(JsonSerializer.SerializeToElement(doc));
-        var reported = Assert.Single(check.Items);
-        Assert.Equal(("bad", "/items/1", "invalid"), (reported.Id, reported.Path, reported.Problem));
-        var error = Assert.Single(reported.Errors);
-        Assert.Equal(("/items/1/scene", "schema", "State cell 'c' has a number literal outside the 64-bit range."), (error.Path, error.Code, error.Message));
-        using var s = runtime.Tick(0, SceneKit.Now);
-        Assert.Null(s.Bounds.Single(b => b.Id != "bad").Problem);
-        Assert.Equal("invalid", s.Bounds.Single(b => b.Id == "bad").Problem);
-        s.Render().Dispose();
+        var check = Assert.Throws<SceneDocumentException>(() => runtime.Load(JsonSerializer.SerializeToElement(doc))).Check;
+        Assert.Equal(InfoPanel.Spec.CheckStatus.Invalid, check.Status);
+        var error = Assert.Single(check.Errors);
+        Assert.Equal(("/items/1/scene/state/c/init", "json"), (error.Path, error.Code));
+        var alone = InfoPanel.Spec.SceneValidator.Check(bad);
+        Assert.Equal("json /state/c/init", string.Join("; ", alone.Errors.Select(e => $"{e.Code} {e.Path}")));
     }
 
     private static TickSnapshot Tick(string scene, int width = 300, int height = 200, SceneRuntimeOptions? options = null)

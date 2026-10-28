@@ -1,0 +1,21 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number", "label": "Load"}},
+  "values": {
+    "angle": {"op": "atan2", "args": [-0, -1]},
+    "label": {"op": "format", "value": {"op": "input", "name": "v"}, "decimals": 1.00000000000000001}
+  },
+  "nodes": [
+    {
+      "kind": "text",
+      "x": 1e1,
+      "y": 4.0,
+      "w": 2.00e2,
+      "maxLines": 2.0000000000000001,
+      "opacity": {"op": "norm", "args": [{"op": "value", "name": "angle"}, 0, 1.8e2]},
+      "font": {"family": "Inter", "size": 2.40000000000000000001e1, "weight": 4e2},
+      "fill": "#e5e7eb",
+      "text": {"op": "value", "name": "label"}
+    }
+  ]
+}

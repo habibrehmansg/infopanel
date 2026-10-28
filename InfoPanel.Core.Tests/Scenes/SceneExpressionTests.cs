@@ -61,6 +61,9 @@ public sealed class SceneExpressionTests
     [InlineData("{'op':'pow','args':[-8,0.5]}", 0)]
     [InlineData("{'op':'atan2','args':[1,1]}", 45)]
     [InlineData("{'op':'atan2','args':[1,0]}", 90)]
+    // A literal -0 reads as 0 (spec/docs/validation.md#numbers): the angle of (-1, 0) is 180, not -180.
+    [InlineData("{'op':'atan2','args':[-0,-1]}", 180)]
+    [InlineData("{'op':'atan2','args':[-0.0e3,-1]}", 180)]
     [InlineData("{'op':'neg','args':[2]}", -2)]
     [InlineData("{'op':'abs','args':[-2]}", 2)]
     [InlineData("{'op':'floor','args':[-1.5]}", -2)]

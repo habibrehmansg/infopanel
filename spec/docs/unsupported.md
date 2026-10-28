@@ -18,7 +18,7 @@ A placeholder item:
 - is reported in the frame's bounds with `problem` set, so a client can say why;
 - can still be moved, rotated, renamed, hidden, locked, rebound, reordered, grouped, copied and removed, because those ops never touch the scene;
 - gets new content only by an explicit `setDesign` that replaces its scene;
-- **is kept exactly as it is**: the engine stores the scene as the same JSON value it received (member order and number spelling may differ; the content doesn't), saves it, exports it, copies it and restores it on undo unchanged. It never upgrades, downgrades, trims or repairs it.
+- **is kept exactly as it is**: the engine stores the scene as the same JSON value it received (member order and a number's spelling may differ, never its value as a double, [validation](validation.md#numbers)), saves it, exports it, copies it and restores it on undo unchanged. It never upgrades, downgrades, trims or repairs it.
 
 Clients follow the same rule: a client that copies, pastes, exports or imports an item it can't interpret carries its scene, source and origin verbatim.
 

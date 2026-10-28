@@ -40,13 +40,15 @@ internal static class ValidationText
     internal static int Utf8Bytes(JsonElement e) => System.Text.Encoding.UTF8.GetByteCount(e.GetRawText());
 
     /// <summary>
-    /// A schema validation's errors as checks report them: <c>schema</c>, except the count of the rest (<c>more</c>) and
-    /// a value nested too deeply, which is the one error <c>limit.jsonDepth</c> at the root of what was checked.
+    /// A schema validation's errors as checks report them: <c>schema</c>, except the count of the rest (<c>more</c>), a
+    /// number that rounds to ±∞ (<c>json</c>), and a value nested too deeply, which is the one error
+    /// <c>limit.jsonDepth</c> at the root of what was checked.
     /// </summary>
     internal static IEnumerable<SpecError> FromSchema(SchemaValidationResult result, string prefix = "") =>
         result.Errors.Select(e => e.Keyword switch
         {
             "more" => new SpecError(prefix + e.InstancePath, "more", e.Message),
+            "json" => new SpecError(prefix + e.InstancePath, "json", e.Message),
             "depth" => new SpecError(prefix, "limit.jsonDepth", $"{e.Message.TrimEnd('.')} (jsonDepth)."),
             _ => new SpecError(prefix + e.InstancePath, "schema", $"{e.Message} ({e.Keyword})"),
         });

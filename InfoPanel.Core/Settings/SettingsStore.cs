@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -40,7 +41,8 @@ public sealed class SettingsUnavailableException(SettingsStatus status, SpecErro
 /// <list type="bullet">
 /// <item>Opened once at start-up (<see cref="Open(DataPaths, ILogger?)"/>). No file: the defaults, nothing written. A
 /// file over <see cref="SettingsLimits.MaxFileBytes"/>, not JSON (duplicate member names, over 64 deep, or a string or
-/// name that doesn't decode to text included), not an object, or without a <c>format</c> string of this kind is <see cref="SettingsStatus.Unreadable"/>; another major version is
+/// name that doesn't decode to text included), not an object, without a <c>format</c> string of this kind, or holding a
+/// number whose text rounds to ±∞ anywhere (unknown members included; <c>json</c> at the number) is <see cref="SettingsStatus.Unreadable"/>; another major version is
 /// <see cref="SettingsStatus.Unsupported"/>. Either way the defaults apply, the problem is logged once, the file is
 /// never rewritten in this run, and every change throws <see cref="SettingsUnavailableException"/>. A known member
 /// with the wrong type or out of range gets its default with one warning naming it, and the next write drops it.</item>
@@ -49,7 +51,7 @@ public sealed class SettingsUnavailableException(SettingsStatus status, SpecErro
 /// here.</item>
 /// <item><see cref="Apply"/> merges a change (a value sets a member, <c>null</c> removes it) and writes the file at once
 /// with <see cref="AtomicFile"/>, under the store's lock, before it returns. A change that leaves the file's content as
-/// it is writes nothing and raises nothing, unless the last write's folder flush failed: then it writes again (no new
+/// it is (numbers compared as the doubles nearest their text, so stored spellings stay) writes nothing and raises nothing, unless the last write's folder flush failed: then it writes again (no new
 /// version) and throws if that fails. A failed write leaves the file and the values as they were and throws.</item>
 /// <item><see cref="Changed"/> follows every effective change, in order.</item>
 /// </list>
@@ -148,7 +150,10 @@ public sealed class SettingsStore
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
     /// <exception cref="SettingsUnavailableException">The file couldn't be read at start-up (checked first).</exception>
     /// <exception cref="SettingsChangeException">
-    /// The change breaks a rule, or makes settings the file couldn't hold and read back (<c>json</c>: duplicate member
+    /// The change breaks a rule (nesting deeper than the file is read at is <c>json</c> at the root, checked before anything
+    /// else; a number whose text rounds to ±∞ anywhere in it, client preferences and unknown members
+    /// included, is <c>json</c> at the number, and then no other rule is checked), or makes settings the file couldn't
+    /// hold and read back (<c>json</c>: duplicate member
     /// names, a client value over 62 deep, text that doesn't decode); nothing was applied.
     /// </exception>
     /// <exception cref="IOException">
@@ -200,14 +205,15 @@ public sealed class SettingsStore
                 throw Unstorable(ex.Message);
             }
 
-            if (content.AsSpan().SequenceEqual(_content))
+            if (SameContent(content, _content))
             {
+                // Nothing changes, and the members keep the spellings they have (_tree stays as it is).
                 if (!_unflushed)
                     return _current;
 
                 // The last write replaced the file but couldn't flush its folder: write it again, so the retry flushes
                 // what that write didn't (no new version, nothing raised), or throws as it did.
-                AtomicFile.Write(_path, content, _root, _faults);
+                AtomicFile.Write(_path, _content, _root, _faults);
                 _unflushed = false;
                 return _current;
             }
@@ -228,6 +234,19 @@ public sealed class SettingsStore
             _unflushed = false;
             return Commit(next, content);
         }
+    }
+
+    /// <summary>
+    /// Whether two written forms of the settings hold the same content: equal JSON as the formats compare it, numbers as
+    /// the doubles nearest their text (spec/docs/validation.md#numbers), so <c>30.0</c> and <c>30</c> are one value.
+    /// </summary>
+    private static bool SameContent(byte[] a, byte[] b)
+    {
+        if (a.AsSpan().SequenceEqual(b))
+            return true;
+        using var x = JsonDocument.Parse(a, ReadOptions);
+        using var y = JsonDocument.Parse(b, ReadOptions);
+        return Json.DeepEquals(x.RootElement, y.RootElement);
     }
 
     /// <summary>A change whose result the file couldn't hold, or the next start couldn't read back.</summary>
@@ -311,6 +330,11 @@ public sealed class SettingsStore
             return (SettingsStatus.Unsupported,
                 new SpecError("/format", "unsupported.format", $"The settings are {Clip(format)}; this engine reads {SettingsLimits.Format}."), null);
         }
+
+        // A number that rounds to ±∞ makes the file unreadable wherever it is, unknown members included, as it makes a
+        // stored document unreadable (spec/docs/validation.md#numbers).
+        if (FirstInfiniteNumber(tree, "") is { } infinite)
+            return Unreadable(infinite, "json", InfiniteMessage);
 
         return (SettingsStatus.Ok, null, tree);
     }
@@ -435,11 +459,6 @@ public sealed class SettingsStore
     private static List<SpecError> Check(JsonElement change)
     {
         var errors = new List<SpecError>();
-        if (change.ValueKind != JsonValueKind.Object)
-        {
-            errors.Add(new SpecError("", "schema", "A settings change is a JSON object."));
-            return errors;
-        }
 
         void Leaf(JsonElement value, string pointer, Func<JsonElement, string?> rule)
         {
@@ -456,6 +475,26 @@ public sealed class SettingsStore
         }
 
         void Unknown(string pointer) => errors.Add(new SpecError(pointer, "schema", "Not a setting."));
+
+        // Bounded first: a change nested deeper than the file is read (MaxDepth) can't be stored whatever it holds, and
+        // the scan below descends once per level.
+        if (SpecJson.Depth(change) > ReadOptions.MaxDepth)
+        {
+            errors.Add(new SpecError("", "json", $"The change nests deeper than the {ReadOptions.MaxDepth} levels the settings are read at."));
+            return errors;
+        }
+
+        // Numbers next, whatever the change is and everywhere in it (client preferences and unknown members too): one that rounds to ±∞ is
+        // json at the number, and then no other rule is applied, as the formats' validator does.
+        InfiniteNumbers(change, new List<(string? Name, int Index)>(), errors);
+        if (errors.Count > 0)
+            return errors;
+
+        if (change.ValueKind != JsonValueKind.Object)
+        {
+            errors.Add(new SpecError("", "schema", "A settings change is a JSON object."));
+            return errors;
+        }
 
         foreach (var member in change.EnumerateObject())
         {
@@ -597,12 +636,12 @@ public sealed class SettingsStore
 
     // ---- rules ------------------------------------------------------------------------------------------------------
 
-    /// <summary>A whole number in range by its exact value, as the schema validator decides it (no decimal rounding).</summary>
+    /// <summary>A whole number in range, read as the double nearest its text as the schema validator reads it (spec/docs/validation.md#numbers).</summary>
     private static string? IntProblem(JsonElement e, SettingRange range)
     {
-        if (e.ValueKind != JsonValueKind.Number || !JsonNumber.IsInteger(e))
+        if (e.ValueKind != JsonValueKind.Number || !JsonNumber.TryReadInteger(e, out var value))
             return "isn't a whole number";
-        return JsonNumber.Compare(e, range.Min) >= 0 && JsonNumber.Compare(e, range.Max) <= 0
+        return value >= range.Min && value <= range.Max
             ? null
             : $"{Clip(e.GetRawText())} is outside {range.Min}–{range.Max}";
     }
@@ -631,6 +670,75 @@ public sealed class SettingsStore
         using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Encoder = WriterOptions.Encoder }))
             e.WriteTo(writer);
         return buffer.WrittenCount;
+    }
+
+    // ---- numbers ----------------------------------------------------------------------------------------------------
+
+    private const string InfiniteMessage = "The number rounds to infinity as a 64-bit double: not a number the settings read.";
+
+    /// <summary>
+    /// Adds a <c>json</c> error for every number in <paramref name="value"/> whose text rounds to ±∞, at its pointer. The
+    /// caller bounds the depth; <paramref name="path"/> holds the steps down to <paramref name="value"/> (a member name, or
+    /// null with an index) and is turned into a pointer only for an error.
+    /// </summary>
+    private static void InfiniteNumbers(JsonElement value, List<(string? Name, int Index)> path, List<SpecError> errors)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Number:
+                if (!JsonNumber.TryRead(value, out _))
+                    errors.Add(new SpecError(PointerOf(path), "json", InfiniteMessage));
+                break;
+            case JsonValueKind.Array:
+                var i = 0;
+                foreach (var item in value.EnumerateArray())
+                {
+                    path.Add((null, i++));
+                    InfiniteNumbers(item, path, errors);
+                    path.RemoveAt(path.Count - 1);
+                }
+
+                break;
+            case JsonValueKind.Object:
+                foreach (var member in value.EnumerateObject())
+                {
+                    path.Add((member.Name, 0));
+                    InfiniteNumbers(member.Value, path, errors);
+                    path.RemoveAt(path.Count - 1);
+                }
+
+                break;
+        }
+    }
+
+    private static string PointerOf(List<(string? Name, int Index)> path)
+    {
+        var pointer = new StringBuilder();
+        foreach (var (name, index) in path)
+            pointer.Append('/').Append(name is null ? index.ToString(System.Globalization.CultureInfo.InvariantCulture) : Escape(name));
+        return pointer.ToString();
+    }
+
+    /// <summary>The pointer of the first number in <paramref name="node"/> whose text rounds to ±∞, or null.</summary>
+    private static string? FirstInfiniteNumber(JsonNode? node, string pointer)
+    {
+        switch (node)
+        {
+            case JsonObject o:
+                foreach (var (name, child) in o)
+                    if (FirstInfiniteNumber(child, pointer + "/" + Escape(name)) is { } found)
+                        return found;
+                return null;
+            case JsonArray a:
+                for (var i = 0; i < a.Count; i++)
+                    if (FirstInfiniteNumber(a[i], pointer + "/" + i) is { } found)
+                        return found;
+                return null;
+            case JsonValue v when v.GetValueKind() == JsonValueKind.Number:
+                return JsonNumber.TryRead(ElementOf(v), out _) ? null : pointer;
+            default:
+                return null;
+        }
     }
 
     // ---- JSON -------------------------------------------------------------------------------------------------------

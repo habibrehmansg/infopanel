@@ -322,54 +322,79 @@ public sealed class HistoryTests
     [Fact]
     public void Dirty_and_field_revisions_see_any_change_of_a_scene_kept_as_sent()
     {
-        // Scenes of a newer format are kept as sent: numbers outside the double range included, each different from the others.
+        // Scenes of a newer format are kept as sent: any change of their value is a change, whatever the engine reads of them.
         using var doc = Sample();
-        doc.Ok(Commit(Design("a", Future("1e400"))));
+        doc.Ok(Commit(Design("a", Future("1e300"))));
         doc.Save();
 
         var result = doc.Ok(Commit(Design("a", Future("null"))));
         Assert.Equal((3L, true, "a"), (result.Rev, result.Dirty, string.Join(" ", result.Items.Keys)));
         Assert.Equal(3, doc.ReadRevisions(r => r.FieldRev("a", ItemField.Design)));
-        Assert.True(doc.Ok(Commit(Design("a", Future("-1e400")))).Dirty);
-        Assert.False(doc.Ok(Commit(Design("a", Future("1e400")))).Dirty);
+        Assert.True(doc.Ok(Commit(Design("a", Future("-1e300")))).Dirty);
+        Assert.False(doc.Ok(Commit(Design("a", Future("1e300")))).Dirty);
     }
 
-    // Scenes of a newer format are kept as sent and compared as JSON, numbers exactly as decimals.
+    // Scenes of a newer format are kept as sent and compared as JSON, each number as the double nearest its text.
     private static JsonObject Future(string n) => JsonNode.Parse($$"""{"format": "infopanel.scene/2", "nodes": [], "n": {{n}}}""")!.AsObject();
 
     [Fact]
-    public void Integers_that_are_the_same_double_are_different_numbers()
+    public void Integers_that_are_the_same_double_are_the_same_number()
     {
+        // 9007199254740993 is the double 9007199254740992 (2^53): no change, and the scene stays as first stored.
         using var doc = Sample();
         doc.Ok(Commit(Design("a", Future("9007199254740992"))));
         doc.Save();
         var result = doc.Ok(Commit(Design("a", Future("9007199254740993"))));
-        Assert.Equal((3L, "a", true), (result.Rev, string.Join(" ", result.Items.Keys), result.Dirty));
-        Assert.Equal(3, doc.ReadRevisions(r => r.FieldRev("a", ItemField.Design)));
-        Assert.Equal("9007199254740993", ((SceneItem)doc.Current.Item("a")).Scene.GetProperty("n").GetRawText());
+        Assert.Equal((2L, 0, false), (result.Rev, result.Items.Count, result.Dirty));
+        Assert.Equal(2, doc.ReadRevisions(r => r.FieldRev("a", ItemField.Design)));
+        Assert.Equal("9007199254740992", ((SceneItem)doc.Current.Item("a")).Scene.GetProperty("n").GetRawText());
     }
 
     [Fact]
-    public void A_number_too_small_for_a_double_is_not_zero()
+    public void A_number_too_small_for_a_double_is_zero()
     {
         using var doc = Sample();
         doc.Ok(Commit(Design("a", Future("0"))));
         doc.Save();
         var result = doc.Ok(Commit(Design("a", Future("1e-400"))));
-        Assert.Equal((3L, "a", true), (result.Rev, string.Join(" ", result.Items.Keys), result.Dirty));
+        Assert.Equal((2L, 0, false), (result.Rev, result.Items.Count, result.Dirty));
+        Assert.False(doc.Ok(Commit(Design("a", Future("-0")))).Dirty);
     }
 
     [Fact]
-    public void The_same_number_spelled_otherwise_beyond_the_double_range_changes_nothing()
+    public void The_same_number_spelled_otherwise_changes_nothing()
     {
         using var doc = Sample();
-        doc.Ok(Commit(Design("a", Future("1e400"))));
+        doc.Ok(Commit(Design("a", Future("100"))));
         doc.Save();
-        var same = doc.Ok(Commit(Design("a", Future("10e399"))));
+        var same = doc.Ok(Commit(Design("a", Future("1e2"))));
         Assert.Equal((2L, 0, false), (same.Rev, same.Items.Count, same.Dirty));
         Assert.True(doc.Ok(Commit(Design("a", Future("2")))).Dirty);
-        var back = doc.Ok(Commit(Design("a", Future("10e399"))));
+        var back = doc.Ok(Commit(Design("a", Future("10.0e1"))));
         Assert.Equal((4L, false), (back.Rev, back.Dirty));
+    }
+
+    [Fact]
+    public void A_number_in_an_origin_is_the_double_nearest_its_text()
+    {
+        // 1.00000000000000001 is the double 1: writing it where 1 was changes nothing (no revision, still clean), as the
+        // same change to a placement does.
+        using var doc = Sample();
+        doc.Ok(Commit(WithOrigin(Design("a", Rect()), "1")));
+        doc.Save();
+
+        var same = doc.Ok(Commit(WithOrigin(Design("a", Rect()), "1.00000000000000001")));
+        Assert.Equal((2L, 0, false), (same.Rev, same.Items.Count, same.Dirty));
+        Assert.Equal(2, doc.ReadRevisions(r => r.FieldRev("a", ItemField.Design)));
+        var placed = doc.Ok(Element(JsonNode.Parse("""{"opId": "x-1", "instance": "engine-instance-1", "baseRev": 0, "ops": [{"op": "setPlacement", "id": "a", "placement": {"x": 10.00000000000000001, "y": 10}}]}""")!));
+        Assert.Equal((2L, 0), (placed.Rev, placed.Items.Count));
+        Assert.True(doc.Ok(Commit(WithOrigin(Design("a", Rect()), "1.0000000000000002"))).Dirty);
+    }
+
+    private static JsonObject WithOrigin(JsonObject design, string x)
+    {
+        design["origin"] = JsonNode.Parse($$"""{"x": {{x}}}""");
+        return design;
     }
 
     [Fact]

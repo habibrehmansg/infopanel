@@ -1,7 +1,9 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using InfoPanel.Spec.Schema;
 
 namespace InfoPanel.Spec;
 
@@ -37,6 +39,7 @@ public static class SpecJson
             NumberHandling = JsonNumberHandling.Strict,
             MaxDepth = SchemaDepth,
         };
+        options.Converters.Add(new NumberConverter());
         options.Converters.Add(new IntegralInt32Converter());
         options.Converters.Add(new IntegralInt64Converter());
         options.Converters.Add(new ExprConverter());
@@ -85,47 +88,53 @@ public static class SpecJson
     public static JsonElement Write<T>(T value) => JsonSerializer.SerializeToElement(value, Options);
 
     /// <summary>
-    /// A JSON integer as an int: JSON Schema's integer allows any spelling with a zero fraction (1.0, 1e0), so every
-    /// integer member is read through here or <see cref="IntegralInt32Converter"/>, never with <c>GetInt32</c>.
+    /// A JSON integer as an int: a number is the double nearest its text and an integer member takes any whole one (1.0,
+    /// 1e0, 1.00000000000000001; spec/docs/validation.md#numbers), so every integer member is read through here or
+    /// <see cref="IntegralInt32Converter"/>, never with <c>GetInt32</c>.
     /// </summary>
-    internal static int ReadInt32(JsonElement e)
-    {
-        if (e.ValueKind == JsonValueKind.Number)
-        {
-            if (e.TryGetInt32(out var i)) return i;
-            if (Integral32(e.GetDouble()) is { } d) return d;
-        }
-        throw new JsonException("Expected an integer.");
-    }
+    internal static int ReadInt32(JsonElement e) =>
+        e.ValueKind == JsonValueKind.Number && JsonNumber.TryRead(e, out var d) && Integral32(d) is { } i
+            ? i
+            : throw new JsonException("Expected an integer.");
 
     private static int? Integral32(double d) => Math.Floor(d) == d && d >= int.MinValue && d <= int.MaxValue ? (int)d : null;
 
-    /// <summary>JSON integers may be written with a fraction of zero (1.0), as JSON Schema's integer allows.</summary>
+    /// <summary>The current number token as the double nearest its text (<see cref="JsonNumber.Parse"/>); false when it rounds to ±∞.</summary>
+    private static bool TryReadNumber(ref Utf8JsonReader reader, out double value)
+    {
+        value = 0;
+        if (reader.TokenType != JsonTokenType.Number) return false;
+        value = JsonNumber.Parse(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+        if (double.IsFinite(value)) return true;
+        value = 0;
+        return false;
+    }
+
+    /// <summary>Every number member: the double nearest its text, <c>-0</c> as 0; one that rounds to ±∞ is refused.</summary>
+    private sealed class NumberConverter : JsonConverter<double>
+    {
+        public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            TryReadNumber(ref reader, out var d) ? d : throw new JsonException("Expected a number within the 64-bit range.");
+
+        public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options) => writer.WriteNumberValue(value);
+    }
+
+    /// <summary>JSON integers may be written in any spelling of a whole double (1.0, 1e0).</summary>
     private sealed class IntegralInt32Converter : JsonConverter<int>
     {
-        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.Number)
-            {
-                if (reader.TryGetInt32(out var i)) return i;
-                if (Integral32(reader.GetDouble()) is { } d) return d;
-            }
-            throw new JsonException("Expected an integer.");
-        }
+        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            TryReadNumber(ref reader, out var d) && Integral32(d) is { } i ? i : throw new JsonException("Expected an integer.");
 
         public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options) => writer.WriteNumberValue(value);
     }
 
+    /// <summary>A whole double within ±2^53, where every integer is one double.</summary>
     private sealed class IntegralInt64Converter : JsonConverter<long>
     {
         public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            if (reader.TokenType == JsonTokenType.Number)
-            {
-                if (reader.TryGetInt64(out var i)) return i;
-                var d = reader.GetDouble();
-                if (Math.Floor(d) == d && d >= -9.007199254740992E15 && d <= 9.007199254740992E15) return (long)d;
-            }
+            if (TryReadNumber(ref reader, out var d) && Math.Floor(d) == d && d >= -9.007199254740992E15 && d <= 9.007199254740992E15)
+                return (long)d;
             throw new JsonException("Expected an integer.");
         }
 
@@ -147,7 +156,8 @@ public static class SpecJson
     {
         switch (e.ValueKind)
         {
-            case JsonValueKind.Number: return new NumberLit(e.GetDouble());
+            case JsonValueKind.Number:
+                return new NumberLit(JsonNumber.TryRead(e, out var n) ? n : throw new JsonException("Expected a number within the 64-bit range."));
             case JsonValueKind.String: return new StringLit(e.GetString()!);
             case JsonValueKind.True: return new BoolLit(true);
             case JsonValueKind.False: return new BoolLit(false);

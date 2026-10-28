@@ -257,21 +257,25 @@ public sealed class CommitTests
     }
 
     [Fact]
-    public void A_scene_that_cannot_be_compiled_is_422_at_its_path_and_a_stored_one_is_a_placeholder()
+    public void A_number_that_rounds_to_infinity_is_json_at_the_number()
     {
-        // Valid as far as the validator goes; the runtime can't compile a state cell whose literal is outside the 64-bit range.
+        // 1e400 is past the 64-bit range: refused wherever it is, opaque members included, and nothing else is checked.
         var bad = (JsonObject)JsonNode.Parse("""{"format": "infopanel.scene/1", "state": {"c": {"init": 1e400, "next": {"op": "state", "name": "c"}}}, "nodes": [{"kind": "rect", "w": {"op": "state", "name": "c"}, "h": 10, "fill": "#ffffff"}]}""")!;
         using var doc = Sample();
         var history = doc.HistorySize;
 
-        var problem = doc.Invalid(Commit(Place("b", 1, 1), Design("a", bad.DeepClone().AsObject()), Insert(Scene("n", scene: bad.DeepClone().AsObject()))));
-        Assert.Equal(["schema /ops/1/scene", "schema /ops/2/item/scene"], problem.Errors.Select(e => $"{e.Code} {e.Path}"));
-        Assert.Equal("State cell 'c' has a number literal outside the 64-bit range.", problem.Errors[0].Message);
+        var origin = Design("b", Rect());
+        origin["origin"] = JsonNode.Parse("""{"n": [-1e400]}""");
+        var problem = doc.Invalid(Commit(Place("b", 1, 1), Design("a", bad.DeepClone().AsObject()), Insert(Scene("n", scene: bad.DeepClone().AsObject())), origin));
+        Assert.Equal(["json /ops/1/scene/state/c/init", "json /ops/2/item/scene/state/c/init", "json /ops/3/origin/n/0"],
+            problem.Errors.Select(e => $"{e.Code} {e.Path}"));
         Assert.Equal(1, doc.Rev);
         Assert.Equal(history, doc.HistorySize);
 
-        using var stored = Open(Doc(Scene("a"), Scene("bad", scene: bad)));
-        Assert.Equal(["bad:invalid"], stored.Current.Problems.Select(p => $"{p.Id}:{p.Problem}"));
+        // A stored document holding one is not JSON as the formats read it: it doesn't open.
+        var (stored, check) = ProfileDocument.Open(Doc(Scene("a"), Scene("bad", scene: bad)), Options());
+        Assert.Null(stored);
+        Assert.Equal("json /items/1/scene/state/c/init", string.Join("; ", check.Errors.Select(e => $"{e.Code} {e.Path}")));
     }
 
     [Fact]
@@ -393,11 +397,11 @@ public sealed class CommitTests
     }
 
     [Fact]
-    public void A_retry_is_compared_byte_for_byte_even_where_numbers_overflow()
+    public void A_retry_is_compared_byte_for_byte_even_where_numbers_are_the_same_double()
     {
         using var doc = Sample();
-        doc.Ok(Element(JsonNode.Parse("""{"opId": "o", "instance": "engine-instance-1", "baseRev": 1, "ops": [{"op": "setDesign", "id": "a", "scene": {"format": "infopanel.scene/1", "nodes": []}, "origin": {"n": 1e400}}]}""")!));
-        var problem = doc.Invalid(Element(JsonNode.Parse("""{"opId": "o", "instance": "engine-instance-1", "baseRev": 1, "ops": [{"op": "setDesign", "id": "a", "scene": {"format": "infopanel.scene/1", "nodes": []}, "origin": {"n": null}}]}""")!));
+        doc.Ok(Element(JsonNode.Parse("""{"opId": "o", "instance": "engine-instance-1", "baseRev": 1, "ops": [{"op": "setDesign", "id": "a", "scene": {"format": "infopanel.scene/1", "nodes": []}, "origin": {"n": 1}}]}""")!));
+        var problem = doc.Invalid(Element(JsonNode.Parse("""{"opId": "o", "instance": "engine-instance-1", "baseRev": 1, "ops": [{"op": "setDesign", "id": "a", "scene": {"format": "infopanel.scene/1", "nodes": []}, "origin": {"n": 1.00000000000000001}}]}""")!));
         Assert.Equal(("opId.reused", "/opId"), (Assert.Single(problem.Errors).Code, problem.Errors[0].Path));
         Assert.Equal(2, doc.Rev);
     }

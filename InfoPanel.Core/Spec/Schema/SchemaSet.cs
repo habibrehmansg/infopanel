@@ -51,16 +51,20 @@ public sealed class SchemaSet
     /// <param name="instance">The JSON value to check.</param>
     /// <param name="schemaRef">An absolute id (<c>urn:infopanel:scene:1</c>) or id plus fragment (<c>urn:infopanel:api:1#/$defs/commitRequest</c>).</param>
     /// <param name="maxDepth">The deepest nesting accepted (a value nested deeper gets one <c>depth</c> error and nothing else is
-    /// checked); at most <see cref="MaxInstanceDepth"/>.</param>
+    /// checked); at most <see cref="MaxInstanceDepth"/>. Within it, a number whose text rounds to ±∞ as a double is a
+    /// <c>json</c> error at the number (spec/docs/validation.md#numbers), and when there is one the schema isn't applied.</param>
     /// <exception cref="ArgumentException"><paramref name="schemaRef"/> names no loaded schema.</exception>
     public SchemaValidationResult Validate(JsonElement instance, string schemaRef, int maxDepth = MaxInstanceDepth)
     {
         var node = Find(schemaRef) ?? throw new ArgumentException($"Unknown schema reference \"{schemaRef}\".", nameof(schemaRef));
         var sp = node.Id + "#" + node.Pointer;
         var scan = new List<Err>();
-        long values = 0;
-        if (!Scan(instance, InstancePath.Root, 1, Math.Min(maxDepth, MaxInstanceDepth), scan, sp, ref values))
+        var infinite = new List<Err>();
+        long values = 0, infinities = 0;
+        if (!Scan(instance, InstancePath.Root, 1, Math.Min(maxDepth, MaxInstanceDepth), scan, infinite, sp, ref values, ref infinities))
             return new SchemaValidationResult(scan.Where(e => e.Keyword == "depth").Take(1).Select(e => e.ToError()).ToList());
+        if (infinities > 0)
+            return Infinite(infinite, infinities, sp);
 
         var run = new SchemaRun(BaseWork + WorkPerValue * values);
         var errs = new Errs(run);
@@ -79,6 +83,30 @@ public sealed class SchemaSet
         return new SchemaValidationResult(kept) { Steps = steps, Budget = run.Budget };
     }
 
+    /// <summary>
+    /// Only the numbers of <see cref="Validate"/>'s first pass, with no schema: a <c>json</c> error at each number whose
+    /// text rounds to ±∞ (spec/docs/validation.md#numbers), the first <see cref="MaxErrors"/> listed, then a <c>more</c>
+    /// error. For content checked before something of it is replaced (a create's document before its id is). An instance
+    /// nested deeper than <paramref name="maxDepth"/> gives no errors here: its validation reports it.
+    /// </summary>
+    public static SchemaValidationResult CheckNumbers(JsonElement instance, int maxDepth = MaxInstanceDepth)
+    {
+        var scan = new List<Err>();
+        var infinite = new List<Err>();
+        long values = 0, infinities = 0;
+        if (!Scan(instance, InstancePath.Root, 1, Math.Min(maxDepth, MaxInstanceDepth), scan, infinite, "", ref values, ref infinities) || infinities == 0)
+            return new SchemaValidationResult([]);
+        return Infinite(infinite, infinities, "");
+    }
+
+    private static SchemaValidationResult Infinite(List<Err> infinite, long infinities, string sp)
+    {
+        var errors = infinite.Select(e => e.ToError()).OrderBy(e => e.InstancePath, StringComparer.Ordinal).ToList();
+        if (infinities > infinite.Count)
+            errors.Add(new SchemaError("", "more", $"{infinities - infinite.Count} more errors not listed.", sp));
+        return new SchemaValidationResult(errors);
+    }
+
     /// <summary>Errors returned by one validation before the last <c>more</c> error.</summary>
     public const int MaxErrors = Errs.Keep;
 
@@ -94,13 +122,18 @@ public sealed class SchemaSet
     }
 
     /// <summary>
-    /// One pass over the instance: depth guard and duplicate property names, and the size of the work budget (one value
-    /// per value, and one more per <see cref="SchemaRun.CharsPerStep"/> characters of a property name). False when the
-    /// instance is too deep. Paths are segment chains: no pointer string is built unless an error is reported.
+    /// One pass over the instance: depth guard, duplicate property names, numbers that round to ±∞ (the first
+    /// <see cref="MaxErrors"/> in <paramref name="infinite"/>, all counted in <paramref name="infinities"/>), and the size
+    /// of the work budget (one value per value, and one more per <see cref="SchemaRun.CharsPerStep"/> characters of a
+    /// property name). False when the instance is too deep. Paths are segment chains: no pointer string is built unless
+    /// an error is reported.
     /// </summary>
-    private static bool Scan(JsonElement v, InstancePath path, int depth, int max, List<Err> errs, string sp, ref long values)
+    private static bool Scan(JsonElement v, InstancePath path, int depth, int max, List<Err> errs, List<Err> infinite, string sp,
+        ref long values, ref long infinities)
     {
         values++;
+        if (v.ValueKind == JsonValueKind.Number && !JsonNumber.TryRead(v, out _) && infinities++ < MaxErrors)
+            infinite.Add(new Err(path, "json", "The number rounds to infinity as a 64-bit double: not a number these formats read.", sp));
         if (v.ValueKind is not (JsonValueKind.Array or JsonValueKind.Object)) return true;
         if (depth > max)
         {
@@ -111,7 +144,7 @@ public sealed class SchemaSet
         {
             var i = 0;
             foreach (var item in v.EnumerateArray())
-                if (!Scan(item, path.Item(i++), depth + 1, max, errs, sp, ref values)) return false;
+                if (!Scan(item, path.Item(i++), depth + 1, max, errs, infinite, sp, ref values, ref infinities)) return false;
             return true;
         }
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -122,7 +155,7 @@ public sealed class SchemaSet
             values += name.Length / SchemaRun.CharsPerStep;
             if (!seen.Add(name) && reported.Add(name) && errs.Count < MaxErrors)
                 errs.Add(new Err(path, "duplicateKey", $"Duplicate property \"{name}\".", sp));
-            if (!Scan(p.Value, path.Prop(name), depth + 1, max, errs, sp, ref values)) return false;
+            if (!Scan(p.Value, path.Prop(name), depth + 1, max, errs, infinite, sp, ref values, ref infinities)) return false;
         }
         return true;
     }
@@ -147,7 +180,8 @@ public sealed class SchemaException : Exception
 
 /// <summary>One validation failure.</summary>
 /// <param name="InstancePath">RFC 6901 pointer into the instance ("" is the root).</param>
-/// <param name="Keyword">The failing keyword (<c>type</c>, <c>required</c>, <c>duplicateKey</c>, <c>depth</c>, ...).</param>
+/// <param name="Keyword">The failing keyword (<c>type</c>, <c>required</c>, <c>duplicateKey</c>, <c>depth</c>, ...), or
+/// <c>json</c> for a number that rounds to ±∞.</param>
 /// <param name="Message">A short English sentence.</param>
 /// <param name="SchemaPath"><c>{schema id}#{pointer into that schema}</c> of the failing keyword.</param>
 public sealed record SchemaError(string InstancePath, string Keyword, string Message, string SchemaPath);

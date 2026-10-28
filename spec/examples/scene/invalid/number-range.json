@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "values": {"far": 1e400},
+  "nodes": [{"kind": "rect", "w": {"op": "value", "name": "far"}, "h": 10, "fill": "#ffffff"}]
+}

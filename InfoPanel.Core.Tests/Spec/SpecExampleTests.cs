@@ -103,8 +103,9 @@ public class SpecExampleTests
         Assert.Equal(CheckStatus.Invalid, check.Status);
         AssertHas(check.Errors, expected, rel);
         var schemaValid = SpecSchemas.Strict.Validate(json, SpecSchemas.Scene).IsValid;
-        // A rule example must be schema-valid, so it tests the rule; a schema example must fail the schema itself.
-        Assert.Equal((string)expected["code"]! != "schema", schemaValid);
+        // A rule example must be schema-valid, so it tests the rule; a schema example must fail the schema itself, and so
+        // must a json one (the schema validator reads numbers as the formats do).
+        Assert.Equal((string)expected["code"]! is not ("schema" or "json"), schemaValid);
     }
 
     [Fact]
@@ -160,8 +161,8 @@ public class SpecExampleTests
         Assert.Equal(CheckStatus.Invalid, check.Status);
         AssertHas(check.Errors, expected, rel);
         // A rule example passes the schema; a schema example fails it, and so does one nested deeper than jsonDepth (the
-        // schema validator's depth guard).
-        Assert.Equal((string)expected["code"]! is not ("schema" or "limit.jsonDepth"), SpecSchemas.StructureOnly.Validate(json, SpecSchemas.Document).IsValid);
+        // schema validator's depth guard) or a json one (it reads numbers as the formats do).
+        Assert.Equal((string)expected["code"]! is not ("schema" or "limit.jsonDepth" or "json"), SpecSchemas.StructureOnly.Validate(json, SpecSchemas.Document).IsValid);
     }
 
     // ---- commits -----------------------------------------------------------------------------------------------

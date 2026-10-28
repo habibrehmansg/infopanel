@@ -67,13 +67,14 @@ public class SchemaSetTests
     [InlineData("1.5", false)]
     [InlineData("-0", true)]
     [InlineData("\"1\"", false)]
-    // By the number's value, past what a decimal (28 digits) or a double holds.
+    // By the double nearest the number's text: these are 1e-100, 1, 1, the double just below 1, and doubles past 2^53
+    // (every one of which is whole).
     [InlineData("1e-100", false)]
-    [InlineData("1.00000000000000000000000000001", false)]
-    [InlineData("0.99999999999999999", false)]
-    [InlineData("1e400", true)]
+    [InlineData("1.00000000000000000000000000001", true)]
+    [InlineData("0.99999999999999999", true)]
+    [InlineData("0.9999999999999999", false)]
     [InlineData("1234567890123456789012345678901234567890000000000e-10", true)]
-    [InlineData("12345678901234567890123456789012345678901e-10", false)]
+    [InlineData("12345678901234567890123456789012345678901e-10", true)]
     public void IntegerSemantics(string instance, bool valid) =>
         Assert.Equal(valid, Check("\"type\":\"integer\"", instance).Count == 0);
 
@@ -92,11 +93,14 @@ public class SchemaSetTests
         Ok("\"const\":{\"a\":1,\"b\":[true]}", "{\"b\":[true],\"a\":1.0}");
         One("\"const\":{\"a\":1}", "{\"a\":1,\"b\":2}", "const");
         One("\"const\":false", "0", "const");
-        // Numbers by value, however they are written.
+        // Numbers as the doubles nearest their text, however they are written.
         Ok("\"const\":100", "1e2");
         Ok("\"const\":0.5", "50e-2");
-        One("\"const\":1", "1.00000000000000000000000000001", "const");
+        Ok("\"const\":1", "1.00000000000000000000000000001");
+        Ok("\"const\":0", "-0");
+        Ok("\"const\":0", "1e-400");
         One("\"const\":0", "1e-100", "const");
+        One("\"const\":1", "1.0000000000000002", "const");
     }
 
     [Theory]
@@ -110,22 +114,23 @@ public class SchemaSetTests
     [InlineData("exclusiveMaximum", "5", "4.9", true)]
     [InlineData("minimum", "0.1", "0.1", true)]
     [InlineData("maximum", "1e400", "1e300", true)]
-    // By value, past a decimal's range and precision.
+    // By the doubles nearest the numbers' text.
     [InlineData("exclusiveMinimum", "0", "1e-100", true)]
     [InlineData("minimum", "0", "-1e-100", false)]
     [InlineData("minimum", "1e-100", "1e-101", false)]
     [InlineData("exclusiveMaximum", "1e-100", "0.1e-100", true)]
-    [InlineData("maximum", "1", "1.00000000000000000000000000001", false)]
-    [InlineData("minimum", "1", "0.99999999999999999999999999999", false)]
-    [InlineData("maximum", "1e400", "1e401", false)]
-    [InlineData("minimum", "-1e400", "-1e401", false)]
+    [InlineData("maximum", "1", "1.00000000000000000000000000001", true)]
+    [InlineData("minimum", "1", "0.99999999999999999999999999999", true)]
+    [InlineData("maximum", "1", "1.0000000000000002", false)]
+    [InlineData("exclusiveMinimum", "0", "1e-400", false)]
+    [InlineData("maximum", "1.7976931348623157e308", "1.7976931348623158e308", true)]
     [InlineData("maximum", "-0", "0e5", true)]
     [InlineData("maximum", "-15", "-1.5E+1", true)]
     [InlineData("exclusiveMaximum", "-15", "-1.5e1", false)]
     [InlineData("minimum", "-1e-100", "-0.5e-100", true)]
     [InlineData("maximum", "-1e-100", "-0.5e-100", false)]
     [InlineData("minimum", "123.456", "1234.56e-1", true)]
-    [InlineData("exclusiveMinimum", "123.456", "12345.6000000000000000000000000000000000001e-2", true)]
+    [InlineData("exclusiveMinimum", "123.456", "12345.6000000000000000000000000000000000001e-2", false)]
     public void NumberBounds(string keyword, string limit, string instance, bool valid)
     {
         var errors = Check($"\"{keyword}\":{limit}", instance);
@@ -135,6 +140,27 @@ public class SchemaSetTests
 
     [Fact]
     public void NumberBoundsIgnoreNonNumbers() => Ok("\"minimum\":5", "\"x\"");
+
+    [Theory]
+    [InlineData("1e400", "")]
+    [InlineData("-1e400", "")]
+    [InlineData("1.8e308", "")]
+    [InlineData("[0, {\"a\": [1, 1e400]}]", "/1/a/1")]
+    public void ANumberThatRoundsToInfinity_IsOneJsonErrorAtTheNumber_AndNothingElseIsChecked(string instance, string path)
+    {
+        // Whatever the schema (here one the number breaks too, and one with no rule for it): only the json error.
+        foreach (var schema in new[] { "\"type\":\"string\"", "\"description\":\"anything\"" })
+            One(schema, instance, "json", path);
+    }
+
+    [Fact]
+    public void NumbersThatRoundToInfinity_AreEachAJsonError_UpToTheCap()
+    {
+        var errors = Check("\"type\":\"array\"", "[" + string.Join(",", Enumerable.Repeat("1e999", 150)) + "]");
+        Assert.Equal(SchemaSet.MaxErrors + 1, errors.Count);
+        Assert.All(errors.Take(SchemaSet.MaxErrors), e => Assert.Equal("json", e.Keyword));
+        Assert.Equal(("more", "50 more errors not listed."), (errors[^1].Keyword, errors[^1].Message));
+    }
 
     [Fact]
     public void LengthCountsCodePoints()

@@ -108,7 +108,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
     }
 
     [Fact]
-    public async Task MaxFps_IsReadAsClientMessagesInteger_Exactly()
+    public async Task MaxFps_IsReadAsClientMessagesInteger_AsTheDoubleNearestItsText()
     {
         using var api = factory.CreateApiClient();
         var id = JsonDocument.Parse(await api.GetStringAsync("/api/profiles", Ct)).RootElement[0].GetProperty("id").GetString();
@@ -117,18 +117,32 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.25, maxFps = 10 }, Ct);
         await client.ReceiveTextAsync("doc", Ct);
 
-        // Whole numbers from 1 to 2^31 - 1, in any spelling: accepted (an error for any would come before the doc).
-        foreach (var fps in new[] { "30.0", "3e1", "2147483647" })
+        // Whole numbers from 1 to 2^31 - 1, in any spelling, and numbers whose nearest double is one: accepted (an error for
+        // any would come before the doc).
+        foreach (var fps in new[] { "30.0", "3e1", "2147483647", "0.99999999999999999", "1.00000000000000000000000000001", "2147483647.0000001" })
             await client.SendTextAsync($$"""{"type":"view","maxFps":{{fps}}}""", Ct);
         await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.25, maxFps = 10 }, Ct);
         await client.ReceiveTextAsync("doc", Ct);
         Assert.DoesNotContain("error", client.ReceivedTypes);
 
-        // Not an integer (however close to one a double would round it), or over the maximum: each answered with an error
-        // about maxFps. Sent without a subscription and for an absent profile, so no frames follow either way: a value the
-        // engine took would draw "No profile" instead.
+        // Not a whole double, over the maximum, or past the 64-bit range: each answered with an error about maxFps. Sent
+        // without a subscription and for an absent profile, so no frames follow either way: a value the engine took would
+        // draw "No profile" instead.
         await client.SendAsync(new { type = "unsubscribe" }, Ct);
-        foreach (var fps in new[] { "0.99999999999999999", "1.00000000000000000000000000001", "2147483647.0000001", "2147483648", "2.5" })
+        foreach (var fps in new[] { "0.9999999999999999", "2147483647.0000005", "2147483648", "2.5", "1e400" })
+        {
+            await client.SendTextAsync($$"""{"type":"subscribe","profileId":"00000000-0000-4000-8000-0000000000aa","maxFps":{{fps}}}""", Ct);
+            await client.ReceiveTextAsync("error", Ct, e => e.GetProperty("message").GetString()!.Contains("maxFps", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task MaxFps_PastThe64BitRange_IsAnError()
+    {
+        // 1e400 rounds to infinity as a double: not a number the formats read, so not a whole number from 1 to 2^31 - 1.
+        await using var client = await PreviewClient.ConnectAsync(factory, Ct);
+        await client.ReceiveTextAsync("hello", Ct);
+        foreach (var fps in new[] { "1e400", "-1e400" })
         {
             await client.SendTextAsync($$"""{"type":"subscribe","profileId":"00000000-0000-4000-8000-0000000000aa","maxFps":{{fps}}}""", Ct);
             await client.ReceiveTextAsync("error", Ct, e => e.GetProperty("message").GetString()!.Contains("maxFps", StringComparison.Ordinal));
@@ -156,12 +170,15 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         // 1e-100 is a frameRequestScale: JSON Schema compares numbers by value, and so does the client's clientMessage check.
         await client.SendTextAsync("""{"type":"view","scale":1e-100}""", Ct);
         await client.ReceiveFrameAsync(Ct, h => h.Scale == smallest);
-        // And past a double's range either way, as positive numbers.
-        await client.SendTextAsync("""{"type":"view","scale":1e400}""", Ct);
-        await client.ReceiveFrameAsync(Ct, h => h.Scale == largest);
-        await client.SendTextAsync("""{"type":"view","scale":1e-400}""", Ct);
-        await client.ReceiveFrameAsync(Ct, h => h.Scale == smallest);
         Assert.DoesNotContain("error", client.ReceivedTypes);
+
+        // A number is the double nearest its text: 1e400 is past the 64-bit range and 1e-400 is 0, so neither is a
+        // positive number, and each is answered with an error about scale.
+        foreach (var scale in new[] { "1e400", "1e-400", "-0" })
+        {
+            await client.SendTextAsync($$"""{"type":"view","scale":{{scale}}}""", Ct);
+            await client.ReceiveTextAsync("error", Ct, e => e.GetProperty("message").GetString()!.Contains("scale", StringComparison.Ordinal));
+        }
     }
 
     /// <summary>A WebSocket connect on the TestServer that the engine refuses, with the error the client sees.</summary>

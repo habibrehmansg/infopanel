@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using InfoPanel.Core.Tests.Documents;
 using InfoPanel.Spec;
 using InfoPanel.Spec.Schema;
 using Xunit;
@@ -406,21 +408,21 @@ public class HostileInputTests
     [Theory]
     [InlineData("double")]
     [InlineData("decimal")]
-    [InlineData("exact")]
+    [InlineData("long")]
     public void UniqueItemsOverCollidingNumbers_IsBounded(string how)
     {
         // The review's reproduction: 20,000 numbers whose double.GetHashCode collides made uniqueItems quadratic (13 s).
-        // Hashes are seeded per process now; numbers that differ only past a double's precision still share a hash,
-        // so every comparison is charged to the work budget instead.
+        // Hashes are seeded per process now, and a number is the double nearest its text, so numbers that share a hash
+        // are equal (the first two are a duplicate) unless the seeded hash collides; every comparison is still charged.
         var numbers = Enumerable.Range(0, 20_000).Select(i => how == "double"
             ? BitConverter.Int64BitsToDouble(((0x3FF00000L + i) << 32) | ((0x3FF00000L + i) ^ 0x1234L) & 0xFFFFFFFFL).ToString("R", System.Globalization.CultureInfo.InvariantCulture)
             : how == "decimal" ? "0.10000000000000000000000" + i.ToString("D5")
-            // Past a decimal's 28 digits: compared exactly from their text.
+            // Past a decimal's 28 digits: the same double, 0.1, as the others.
             : "0.1" + new string('0', 40) + i.ToString("D5"));
         var array = "[" + string.Join(", ", numbers) + "]";
         var set = SchemaSet.Load(["""{"$id": "urn:t:unique", "uniqueItems": true}"""]);
         var result = Bounded(() => set.Validate(Parse(array), "urn:t:unique"));
-        if (how != "double") Assert.Equal("complexity", Assert.Single(result.Errors).Keyword);
+        if (how != "double") Assert.Equal("Items at indexes 0 and 1 are equal.", Assert.Single(result.Errors).Message);
         else Assert.Empty(result.Errors);
 
         // In a scene's requires (now at most 32 items), the same numbers are refused within the bound.
@@ -429,13 +431,12 @@ public class HostileInputTests
     }
 
     [Fact]
-    public void UniqueItemsOverHugeExponents_IsBounded()
+    public void NumbersWithHugeExponents_AreReadWithinTheBound()
     {
         // The review's reproduction: 400 distinct numbers with 40,000-digit exponents in a document's requires (16 MB,
-        // under the document limit). All are infinite as doubles, so they share one hash and uniqueItems compares 79,800
-        // pairs exactly. Each comparison is charged to the work budget by the numbers' length before it is made and
-        // reads the exponents in place: the check is a complexity error within the usual bound (1 s, 100 baselines;
-        // under 1 GiB allocated), not gigabytes of temporary exponents.
+        // under the document limit). Each is read once, as the double nearest its text: past the 64-bit range, a json
+        // error at each (the first 100 listed, then one more error counting the rest), within the usual bound (1 s, 100
+        // baselines; under 1 GiB allocated).
         var numbers = Enumerable.Range(0, 400).Select(i => "1e" + new string('9', 39_997) + i.ToString("D3"));
         var document = Parse($$"""
             {"format": "infopanel.document/1", "id": "3dd19c0e-675a-4591-b096-83417853861f",
@@ -443,52 +444,98 @@ public class HostileInputTests
             """);
         var check = Bounded(() => DocumentValidator.Check(document));
         Assert.Equal(CheckStatus.Invalid, check.Status);
-        Assert.EndsWith("(complexity)", Assert.Single(check.Errors).Message);
+        Assert.Equal(101, check.Errors.Count);
+        Assert.Equal(("json", "/requires/0"), (check.Errors[0].Code, check.Errors[0].Path));
+        Assert.Equal(("more", "300 more errors not listed."), (check.Errors[^1].Code, check.Errors[^1].Message));
 
-        // The same numbers under uniqueItems alone, and against a bound: a comparison with a bound is charged by length too
-        // (400 × 625 steps, over a budget of 100,000 + 64 × 401).
-        var array = Parse("[" + string.Join(", ", numbers) + "]");
+        // Negative exponents as long: every one is the double 0, so uniqueItems finds the first two equal at once.
+        var tiny = Parse("[" + string.Join(", ", Enumerable.Range(0, 400).Select(i => "1e-" + new string('9', 39_997) + i.ToString("D3"))) + "]");
         var unique = SchemaSet.Load(["""{"$id": "urn:t:unique-exp", "uniqueItems": true}"""]);
-        Assert.Equal("complexity", Assert.Single(Bounded(() => unique.Validate(array, "urn:t:unique-exp")).Errors).Keyword);
-        var bound = SchemaSet.Load(["""{"$id": "urn:t:max-exp", "items": {"maximum": 1e400}}"""]);
-        Assert.Equal("complexity", Assert.Single(Bounded(() => bound.Validate(array, "urn:t:max-exp")).Errors).Keyword);
+        Assert.Equal("Items at indexes 0 and 1 are equal.", Assert.Single(Bounded(() => unique.Validate(tiny, "urn:t:unique-exp")).Errors).Message);
     }
 
     [Fact]
-    public void ExactComparison_ReadsExponentsOfAnyLength()
+    public void NumberComparison_IsByTheDoublesNearestTheirText()
     {
-        // Exponents compared from their text, with the digits around the point counted in.
-        var set = SchemaSet.Load(["""{"$id": "urn:t:unique-exact", "uniqueItems": true}"""]);
+        // However long the exponent or the digits: compared as the doubles they read as.
+        var set = SchemaSet.Load(["""{"$id": "urn:t:unique-double", "uniqueItems": true}"""]);
         var big = new string('9', 30);
         var zeros = new string('0', 30);
         foreach (var dup in new[]
         {
-            $"[1e{big}, 10e{big[..^1]}8]", $"[0.1e1{zeros}, 1e{big}]", $"[1e-{big}, 10e-1{zeros}]", $"[1e+0{big}, 1e{big}]",
-            $"[123.4e{big}, 1234e{big[..^1]}8]", "[1e0000000000000000000000002, 100]", "[1e-0000000000000000000000002, 0.01]",
+            $"[1e-{big}, 0]", $"[1e-{big}, -1e-{big}]", $"[0.1e-1{zeros}, 0]", "[1e0000000000000000000000002, 100]", "[1e-0000000000000000000000002, 0.01]",
+            "[123.4e300, 1234e299]", "[9007199254740993, 9007199254740992]", $"[1{zeros}e-30, 1]",
         })
-            Assert.Equal("uniqueItems", Assert.Single(set.Validate(Parse(dup), "urn:t:unique-exact").Errors).Keyword);
-        foreach (var distinct in new[]
-        {
-            $"[1e{big}, 1e{big[..^1]}8]", $"[1e{big}, 1e-{big}]", $"[1e1{big}, 1e{big}]", $"[-1e{big}, 1e{big}]",
-            $"[1e9223372036854775808, 1e9223372036854775807]", $"[1e{big}, 0]", $"[1e-{big}, 0]",
-        })
-            Assert.Empty(set.Validate(Parse(distinct), "urn:t:unique-exact").Errors);
+            Assert.Equal("uniqueItems", Assert.Single(set.Validate(Parse(dup), "urn:t:unique-double").Errors).Keyword);
+        foreach (var distinct in new[] { "[1e300, 1e299]", "[1, 1.0000000000000002]", "[-1e300, 1e300]", "[9007199254740992, 9007199254740994]", "[5e-324, 0]" })
+            Assert.Empty(set.Validate(Parse(distinct), "urn:t:unique-double").Errors);
 
-        var max = SchemaSet.Load(["""{"$id": "urn:t:max-exact", "maximum": 1e400}"""]);
-        foreach (var ok in new[] { "1e400", "10e399", "1e399", $"1e-{big}", $"-1e{big}", "0.1e401", "1e0000000000000000000000400" })
-            Assert.Empty(max.Validate(Parse(ok), "urn:t:max-exact").Errors);
-        foreach (var over in new[] { "1.0000000000000000000000000000001e400", "1e401", $"1e{big}", "0.1e402", "1e0000000000000000000000401" })
-            Assert.Equal("maximum", Assert.Single(max.Validate(Parse(over), "urn:t:max-exact").Errors).Keyword);
+        var max = SchemaSet.Load(["""{"$id": "urn:t:max-double", "maximum": 1e308}"""]);
+        foreach (var ok in new[] { "1e308", "10e307", "1.00000000000000001e308", $"1e-{big}", "-1.7976931348623157e308", "0.1e309" })
+            Assert.Empty(max.Validate(Parse(ok), "urn:t:max-double").Errors);
+        foreach (var over in new[] { "1.0000000000000003e308", "1.7976931348623157e308", "0.15e309" })
+            Assert.Equal("maximum", Assert.Single(max.Validate(Parse(over), "urn:t:max-double").Errors).Keyword);
+        foreach (var infinite in new[] { "1e309", $"1e{big}", "-1e309", "0.2e309" })
+            Assert.Equal("json", Assert.Single(max.Validate(Parse(infinite), "urn:t:max-double").Errors).Keyword);
     }
 
     [Fact]
     public void UniqueItems_StillFindsEqualNumbersAndObjects()
     {
         var set = SchemaSet.Load(["""{"$id": "urn:t:unique2", "uniqueItems": true}"""]);
-        foreach (var dup in new[] { "[1, 1.0]", "[0, -0]", "[1e2, 100]", """[{"a": 1, "b": [2]}, {"b": [2.0], "a": 1}]""", """["x", "x"]""" })
+        foreach (var dup in new[] { "[1, 1.0]", "[0, -0]", "[1e2, 100]", "[0.1, 0.1000000000000000000000001]", """[{"a": 1, "b": [2]}, {"b": [2.0], "a": 1}]""", """["x", "x"]""" })
             Assert.Equal("uniqueItems", Assert.Single(set.Validate(Parse(dup), "urn:t:unique2").Errors).Keyword);
-        foreach (var distinct in new[] { "[1, 2]", "[0.1, 0.1000000000000000000000001]", """[{"a": 1, "b": 2}, {"a": 2, "b": 1}]""", "[[1, 2], [2, 1]]" })
+        foreach (var distinct in new[] { "[1, 2]", "[0.1, 0.10000000000000002]", """[{"a": 1, "b": 2}, {"a": 2, "b": 1}]""", "[[1, 2], [2, 1]]" })
             Assert.Empty(set.Validate(Parse(distinct), "urn:t:unique2").Errors);
+
+        // Objects that agree on a first member, then differ in order: the rest compared by name.
+        foreach (var dup in new[] { """[{"c": 1, "a": 1, "b": 2}, {"c": 1, "b": 2, "a": 1}]""", """[{"c": {"x": 1, "y": 2}, "a": 1, "b": 2}, {"c": {"y": 2, "x": 1}, "b": 2, "a": 1}]""" })
+            Assert.Equal("uniqueItems", Assert.Single(set.Validate(Parse(dup), "urn:t:unique2").Errors).Keyword);
+        foreach (var distinct in new[] { """[{"c": 1, "a": 1, "b": 2}, {"c": 1, "b": 1, "a": 2}]""", """[{"c": 1, "a": 1}, {"c": 1, "b": 1}]""", """[{"c": 1, "a": 1, "b": 2}, {"c": 2, "b": 2, "a": 1}]""" })
+            Assert.Empty(set.Validate(Parse(distinct), "urn:t:unique2").Errors);
+    }
+
+    /// <summary>
+    /// The F1 review's objects: A<sub>0</sub> = B<sub>0</sub> = 0, A<sub>n</sub> = {"c": A<sub>n-1</sub>, "a": 0, "b": 0} and
+    /// B<sub>n</sub> = {"c": B<sub>n-1</sub>, "b": 0, "a": 0}, equal at every level with the last two members swapped.
+    /// </summary>
+    private static string Reordered(int n, bool swapped)
+    {
+        var text = "0";
+        for (var i = 0; i < n; i++)
+            text = swapped ? $$"""{"c": {{text}}, "b": 0, "a": 0}""" : $$"""{"c": {{text}}, "a": 0, "b": 0}""";
+        return text;
+    }
+
+    [Fact]
+    public void ReorderedObjects_UnderUniqueItems_AreComparedInTimeInTheirSize()
+    {
+        // The review's reproduction: comparing A30 with B30 compared "c" in order, then again by name, so the work doubled
+        // at every level (2^30 comparisons). Each pair of values is compared once now: equal, found within the bound.
+        var set = SchemaSet.Load(["""{"$id": "urn:t:unique-reordered", "uniqueItems": true}"""]);
+        var array = Parse($"[{Reordered(30, false)}, {Reordered(30, true)}]");
+        var result = Bounded(() => set.Validate(array, "urn:t:unique-reordered"));
+        Assert.Equal("Items at indexes 0 and 1 are equal.", Assert.Single(result.Errors).Message);
+        // Work: each pair of values compared once (31 objects and 61 numbers), far under 2^30.
+        Assert.True(result.Steps < 1_000, $"{result.Steps} steps.");
+    }
+
+    [Fact]
+    public void ReorderedOrigin_IsANoOpCommit_InTimeInItsSize()
+    {
+        // The same objects as an item's origin: replacing A30 with B30 changes nothing (no revision), within the bound,
+        // so a small valid commit can't hold the document's lock. (Disposed only after the bound: a commit still running
+        // past it holds the lock, and disposing would wait for it.)
+        var doc = DocKit.Sample();
+        var first = DocKit.Design("a", DocKit.Rect());
+        first["origin"] = JsonNode.Parse(Reordered(30, false));
+        Assert.Equal(2L, doc.Ok(DocKit.Commit(first)).Rev);
+
+        var again = DocKit.Design("a", DocKit.Rect());
+        again["origin"] = JsonNode.Parse(Reordered(30, true));
+        var result = Bounded(() => doc.Ok(DocKit.Commit(again)));
+        doc.Dispose();
+        Assert.Equal((2L, 0), (result.Rev, result.Items.Count));
     }
 
     // ---- 4, 5: SVG -----------------------------------------------------------------------------------------------

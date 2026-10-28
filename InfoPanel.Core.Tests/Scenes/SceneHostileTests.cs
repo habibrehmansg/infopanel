@@ -49,6 +49,13 @@ public sealed class SceneHostileTests
     public void Every_invalid_or_unsupported_example_scene_is_a_placeholder(string rel)
     {
         var doc = SceneKit.Doc(SceneKit.Example(rel), 200, 200);
+        if (ExpectedCode(rel) == "json")
+        {
+            // Not JSON as the formats read it (a number that rounds to infinity): the document holding it isn't either.
+            var refused = Assert.Throws<SceneDocumentException>(() => SceneRuntime.RenderOnce(doc, SceneKit.Now, SceneKit.Options()));
+            Assert.Equal("json", Assert.Single(refused.Check.Errors).Code);
+            return;
+        }
         using var s = SceneRuntime.RenderOnce(doc, SceneKit.Now, SceneKit.Options(limits: ExpectedLimits(rel)));
         Assert.NotNull(s.Bounds.Single().Problem);
         s.Render().Dispose();
@@ -136,6 +143,10 @@ public sealed class SceneHostileTests
         Assert.Equal(0, media.Bytes);
         s.Render().Dispose();
     }
+
+    /// <summary>An invalid or unsupported example's expected code (spec/examples/expected.json).</summary>
+    private static string? ExpectedCode(string rel) =>
+        (string?)System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(ExamplesDir, "expected.json")))![rel.Replace('\\', '/')]?["code"];
 
     /// <summary>The limits an example tightens to stay small (spec/examples/expected.json).</summary>
     private static SpecLimits ExpectedLimits(string rel)

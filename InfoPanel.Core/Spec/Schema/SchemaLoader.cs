@@ -78,7 +78,7 @@ internal sealed class SchemaLoader
         }
         int NonNegInt()
         {
-            if (v.ValueKind != JsonValueKind.Number || !v.TryGetDecimal(out var d) || d != decimal.Truncate(d) || d < 0 || d > int.MaxValue)
+            if (v.ValueKind != JsonValueKind.Number || !JsonNumber.TryReadInteger(v, out var d) || d < 0 || d > int.MaxValue)
                 throw Bad($"\"{name}\" must be a non-negative integer.");
             return (int)d;
         }

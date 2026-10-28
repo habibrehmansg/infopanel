@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using InfoPanel.Spec;
+using InfoPanel.Spec.Schema;
 
 namespace InfoPanel.Documents;
 
@@ -255,8 +256,8 @@ internal sealed class ChangeSet
     /// <summary>
     /// Equal content, item by item (exact dirty state): the same profile, the same items under the same parents in
     /// the same order, and equal fields. Unchanged items are skipped by reference; scenes and the other JSON members
-    /// compare as JSON (<see cref="JsonElement.DeepEquals"/>: member order and the spelling of numbers don't count, and
-    /// numbers compare exactly as decimals, beyond the double range included).
+    /// compare as JSON (<see cref="Json.DeepEquals(JsonElement, JsonElement)"/>: member order and the spelling of numbers
+    /// don't count, and numbers compare as the doubles nearest their text, spec/docs/commit.md).
     /// </summary>
     public static bool SameContent(GenerationContent a, GenerationContent b)
     {
@@ -291,7 +292,7 @@ internal sealed class ChangeSet
         if (!Equals(x.Layout, y.Layout) || !SameSource(x.Source, y.Source)) return false;
         var s = a.Design.Scene!;
         var t = b.Design.Scene!;
-        return ReferenceEquals(s, t) || JsonElement.DeepEquals(s.Scene, t.Scene);
+        return ReferenceEquals(s, t) || Json.DeepEquals(s.Scene, t.Scene);
     }
 
     private static bool SameSource(ItemSource? a, ItemSource? b)
@@ -299,7 +300,7 @@ internal sealed class ChangeSet
         if (ReferenceEquals(a, b)) return true;
         if (a is null || b is null) return false;
         return a.Format == b.Format && a.Ref == b.Ref && SameList(a.Deps, b.Deps)
-            && a.Data.ValueKind == b.Data.ValueKind && (a.Data.ValueKind == JsonValueKind.Undefined || JsonElement.DeepEquals(a.Data, b.Data));
+            && a.Data.ValueKind == b.Data.ValueKind && (a.Data.ValueKind == JsonValueKind.Undefined || Json.DeepEquals(a.Data, b.Data));
     }
 
     private static bool SameBindings(IReadOnlyDictionary<string, Binding>? a, IReadOnlyDictionary<string, Binding>? b)
@@ -312,7 +313,7 @@ internal sealed class ChangeSet
     }
 
     private static bool SameJson(JsonElement? a, JsonElement? b) =>
-        a is null ? b is null : b is not null && JsonElement.DeepEquals(a.Value, b.Value);
+        a is null ? b is null : b is not null && Json.DeepEquals(a.Value, b.Value);
 
     private static bool SameList<T>(IReadOnlyList<T>? a, IReadOnlyList<T>? b) =>
         ReferenceEquals(a, b) || (a is not null && b is not null && a.SequenceEqual(b));

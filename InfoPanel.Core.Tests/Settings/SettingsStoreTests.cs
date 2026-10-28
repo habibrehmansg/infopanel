@@ -95,6 +95,10 @@ public sealed class SettingsStoreTests : IDisposable
     // Any spelling of a whole number, as the schema's integer allows.
     [InlineData("""{"frameRate":15.0}""", "frameRate", 15)]
     [InlineData("""{"graphRate":1e2}""", "graphRate", 100)]
+    // A number is the double nearest its text (spec/docs/validation.md#numbers): these are the doubles 60, 1 and 30.
+    [InlineData("""{"frameRate":60.00000000000000000000000000001}""", "frameRate", 60)]
+    [InlineData("""{"frameRate":0.99999999999999999999999999999999}""", "frameRate", 1)]
+    [InlineData("""{"frameRate":30.00000000000000000000000000001}""", "frameRate", 30)]
     public void TheEdgesOfEachRange_AreAccepted(string change, string member, int value)
     {
         var store = Open();
@@ -164,6 +168,37 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Empty(Directory.GetFiles(_temp.Path, "*.tmp"));
     }
 
+    [Theory]
+    // Numbers compare as the doubles nearest their text (spec/docs/validation.md#numbers), in settings and in client
+    // preferences alike: the same value spelled otherwise is no change, and the stored spelling stays.
+    [InlineData("""{"frameRate":30.0}""", """{"frameRate":30}""")]
+    [InlineData("""{"frameRate":3e1,"sources":{"libre":{"storageInterval":60.0}}}""", """{"frameRate":30,"sources":{"libre":{"storageInterval":6e1}}}""")]
+    [InlineData("""{"clients":{"web":{"n":1}}}""", """{"clients":{"web":{"n":1.00000000000000001}}}""")]
+    [InlineData("""{"clients":{"web":{"n":[1.00000000000000001,-0]}}}""", """{"clients":{"web":{"n":[1,0]}}}""")]
+    public void AChangeToTheSameNumbers_SpelledOtherwise_WritesNothing_AndKeepsTheStoredSpelling(string stored, string change)
+    {
+        var content = """{"format":"infopanel.settings/1",""" + stored[1..];
+        File.WriteAllText(File_, content);
+        var written = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(File_, written);
+        var store = Open();
+        var raised = 0;
+        store.Changed += _ => raised++;
+
+        var same = store.Apply(Change(change));
+
+        Assert.Equal((0L, 0), (same.Version, raised));
+        Assert.Equal(content, File.ReadAllText(File_));
+        Assert.Equal(written, File.GetLastWriteTimeUtc(File_));
+
+        // A different value is still a change, and the members it doesn't name keep their spelling.
+        var other = store.Apply(Change("""{"graphRate":500}"""));
+        Assert.Equal((1L, 1), (other.Version, raised));
+        var expected = JsonNode.Parse(content)!.AsObject();
+        expected["graphRate"] = 500;
+        Assert.Equal(expected.ToJsonString(), Stored().ToJsonString());
+    }
+
     [Fact]
     public void ANoOpChange_OnAFolderWithoutTheFile_WritesNothing()
     {
@@ -179,10 +214,9 @@ public sealed class SettingsStoreTests : IDisposable
     [InlineData("""{"frameRate":0}""", "/frameRate")]
     [InlineData("""{"frameRate":61}""", "/frameRate")]
     [InlineData("""{"frameRate":15.5}""", "/frameRate")]
-    // Past a decimal's 28 digits: neither rounds to a whole number in range.
-    [InlineData("""{"frameRate":60.00000000000000000000000000001}""", "/frameRate")]
-    [InlineData("""{"frameRate":0.99999999999999999999999999999999}""", "/frameRate")]
-    [InlineData("""{"frameRate":30.00000000000000000000000000001}""", "/frameRate")]
+    // The doubles 60.00000000000001 and 0.9999999999999999: not whole.
+    [InlineData("""{"frameRate":60.00000000000001}""", "/frameRate")]
+    [InlineData("""{"frameRate":0.9999999999999999}""", "/frameRate")]
     [InlineData("""{"frameRate":"15"}""", "/frameRate")]
     [InlineData("""{"graphRate":99}""", "/graphRate")]
     [InlineData("""{"graphRate":3001}""", "/graphRate")]
@@ -215,6 +249,72 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal((path, "schema"), (error.Path, error.Code));
         Assert.Equal(hash, Hash());
         Assert.Equal((500, 1), (store.Current.Settings.GraphRate, store.Current.Version));
+    }
+
+    [Theory]
+    // A number whose text rounds to ±∞ (spec/docs/validation.md#numbers) is refused wherever it is: in a setting, in a
+    // client's preferences (opaque), in a member the engine doesn't know; json, at the number, before any other rule.
+    [InlineData("""{"frameRate":1e400}""", "/frameRate")]
+    [InlineData("""{"clients":{"web":{"n":1e400}}}""", "/clients/web/n")]
+    [InlineData("""{"clients":{"web":[1,{"x":[-1e400]}]}}""", "/clients/web/1/x/0")]
+    [InlineData("""{"future":{"n":-1e400}}""", "/future/n")]
+    [InlineData("""{"sources":{"libre":{"storageInterval":1e999}}}""", "/sources/libre/storageInterval")]
+    public void AChangeWithANumberBeyondTheDoubleRange_IsRefusedAtTheNumber_AndChangesNothing(string change, string path)
+    {
+        var store = Open();
+        store.Apply(Change("""{"graphRate":500}"""));
+        var hash = Hash();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Change(change)));
+
+        var error = Assert.Single(refused.Errors);
+        Assert.Equal((path, "json"), (error.Path, error.Code));
+        Assert.Equal(hash, Hash());
+        Assert.Equal((500, 1), (store.Current.Settings.GraphRate, store.Current.Version));
+    }
+
+    [Fact]
+    public void AChangeWithNumbersBeyondTheDoubleRange_ListsEachOfThem()
+    {
+        var store = Open();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Change(
+            """{"frameRate":30,"clients":{"a":{"n":1e400},"b":[2e400]},"x":-3e400}""")));
+
+        Assert.Equal([("/clients/a/n", "json"), ("/clients/b/0", "json"), ("/x", "json")],
+            refused.Errors.Select(e => (e.Path, e.Code)).OrderBy(e => e.Path, StringComparer.Ordinal));
+        Assert.False(File.Exists(File_));
+    }
+
+    [Fact]
+    public void AChangeNested100000Deep_InAnUnknownMember_IsRefused_WithoutOverflowingTheStack()
+    {
+        var store = Open();
+        store.Apply(Change("""{"graphRate":500}"""));
+        var hash = Hash();
+        // As the API hands a body over: parsed at any depth (parsing is not recursive), so only the store can bound it.
+        var deep = JsonDocument.Parse("""{"future":""" + Nested(100_000) + "}", SpecJson.DocumentOptions).RootElement.Clone();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(deep));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"Took {clock.Elapsed}.");
+        var error = Assert.Single(refused.Errors);
+        Assert.Equal(("", "json"), (error.Path, error.Code));
+        Assert.Equal(hash, Hash());
+        Assert.Equal((500, 1), (store.Current.Settings.GraphRate, store.Current.Version));
+    }
+
+    [Fact]
+    public void ANonObjectChange_WithANumberBeyondTheDoubleRange_IsRefusedAtTheNumber()
+    {
+        var store = Open();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Change("[1e400]")));
+
+        var error = Assert.Single(refused.Errors);
+        Assert.Equal(("/0", "json"), (error.Path, error.Code));
+        Assert.False(File.Exists(File_));
     }
 
     [Fact]
@@ -258,12 +358,13 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Theory]
-    [InlineData("60.00000000000000000000000000001", 15)]
-    [InlineData("0.99999999999999999999999999999999", 15)]
-    [InlineData("30.00000000000000000000000000001", 15)]
+    [InlineData("60.00000000000000000000000000001", 60)]
+    [InlineData("0.99999999999999999999999999999999", 1)]
+    [InlineData("30.00000000000000000000000000001", 30)]
+    [InlineData("60.00000000000001", 15)]
     [InlineData("20.0", 20)]
     [InlineData("24e0", 24)]
-    public void AStoredNumber_IsWholeAndInRangeByItsExactValue(string frameRate, int expected)
+    public void AStoredNumber_IsWholeAndInRangeAsTheDoubleNearestItsText(string frameRate, int expected)
     {
         File.WriteAllText(File_, """{"format":"infopanel.settings/1","frameRate":""" + frameRate + ""","graphRate":1e2}""");
 
@@ -342,6 +443,11 @@ public sealed class SettingsStoreTests : IDisposable
         { """{"format":"infopanel.settings/1","logLevel":"\uD800"}""", "json", "" },
         { """{"format":"infopanel.settings/1","future":{"deep":"\uD800"}}""", "json", "" },
         { """{"format":"infopanel.settings/1","\uD800":1}""", "json", "" },
+        // A number whose text rounds to ±∞, as in a stored document: in a setting, a client's preferences, an unknown member.
+        { """{"format":"infopanel.settings/1","frameRate":1e400}""", "json", "/frameRate" },
+        { """{"format":"infopanel.settings/1","clients":{"web":{"n":1e400}}}""", "json", "/clients/web/n" },
+        { """{"format":"infopanel.settings/1","future":{"n":-1e400}}""", "json", "/future/n" },
+        { """{"format":"infopanel.settings/1","future":[0,[1,-1e400]]}""", "json", "/future/1/1" },
     };
 
     [Theory]

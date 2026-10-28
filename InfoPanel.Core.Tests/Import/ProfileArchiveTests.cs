@@ -540,6 +540,12 @@ public sealed class ProfileArchiveTests : IDisposable
         otherId["id"] = "not an id";
         Assert.Empty(Open(WithDocument(otherId, ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), target).Missing);
 
+        // ... but its numbers are read before it is replaced: one that rounds to ±∞ is json at /document/id.
+        var infiniteId = Document();
+        infiniteId["id"] = JsonNode.Parse("1e400");
+        var infinite = Assert.Throws<ImportRefusal>(() => Open(WithDocument(infiniteId), target));
+        Assert.Equal(("json", "/document/id"), (infinite.Errors[0].Code, infinite.Errors[0].Path));
+
         var notJson = Assert.Throws<ImportRefusal>(() => Open(Zip(Text("document.json", "{ nope")), target));
         Assert.Equal(("json", "/document"), (notJson.Code, notJson.Errors[0].Path));
     }
