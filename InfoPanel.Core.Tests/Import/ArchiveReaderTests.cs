@@ -46,6 +46,67 @@ public class ArchiveReaderTests
     }
 
     [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Zip64_SentinelOffsetOrDisk_IsCheckedBeforeTheDirectoryIsRead(bool sentinelOffset, bool sentinelDisk)
+    {
+        // .NET reads the Zip64 record when the end record's directory offset or disk number is a sentinel, even with a
+        // true count and size, and then reads as many entries as the Zip64 record declares. The pre-check reads it
+        // whenever it is there.
+        var zip = Zip(Text("Profile.xml", "<Profile />"));
+        using (var reader = Open(WithZip64(zip, 1, sentinelOffset, sentinelDisk)))
+            Assert.Single(reader.Entries);
+
+        var error = Refused(() => Open(WithZip64(zip, 10_001, sentinelOffset, sentinelDisk)));
+
+        Assert.Equal("archive.entries", error.Code);
+        Assert.Contains("10001", error.Message);
+    }
+
+    [Fact]
+    public void DirectoryRecords_AreWalked_WhateverTheEndRecordClaims()
+    {
+        // One record of 46 + 5 + 5,120 bytes, over the 4,096 a record may take, under an end record claiming a
+        // directory of 0 bytes: the declared size bounds nothing .NET reads, so the records themselves are checked.
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = archive.CreateEntry("a.txt");
+            entry.Comment = new string('c', 5 * 1024);
+            using var stream = entry.Open();
+            stream.Write([1]);
+        }
+        var zip = ClaimingDirectorySize(buffer.ToArray(), 0);
+
+        Assert.Equal("archive.entries", Refused(() => Open(zip)).Code);
+    }
+
+    [Fact]
+    public void DirectoryRecords_WithALongRawName_AreRefusedBeforeAnyZipArchiveExists()
+    {
+        // The pre-check alone, called directly: a raw name one byte over the limit under a claimed directory of 0 bytes.
+        var zip = ClaimingDirectorySize(Zip(Text("assets/" + new string('a', 1024 - 7 + 1), "x")), 0);
+
+        var error = Refused(() => ArchiveReader.CheckDirectory(new MemoryStream(zip), ImportLimits.Default));
+
+        Assert.Equal("archive.name", error.Code);
+
+        // At the limit the pre-check passes.
+        ArchiveReader.CheckDirectory(new MemoryStream(ClaimingDirectorySize(Zip(Text("assets/" + new string('a', 1024 - 7), "x")), 0)), ImportLimits.Default);
+    }
+
+    [Fact]
+    public void DirectoryRecord_RunningPastTheEndOfTheFile_IsArchiveZip()
+    {
+        // The only record claims a 4,000-byte comment in an archive of about 150 bytes.
+        var zip = Zip(Text("a", "1"));
+        var record = zip.Length - 22 - (46 + 1);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(zip.AsSpan(record + 32), 4000);
+
+        Assert.Equal("archive.zip", Refused(() => ArchiveReader.CheckDirectory(new MemoryStream(zip), ImportLimits.Default)).Code);
+    }
+
+    [Theory]
     [InlineData("../x", "'..' segment")]
     [InlineData("assets/../../x", "'..' segment")]
     [InlineData("assets\\..\\..\\x", "'..' segment")]

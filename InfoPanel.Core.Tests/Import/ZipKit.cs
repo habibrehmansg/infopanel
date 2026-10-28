@@ -122,6 +122,52 @@ internal static class ZipKit
         return copy;
     }
 
+    /// <summary>Makes the end record claim a central directory of <paramref name="bytes"/> bytes.</summary>
+    public static byte[] ClaimingDirectorySize(byte[] zip, uint bytes)
+    {
+        var copy = (byte[])zip.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(copy.AsSpan(LastIndexOf(copy, 0x06054b50) + 12), bytes);
+        return copy;
+    }
+
+    /// <summary>
+    /// Inserts a Zip64 end record and its locator before the end record. The Zip64 record declares
+    /// <paramref name="entries"/> entries and the directory's true size and offset. The end record keeps its own fields,
+    /// except a sentinel: <paramref name="sentinelOffset"/> sets its directory offset to <c>0xFFFFFFFF</c>, and
+    /// <paramref name="sentinelDisk"/> both its disk numbers to <c>0xFFFF</c>.
+    /// </summary>
+    public static byte[] WithZip64(byte[] zip, ulong entries, bool sentinelOffset = false, bool sentinelDisk = false)
+    {
+        var end = LastIndexOf(zip, 0x06054b50);
+        var directorySize = BinaryPrimitives.ReadUInt32LittleEndian(zip.AsSpan(end + 12));
+        var directoryAt = BinaryPrimitives.ReadUInt32LittleEndian(zip.AsSpan(end + 16));
+
+        var record = new byte[56];
+        BinaryPrimitives.WriteUInt32LittleEndian(record, 0x06064b50);
+        BinaryPrimitives.WriteUInt64LittleEndian(record.AsSpan(4), 44);
+        BinaryPrimitives.WriteUInt16LittleEndian(record.AsSpan(12), 45);
+        BinaryPrimitives.WriteUInt16LittleEndian(record.AsSpan(14), 45);
+        BinaryPrimitives.WriteUInt64LittleEndian(record.AsSpan(24), entries);
+        BinaryPrimitives.WriteUInt64LittleEndian(record.AsSpan(32), entries);
+        BinaryPrimitives.WriteUInt64LittleEndian(record.AsSpan(40), directorySize);
+        BinaryPrimitives.WriteUInt64LittleEndian(record.AsSpan(48), directoryAt);
+
+        var locator = new byte[20];
+        BinaryPrimitives.WriteUInt32LittleEndian(locator, 0x07064b50);
+        BinaryPrimitives.WriteUInt64LittleEndian(locator.AsSpan(8), (ulong)end);
+        BinaryPrimitives.WriteUInt32LittleEndian(locator.AsSpan(16), 1);
+
+        var endRecord = zip[end..];
+        if (sentinelOffset)
+            BinaryPrimitives.WriteUInt32LittleEndian(endRecord.AsSpan(16), 0xFFFFFFFF);
+        if (sentinelDisk)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(endRecord.AsSpan(4), 0xFFFF);
+            BinaryPrimitives.WriteUInt16LittleEndian(endRecord.AsSpan(6), 0xFFFF);
+        }
+        return [.. zip.AsSpan(0, end), .. record, .. locator, .. endRecord];
+    }
+
     public static ArchiveReader Open(byte[] zip, ImportLimits? limits = null, ImportBudget? budget = null)
     {
         limits ??= ImportLimits.Default;

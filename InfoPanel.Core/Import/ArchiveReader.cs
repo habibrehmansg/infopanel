@@ -44,8 +44,9 @@ public sealed class ArchiveEntry
 /// The guarded zip reader both archive kinds share (a 1.x <c>.infopanel</c> and the 2.0 profile archive). Opening
 /// checks the container and every entry's name before any entry is read:
 /// <list type="bullet">
-/// <item>not a zip: <c>archive.zip</c>; more entries than <see cref="ImportLimits.Entries"/>, from the end record
-/// before the central directory is read and from the directory after: <c>archive.entries</c>;</item>
+/// <item>not a zip: <c>archive.zip</c>; more entries than <see cref="ImportLimits.Entries"/>, declared by the end
+/// records or found by walking the central directory's records before .NET reads them, or a record over 4,096 bytes:
+/// <c>archive.entries</c>;</item>
 /// <item>a name over <see cref="ImportLimits.EntryNameBytes"/> UTF-8 bytes, with NUL or <c>:</c>, rooted (<c>/</c>,
 /// <c>\</c>), or with an empty (other than a directory's trailing one), <c>.</c> or <c>..</c> segment:
 /// <c>archive.name</c>;</item>
@@ -62,8 +63,9 @@ public sealed class ArchiveReader : IDisposable
     private const int UnixTypeMask = 0xF000, UnixSymlink = 0xA000;
 
     /// <summary>
-    /// The largest central directory record an entry may take on average, for the check against the end record before
-    /// .NET reads the directory: 46 fixed bytes, a name of at most 1 KiB, and room for extra fields and a comment.
+    /// The largest central directory record an entry may take, checked on every record before .NET reads the directory
+    /// (and, times the entry limit, on the declared directory size): 46 fixed bytes, a name of at most 1 KiB, and room
+    /// for extra fields and a comment.
     /// </summary>
     private const long CentralRecordBytes = 4096;
 
@@ -87,7 +89,7 @@ public sealed class ArchiveReader : IDisposable
         if (!stream.CanSeek || !stream.CanRead)
             throw new ArgumentException("The archive must be a readable, seekable stream.", nameof(stream));
 
-        CheckEndRecord(stream, limits);
+        CheckDirectory(stream, limits);
         stream.Position = 0;
 
         ZipArchive zip;
@@ -175,51 +177,113 @@ public sealed class ArchiveReader : IDisposable
     private static string[] Split(string name) => name.Split('/', '\\');
 
     /// <summary>
-    /// Reads the end of central directory record (and the Zip64 one it points at) and refuses an archive that declares
-    /// more entries than the limit, or a central directory too large for that many, before .NET reads the directory into
-    /// memory. A record that can't be found or read is left to the zip reader.
+    /// The pre-check before .NET reads the central directory into memory. It finds the end record as .NET does, and
+    /// reads the Zip64 end record whenever its locator sits right before the end record, whatever the end record's
+    /// fields hold, so it never depends on which sentinels make .NET follow it. Every declared count over
+    /// <see cref="ImportLimits.Entries"/>, or a declared directory too large for that many records, is
+    /// <c>archive.entries</c>. Then it walks the records themselves from each directory start either record declares,
+    /// as .NET reads them (46 fixed bytes, while the signature matches), never trusting a declared size: more records
+    /// than the limit, or one over <see cref="CentralRecordBytes"/>, is <c>archive.entries</c>; a raw name over
+    /// <see cref="ImportLimits.EntryNameBytes"/> is <c>archive.name</c>; a record past the end of the file is
+    /// <c>archive.zip</c>. Nothing is allocated per record and no name is read. An end record that can't be found is
+    /// left to the zip reader, which refuses the archive.
     /// </summary>
-    private static void CheckEndRecord(Stream stream, ImportLimits limits)
+    internal static void CheckDirectory(Stream stream, ImportLimits limits)
     {
-        const int EndRecordBytes = 22, MaxComment = 0xFFFF;
+        const int EndRecordBytes = 22, LocatorBytes = 20, Zip64RecordBytes = 56;
+        // .NET looks back over the longest comment and the signature from the end; a few bytes more only add
+        // candidates that are reached when no nearer end record exists, and .NET then finds none.
+        const int SearchBytes = EndRecordBytes + 0xFFFF + 64;
         var length = stream.Length;
         if (length < EndRecordBytes)
             return;
 
-        var tailLength = (int)Math.Min(length, EndRecordBytes + MaxComment);
+        var tailLength = (int)Math.Min(length, SearchBytes);
         var tail = new byte[tailLength];
-        stream.Position = length - tailLength;
+        var tailAt = length - tailLength;
+        stream.Position = tailAt;
         stream.ReadExactly(tail);
 
-        for (var at = tailLength - EndRecordBytes; at >= 0; at--)
-        {
-            if (BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(at)) != 0x06054b50)
-                continue;
+        var at = tailLength - EndRecordBytes;
+        while (at >= 0 && BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(at)) != 0x06054b50)
+            at--;
+        if (at < 0)
+            return;
 
-            long entries = BinaryPrimitives.ReadUInt16LittleEndian(tail.AsSpan(at + 10));
-            long directoryBytes = BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(at + 12));
-            if ((entries == 0xFFFF || directoryBytes == 0xFFFFFFFF) && at >= 20
-                && BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(at - 20)) == 0x07064b50)
+        var end = tail.AsSpan(at);
+        long first = BinaryPrimitives.ReadUInt32LittleEndian(end[16..]), second = -1;
+        var zip64 = false;
+
+        var endAt = tailAt + at;
+        if (endAt >= LocatorBytes)
+        {
+            Span<byte> locator = stackalloc byte[LocatorBytes];
+            stream.Position = endAt - LocatorBytes;
+            stream.ReadExactly(locator);
+            var zip64At = BinaryPrimitives.ReadUInt64LittleEndian(locator[8..]);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(locator) == 0x07064b50 && length >= Zip64RecordBytes
+                && zip64At <= (ulong)(length - Zip64RecordBytes))
             {
-                var zip64At = (long)BinaryPrimitives.ReadUInt64LittleEndian(tail.AsSpan(at - 20 + 8));
-                if (zip64At >= 0 && zip64At <= length - 56)
+                Span<byte> record = stackalloc byte[Zip64RecordBytes];
+                stream.Position = (long)zip64At;
+                stream.ReadExactly(record);
+                if (BinaryPrimitives.ReadUInt32LittleEndian(record) == 0x06064b50)
                 {
-                    var record = new byte[56];
-                    stream.Position = zip64At;
-                    stream.ReadExactly(record);
-                    if (BinaryPrimitives.ReadUInt32LittleEndian(record) == 0x06064b50)
-                    {
-                        entries = (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(record.AsSpan(32)), long.MaxValue);
-                        directoryBytes = (long)Math.Min(BinaryPrimitives.ReadUInt64LittleEndian(record.AsSpan(40)), long.MaxValue);
-                    }
+                    zip64 = true;
+                    CheckDeclared(BinaryPrimitives.ReadUInt64LittleEndian(record[24..]), BinaryPrimitives.ReadUInt64LittleEndian(record[32..]),
+                        BinaryPrimitives.ReadUInt64LittleEndian(record[40..]), limits);
+                    var offset = BinaryPrimitives.ReadUInt64LittleEndian(record[48..]);
+                    if (offset < (ulong)length && (long)offset != first)
+                        second = (long)offset;
                 }
             }
+        }
 
-            if (entries > limits.Entries)
-                throw new ImportRefusal("archive.entries", $"The archive declares {entries} entries; at most {limits.Entries} are allowed.");
-            if (directoryBytes > limits.Entries * CentralRecordBytes)
-                throw new ImportRefusal("archive.entries", $"The archive's central directory is {directoryBytes} bytes, too large for {limits.Entries} entries.");
-            return;
+        // The end record's own fields too; with a Zip64 record, a sentinel (0xFFFF, 0xFFFFFFFF) defers to it.
+        ulong onDisk = BinaryPrimitives.ReadUInt16LittleEndian(end[8..]), total = BinaryPrimitives.ReadUInt16LittleEndian(end[10..]);
+        ulong directoryBytes = BinaryPrimitives.ReadUInt32LittleEndian(end[12..]);
+        CheckDeclared(zip64 && onDisk == 0xFFFF ? 0 : onDisk, zip64 && total == 0xFFFF ? 0 : total,
+            zip64 && directoryBytes == 0xFFFFFFFF ? 0 : directoryBytes, limits);
+
+        Walk(stream, first, length, limits);
+        if (second >= 0)
+            Walk(stream, second, length, limits);
+    }
+
+    private static void CheckDeclared(ulong entriesOnDisk, ulong entries, ulong directoryBytes, ImportLimits limits)
+    {
+        var declared = Math.Max(entriesOnDisk, entries);
+        if (declared > (ulong)limits.Entries)
+            throw new ImportRefusal("archive.entries", $"The archive declares {declared} entries; at most {limits.Entries} are allowed.");
+        if (directoryBytes > (ulong)(limits.Entries * CentralRecordBytes))
+            throw new ImportRefusal("archive.entries", $"The archive's central directory is {directoryBytes} bytes, too large for {limits.Entries} entries.");
+    }
+
+    /// <summary>Walks the central directory records from <paramref name="start"/>; a start outside the file walks nothing.</summary>
+    private static void Walk(Stream stream, long start, long length, ImportLimits limits)
+    {
+        const int FixedBytes = 46;
+        Span<byte> header = stackalloc byte[FixedBytes];
+        var at = start;
+        var count = 0;
+        while (at >= 0 && at <= length - FixedBytes)
+        {
+            stream.Position = at;
+            stream.ReadExactly(header);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(header) != 0x02014b50)
+                return;
+
+            if (++count > limits.Entries)
+                throw new ImportRefusal("archive.entries", $"The archive's central directory has more than {limits.Entries} entries.");
+            int name = BinaryPrimitives.ReadUInt16LittleEndian(header[28..]);
+            if (name > limits.EntryNameBytes)
+                throw new ImportRefusal("archive.name", $"An entry name is {name} bytes, longer than {limits.EntryNameBytes} UTF-8 bytes.");
+            long size = FixedBytes + name + BinaryPrimitives.ReadUInt16LittleEndian(header[30..]) + BinaryPrimitives.ReadUInt16LittleEndian(header[32..]);
+            if (size > CentralRecordBytes)
+                throw new ImportRefusal("archive.entries", $"A central directory record is {size} bytes; at most {CentralRecordBytes} are allowed.");
+            if (at + size > length)
+                throw new ImportRefusal("archive.zip", "A central directory record runs past the end of the file.");
+            at += size;
         }
     }
 
