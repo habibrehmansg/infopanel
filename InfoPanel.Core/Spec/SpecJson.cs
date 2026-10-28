@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using InfoPanel.Spec.Schema;
 
 namespace InfoPanel.Spec;
@@ -47,8 +48,33 @@ public static class SpecJson
         options.Converters.Add(new CornerRadiiConverter());
         options.Converters.Add(new TextContentConverter());
         options.Converters.Add(new ColumnRefConverter());
-        options.MakeReadOnly(populateMissingResolver: true);
+        options.TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { NullRemoves } };
+        options.MakeReadOnly();
         return options;
+    }
+
+    /// <summary>
+    /// The members of an <see cref="IRemovesMembers"/> change: one read as <c>null</c> is recorded in
+    /// <see cref="IRemovesMembers.Removed"/>, and one recorded there is written as <c>null</c> (others only when set).
+    /// </summary>
+    private static void NullRemoves(JsonTypeInfo info)
+    {
+        if (info.Kind != JsonTypeInfoKind.Object || !typeof(IRemovesMembers).IsAssignableFrom(info.Type)) return;
+        // Removed itself is no member (an ignored property is still listed).
+        for (var i = info.Properties.Count - 1; i >= 0; i--)
+            if (info.Properties[i].AttributeProvider is System.Reflection.MemberInfo { Name: nameof(IRemovesMembers.Removed) })
+                info.Properties.RemoveAt(i);
+        foreach (var property in info.Properties)
+        {
+            if (property.Set is not { } set || property.AttributeProvider is not System.Reflection.MemberInfo member) continue;
+            var name = member.Name;
+            property.Set = (target, value) =>
+            {
+                set(target, value);
+                if (value is null) ((IRemovesMembers)target).Removed.Add(name);
+            };
+            property.ShouldSerialize = (target, value) => value is not null || ((IRemovesMembers)target).Removed.Contains(name);
+        }
     }
 
     /// <summary>

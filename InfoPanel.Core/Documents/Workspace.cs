@@ -131,6 +131,7 @@ public sealed class Workspace : IDisposable
 
     private const string CreateEmptySchema = SpecSchemas.Api + "#/$defs/createProfileEmpty";
     private const string IdOnlySchema = SpecSchemas.Api + "#/$defs/duplicateProfileRequest";
+    private const string DocumentIdSchema = SpecSchemas.Common + "#/$defs/documentId";
     private const string ExampleResourcePrefix = "InfoPanel.Documents.Examples.";
 
     private readonly WorkspaceOptions _options;
@@ -516,7 +517,7 @@ public sealed class Workspace : IDisposable
                     return Invalid(invalid);
                 id = root.GetProperty("id").GetString()!;
                 // The document's own id is replaced by the request's.
-                document = given.ValueKind == JsonValueKind.Object ? WithId(given, id) : JsonDocument.Parse(given.GetRawText(), SpecJson.DocumentOptions);
+                document = WithImportedId(given, id);
             }
             else
             {
@@ -555,9 +556,7 @@ public sealed class Workspace : IDisposable
         // The JSON-level pass on the document as received, before its id is replaced.
         if (ValidationText.CheckJson(document, Limits.JsonDepth, "/document") is { } invalidJson)
             return ValidationText.Cap(invalidJson);
-        using var copy = document.ValueKind == JsonValueKind.Object
-            ? WithId(document, AnyId)
-            : JsonDocument.Parse(document.GetRawText(), SpecJson.DocumentOptions);
+        using var copy = WithImportedId(document, AnyId);
         var load = Generation.Load(copy.RootElement, 1, Limits, Support, null, jsonChecked: true);
         if (load.Generation is not { } generation)
             return ValidationText.Cap(load.Check.Errors.Select(e => e.Under("/document")).ToList());
@@ -793,6 +792,17 @@ public sealed class Workspace : IDisposable
 
     /// <summary>An object with its root <c>id</c> set to <paramref name="id"/> (values copied as their raw text, at any depth).</summary>
     private static JsonDocument WithId(JsonElement root, string id) => Rewrite(root, "id", id);
+
+    /// <summary>
+    /// A create's document (importDocument) with <paramref name="id"/> as its id: its own <c>id</c> is optional and
+    /// replaced, but one that isn't a document id is left in place, so the document's schema check refuses it at its
+    /// path as for any other member (a value that isn't an object is left to that check too). After the JSON-level pass.
+    /// </summary>
+    private static JsonDocument WithImportedId(JsonElement document, string id) =>
+        document.ValueKind == JsonValueKind.Object
+        && (!document.TryGetProperty("id", out var own) || SpecSchemas.StructureOnly.ValidateChecked(own, DocumentIdSchema).IsValid)
+            ? WithId(document, id)
+            : JsonDocument.Parse(document.GetRawText(), SpecJson.DocumentOptions);
 
     private static JsonDocument Rewrite(JsonElement root, string member, string? value)
     {

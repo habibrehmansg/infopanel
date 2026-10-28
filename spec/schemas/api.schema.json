@@ -123,7 +123,7 @@
       }
     },
     "createProfileFromDocument": {
-      "description": "A profile from a document (importDocument), checked as a stored document is: a scene that is invalid or unsupported (or over a budget) is kept as sent and drawn as a placeholder; a document the engine wouldn't open is refused (422). The document's own `id` is replaced by `id`, and its `rev` members are ignored.",
+      "description": "A profile from a document (importDocument), checked as a stored document is: a scene that is invalid or unsupported (or over a budget) is kept as sent and drawn as a placeholder; a document the engine wouldn't open is refused (422). The document's own `id` (optional; a document id when given) is replaced by `id`, and its `rev` members are ignored.",
       "type": "object",
       "required": ["id", "document"],
       "additionalProperties": false,
@@ -133,9 +133,9 @@
       }
     },
     "importDocument": {
-      "description": "A document (infopanel.document/1) as a create takes it: the document format with `rev` members optional (they are ignored) and every scene taken as stored (storedScene), so a document the engine exported, with scenes it draws as placeholders, can be created again. Its scenes are then checked as a stored document's are (docs/api.md).",
+      "description": "A document (infopanel.document/1) as a create takes it: the document format with its `id` and `rev` members optional (they are ignored: the create's `id` replaces the document's) and every scene taken as stored (storedScene), so a document the engine exported, with scenes it draws as placeholders, can be created again. Its scenes are then checked as a stored document's are (docs/api.md).",
       "type": "object",
-      "required": ["format", "id", "profile", "items"],
+      "required": ["format", "profile", "items"],
       "additionalProperties": false,
       "properties": {
         "format": { "const": "infopanel.document/1" },
@@ -145,7 +145,7 @@
           "maxItems": 32,
           "uniqueItems": true
         },
-        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "Ignored: the create's `id` replaces it." },
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "Ignored." },
         "profile": { "$ref": "urn:infopanel:document:1#/$defs/profile" },
         "items": { "description": "Top-level items in drawing order: the first is at the back.", "type": "array", "items": { "$ref": "#/$defs/importItem" } }
@@ -371,7 +371,7 @@
         },
         "baseRev": {
           "$ref": "urn:infopanel:common:1#/$defs/revision",
-          "description": "The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId with a baseRev older than the engine's retry window is refused (409 expiredProblem). Greater than the document's `rev`: 422 (baseRev.future). Each op's own `baseRev` decides its conflicts."
+          "description": "The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId whose baseRev is older than the engine's retry window, or at or below its retry watermark and older than the document's `rev`, is refused (409 expiredProblem; docs/commit.md). Greater than the document's `rev`: 422 (baseRev.future). Each op's own `baseRev` decides its conflicts."
         },
         "coalesceKey": {
           "description": "Merge this commit's undo step into the previous one when that had the identical key and the key starts with \"gesture:\" or less than 1 s passed. A key names one gesture of one client: it includes a random part chosen once per client instance (\"gesture:5b0e8f0c-3c1d-4b8e-a7f2-1d9c6e4a2b7f:7\").",
@@ -411,7 +411,7 @@
       }
     },
     "setDesignOp": {
-      "description": "Replaces a scene item's design: layout, source and scene together (absent layout or source: none), and its origin when given.",
+      "description": "Replaces a scene item's design: layout, source and scene together (absent or null layout or source: none), and its origin when given (null removes it; absent keeps it).",
       "type": "object",
       "required": ["op", "id", "scene"],
       "additionalProperties": false,
@@ -419,10 +419,10 @@
         "op": { "const": "setDesign" },
         "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
         "baseRev": { "$ref": "#/$defs/baseRev" },
-        "layout": { "$ref": "urn:infopanel:document:1#/$defs/layout" },
-        "source": { "$ref": "urn:infopanel:document:1#/$defs/source" },
+        "layout": { "oneOf": [{ "$ref": "urn:infopanel:document:1#/$defs/layout" }, { "type": "null" }] },
+        "source": { "oneOf": [{ "$ref": "urn:infopanel:document:1#/$defs/source" }, { "type": "null" }] },
         "scene": { "$ref": "urn:infopanel:scene:1" },
-        "origin": { "$ref": "urn:infopanel:document:1#/$defs/origin" }
+        "origin": { "oneOf": [{ "$ref": "urn:infopanel:document:1#/$defs/origin" }, { "type": "null" }] }
       }
     },
     "setBindingsOp": {
@@ -438,7 +438,7 @@
       }
     },
     "setAttributesOp": {
-      "description": "Sets the given attributes of an item (scene or group).",
+      "description": "Sets the given attributes of an item (scene or group); one given as null is removed (docs/commit.md).",
       "type": "object",
       "required": ["op", "id", "set"],
       "additionalProperties": false,
@@ -451,9 +451,9 @@
           "minProperties": 1,
           "additionalProperties": false,
           "properties": {
-            "name": { "$ref": "urn:infopanel:document:1#/$defs/itemName" },
-            "visible": { "type": "boolean" },
-            "locked": { "type": "boolean" }
+            "name": { "oneOf": [{ "$ref": "urn:infopanel:document:1#/$defs/itemName" }, { "type": "null" }] },
+            "visible": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] },
+            "locked": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }
           }
         }
       }
@@ -515,7 +515,7 @@
       ]
     },
     "profileOp": {
-      "description": "Sets the given profile fields; each replaces the field whole.",
+      "description": "Sets the given profile fields; each replaces the field whole, and an optional one given as null is removed (docs/commit.md). name, width and height can't be removed.",
       "type": "object",
       "required": ["op", "set"],
       "additionalProperties": false,
@@ -530,13 +530,13 @@
             "name": { "type": "string", "minLength": 1, "maxLength": 256 },
             "width": { "type": "integer", "minimum": 1, "maximum": 16384 },
             "height": { "type": "integer", "minimum": 1, "maximum": 16384 },
-            "background": { "$ref": "urn:infopanel:common:1#/$defs/colorLiteral" },
-            "statsOverlay": { "type": "boolean" },
-            "locale": { "$ref": "urn:infopanel:common:1#/$defs/localeTag" },
-            "window": { "$ref": "urn:infopanel:document:1#/$defs/windowSettings" },
-            "triggerApps": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 260 }, "maxItems": 32 },
-            "guides": { "type": "array", "items": { "$ref": "urn:infopanel:document:1#/$defs/guide" }, "maxItems": 256 },
-            "editor": { "$ref": "urn:infopanel:common:1#/$defs/opaque" }
+            "background": { "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/colorLiteral" }, { "type": "null" }] },
+            "statsOverlay": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] },
+            "locale": { "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/localeTag" }, { "type": "null" }] },
+            "window": { "oneOf": [{ "$ref": "urn:infopanel:document:1#/$defs/windowSettings" }, { "type": "null" }] },
+            "triggerApps": { "oneOf": [{ "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 260 }, "maxItems": 32 }, { "type": "null" }] },
+            "guides": { "oneOf": [{ "type": "array", "items": { "$ref": "urn:infopanel:document:1#/$defs/guide" }, "maxItems": 256 }, { "type": "null" }] },
+            "editor": { "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/opaque" }, { "type": "null" }] }
           }
         }
       }
@@ -645,7 +645,7 @@
       }
     },
     "expiredProblem": {
-      "description": "409 application/problem+json: the commit's opId isn't one the engine remembers, and its baseRev is older than the engine's retry window, so the engine can't tell whether it is a retry of a commit it applied and has since forgotten. Nothing was applied. The client reads the document, decides whether its change is still needed, and if so commits it again with a new opId and a current baseRev (docs/commit.md).",
+      "description": "409 application/problem+json: the commit's opId isn't one the engine remembers, and its baseRev is older than the engine's retry window, or at or below its retry watermark (the newest baseRev of a forgotten commit) while the document has moved past it, so the engine can't tell whether it is a retry of a commit it applied and has since forgotten. Nothing was applied. The client reads the document, decides whether its change is still needed, and if so commits it again with a new opId and a current baseRev (docs/commit.md).",
       "type": "object",
       "required": ["status", "code", "rev"],
       "additionalProperties": false,

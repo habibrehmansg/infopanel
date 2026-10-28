@@ -1,0 +1,16 @@
+{
+  "opId": "6f3b2d1e-8a4c-4e7b-9c2d-0a1b2c3d4e5f",
+  "instance": "7c2f9a41d0e34b8f9e6a5b3c1d2e4f60",
+  "baseRev": 42,
+  "ops": [
+    {"op": "profile", "baseRev": 42, "set": {"window": null, "background": null, "editor": null}},
+    {"op": "setAttributes", "id": "clock", "baseRev": 42, "set": {"name": null, "visible": null, "locked": null}},
+    {
+      "op": "setDesign",
+      "id": "cpu-bar",
+      "baseRev": 42,
+      "scene": {"format": "infopanel.scene/1", "nodes": [{"kind": "rect", "w": 100, "h": 20, "fill": "#22c55e"}]},
+      "origin": null
+    }
+  ]
+}

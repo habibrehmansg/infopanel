@@ -312,14 +312,14 @@ public sealed class ProfileDocument : IDisposable
 
             var current = _current;
             if (request.Instance != _options.Instance) return InstanceConflict(current.Rev);
-            if (_ops.Expired(request.BaseRev))
+            if (_ops.Expired(request.BaseRev, current.Rev))
             {
                 return new CommitOutcome
                 {
                     Expired = new ExpiredProblem
                     {
                         Title = "Expired",
-                        Detail = $"The commit is based on revision {request.BaseRev}, older than the oldest commit whose opId is remembered: read the document and commit again with a new opId.",
+                        Detail = $"The commit is based on revision {request.BaseRev}, and the engine has forgotten commits that old: read the document and commit again with a new opId.",
                         Status = 409,
                         Code = "expired",
                         Rev = current.Rev,
@@ -345,7 +345,7 @@ public sealed class ProfileDocument : IDisposable
                 _history.Record(current.Content, content, applied.Changes!.Bytes, request.CoalesceKey);
                 result = Result(published.Rev, applied.Changes, warnings);
             }
-            _ops.Add(request.OpId, prepared.Hash, result);
+            _ops.Add(request.OpId, prepared.Hash, request.BaseRev, result);
         }
         if (published is not null)
         {

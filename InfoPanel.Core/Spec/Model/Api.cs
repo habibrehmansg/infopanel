@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -63,7 +64,7 @@ public sealed record CreateProfileRequest
     public string? Name { get; init; }
     public int? Width { get; init; }
     public int? Height { get; init; }
-    public Document? Document { get; init; }
+    public ImportDocument? Document { get; init; }
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/duplicateProfileRequest")]
@@ -147,8 +148,19 @@ public sealed record SetPlacementOp : CommitOp
     public required Placement Placement { get; init; }
 }
 
+/// <summary>
+/// A change whose members <c>null</c> removes (spec/docs/commit.md, "Removing a member"): <see cref="Removed"/> holds the
+/// C# names of the members it read as <c>null</c>, so that a removal stays apart from a member the change leaves as it
+/// is, and those members are written back as <c>null</c>. <see cref="SpecJson"/> fills and writes it.
+/// </summary>
+public interface IRemovesMembers
+{
+    ISet<string> Removed { get; }
+}
+
+/// <summary>A scene item's design; <c>origin: null</c> removes the origin (absent keeps it), and null <c>layout</c> or <c>source</c> is none, as absent is.</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/setDesignOp")]
-public sealed record SetDesignOp : CommitOp
+public sealed record SetDesignOp : CommitOp, IRemovesMembers
 {
     public required string Id { get; init; }
     public long? BaseRev { get; init; }
@@ -156,6 +168,9 @@ public sealed record SetDesignOp : CommitOp
     public ItemSource? Source { get; init; }
     public required JsonElement Scene { get; init; }
     public JsonElement? Origin { get; init; }
+    /// <summary>The members this change removes (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/setBindingsOp")]
@@ -174,12 +189,16 @@ public sealed record SetAttributesOp : CommitOp
     public required ItemAttributes Set { get; init; }
 }
 
+/// <summary>The attributes an op sets; one given as <c>null</c> is removed (<see cref="IRemovesMembers"/>).</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/setAttributesOp/properties/set")]
-public sealed record ItemAttributes
+public sealed record ItemAttributes : IRemovesMembers
 {
     public string? Name { get; init; }
     public bool? Visible { get; init; }
     public bool? Locked { get; init; }
+    /// <summary>The members this change removes (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/insertOp")]
@@ -214,8 +233,9 @@ public sealed record ProfileOp : CommitOp
     public required ProfileFields Set { get; init; }
 }
 
+/// <summary>The profile fields an op sets; an optional one given as <c>null</c> is removed (<see cref="IRemovesMembers"/>).</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/profileOp/properties/set")]
-public sealed record ProfileFields
+public sealed record ProfileFields : IRemovesMembers
 {
     public string? Name { get; init; }
     public int? Width { get; init; }
@@ -227,6 +247,9 @@ public sealed record ProfileFields
     public IReadOnlyList<string>? TriggerApps { get; init; }
     public IReadOnlyList<Guide>? Guides { get; init; }
     public JsonElement? Editor { get; init; }
+    /// <summary>The members this change removes (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 /// <summary>The body of undo, redo and revert: they act only on <see cref="Instance"/> while the document is at <see cref="BaseRev"/>.</summary>

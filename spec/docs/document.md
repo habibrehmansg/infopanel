@@ -25,10 +25,21 @@ A document is one profile: a canvas size, settings, and a tree of items. The eng
 | `background` | `#RRGGBB` or `#RRGGBBAA`; every frame starts as this colour (default opaque white). A transparent background lets a desktop window show what is behind it. |
 | `statsOverlay` | Draw the engine's frame-rate overlay on every output (default false). |
 | `locale` | The regional format numbers and dates are drawn in, a BCP 47 tag such as `de-CH` ([expressions](expressions.md#regional-format)). Absent, the PC's regional format. Set it so a shared profile looks the same on every PC. |
-| `window` | The profile's desktop window: `enabled`, `x`/`y` (pixels from the top-left of the matched display), `display` (name and size in pixels; `x`/`y` only tell equal displays apart), `strict` (hide the window when no display matches), `topmost`, `draggable`, `resizable`. A user's drag or resize of the window is an ordinary undoable change of these fields. |
+| `window` | The profile's desktop window ([below](#the-desktop-window)). |
 | `triggerApps` | Process names whose being in front should bring the profile up. Stored and kept; acted on by engines that support it. |
 | `guides` | Editor-only guide lines (below). |
 | `editor` | An opaque object for client data kept with the document, such as defaults for new items. The engine stores and returns it as the same JSON value and never interprets it (at most 64 KiB). |
+
+### The desktop window
+
+While `window.enabled` is true the profile is shown in a borderless desktop window of its own, at one frame pixel per pixel of the display the window is on: the window is `width` × `height` of that display's pixels. Its members:
+
+- `x`, `y`: the window's top-left, in pixels of the matched display, from that display's top-left (default 0, 0).
+- `display`: the display it belongs on. `name`, and `width` × `height`, the display's size in its own pixels, identify it. `display.x` and `display.y` are the display's top-left in the desktop's own coordinates, the system's layout of every display (on macOS these are points, which differ from pixels on a scaled display); they only tell apart displays with the same name and size.
+- Matching: a display with `display`'s name and size matches exactly; of several, the one whose top-left is at `display.x`, `display.y`, else the first of them. With no exact match the window is hidden when `strict` is true (default false); otherwise it goes on the first display with that name, else the first with that size, else the main display. Without `display` the window is on the main display. Displays are matched again whenever they change.
+- `topmost` (default false) keeps the window above others; `draggable` and `resizable` (default true) let a user move and resize it.
+
+A user's drag of the window is an ordinary undoable change of `window`: its `x`, `y` and the `display` it ended on (name, size and top-left as above). A resize changes `width` and `height`, and `x`, `y` where the top-left moved.
 
 ### Guides
 

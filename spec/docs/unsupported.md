@@ -16,7 +16,8 @@ A placeholder item:
 
 - is drawn as the engine's placeholder (a neutral hatched rectangle with a mark) filling its layout box, 100 × 100 where a dimension is automatic, at its placement;
 - is reported in the frame's bounds with `problem` set, so a client can say why;
-- can still be moved, rotated, renamed, hidden, locked, rebound, reordered, grouped, copied and removed, because those ops never touch the scene;
+- can still be moved, rotated, renamed, hidden, locked, rebound, reordered, grouped and removed, because those ops never touch the scene;
+- can be copied when it is `unsupported`: a commit that inserts the copy is accepted with a warning ([below](#writers-versus-readers)). An `invalid` one can't be inserted again (a commit with an invalid scene is refused), nor a `budget` one while the document has no room for it, so those are copied only with their whole profile (a duplicate, or an export and a create from it, keeps them as they are);
 - gets new content only by an explicit `setDesign` that replaces its scene;
 - **is kept exactly as it is**: the engine stores the scene as the same JSON value it received (member order and a number's spelling may differ, never its value as a double, [validation](validation.md#numbers)), saves it, exports it, copies it and restores it on undo unchanged. It never upgrades, downgrades, trims or repairs it.
 

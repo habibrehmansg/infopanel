@@ -291,6 +291,30 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Equal(("json", path), (Assert.Single(check).Code, check[0].Path));
     }
 
+    [Fact]
+    public void ACreatedDocumentsOwnId_IsOptionalAndIgnored_ButCheckedWhenGiven()
+    {
+        // importDocument: the document's id is replaced by the request's, so it may be left out; one that is given is
+        // still a document id, checked as rev is (it was replaced first, so id: 7 passed).
+        var workspace = With();
+        foreach (var bad in new JsonNode[] { 7, "NOT-AN-ID" })
+        {
+            var document = JsonNode.Parse(DocJson("ffffffff-0000-4000-8000-000000000000", Scene("ok")))!.AsObject();
+            document["id"] = bad;
+            var created = workspace.Create(Bytes(new JsonObject { ["id"] = A, ["document"] = document }));
+            Assert.Equal((422, "schema /document/id"), (created.Status, Show(created.Invalid!.Errors)));
+            Assert.Equal("schema /document/id", Show(workspace.CheckImportDocument(Element(document))));
+            Assert.Empty(workspace.List());
+        }
+
+        var withoutId = JsonNode.Parse(DocJson("ffffffff-0000-4000-8000-000000000000", Scene("ok")))!.AsObject();
+        withoutId.Remove("id");
+        Assert.Empty(workspace.CheckImportDocument(Element(withoutId)));
+        var made = workspace.Create(Bytes(new JsonObject { ["id"] = A, ["document"] = withoutId }));
+        Assert.Equal(201, made.Status);
+        Assert.Equal(A, workspace.Open(A)!.Current.Document.Id);
+    }
+
     private static JsonElement Raw(string json)
     {
         using var parsed = JsonDocument.Parse(json, SpecJson.DocumentOptions);

@@ -72,7 +72,7 @@
       }
     },
     "windowSettings": {
-      "description": "The profile's desktop window (one per profile).",
+      "description": "The profile's desktop window (one per profile), shown at one frame pixel per pixel of the display it is on (docs/document.md).",
       "type": "object",
       "required": ["enabled"],
       "additionalProperties": false,
@@ -88,16 +88,16 @@
       }
     },
     "displayMatch": {
-      "description": "The display the window belongs on, matched by name and size in pixels; x and y identify it among equals. Absent: the main display.",
+      "description": "The display the window belongs on, matched by name and size in the display's pixels; x and y, in the desktop's own coordinates, tell displays of the same name and size apart. No exact match: hidden when strict, else the first display with the name, else the first with the size, else the main one. Absent: the main display (docs/document.md).",
       "type": "object",
       "required": ["name", "width", "height"],
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string", "maxLength": 256 },
-        "width": { "type": "integer", "minimum": 0, "maximum": 1000000 },
-        "height": { "type": "integer", "minimum": 0, "maximum": 1000000 },
-        "x": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
-        "y": { "type": "integer", "minimum": -1000000, "maximum": 1000000 }
+        "width": { "description": "The display's width in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "height": { "description": "The display's height in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "x": { "description": "The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "y": { "description": "The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).", "type": "integer", "minimum": -1000000, "maximum": 1000000 }
       }
     },
     "guide": {

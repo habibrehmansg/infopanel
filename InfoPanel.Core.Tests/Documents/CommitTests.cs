@@ -556,6 +556,113 @@ public sealed class CommitTests
         Assert.Equal("instance", Assert.Single(doc.Conflict(other).Conflicts).Reason);
     }
 
+    /// <summary>
+    /// A value for every optional member a <c>profile</c> op sets. A member added to the op without one here fails
+    /// <see cref="Null_unsets_window_and_every_other_optional_profile_member_but_no_required_one"/>, so it is shown to be
+    /// removable too; one listed before the op has it (<c>locale</c>) is tested once it does.
+    /// </summary>
+    private static readonly Dictionary<string, JsonNode> OptionalProfileValues = new()
+    {
+        ["locale"] = "de-DE",
+        ["background"] = "#102030",
+        ["statsOverlay"] = true,
+        ["window"] = new JsonObject { ["enabled"] = true, ["x"] = 4 },
+        ["triggerApps"] = new JsonArray("game.exe"),
+        ["guides"] = new JsonArray(new JsonObject { ["axis"] = "x", ["at"] = 3 }),
+        ["editor"] = new JsonObject { ["client"] = new JsonObject { ["v"] = 1 } },
+    };
+
+    [Fact]
+    public void Null_unsets_window_and_every_other_optional_profile_member_but_no_required_one()
+    {
+        var members = JsonNode.Parse(SpecSchemas.Files["api.schema.json"])!["$defs"]!["profileOp"]!["properties"]!["set"]!["properties"]!
+            .AsObject().Select(p => p.Key).ToList();
+        var required = JsonNode.Parse(SpecSchemas.Files["document.schema.json"])!["$defs"]!["profile"]!["required"]!.AsArray()
+            .Select(r => (string)r!).ToList();
+        var optional = members.Except(required).ToList();
+        Assert.Empty(optional.Except(OptionalProfileValues.Keys));
+
+        using var doc = Sample();
+        foreach (var member in optional)
+        {
+            doc.Ok(Commit(doc.Rev, $"set-{member}", null, Profile(new JsonObject { [member] = OptionalProfileValues[member].DeepClone() })));
+            Assert.True(StoredProfile(doc).ContainsKey(member), member);
+
+            var rev = doc.Rev;
+            var removed = doc.Ok(Commit(rev, $"unset-{member}", null, Profile(new JsonObject { [member] = null }, baseRev: rev)));
+            Assert.Equal((rev + 1, (long?)(rev + 1)), (removed.Rev, removed.ProfileRev));
+            Assert.False(StoredProfile(doc).ContainsKey(member), member);
+
+            // Removing an absent member changes nothing; undo brings it back.
+            var again = doc.Ok(Commit(rev + 1, $"again-{member}", null, Profile(new JsonObject { [member] = null })));
+            Assert.Equal((rev + 1, (long?)null), (again.Rev, again.ProfileRev));
+            doc.Undo();
+            Assert.True(StoredProfile(doc).ContainsKey(member), member);
+        }
+
+        foreach (var member in required)
+        {
+            var problem = doc.Invalid(Commit(doc.Rev, $"null-{member}", null, Profile(new JsonObject { [member] = null })));
+            Assert.Equal(("schema", $"/ops/0/set/{member}"), (Assert.Single(problem.Errors).Code, problem.Errors[0].Path));
+        }
+    }
+
+    [Fact]
+    public void Null_removes_an_items_attributes_and_a_designs_origin()
+    {
+        var origin = new JsonObject { ["kind"] = "example", ["v"] = 1 };
+        using var doc = Open(Doc(Scene("a", 1, 1, extra: new JsonObject { ["name"] = "A", ["visible"] = false, ["locked"] = true, ["origin"] = origin }),
+            Group("g", Scene("c", 2, 2)).Also(g => g["name"] = "G")));
+
+        var unset = Op("setAttributes", "a", new JsonObject { ["name"] = null, ["visible"] = null, ["locked"] = null });
+        var result = doc.Ok(Commit(1, "unset-a", null, unset, Op("setAttributes", "g", new JsonObject { ["name"] = null })));
+        Assert.Equal(new Dictionary<string, long> { ["a"] = 2, ["g"] = 2 }, result.Items);
+        var a = doc.Current.Item("a");
+        Assert.Equal(((string?)null, (bool?)null, (bool?)null), (a.Name, a.Visible, a.Locked));
+        Assert.Null(doc.Current.Item("g").Name);
+        Assert.Equal(2, doc.ReadRevisions(r => r.FieldRev("a", ItemField.Locked)));
+
+        // A design without origin keeps it; origin: null removes it, and undo brings it back.
+        doc.Ok(Commit(2, "design", null, Design("a", Rect("#111111"))));
+        Assert.Equal(origin.ToJsonString(), doc.Current.Item("a").Origin!.Value.GetRawText());
+        var removeOrigin = Design("a", Rect("#111111"));
+        removeOrigin["origin"] = null;
+        Assert.Equal(4, doc.Ok(Commit(3, "no-origin", null, removeOrigin)).Rev);
+        Assert.Null(doc.Current.Item("a").Origin);
+        doc.Undo();
+        Assert.NotNull(doc.Current.Item("a").Origin);
+
+        // A placement can't be removed.
+        var placement = doc.Invalid(Commit(doc.Rev, "no-placement", null, new JsonObject { ["op"] = "setPlacement", ["id"] = "a", ["placement"] = null }));
+        Assert.Equal(("schema", "/ops/0/placement"), (Assert.Single(placement.Errors).Code, placement.Errors[0].Path));
+
+        static JsonObject Op(string op, string id, JsonObject set) => new() { ["op"] = op, ["id"] = id, ["set"] = set };
+    }
+
+    private static JsonObject StoredProfile(ProfileDocument doc) => JsonNode.Parse(SpecJson.Write(doc.Current.Document.Profile).GetRawText())!.AsObject();
+
+    [Fact]
+    public void A_forgotten_no_op_retried_after_another_clients_change_is_expired()
+    {
+        // A sets a's placement to what it already is, without an op baseRev, at revision 1: a no-op applied at its own
+        // baseRev. 1,000 more no-ops at revision 1 forget it while the window still starts at revision 1.
+        using var doc = Sample();
+        var a = Commit(1, "noop-a", null, Place("a", 10, 10));
+        Assert.Equal(1, doc.Ok(a).Rev);
+        for (var i = 0; i < 1000; i++)
+            Assert.Equal(1, doc.Ok(Commit(1, $"noop-{i:0000}", null, Place("a", 10, 10))).Rev);
+
+        // A commit based on the document's current revision is never refused as expired.
+        Assert.Equal(2, doc.Ok(Commit(1, "other-client", null, Place("a", 5, 5))).Rev);
+
+        // A's retry, based on 1, would put a back where it was: refused, and nothing applied.
+        Assert.Equal((409, "expired", 2L), (Expired(doc, a).Status, Expired(doc, a).Code, Expired(doc, a).Rev));
+        Assert.Equal((2L, 5.0), (doc.Rev, doc.Current.Item("a").Placement.X));
+        // The remembered ones still replay, and a commit at the current revision applies.
+        Assert.True(doc.Ok(Commit(1, "noop-0999", null, Place("a", 10, 10))).Replayed);
+        Assert.Equal(3, doc.Ok(Commit(2, "next", null, Place("a", 6, 6))).Rev);
+    }
+
     [Fact]
     public void A_commit_from_another_engine_instance_conflicts()
     {

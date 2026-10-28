@@ -1,0 +1,18 @@
+{
+  "id": "5a0d2e61-9c4b-4f8a-b37e-1d6c0f2a9e85",
+  "document": {
+    "format": "infopanel.document/1",
+    "profile": {"name": "Desk (copy)", "width": 800, "height": 480},
+    "items": [
+      {
+        "kind": "scene",
+        "id": "title",
+        "placement": {"x": 20, "y": 20},
+        "scene": {
+          "format": "infopanel.scene/1",
+          "nodes": [{"kind": "text", "font": {"family": "Inter", "size": 24}, "fill": "#ffffff", "text": "Desk"}]
+        }
+      }
+    ]
+  }
+}

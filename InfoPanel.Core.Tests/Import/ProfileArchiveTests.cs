@@ -553,10 +553,19 @@ public sealed class ProfileArchiveTests : IDisposable
         var refusal = Assert.Throws<ImportRefusal>(() => Open(WithDocument(invalid), target));
         Assert.Contains(refusal.Errors, e => e.Path.StartsWith("/document/profile"));
 
-        // The document's own id doesn't matter: a create replaces it.
+        // The document's own id is optional and replaced, as a create's (importDocument): another one, or none, is fine ...
         var otherId = Document();
-        otherId["id"] = "not an id";
+        otherId["id"] = "0e000000-0000-4000-8000-000000000000";
         Assert.Empty(Open(WithDocument(otherId, ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), target).Missing);
+        var noId = Document();
+        noId.Remove("id");
+        Assert.Empty(Open(WithDocument(noId, ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), target).Missing);
+
+        // ... but one that is given must be a document id.
+        var notAnId = Document();
+        notAnId["id"] = "not an id";
+        var badId = Assert.Throws<ImportRefusal>(() => Open(WithDocument(notAnId), target));
+        Assert.Equal(("schema", "/document/id"), (Assert.Single(badId.Errors).Code, badId.Errors[0].Path));
 
         // ... but its numbers are read before it is replaced: one that rounds to ±∞ is json at /document/id.
         var infiniteId = Document();

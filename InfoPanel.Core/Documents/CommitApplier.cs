@@ -79,7 +79,7 @@ internal static class CommitApplier
                         result.Errors.Add(NotScene(p, o.Id));
                         break;
                     }
-                    var item = s with { Layout = o.Layout, Source = o.Source, Scene = o.Scene, Origin = o.Origin ?? s.Origin };
+                    var item = s with { Layout = o.Layout, Source = o.Source, Scene = o.Scene, Origin = Removes(o, nameof(o.Origin)) ? null : o.Origin ?? s.Origin };
                     draft.Replace(o.Id, item, DesignFacts.Of(item, commit.Scenes.Facts(o.Scene)));
                     designed.Add(o.Id);
                     lastOp[o.Id] = i;
@@ -100,14 +100,16 @@ internal static class CommitApplier
                 }
                 case SetAttributesOp o:
                 {
-                    var fields = (o.Set.Name is null ? ItemField.None : ItemField.Name) | (o.Set.Visible is null ? ItemField.None : ItemField.Visible)
-                        | (o.Set.Locked is null ? ItemField.None : ItemField.Locked);
+                    var set = o.Set;
+                    var fields = (Writes(set, set.Name, nameof(set.Name)) ? ItemField.Name : ItemField.None)
+                        | (Writes(set, set.Visible, nameof(set.Visible)) ? ItemField.Visible : ItemField.None)
+                        | (Writes(set, set.Locked, nameof(set.Locked)) ? ItemField.Locked : ItemField.None);
                     if (Target(i, o.Id, o.BaseRev, fields) is not { } e) break;
                     draft.Replace(o.Id, e.Item with
                     {
-                        Name = o.Set.Name ?? e.Item.Name,
-                        Visible = o.Set.Visible ?? e.Item.Visible,
-                        Locked = o.Set.Locked ?? e.Item.Locked,
+                        Name = Removes(set, nameof(set.Name)) ? null : set.Name ?? e.Item.Name,
+                        Visible = Removes(set, nameof(set.Visible)) ? null : set.Visible ?? e.Item.Visible,
+                        Locked = Removes(set, nameof(set.Locked)) ? null : set.Locked ?? e.Item.Locked,
                     });
                     candidates.Add(o.Id, fields);
                     break;
@@ -195,11 +197,16 @@ internal static class CommitApplier
                 case ProfileOp o:
                 {
                     var set = o.Set;
+                    // name, width and height are required: the schema refuses null for them.
                     var fields = (set.Name is null ? ProfileField.None : ProfileField.Name) | (set.Width is null ? ProfileField.None : ProfileField.Width)
-                        | (set.Height is null ? ProfileField.None : ProfileField.Height) | (set.Background is null ? ProfileField.None : ProfileField.Background)
-                        | (set.StatsOverlay is null ? ProfileField.None : ProfileField.StatsOverlay) | (set.Window is null ? ProfileField.None : ProfileField.Window)
-                        | (set.TriggerApps is null ? ProfileField.None : ProfileField.TriggerApps) | (set.Guides is null ? ProfileField.None : ProfileField.Guides)
-                        | (set.Editor is null ? ProfileField.None : ProfileField.Editor) | (set.Locale is null ? ProfileField.None : ProfileField.Locale);
+                        | (set.Height is null ? ProfileField.None : ProfileField.Height)
+                        | (Writes(set, set.Background, nameof(set.Background)) ? ProfileField.Background : ProfileField.None)
+                        | (Writes(set, set.StatsOverlay, nameof(set.StatsOverlay)) ? ProfileField.StatsOverlay : ProfileField.None)
+                        | (Writes(set, set.Window, nameof(set.Window)) ? ProfileField.Window : ProfileField.None)
+                        | (Writes(set, set.TriggerApps, nameof(set.TriggerApps)) ? ProfileField.TriggerApps : ProfileField.None)
+                        | (Writes(set, set.Guides, nameof(set.Guides)) ? ProfileField.Guides : ProfileField.None)
+                        | (Writes(set, set.Editor, nameof(set.Editor)) ? ProfileField.Editor : ProfileField.None)
+                        | (Writes(set, set.Locale, nameof(set.Locale)) ? ProfileField.Locale : ProfileField.None);
                     if (o.BaseRev is { } baseRev && revisions.ChangedAfter(fields, baseRev) is var changed and not ProfileField.None)
                     {
                         result.Conflicts.Add(new Conflict { Op = i, Reason = "changed", Rev = revisions.ProfileRev, Fields = FieldRevisions.Names(changed) });
@@ -211,13 +218,13 @@ internal static class CommitApplier
                         Name = set.Name ?? profile.Name,
                         Width = set.Width ?? profile.Width,
                         Height = set.Height ?? profile.Height,
-                        Background = set.Background ?? profile.Background,
-                        StatsOverlay = set.StatsOverlay ?? profile.StatsOverlay,
-                        Locale = set.Locale ?? profile.Locale,
-                        Window = set.Window ?? profile.Window,
-                        TriggerApps = set.TriggerApps ?? profile.TriggerApps,
-                        Guides = set.Guides ?? profile.Guides,
-                        Editor = set.Editor ?? profile.Editor,
+                        Background = Removes(set, nameof(set.Background)) ? null : set.Background ?? profile.Background,
+                        StatsOverlay = Removes(set, nameof(set.StatsOverlay)) ? null : set.StatsOverlay ?? profile.StatsOverlay,
+                        Locale = Removes(set, nameof(set.Locale)) ? null : set.Locale ?? profile.Locale,
+                        Window = Removes(set, nameof(set.Window)) ? null : set.Window ?? profile.Window,
+                        TriggerApps = Removes(set, nameof(set.TriggerApps)) ? null : set.TriggerApps ?? profile.TriggerApps,
+                        Guides = Removes(set, nameof(set.Guides)) ? null : set.Guides ?? profile.Guides,
+                        Editor = Removes(set, nameof(set.Editor)) ? null : set.Editor ?? profile.Editor,
                     };
                     candidates.Profile |= fields;
                     break;
@@ -330,6 +337,12 @@ internal static class CommitApplier
 
     private static Conflict Changed(int op, string id, long rev, IReadOnlyList<string> fields) =>
         new() { Op = op, Id = id, Reason = "changed", Rev = rev, Fields = fields };
+
+    /// <summary>Whether a change removes <paramref name="member"/> (it was given as <c>null</c>: spec/docs/commit.md, "Removing a member").</summary>
+    private static bool Removes(IRemovesMembers change, string member) => change.Removed.Contains(member);
+
+    /// <summary>Whether a change writes <paramref name="member"/>: sets it to <paramref name="value"/> or removes it.</summary>
+    private static bool Writes(IRemovesMembers change, object? value, string member) => value is not null || Removes(change, member);
 
     private static SpecError NotScene(string path, string id) =>
         new(path + "/id", "op.target", $"'{id}' is a group: setDesign and setBindings apply to scene items.");

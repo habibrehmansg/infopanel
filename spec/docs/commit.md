@@ -22,17 +22,21 @@ Each op writes one part of one item, or the profile, so that changes to differen
 | `op` | Writes | Field groups (for conflicts) |
 |---|---|---|
 | `setPlacement` | `id`, `placement` (replaced whole) | placement |
-| `setDesign` | `id`, `layout`, `source`, `scene` (replaced together; absent `layout` or `source` means none), and `origin` when given | design |
+| `setDesign` | `id`, `layout`, `source`, `scene` (replaced together; absent or `null` `layout` or `source` means none), and `origin` when given (`null` removes it) | design |
 | `setBindings` | `id`, `bindings` (replaced whole) | bindings |
-| `setAttributes` | `id`, `set`: any of `name`, `visible`, `locked` | each attribute it sets |
+| `setAttributes` | `id`, `set`: any of `name`, `visible`, `locked` (`null` removes one) | each attribute it sets or removes |
 | `insert` | `item` (with its children), `parentId` (a group, or null/absent for the top level), `index` (absent, or past the end of the list: the end, at the front) | the parent's children |
 | `remove` | `id`: the item and everything in it | every field of the item and of everything in it |
 | `move` | `id`, `parentId`, `index` (in the target list once the item has been taken out; past its end: the end), optional `placement` ([geometry](geometry.md), reparenting) | position (and placement, when given) |
-| `profile` | `set`: any profile fields, each replaced whole (`guides`, `window`, `editor`, ...) | each field it sets |
+| `profile` | `set`: any profile fields, each replaced whole (`guides`, `window`, `editor`, ...) or, for an optional one, removed by `null` | each field it sets or removes |
 
 `setDesign` and `setBindings` apply to scene items, not groups. An inserted item's ids (its own and its children's) must not exist in the document. A group can't move into itself or anything in it.
 
 `index` is 0–2,000 (the document's item limit; schema `itemIndex`): a larger value is invalid (`schema`), never clamped. Within that range, an index past the end of the list means the end.
+
+### Removing a member
+
+**`null` removes a member**, so that the document goes back to not having it (its default, or none). It applies to the members of a `profile` op's `set`, of a `setAttributes` op's `set`, and to a `setDesign`'s `origin`; a member left out is left as it is. `{"op": "profile", "set": {"window": null}}` removes the profile's desktop window, `{"op": "setAttributes", "id": "clock", "set": {"name": null}}` the item's name, and a `setDesign` with `"origin": null` its origin, where one without `origin` keeps it (`examples/commit/valid/remove-members.json`). Only a member the document may leave out can be removed: `null` for a profile's `name`, `width` or `height` is invalid (`schema`, at the member). A removal writes its field group like any other value: its op's `baseRev` is checked against it, and it is stamped only when the member was there ([below](#what-a-change-stamps)).
 
 The field groups an engine tracks per item are, for a scene item, `placement`, `design`, `bindings`, `name`, `visible`, `locked` and `position` (its parent and index); a group has the same seven and `children` (its membership: an item inserted into it, moved into or out of it, or removed from it). Per profile, each profile field is a field group.
 
@@ -80,15 +84,15 @@ Every conflicting op is listed, with the item's current `rev` and the field grou
 
 **The engine remembers the `opId`s of at least the last 1,000 commits applied to each document** (commits that changed nothing included), for as long as it runs, and may remember more. It forgets them oldest first, in the order their commits were applied, so the `opId`s it remembers are always those of the most recent commits applied to the document, with none missing between them. The window is a count, not a time: an engine that forgets an `opId` only once 1,000 later commits have been applied to the same document conforms.
 
-**The retry window.** For each document the engine keeps the revision at which the oldest `opId` it still remembers was applied (the `rev` of that commit's result): the start of its retry window. Once it has forgotten any `opId` of the document, **a commit whose `opId` it doesn't remember and whose `baseRev` is older than the start of the window is refused with 409 `expiredProblem`**, and nothing is applied:
+**The retry window.** For each document the engine keeps the revision at which the oldest `opId` it still remembers was applied (the `rev` of that commit's result), the start of its retry window, and the newest `baseRev` of the commits whose `opId`s it has forgotten, its retry watermark. Once it has forgotten any `opId` of the document, **a commit whose `opId` it doesn't remember is refused with 409 `expiredProblem` when its `baseRev` is older than the start of the window, or is at or below the watermark and older than the document's current revision**, and nothing is applied:
 
 ```jsonc
 { "status": 409, "code": "expired", "rev": 1203 }
 ```
 
-Such a commit may be a retry of one the engine applied before the window started and has since forgotten (a commit that changed the document was applied at a revision newer than its `baseRev`, and no newer than the window's start), and applying it again could apply its edit twice. `rev` is the document's current revision. The client reads the document, decides whether its change is still needed (it may already be there), and if so commits it again with a new `opId` and a current `baseRev`. Before the engine has forgotten any `opId` of the document there is no such refusal, and a commit based on the document's current revision is never refused this way.
+Such a commit may be a retry of one the engine applied and has since forgotten, and applying it again could apply its edit twice, or write its values over a later change. A forgotten commit that changed the document was applied at a revision newer than its `baseRev` and no newer than the window's start, so its retry is older than the window. A forgotten commit that changed nothing was applied at the revision it was based on, which may be the window's start; its retry carries that `baseRev`, at or below the watermark, so it is refused once the document has moved past it. `rev` is the document's current revision. The client reads the document, decides whether its change is still needed (it may already be there), and if so commits it again with a new `opId` and a current `baseRev`. Before the engine has forgotten any `opId` of the document there is no such refusal, and a commit based on the document's current revision is never refused this way.
 
-So a retry of a commit that changed the document is never applied again: while the engine remembers its `opId` it gets the stored result; once the `opId` is forgotten it is refused (`expired`); once its document is gone (the engine restarted, or the profile was deleted and created again) its `instance` is refused first.
+So a retry is never applied over what happened after its commit: while the engine remembers its `opId` it gets the stored result; once the `opId` is forgotten it is refused (`expired`), except the retry of a commit that changed nothing while the document is still at the revision it was based on, which changes nothing again; once its document is gone (the engine restarted, or the profile was deleted and created again) its `instance` is refused first.
 
 Reusing an `opId` with a different body is refused (422, `opId.reused`). Bodies are compared byte for byte, so a retry sends exactly the bytes the first attempt sent. A refused commit (409 or 422) is not remembered: retrying it is checked again.
 
@@ -159,8 +163,8 @@ Save takes no body and isn't guarded. It changes neither content nor revision, o
 1. **The body, without the document**: its size (`limit.commitBytes`: the whole request body as received, whitespace around the JSON value included), its collection counts (`limit.ops`, and `limit.items` for an inserted item with its children), its nesting (`limit.jsonDepth`), its schema, and each new scene and inserted item on its own ([validation](validation.md)), with errors at their paths in the request. A scene that passes validation but that the engine cannot compile is refused like an invalid one, with an error at that scene's path in the request (`/ops/{i}/scene`, or the scene's path under `/ops/{i}/item`). Any failure is 422 at once, with nothing else checked. This runs for every request, a retry included, before the `opId` is looked up.
 2. `opId`: a remembered one with the same body, byte for byte, returns its stored result (`replayed: true`); with another body it is 422 `opId.reused`.
 3. `instance`: another tag than the document's is 409 (one conflict, `reason: "instance"`), with nothing else checked.
-4. The retry window: once the engine has forgotten any `opId` of the document, a `baseRev` older than the window's start is 409 `expiredProblem`, with nothing else checked ([retries](#opid-retries)).
-5. Every `baseRev`, the commit's and each op's: one greater than the document's `rev` is 422 `baseRev.future` at its path, every such one listed, with nothing else checked ([conflicts](#baserev-conflicts)). The window's start is never past the document's `rev`, so a commit refused here can't also be expired.
+4. The retry window: once the engine has forgotten any `opId` of the document, a `baseRev` older than the window's start, or at or below the retry watermark and older than the document's `rev`, is 409 `expiredProblem`, with nothing else checked ([retries](#opid-retries)).
+5. Every `baseRev`, the commit's and each op's: one greater than the document's `rev` is 422 `baseRev.future` at its path, every such one listed, with nothing else checked ([conflicts](#baserev-conflicts)). The window's start is never past the document's `rev`, and the watermark refuses only a `baseRev` older than it, so a commit refused here can't also be expired.
 6. The ops, **in order, against a tentative copy of the document**, each applied to it before the next is checked:
    - the target (and a `move`'s or `insert`'s parent) exists at that point, else a conflict (`missing`);
    - its `baseRev` (the document revision the client read) against the field groups' last-change revisions as of the start of the commit (for `remove`, the item's and every descendant's): one greater than `baseRev` is a conflict (`changed`);

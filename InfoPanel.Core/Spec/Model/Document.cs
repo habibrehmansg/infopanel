@@ -8,14 +8,28 @@ namespace InfoPanel.Spec;
 // scene is kept as the JSON it arrived as (SceneItem.Scene): a scene the engine can't read is stored unchanged and
 // drawn as a placeholder (docs/unsupported.md), so the document never needs to parse it to be loaded.
 
-// The engine API returns a document in the same shape with every rev set and scenes as stored (responseDocument), and a
-// create takes one with rev optional and scenes as stored (importDocument).
-[SpecDef("urn:infopanel:document:1", "urn:infopanel:api:1#/$defs/responseDocument", "urn:infopanel:api:1#/$defs/importDocument")]
+// The engine API returns a document in the same shape with every rev set and scenes as stored (responseDocument).
+[SpecDef("urn:infopanel:document:1", "urn:infopanel:api:1#/$defs/responseDocument")]
 public sealed record Document
 {
     public required string Format { get; init; }
     public IReadOnlyList<string>? Requires { get; init; }
     public required string Id { get; init; }
+    public long? Rev { get; init; }
+    public required DocumentProfile Profile { get; init; }
+    public required IReadOnlyList<Item> Items { get; init; }
+}
+
+/// <summary>
+/// A document as a create takes it (importDocument): <see cref="Id"/> and <see cref="Rev"/> optional and ignored (the
+/// create's own id replaces the one), scenes as stored. The engine reads it as JSON (<c>Workspace.Create</c>).
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/importDocument")]
+public sealed record ImportDocument
+{
+    public required string Format { get; init; }
+    public IReadOnlyList<string>? Requires { get; init; }
+    public string? Id { get; init; }
     public long? Rev { get; init; }
     public required DocumentProfile Profile { get; init; }
     public required IReadOnlyList<Item> Items { get; init; }

@@ -122,14 +122,14 @@ export interface CreateProfileEmpty {
   height: number;
 }
 
-/** A profile from a document (importDocument), checked as a stored document is: a scene that is invalid or unsupported (or over a budget) is kept as sent and drawn as a placeholder; a document the engine wouldn't open is refused (422). The document's own `id` is replaced by `id`, and its `rev` members are ignored. */
+/** A profile from a document (importDocument), checked as a stored document is: a scene that is invalid or unsupported (or over a budget) is kept as sent and drawn as a placeholder; a document the engine wouldn't open is refused (422). The document's own `id` (optional; a document id when given) is replaced by `id`, and its `rev` members are ignored. */
 export interface CreateProfileFromDocument {
   /** The new profile's id, chosen by the client. */
   id: DocumentId;
   document: ImportDocument;
 }
 
-/** A document (infopanel.document/1) as a create takes it: the document format with `rev` members optional (they are ignored) and every scene taken as stored (storedScene), so a document the engine exported, with scenes it draws as placeholders, can be created again. Its scenes are then checked as a stored document's are (docs/api.md). */
+/** A document (infopanel.document/1) as a create takes it: the document format with its `id` and `rev` members optional (they are ignored: the create's `id` replaces the document's) and every scene taken as stored (storedScene), so a document the engine exported, with scenes it draws as placeholders, can be created again. Its scenes are then checked as a stored document's are (docs/api.md). */
 export interface ImportDocument {
   format: "infopanel.document/1";
   /**
@@ -137,7 +137,8 @@ export interface ImportDocument {
    * Unique items.
    */
   requires?: Capability[];
-  id: DocumentId;
+  /** Ignored: the create's `id` replaces it. */
+  id?: DocumentId;
   /** Ignored. */
   rev?: Revision;
   profile: Profile;
@@ -332,7 +333,7 @@ export interface CommitRequest {
   opId: string;
   /** The tag of the document the client's revisions came from (its documentResponse, profile entry or doc event). Another one (the engine restarted, or the profile was deleted and created again): 409 with reason "instance". */
   instance: InstanceId;
-  /** The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId with a baseRev older than the engine's retry window is refused (409 expiredProblem). Greater than the document's `rev`: 422 (baseRev.future). Each op's own `baseRev` decides its conflicts. */
+  /** The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId whose baseRev is older than the engine's retry window, or at or below its retry watermark and older than the document's `rev`, is refused (409 expiredProblem; docs/commit.md). Greater than the document's `rev`: 422 (baseRev.future). Each op's own `baseRev` decides its conflicts. */
   baseRev: Revision;
   /**
    * Merge this commit's undo step into the previous one when that had the identical key and the key starts with "gesture:" or less than 1 s passed. A key names one gesture of one client: it includes a random part chosen once per client instance ("gesture:5b0e8f0c-3c1d-4b8e-a7f2-1d9c6e4a2b7f:7").
@@ -356,15 +357,15 @@ export interface SetPlacementOp {
   placement: Placement;
 }
 
-/** Replaces a scene item's design: layout, source and scene together (absent layout or source: none), and its origin when given. */
+/** Replaces a scene item's design: layout, source and scene together (absent or null layout or source: none), and its origin when given (null removes it; absent keeps it). */
 export interface SetDesignOp {
   op: "setDesign";
   id: ItemId;
   baseRev?: BaseRev;
-  layout?: Layout;
-  source?: Source;
+  layout?: Layout | null;
+  source?: Source | null;
   scene: Scene;
-  origin?: Origin;
+  origin?: Origin | null;
 }
 
 /** Replaces a scene item's bindings. */
@@ -375,15 +376,15 @@ export interface SetBindingsOp {
   bindings: Bindings;
 }
 
-/** Sets the given attributes of an item (scene or group). */
+/** Sets the given attributes of an item (scene or group); one given as null is removed (docs/commit.md). */
 export interface SetAttributesOp {
   op: "setAttributes";
   id: ItemId;
   baseRev?: BaseRev;
   set: {
-    name?: ItemName;
-    visible?: boolean;
-    locked?: boolean;
+    name?: ItemName | null;
+    visible?: boolean | null;
+    locked?: boolean | null;
   };
 }
 
@@ -427,7 +428,7 @@ export type OpIndex = number;
 /** A group's item id, or null (or absent) for the top level. */
 export type ParentRef = ItemId | null;
 
-/** Sets the given profile fields; each replaces the field whole. */
+/** Sets the given profile fields; each replaces the field whole, and an optional one given as null is removed (docs/commit.md). name, width and height can't be removed. */
 export interface ProfileOp {
   op: "profile";
   baseRev?: BaseRev;
@@ -438,15 +439,13 @@ export interface ProfileOp {
     width?: number;
     /** Range: 1–16384. */
     height?: number;
-    background?: ColorLiteral;
-    statsOverlay?: boolean;
-    locale?: LocaleTag;
-    window?: WindowSettings;
-    /** Items: ≤ 32. */
-    triggerApps?: string[];
-    /** Items: ≤ 256. */
-    guides?: Guide[];
-    editor?: Opaque;
+    background?: ColorLiteral | null;
+    statsOverlay?: boolean | null;
+    locale?: LocaleTag | null;
+    window?: WindowSettings | null;
+    triggerApps?: string[] | null;
+    guides?: Guide[] | null;
+    editor?: Opaque | null;
   };
 }
 
@@ -525,7 +524,7 @@ export interface Conflict {
   fields?: string[];
 }
 
-/** 409 application/problem+json: the commit's opId isn't one the engine remembers, and its baseRev is older than the engine's retry window, so the engine can't tell whether it is a retry of a commit it applied and has since forgotten. Nothing was applied. The client reads the document, decides whether its change is still needed, and if so commits it again with a new opId and a current baseRev (docs/commit.md). */
+/** 409 application/problem+json: the commit's opId isn't one the engine remembers, and its baseRev is older than the engine's retry window, or at or below its retry watermark (the newest baseRev of a forgotten commit) while the document has moved past it, so the engine can't tell whether it is a retry of a commit it applied and has since forgotten. Nothing was applied. The client reads the document, decides whether its change is still needed, and if so commits it again with a new opId and a current baseRev (docs/commit.md). */
 export interface ExpiredProblem {
   type?: string;
   title?: string;
@@ -1005,7 +1004,7 @@ export interface Profile {
   editor?: Opaque;
 }
 
-/** The profile's desktop window (one per profile). */
+/** The profile's desktop window (one per profile), shown at one frame pixel per pixel of the display it is on (docs/document.md). */
 export interface WindowSettings {
   /** Show the profile in a desktop window. */
   enabled: boolean;
@@ -1035,17 +1034,29 @@ export interface WindowSettings {
   resizable?: boolean;
 }
 
-/** The display the window belongs on, matched by name and size in pixels; x and y identify it among equals. Absent: the main display. */
+/** The display the window belongs on, matched by name and size in the display's pixels; x and y, in the desktop's own coordinates, tell displays of the same name and size apart. No exact match: hidden when strict, else the first display with the name, else the first with the size, else the main one. Absent: the main display (docs/document.md). */
 export interface DisplayMatch {
   /** Length: ≤ 256. */
   name: string;
-  /** Range: 0–1000000. */
+  /**
+   * The display's width in its own pixels.
+   * Range: 0–1000000.
+   */
   width: number;
-  /** Range: 0–1000000. */
+  /**
+   * The display's height in its own pixels.
+   * Range: 0–1000000.
+   */
   height: number;
-  /** Range: -1000000–1000000. */
+  /**
+   * The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).
+   * Range: -1000000–1000000.
+   */
   x?: number;
-  /** Range: -1000000–1000000. */
+  /**
+   * The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).
+   * Range: -1000000–1000000.
+   */
   y?: number;
 }
 
