@@ -92,6 +92,8 @@ var engineLogger = new LoggerConfiguration()
             rollOnFileSizeLimit: true))
     .CreateLogger();
 Log.Logger = engineLogger;
+// Errors nothing else catches are logged; before an unhandled exception ends the process the log is written out.
+var crashLogging = CrashLogging.Install(engineLogger.ForContext<CrashLogging>(), flush: engineLogger.Dispose);
 
 try
 {
@@ -148,6 +150,9 @@ try
     builder.Services.AddSingleton(runtime);
     builder.Services.AddSingleton(tokens);
     builder.Services.AddSingleton(settings);
+    // Made by a factory so the container disposes it, removing its handlers, when the host stops; the finally below
+    // covers a start that fails before the host is built.
+    builder.Services.AddSingleton(_ => crashLogging);
     // Made by a factory so the container disposes it (and every open document) after the services that use it.
     builder.Services.AddSingleton(_ => workspace);
     builder.Services.AddSingleton(TimeProvider.System);
@@ -234,6 +239,7 @@ catch (Exception ex) when (ex is not HostAbortedException)
 }
 finally
 {
+    crashLogging.Dispose();
     if (ReferenceEquals(Log.Logger, engineLogger))
         Log.Logger = Serilog.Core.Logger.None;
     await engineLogger.DisposeAsync();
