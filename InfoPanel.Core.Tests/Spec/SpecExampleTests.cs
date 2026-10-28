@@ -280,8 +280,9 @@ public class SpecExampleTests
     }
 
     /// <summary>
-    /// The model type of an API definition: the type that mirrors it, or, for a definition that is a union of others
-    /// (<c>profileEntry</c>, <c>blobInfo</c>, <c>createProfileRequest</c>), the one type that mirrors every branch.
+    /// The model type of an API definition: the type that mirrors it; for a definition that is a union of others
+    /// (<c>profileEntry</c>, <c>blobInfo</c>, <c>createProfileRequest</c>), the one type that mirrors every branch; for a
+    /// map of one definition by name (<c>formatSupport</c>), a dictionary of that definition's type.
     /// </summary>
     private static Type ApiModelType(string def)
     {
@@ -289,6 +290,8 @@ public class SpecExampleTests
         var direct = SpecSchemaAgreementTests.ModelTypes.Where(t => t.Refs.Contains(reference)).ToList();
         if (direct.Count > 0) return Assert.Single(direct).Type;
         var schema = JsonNode.Parse(SpecSchemas.Files["api.schema.json"])!["$defs"]![def]!;
+        if (schema["properties"] is null && schema["additionalProperties"]?["$ref"] is JsonValue valueRef)
+            return typeof(Dictionary<,>).MakeGenericType(typeof(string), ApiModelType(((string)valueRef!)["#/$defs/".Length..]));
         var branches = schema["oneOf"]!.AsArray().Select(b => SpecSchemas.Api + (string)b!["$ref"]!).ToList();
         return SpecSchemaAgreementTests.ModelTypes.Single(t => branches.All(t.Refs.Contains)).Type;
     }

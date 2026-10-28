@@ -1,6 +1,11 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using InfoPanel.Api;
+using InfoPanel.Documents;
+using InfoPanel.Persistence;
 using InfoPanel.Spec;
+using InfoPanel.Tests.Contract;
 using SkiaSharp;
 using Xunit;
 
@@ -45,24 +50,101 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal(factory.DataDir, session.GetProperty("dataDir").GetString());
         Assert.Contains(session.GetProperty("platform").GetString(), new[] { "macos", "windows", "linux", "other" });
 
-        // What the engine reads: format majors 1, no optional capabilities (no media providers), the limits.
+        // What the engine reads, by format string: majors 1 at 1.0, no optional capabilities (no media providers), and
+        // each format's own limits. No optional API features.
         var support = session.GetProperty("formatSupport");
-        Assert.Equal("""["infopanel.document/1"]""", support.GetProperty("document").GetProperty("formats").GetRawText());
-        Assert.Equal("""["infopanel.scene/1"]""", support.GetProperty("scene").GetProperty("formats").GetRawText());
-        Assert.Equal(0, support.GetProperty("scene").GetProperty("capabilities").GetArrayLength());
-        Assert.Equal(SpecLimits.Default.MediaBytes, support.GetProperty("limits").GetProperty("mediaBytes").GetInt32());
+        Assert.Equal(new[] { "infopanel.document/1", "infopanel.scene/1" }, support.EnumerateObject().Select(p => p.Name));
+        foreach (var format in support.EnumerateObject())
+        {
+            Assert.Equal("1.0", format.Value.GetProperty("version").GetString());
+            Assert.Equal(0, format.Value.GetProperty("capabilities").GetArrayLength());
+        }
+        Assert.Equal(SpecLimits.Default.Nodes, support.GetProperty("infopanel.scene/1").GetProperty("limits").GetProperty("nodes").GetInt32());
+        Assert.Equal(SpecLimits.Default.Items, support.GetProperty("infopanel.document/1").GetProperty("limits").GetProperty("items").GetInt32());
+        Assert.Equal("[]", session.GetProperty("features").GetRawText());
+    }
+
+    /// <summary>The limits.md sections whose limits are the scene format's; every other section's are the document format's.</summary>
+    private static readonly string[] SceneSections = ["Scene limits", "Media limits", "Run-time limits"];
+
+    /// <summary>Each limit spec/docs/limits.md lists in a table headed <c>| Limit |</c>, with the section it is under.</summary>
+    private static Dictionary<string, string> DocumentedLimitSections()
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        var section = "";
+        var inTable = false;
+        foreach (var line in File.ReadAllLines(Path.Combine(ApiContract.FindSpecDir(), "docs", "limits.md")))
+        {
+            if (line.StartsWith("## ", StringComparison.Ordinal)) section = line[3..].Trim();
+            if (!line.StartsWith('|')) { inTable = false; continue; }
+            var first = line.Trim().Trim('|').Split('|')[0].Trim();
+            if (first == "Limit") { inTable = true; continue; }
+            if (!inTable || first.StartsWith("---", StringComparison.Ordinal)) continue;
+            result.Add(first.Trim('`'), section);
+        }
+        return result;
     }
 
     [Fact]
-    public async Task Session_ReportsEveryLimitByItsName()
+    public async Task Session_ReportsEachLimitOnce_UnderItsFormat()
     {
-        var limits = (await GetJson("/api/session")).GetProperty("formatSupport").GetProperty("limits")
-            .EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble());
+        var support = (await GetJson("/api/session")).GetProperty("formatSupport");
+        var all = SpecLimits.Default.ToDictionary();
+        var reported = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var format in support.EnumerateObject())
+            foreach (var limit in format.Value.GetProperty("limits").EnumerateObject())
+            {
+                Assert.True(reported.TryAdd(limit.Name, format.Name), $"{limit.Name} is under {reported.GetValueOrDefault(limit.Name)} and {format.Name}");
+                Assert.Equal(all[limit.Name], limit.Value.GetDouble());
+            }
 
-        Assert.Equal(SpecLimits.Default.ToDictionary().OrderBy(p => p.Key, StringComparer.Ordinal), limits.OrderBy(p => p.Key, StringComparer.Ordinal));
-        // The request bodies' limits, compose depth and item depth (once "groupDepth") among them.
-        Assert.Equal((16.0, 8.0, 65_536.0, 4_096.0), (limits["composeDepth"], limits["itemDepth"], limits["requestBytes"], limits["tokenRequestBytes"]));
-        Assert.DoesNotContain("groupDepth", limits.Keys);
+        // limits.md's scene, media and run-time limits are the scene format's, every other limit the document format's:
+        // the request bodies', the socket's, the archives' and the 1.x import's among them.
+        var expected = DocumentedLimitSections().ToDictionary(p => p.Key,
+            p => SceneSections.Any(s => p.Value.StartsWith(s, StringComparison.Ordinal)) ? SpecSchemas.SceneFormat : SpecSchemas.DocumentFormat);
+        Assert.Equal(all.Keys.Order(StringComparer.Ordinal), expected.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(expected.OrderBy(p => p.Key, StringComparer.Ordinal), reported.OrderBy(p => p.Key, StringComparer.Ordinal));
+        Assert.Equal((SpecSchemas.SceneFormat, SpecSchemas.SceneFormat, SpecSchemas.DocumentFormat, SpecSchemas.DocumentFormat),
+            (reported["composeDepth"], reported["textLength"], reported["itemDepth"], reported["requestBytes"]));
+        Assert.DoesNotContain("groupDepth", reported.Keys);
+    }
+
+    [Fact]
+    public async Task FormatSupport_IsItsExample()
+    {
+        // spec/examples/api/formatSupport/engine.json is what this engine reports, every limit included.
+        var example = JsonNode.Parse(File.ReadAllText(Path.Combine(ApiContract.FindSpecDir(), "examples", "api", "formatSupport", "engine.json")));
+        var support = JsonNode.Parse((await GetJson("/api/session")).GetProperty("formatSupport").GetRawText());
+        Assert.True(JsonNode.DeepEquals(example, support), $"formatSupport/engine.json:\n{example?.ToJsonString()}\nthe engine's:\n{support?.ToJsonString()}");
+    }
+
+    [Fact]
+    public void FormatSupport_GivesEachFormatItsOwnCapabilitiesAndLimits()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "infopanel-support-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var workspace = Workspace.Start(new DataPaths(dir), new WorkspaceOptions
+            {
+                HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes),
+                Support = new EngineSupport(new HashSet<string> { "media.provider" }, new HashSet<string> { "profile.test" }),
+                Limits = SpecLimits.Default.With(new Dictionary<string, double> { ["nodes"] = 8, ["items"] = 9 }),
+            }, DateTimeOffset.UnixEpoch);
+
+            var support = JsonSerializer.SerializeToElement(ReadEndpoints.FormatSupportOf(workspace), SpecJson.Options);
+            var scene = support.GetProperty(SpecSchemas.SceneFormat);
+            var document = support.GetProperty(SpecSchemas.DocumentFormat);
+            Assert.Equal("""["media.provider"]""", scene.GetProperty("capabilities").GetRawText());
+            Assert.Equal("""["profile.test"]""", document.GetProperty("capabilities").GetRawText());
+            Assert.Equal(8, scene.GetProperty("limits").GetProperty("nodes").GetInt32());
+            Assert.Equal(9, document.GetProperty("limits").GetProperty("items").GetInt32());
+            Assert.False(scene.GetProperty("limits").TryGetProperty("items", out _));
+            Assert.False(document.GetProperty("limits").TryGetProperty("nodes", out _));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Theory]

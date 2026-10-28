@@ -36,7 +36,7 @@ Each addition ships with:
 3. the docs that specify it;
 4. examples: a valid one, and an invalid one for each new rule or limit, with its code and path in `examples/expected.json`;
 5. the regenerated types (`types/index.d.ts`);
-6. the engine's `formatSupport` ([API](api.md#session)): the new minor version, and the capability when the engine has it.
+6. the engine's `formatSupport` ([API](api.md#session)): the new minor version in the format's entry, and the capability there when the engine has it.
 
 ## Capabilities and `requires`
 
@@ -52,7 +52,7 @@ Capabilities defined by version 1.0:
 
 Everything else in version 1.0 is the base every engine supports.
 
-An engine reports what it supports in `GET /api/session` (`urn:infopanel:api:1#/$defs/formatSupport`): the format strings it reads, the newest minor version of each, its optional capabilities and its limits. A client checks it before writing content that needs a capability.
+An engine reports what it supports in `GET /api/session` (`urn:infopanel:api:1#/$defs/formatSupport`), by format string: for each format it reads, the newest minor version, the format's optional capabilities it has and the format's limits. So an engine that read `infopanel.scene/1` at 1.2 and `infopanel.scene/2` at 2.0 would list each with its own. A client checks the format's entry before writing content that needs a capability.
 
 ## Major versions
 
@@ -101,6 +101,6 @@ Four markers say what a reader may do, each answering its own question; folding 
 - **Content `requires`.** A scene that draws media from a provider configured on the engine lists `media.provider`; an engine without it draws the item as a placeholder and keeps the scene exactly as stored. An engine lists the capabilities it has, per format, in `formatSupport`.
 - **The data folder's marker.** The data folder isn't part of these formats: it is the engine's own, documented with the engine. Its marker lists what an engine must understand before it repairs, sweeps or writes anything there: a later engine that kept blob references outside the profiles' folders would list a capability, so an earlier engine stops at start-up instead of deleting blobs it doesn't see referenced. Not in this draft yet.
 - **A document's tag.** Every document has a lifetime tag, `instance`, new every time the engine creates or opens it ([API](api.md#a-documents-tag)). A commit, undo, redo, revert or delete names the tag of the document it read; one that names another is refused (409, reason `instance`) instead of acting on a document it never saw. A profile deleted and imported again under the same id has a new tag, so a delayed commit or delete carrying the old one is refused instead of acting on the new profile. The session's `instance` answers another question: did the engine restart?
-- **API features.** `protocol` goes up only for a change a client can't ignore. An operation added after version 1 comes under a feature name in `GET /api/session`, and a client offers it only when the engine lists it. Not in this draft yet.
+- **API features.** `protocol` goes up only for a change a client can't ignore. An operation added after version 1 comes under a feature name, listed in `GET /api/session` (`features`, [API](api.md#session)), and a client offers it only when the engine lists it: an operation that restored a profile's earlier save, say, would come as `profiles.restore`, and an engine that predates it neither lists the name nor serves the request. Version 1 defines no features, so the list is empty.
 
 Choosing one: a new saved member, node kind or value is a content capability; a new file or folder holding blob references outside a profile's folder, a data-folder capability; a new operation, an API feature; a new guard on an existing request, the document's tag or `baseRev`, never a new marker.

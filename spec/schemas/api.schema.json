@@ -6,7 +6,7 @@
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
       "type": "object",
-      "required": ["engineVersion", "protocol", "instance", "platform", "dataDir", "formatSupport"],
+      "required": ["engineVersion", "protocol", "instance", "features", "platform", "dataDir", "formatSupport"],
       "additionalProperties": false,
       "properties": {
         "engineVersion": { "description": "The engine's version, such as \"2.0.0\".", "type": "string", "minLength": 1, "maxLength": 64 },
@@ -16,10 +16,20 @@
           "minimum": 1
         },
         "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse)." },
+        "features": {
+          "description": "The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines none, so the list is empty. A client ignores a name it doesn't know.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/apiFeature" },
+          "uniqueItems": true
+        },
         "platform": { "description": "The operating system the engine runs on. A client treats a platform it doesn't know as `other`.", "enum": ["macos", "windows", "linux", "other"] },
         "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
         "formatSupport": { "$ref": "#/$defs/formatSupport" }
       }
+    },
+    "apiFeature": {
+      "description": "The name of an optional API feature (session.features), written as a capability is: lower-case words joined by dots.",
+      "$ref": "urn:infopanel:common:1#/$defs/capability"
     },
     "instanceId": {
       "description": "An opaque id, compared for equality only: a run of the engine (the session's and hello's `instance`), or a document's lifetime tag (a profile entry's, a document response's and a doc event's `instance`, docs/api.md#a-documents-tag), new every time the engine creates or opens the document. A document's revisions belong to its tag.",
@@ -772,28 +782,31 @@
     },
 
     "formatSupport": {
-      "description": "What an engine supports (part of GET /api/session): the format strings it reads, the highest minor version of each, its optional capabilities and its limits.",
+      "description": "What an engine supports (part of GET /api/session), by format string: every format it reads, each with the newest minor version of it the engine reads, the format's optional capabilities the engine has and the format's limits. A client ignores a format string it doesn't know.",
       "type": "object",
-      "required": ["document", "scene", "limits"],
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/formatString" },
+      "additionalProperties": { "$ref": "#/$defs/supportedFormat" }
+    },
+    "formatString": {
+      "description": "A format string: a format's name and its major version, such as `infopanel.scene/1` (docs/versioning.md).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+/[1-9][0-9]{0,3}$",
+      "maxLength": 64
+    },
+    "supportedFormat": {
+      "description": "One format an engine reads (formatSupport).",
+      "type": "object",
+      "required": ["version", "capabilities", "limits"],
       "additionalProperties": false,
       "properties": {
-        "document": { "$ref": "#/$defs/formatVersion" },
-        "scene": { "$ref": "#/$defs/formatVersion" },
+        "version": { "description": "The newest minor version of the format the engine reads, such as \"1.0\"; it reads every earlier one of the same major version.", "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+        "capabilities": { "description": "The format's optional capabilities the engine has (docs/versioning.md#capabilities-and-requires). A client ignores one it doesn't know.", "type": "array", "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" } },
         "limits": {
-          "description": "The limits in force, by name (docs/limits.md).",
+          "description": "The format's limits, by name (docs/limits.md says which format each belongs to). A client ignores a name it doesn't know.",
           "type": "object",
           "additionalProperties": { "type": "number" }
         }
-      }
-    },
-    "formatVersion": {
-      "type": "object",
-      "required": ["formats", "version", "capabilities"],
-      "additionalProperties": false,
-      "properties": {
-        "formats": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
-        "capabilities": { "type": "array", "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" } }
       }
     },
     "createTokenRequest": {

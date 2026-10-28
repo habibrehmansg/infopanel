@@ -28,6 +28,7 @@ public static class ReadEndpoints
             EngineVersion = EngineVersion(),
             Protocol = Protocol,
             Instance = workspace.Instance,
+            Features = Features,
             Platform = Platform(),
             DataDir = paths.Root,
             FormatSupport = FormatSupportOf(workspace),
@@ -87,12 +88,25 @@ public static class ReadEndpoints
         }).RequireScope(ApiScope.Read);
     }
 
-    /// <summary>What the engine reads: the formats, their newest minor version, the capabilities it has and its limits.</summary>
-    public static FormatSupport FormatSupportOf(Workspace workspace) => new()
+    /// <summary>
+    /// The optional API features the engine has (spec/docs/api.md, "Session"): every operation added after this version of
+    /// the API comes under a name here. None yet.
+    /// </summary>
+    public static IReadOnlyList<string> Features { get; } = [];
+
+    /// <summary>What the engine reads, by format string: each format's newest minor version, its capabilities the engine has and its limits.</summary>
+    public static IReadOnlyDictionary<string, SupportedFormat> FormatSupportOf(Workspace workspace) =>
+        new SortedDictionary<string, SupportedFormat>(StringComparer.Ordinal)
+        {
+            [SpecSchemas.DocumentFormat] = Supported(workspace, SpecSchemas.DocumentFormat, "1.0", workspace.Support.DocumentCapabilities),
+            [SpecSchemas.SceneFormat] = Supported(workspace, SpecSchemas.SceneFormat, "1.0", workspace.Support.SceneCapabilities),
+        };
+
+    private static SupportedFormat Supported(Workspace workspace, string format, string version, IReadOnlySet<string> capabilities) => new()
     {
-        Document = new FormatVersion { Formats = ["infopanel.document/1"], Version = "1.0", Capabilities = [.. workspace.Support.DocumentCapabilities.Order(StringComparer.Ordinal)] },
-        Scene = new FormatVersion { Formats = ["infopanel.scene/1"], Version = "1.0", Capabilities = [.. workspace.Support.SceneCapabilities.Order(StringComparer.Ordinal)] },
-        Limits = workspace.Limits.ToDictionary(),
+        Version = version,
+        Capabilities = [.. capabilities.Order(StringComparer.Ordinal)],
+        Limits = workspace.Limits.ToDictionary(format),
     };
 
     private static double Finite(double value) => double.IsFinite(value) ? value : 0;

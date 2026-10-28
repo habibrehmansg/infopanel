@@ -13,10 +13,13 @@ public sealed record Session
     public required string EngineVersion { get; init; }
     public required int Protocol { get; init; }
     public required string Instance { get; init; }
+    /// <summary>The optional API features the engine has, by name; none in this version of the API.</summary>
+    public required IReadOnlyList<string> Features { get; init; }
     /// <summary><c>macos</c>, <c>windows</c>, <c>linux</c> or <c>other</c>.</summary>
     public required string Platform { get; init; }
     public required string DataDir { get; init; }
-    public required FormatSupport FormatSupport { get; init; }
+    /// <summary>The schema's <c>formatSupport</c>: every format the engine reads, by format string.</summary>
+    public required IReadOnlyDictionary<string, SupportedFormat> FormatSupport { get; init; }
 }
 
 /// <summary>
@@ -389,20 +392,13 @@ public sealed record DocEvent
     public required bool CanRedo { get; init; }
 }
 
-[SpecDef("urn:infopanel:api:1#/$defs/formatSupport")]
-public sealed record FormatSupport
+/// <summary>One format the engine reads: its newest minor version, the format's optional capabilities it has, the format's limits.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/supportedFormat")]
+public sealed record SupportedFormat
 {
-    public required FormatVersion Document { get; init; }
-    public required FormatVersion Scene { get; init; }
-    public required IReadOnlyDictionary<string, double> Limits { get; init; }
-}
-
-[SpecDef("urn:infopanel:api:1#/$defs/formatVersion")]
-public sealed record FormatVersion
-{
-    public required IReadOnlyList<string> Formats { get; init; }
     public required string Version { get; init; }
     public required IReadOnlyList<string> Capabilities { get; init; }
+    public required IReadOnlyDictionary<string, double> Limits { get; init; }
 }
 
 /// <summary><c>POST /api/tokens</c>: <see cref="Scopes"/> holds <c>read</c>, <c>edit</c> or both.</summary>

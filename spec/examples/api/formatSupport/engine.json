@@ -1,5 +1,12 @@
 {
-  "document": {"formats": ["infopanel.document/1"], "version": "1.0", "capabilities": []},
-  "scene": {"formats": ["infopanel.scene/1"], "version": "1.0", "capabilities": []},
-  "limits": {"nodes": 2000, "exprDepth": 32, "sceneBytes": 1048576}
+  "infopanel.document/1": {
+    "version": "1.0",
+    "capabilities": [],
+    "limits": {"archiveBytes": 536870912, "archiveEntries": 10000, "bindings": 32, "commitBytes": 16777216, "diagnostics": 1000, "documentBytes": 16777216, "documentEffectCost": 512, "documentNodes": 20000, "documentTextNodes": 1000, "documentWork": 200000, "editorBytes": 65536, "entryNameBytes": 1024, "entryRecordBytes": 4096, "expandedBytes": 536870912, "itemDepth": 8, "items": 2000, "jsonDepth": 256, "ops": 1000, "originBytes": 4096, "recordBytes": 1048576, "recordOutcomes": 1000, "recordReasonLength": 256, "requestBytes": 65536, "socketMessageBytes": 4096, "sourceBytes": 262144, "tokenRequestBytes": 4096, "v1DeviceFields": 64, "v1Devices": 64, "v1Hotkeys": 256, "v1ItemsXmlBytes": 16777216, "v1ProfileXmlBytes": 4194304, "v1Profiles": 1000, "v1SettingLength": 1024, "v1XmlDepth": 64, "v1XmlElements": 500000}
+  },
+  "infopanel.scene/1": {
+    "version": "1.0",
+    "capabilities": [],
+    "limits": {"composeDepth": 16, "depth": 24, "effectCost": 64, "exprDepth": 32, "exprWork": 20000, "geometry": 32768, "inputs": 32, "mediaArea": 16777216, "mediaBytes": 33554432, "mediaDuration": 600, "mediaFrameArea": 268435456, "mediaFrames": 1000, "mediaNodes": 64, "mediaSide": 8192, "nodes": 2000, "pathCommands": 8192, "sceneBytes": 1048576, "sequence": 256, "seriesNodes": 32, "stateCells": 64, "svgBytes": 1048576, "svgDepth": 32, "svgDrawnDepth": 64, "svgElements": 10000, "svgGradientChain": 4, "svgNumber": 1000000000, "tableNodes": 8, "textLength": 4096, "textNodes": 256, "values": 256}
+  }
 }

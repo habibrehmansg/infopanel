@@ -66,6 +66,8 @@ Every request under `/api` carries a token, as `Authorization: Bearer {token}`. 
 
 Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token) and uses the token endpoints. Scopes fail closed: a request that neither scope covers needs the session token.
 
+Narrower access, such as a token that sees only some profiles, would come as a token kind of its own in a later version: `read` and `edit` keep allowing everything this table says.
+
 A request without a token, or with one the engine doesn't know or has revoked, is answered 401 with `WWW-Authenticate: Bearer`. A valid token without the scope the request needs is answered 403 `scopeProblem`, whose `scope` is what it lacks: `read`, `edit`, or `session` for what only the session token may do. Both are `application/problem+json`.
 
 ### Signing in
@@ -92,7 +94,8 @@ The engine listens on the loopback interface only, and answers a request whose `
 
 - `protocol` is the engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore; members and endpoints are added without changing it ([versioning](versioning.md#the-engine-api)).
 - `instance` is new every time the engine starts: a client that sees another (here or in the preview socket's `hello`) knows the engine restarted, and that the document tags and revisions it read before mean nothing now. It is the run's, not a document's: a commit names the tag of the document it changes ([below](#a-documents-tag)).
-- `formatSupport` is what the engine reads: formats, the newest minor version of each, optional capabilities and the limits ([versioning](versioning.md)).
+- `formatSupport` is what the engine reads, by format string: for each format, `version`, the newest minor version of it the engine reads (and every earlier one of that major version); `capabilities`, the format's optional capabilities the engine has; and `limits`, the format's limits by name ([limits](limits.md), which says which format each belongs to). An engine of this specification lists `infopanel.document/1` and `infopanel.scene/1`, each at 1.0 or later. Before it sends content, a client checks that its format string is listed, that every capability in its `requires` is in that format's `capabilities` ([versioning](versioning.md#capabilities-and-requires)), and that it is within that format's limits. A client ignores a format string it doesn't know.
+- `features` lists the optional API features the engine has, by name, each once, named as capabilities are. An operation added after this version of the API comes under one, and a client uses the operation only when the session lists its name ([versioning](versioning.md#four-markers-four-questions)). This version defines none, so the list is empty. A client ignores a name it doesn't know.
 - `engineVersion`, `platform` (`macos`, `windows`, `linux` or `other`) and `dataDir` (the folder the engine keeps its data in) describe the engine.
 
 ## Fonts and sensors

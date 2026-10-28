@@ -18,6 +18,11 @@ export interface Session {
   protocol: number;
   /** This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse). */
   instance: InstanceId;
+  /**
+   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines none, so the list is empty. A client ignores a name it doesn't know.
+   * Unique items.
+   */
+  features: ApiFeature[];
   /** The operating system the engine runs on. A client treats a platform it doesn't know as `other`. */
   platform: "macos" | "windows" | "linux" | "other";
   /**
@@ -27,6 +32,9 @@ export interface Session {
   dataDir: string;
   formatSupport: FormatSupport;
 }
+
+/** The name of an optional API feature (session.features), written as a capability is: lower-case words joined by dots. */
+export type ApiFeature = Capability;
 
 /**
  * An opaque id, compared for equality only: a run of the engine (the session's and hello's `instance`), or a document's lifetime tag (a profile entry's, a document response's and a doc event's `instance`, docs/api.md#a-documents-tag), new every time the engine creates or opens the document. A document's revisions belong to its tag.
@@ -640,20 +648,27 @@ export interface DocEvent {
   canRedo: boolean;
 }
 
-/** What an engine supports (part of GET /api/session): the format strings it reads, the highest minor version of each, its optional capabilities and its limits. */
-export interface FormatSupport {
-  document: FormatVersion;
-  scene: FormatVersion;
-  /** The limits in force, by name (docs/limits.md). */
-  limits: { [key: string]: number };
-}
+/** What an engine supports (part of GET /api/session), by format string: every format it reads, each with the newest minor version of it the engine reads, the format's optional capabilities the engine has and the format's limits. A client ignores a format string it doesn't know. */
+export type FormatSupport = { [key: string]: SupportedFormat };
 
-export interface FormatVersion {
-  /** Items: ≥ 1. */
-  formats: string[];
-  /** Pattern: `^[0-9]+\.[0-9]+$`. */
+/**
+ * A format string: a format's name and its major version, such as `infopanel.scene/1` (docs/versioning.md).
+ * Length: ≤ 64.
+ * Pattern: `^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*)+/[1-9][0-9]{0,3}$`.
+ */
+export type FormatString = string;
+
+/** One format an engine reads (formatSupport). */
+export interface SupportedFormat {
+  /**
+   * The newest minor version of the format the engine reads, such as "1.0"; it reads every earlier one of the same major version.
+   * Pattern: `^[0-9]+\.[0-9]+$`.
+   */
   version: string;
+  /** The format's optional capabilities the engine has (docs/versioning.md#capabilities-and-requires). A client ignores one it doesn't know. */
   capabilities: Capability[];
+  /** The format's limits, by name (docs/limits.md says which format each belongs to). A client ignores a name it doesn't know. */
+  limits: { [key: string]: number };
 }
 
 /** POST /api/tokens (the session token only): a new integration token with a name and scopes. Answered 201 with createdToken, the only answer that carries the token's secret (docs/api.md#authentication). */

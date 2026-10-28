@@ -2,11 +2,11 @@
   "engineVersion": "2.0.0",
   "protocol": 2,
   "instance": "b8e14f0a6d2c4e97a3f5c0d9e1b27a46",
+  "features": [],
   "platform": "macos",
   "dataDir": "/Users/me/Library/Application Support/InfoPanel/v2",
   "formatSupport": {
-    "document": {"formats": ["infopanel.document/1"], "version": "1.0", "capabilities": []},
-    "scene": {"formats": ["infopanel.scene/1"], "version": "1.0", "capabilities": []},
-    "limits": {"sceneBytes": 1048576, "nodes": 2000, "documentBytes": 16777216, "items": 2000, "ops": 1000, "mediaBytes": 33554432}
+    "infopanel.document/1": {"version": "1.0", "capabilities": [], "limits": {"documentBytes": 16777216, "items": 2000, "ops": 1000}},
+    "infopanel.scene/1": {"version": "1.0", "capabilities": [], "limits": {"sceneBytes": 1048576, "nodes": 2000, "mediaBytes": 33554432}}
   }
 }

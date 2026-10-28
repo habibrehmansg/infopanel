@@ -10,8 +10,9 @@ namespace InfoPanel.Spec;
 /// and the preview socket's messages.
 /// Every engine that reads infopanel.scene/1 and infopanel.document/1 accepts everything within them; the numbers never
 /// change within major version 1. Each member's camelCase name is the limit's name in docs, error codes
-/// (<c>limit.{name}</c>, where its refusal has a code of that form) and the session's <c>limits</c>. Other options take
-/// their values from here (<c>ImportLimits</c>). Tests may tighten a limit to keep an example small (<see cref="With"/>).
+/// (<c>limit.{name}</c>, where its refusal has a code of that form) and the session's <c>limits</c> of the format it
+/// belongs to (<see cref="FormatOf"/>). Other options take their values from here (<c>ImportLimits</c>). Tests may tighten
+/// a limit to keep an example small (<see cref="With"/>).
 /// </summary>
 public sealed record SpecLimits
 {
@@ -170,7 +171,7 @@ public sealed record SpecLimits
         return node.Deserialize<SpecLimits>(SpecJson.Options)!;
     }
 
-    /// <summary>Every limit by name, as the session reports them.</summary>
+    /// <summary>Every limit by name.</summary>
     public IReadOnlyDictionary<string, double> ToDictionary()
     {
         var result = new SortedDictionary<string, double>(System.StringComparer.Ordinal);
@@ -178,4 +179,32 @@ public sealed record SpecLimits
             result[name] = value!.GetValue<double>();
         return result;
     }
+
+    /// <summary>The limits of one format, by name, as the session reports them under its format string.</summary>
+    public IReadOnlyDictionary<string, double> ToDictionary(string format)
+    {
+        var result = new SortedDictionary<string, double>(System.StringComparer.Ordinal);
+        foreach (var (name, value) in ToDictionary())
+            if (FormatOf(name) == format) result[name] = value;
+        return result;
+    }
+
+    /// <summary>
+    /// The format a limit belongs to (spec/docs/limits.md): the scene, media and run-time limits are the scene format's;
+    /// every other limit (nesting, documents, commits, request bodies, the socket's messages, archives, the 1.x import and
+    /// its record) is the document format's.
+    /// </summary>
+    public static string FormatOf(string name) => SceneLimits.Contains(name) ? SpecSchemas.SceneFormat : SpecSchemas.DocumentFormat;
+
+    private static readonly HashSet<string> SceneLimits = new(System.StringComparer.Ordinal)
+    {
+        // Scene limits.
+        "sceneBytes", "nodes", "depth", "inputs", "values", "stateCells", "exprDepth", "exprWork", "pathCommands", "geometry",
+        "textNodes", "seriesNodes", "tableNodes", "mediaNodes", "sequence", "effectCost", "composeDepth",
+        // Media limits.
+        "mediaBytes", "svgBytes", "mediaSide", "mediaArea", "mediaFrames", "mediaDuration", "mediaFrameArea", "svgElements",
+        "svgNumber", "svgDepth", "svgDrawnDepth", "svgGradientChain",
+        // Run-time limits.
+        "textLength",
+    };
 }
