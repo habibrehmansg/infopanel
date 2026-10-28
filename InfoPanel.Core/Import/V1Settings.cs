@@ -10,7 +10,7 @@ namespace InfoPanel.Import;
 /// <summary>
 /// Reads the user data of 1.x's <c>settings.xml</c> (Core has no 1.x settings model; 1.x's is WPF-typed): the frame and
 /// graph rates, the Libre toggles, the program-specific panel toggles, the device list of the eight panel families, the
-/// multi-device flags and the hotkeys, each as 1.4.x would use it. An absent element gives 1.4.x's default
+/// multi-device flags and the hotkeys, each as 1.4.x would use it (after its 1.3.1 settings upgrade). An absent element gives 1.4.x's default
 /// (<c>Settings.cs</c>); a value that doesn't parse gives the default too, with an <c>import.setting</c> warning. Theme, UI
 /// scale, window size and pane state are left out.
 /// </summary>
@@ -91,7 +91,7 @@ internal static class V1SettingsReader
                     break;
                 }
                 read++;
-                devices.Add(Device(family, device, limits, Warn));
+                devices.Add(Device(family, device, limits, Warn, upgradeTo131: version is < 131));
             }
         }
 
@@ -132,7 +132,11 @@ internal static class V1SettingsReader
         };
     }
 
-    private static V1Device Device(string family, XElement device, ImportLimits limits, Action<string, string, XObject?> warn)
+    /// <param name="upgradeTo131">
+    /// Settings older than 131: 1.4.x's <c>Upgrade_File_Structure_For_1_3_1</c> renames a Turing <c>REV_8INCH_USB</c>
+    /// whose USB id is the 8.8-inch panel's to <c>REV_88INCH_USB</c> (its other rule maps a name to itself).
+    /// </param>
+    private static V1Device Device(string family, XElement device, ImportLimits limits, Action<string, string, XObject?> warn, bool upgradeTo131)
     {
         var fields = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var field in device.Elements().Where(e => !e.HasElements))
@@ -150,6 +154,10 @@ internal static class V1SettingsReader
             }
             fields.TryAdd(name, field.Value);
         }
+
+        if (upgradeTo131 && family == "turing" && fields.GetValueOrDefault("Model") == "REV_8INCH_USB"
+            && fields.GetValueOrDefault("DeviceId") is { } id && id.StartsWith(@"USB\VID_1CBE&PID_0088\", StringComparison.Ordinal))
+            fields["Model"] = "REV_88INCH_USB";
 
         return new V1Device { Family = family, Profile = ProfileOf(fields.GetValueOrDefault("ProfileGuid")), Fields = fields };
     }

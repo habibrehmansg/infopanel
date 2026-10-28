@@ -320,6 +320,25 @@ public sealed class V1FolderTests : IDisposable
         Assert.NotNull(Folder().ReadProfile(Guid.Parse(Desk), _kit.Context()));
     }
 
+    [Theory]
+    [InlineData(115, "REV_88INCH_USB")]
+    [InlineData(130, "REV_88INCH_USB")]
+    [InlineData(131, "REV_8INCH_USB")]
+    public void Settings_Before131_GetThe131TuringModelUpgrade_As14xDoes(int version, string model)
+    {
+        // 1.4.x's Upgrade_File_Structure_For_1_3_1, run on settings older than 131: an 8.8-inch panel 1.3.0 stored as
+        // REV_8INCH_USB is renamed by its USB id. Another id keeps its model.
+        Write("settings.xml", SettingsWith(
+            $"<Version>{version}</Version><TuringPanelDevices>" +
+            """<TuringPanelDevice><DeviceId>USB\VID_1CBE&amp;PID_0088\A1</DeviceId><Model>REV_8INCH_USB</Model></TuringPanelDevice>""" +
+            """<TuringPanelDevice><DeviceId>USB\VID_1CBE&amp;PID_0080\B2</DeviceId><Model>REV_8INCH_USB</Model></TuringPanelDevice>""" +
+            "</TuringPanelDevices>"));
+
+        var devices = Folder().GetState(_kit.Data).Settings!.Devices;
+
+        Assert.Equal([model, "REV_8INCH_USB"], devices.Select(d => d.Fields["Model"]));
+    }
+
     [Fact]
     public void Settings_NeitherReadable_IsImportSettings()
     {
