@@ -68,7 +68,7 @@ public sealed class ConcurrentEditingTests
             Assert.Equal(HttpStatusCode.OK, (await History("tab-a", tabA, kind, initial, "nothing")).Status);
 
         await Task.WhenAll(
-            Task.Run(() => Tab("tab-a", tabA, socketA, new Random(Seed + 1)), Ct),
+            Task.Run(() => Tab("tab-a", tabA, socketA, new Random(Seed + 1), certainRevert: true), Ct),
             Task.Run(() => Tab("tab-b", tabB, socketB, new Random(Seed + 2)), Ct),
             Task.Run(() => Script(new Random(Seed + 3)), Ct));
 
@@ -211,7 +211,7 @@ public sealed class ConcurrentEditingTests
 
         return;
 
-        async Task Tab(string name, HttpClient api, LiveSocket socket, Random rng)
+        async Task Tab(string name, HttpClient api, LiveSocket socket, Random rng, bool certainRevert = false)
         {
             var prefix = Guid.NewGuid().ToString();
             long known = initial;
@@ -339,6 +339,31 @@ public sealed class ConcurrentEditingTests
                             {
                                 known = await RevAsync(api, id, Ct);
                             }
+                        }
+                        break;
+                    }
+                    case "revert" when round < TabActions.Length && certainRevert:
+                    {
+                        // The first cycle's revert, certain to take a step: a profile name the saved document doesn't have,
+                        // then a revert at the revision that answered (the document is dirty there, so an accepted revert
+                        // is a step). Anything that came between them refuses the revert, and the pair is tried again until
+                        // the revert lands. Only this one tab loops without a bound; every other writer does a finite amount
+                        // of work, so the loop ends under any schedule.
+                        for (var attempt = 0; ; attempt++)
+                        {
+                            var op = Profile(new JsonObject { ["name"] = $"Concurrent {name} revert {round}.{attempt}" });
+                            op["baseRev"] = Known();
+                            var dirtied = await Commit(name, api, null, [op], Read, purpose: "revert-base");
+                            if (dirtied.Status != HttpStatusCode.OK)
+                                continue;
+                            var result = await History(name, api, "revert", dirtied.Body.GetProperty("rev").GetInt64(), "revert");
+                            if (result.Status == HttpStatusCode.OK)
+                            {
+                                known = result.Body.GetProperty("rev").GetInt64();
+                                break;
+                            }
+
+                            known = await RevAsync(api, id, Ct);
                         }
                         break;
                     }
