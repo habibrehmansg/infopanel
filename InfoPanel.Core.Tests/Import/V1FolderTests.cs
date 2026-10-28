@@ -377,6 +377,28 @@ public sealed class V1FolderTests : IDisposable
         Assert.NotNull(V1Folder.FindOverlap(v1, _kit.Temp.Combine("shared", "v2")));
     }
 
+    [Fact]
+    public void Overlap_ComparesUnicodeEquivalentNamesAsTheFilesystemDoes()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");
+        // 1.x assets is a link to T/café (composed é); the data folder is T/café/v2 spelled with e and a combining
+        // accent. APFS and HFS+ (macOS) treat both spellings as one name, so the data folder is inside 1.x assets;
+        // Linux filesystems keep them apart, so it isn't.
+        const string composed = "café", decomposed = "café";
+        var v1 = _kit.Temp.Combine("InfoPanel");
+        Directory.CreateDirectory(v1);
+        Directory.CreateDirectory(_kit.Temp.Combine(composed));
+        Directory.CreateSymbolicLink(Path.Combine(v1, "assets"), _kit.Temp.Combine(composed));
+        var data = _kit.Temp.Combine(decomposed, "v2");
+
+        Assert.Equal(OperatingSystem.IsMacOS(), V1Folder.FindOverlap(v1, data) is not null);
+        // And the other way round: the data folder spelled composed, the link's target decomposed.
+        var v1b = _kit.Temp.Combine("InfoPanel-b");
+        Directory.CreateDirectory(v1b);
+        Directory.CreateSymbolicLink(Path.Combine(v1b, "assets"), _kit.Temp.Combine(decomposed));
+        Assert.Equal(OperatingSystem.IsMacOS(), V1Folder.FindOverlap(v1b, _kit.Temp.Combine(composed, "v2")) is not null);
+    }
+
     // ---- settings -----------------------------------------------------------------------------------------------
 
     [Fact]

@@ -80,37 +80,42 @@ public sealed class V1Folder
     /// <c>profiles</c> and <c>assets</c> folders (each entry of that name, ignoring case) must neither hold nor be
     /// inside the data folder or any entry the engine writes in it (its top-level entries and each existing profile
     /// folder), and none of those entries may be or hold the 1.x folder, or be elsewhere inside it than in the data
-    /// folder. A path that can't be resolved (links that loop, a folder that can't be read) is refused.
+    /// folder. A path that can't be resolved (links that loop, a folder that can't be read) is refused. Names compare as
+    /// the platform's default filesystem compares them (<see cref="PathNameRules.Platform"/>): on macOS a composed
+    /// <c>é</c> and <c>e</c> with a combining accent are one name.
     /// </summary>
-    public static string? FindOverlap(string v1Root, string dataRoot)
+    public static string? FindOverlap(string v1Root, string dataRoot) => FindOverlap(v1Root, dataRoot, PathNameRules.Platform);
+
+    /// <summary>As <see cref="FindOverlap(string, string)"/>, comparing names by <paramref name="names"/>.</summary>
+    internal static string? FindOverlap(string v1Root, string dataRoot, PathNameRules names)
     {
         var v1 = Path.GetFullPath(v1Root);
         var data = Path.GetFullPath(dataRoot);
         var problem = $"The 2.0 data folder {data} must not be the 1.x folder {v1}, contain it, or be inside its profiles or assets folder, " +
             "on the paths as given or with links resolved.";
-        if (Overlaps(v1, [.. ProtectedFolders.Select(name => Path.Combine(v1, name))], data, []))
+        if (Overlaps(v1, [.. ProtectedFolders.Select(name => Path.Combine(v1, name))], data, [], names))
             return problem;
 
         try
         {
             var realV1 = PathExtensions.ResolveRealPath(v1Root);
             var realData = PathExtensions.ResolveRealPath(dataRoot);
-            return Overlaps(realV1, RealProtectedFolders(v1Root, realV1), realData, RealDataEntries(dataRoot)) ? problem : null;
+            return Overlaps(realV1, RealProtectedFolders(v1Root, realV1), realData, RealDataEntries(dataRoot), names) ? problem : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return $"The 2.0 data folder {data} and the 1.x folder {v1} can't be checked with links resolved: {ex.Message}";
         }
 
-        static bool Overlaps(string v1, IReadOnlyList<string> protectedFolders, string data, IEnumerable<string> entries) =>
-            v1.IsSubdirectoryOf(data)
-            || protectedFolders.Any(folder => Nested(folder, data))
+        static bool Overlaps(string v1, IReadOnlyList<string> protectedFolders, string data, IEnumerable<string> entries, PathNameRules names) =>
+            names.IsInside(v1, data)
+            || protectedFolders.Any(folder => Nested(folder, data, names))
             || entries.Any(entry =>
-                v1.IsSubdirectoryOf(entry)
-                || protectedFolders.Any(folder => Nested(folder, entry))
-                || (entry.IsSubdirectoryOf(v1) && !entry.IsSubdirectoryOf(data)));
+                names.IsInside(v1, entry)
+                || protectedFolders.Any(folder => Nested(folder, entry, names))
+                || (names.IsInside(entry, v1) && !names.IsInside(entry, data)));
 
-        static bool Nested(string a, string b) => a.IsSubdirectoryOf(b) || b.IsSubdirectoryOf(a);
+        static bool Nested(string a, string b, PathNameRules names) => names.IsInside(a, b) || names.IsInside(b, a);
     }
 
     /// <summary>The real paths of the 1.x <c>profiles</c> and <c>assets</c> folders, and of every entry with those names ignoring case.</summary>
