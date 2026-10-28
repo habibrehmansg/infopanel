@@ -532,6 +532,42 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         await Problem(await api.GetAsync("/api/blobs/sha256:..%2F..%2Fprofiles.json", Ct), HttpStatusCode.NotFound);
     }
 
+    /// <summary>
+    /// A stored file whose bytes don't hash to its id is not the blob: HEAD and GET answer 404, so a client that checks
+    /// with HEAD uploads the bytes again, and that upload repairs it.
+    /// </summary>
+    [Fact]
+    public async Task Blobs_AStoredFileThatDoesNotHashToItsId_Is404_UntilTheRightBytesArePosted()
+    {
+        var png = Png(5, 4);
+        var id = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(png));
+        using var first = await PostBytes("/api/blobs", png);
+        Assert.True(first.StatusCode is HttpStatusCode.Created or HttpStatusCode.OK, first.StatusCode.ToString());
+
+        using var api = Api();
+        Assert.Equal(HttpStatusCode.OK, (await api.SendAsync(new HttpRequestMessage(HttpMethod.Head, $"/api/blobs/{id}"), Ct)).StatusCode);
+        var file = Path.Combine(factory.DataDir, "blobs", id[7..]);
+        var written = File.GetLastWriteTimeUtc(file);
+        var damaged = (byte[])png.Clone();
+        damaged[^1] ^= 1;
+        File.WriteAllBytes(file, damaged);
+        File.SetLastWriteTimeUtc(file, written.AddSeconds(1));
+
+        Assert.Equal(HttpStatusCode.NotFound, (await api.SendAsync(new HttpRequestMessage(HttpMethod.Head, $"/api/blobs/{id}"), Ct)).StatusCode);
+        await Problem(await api.GetAsync($"/api/blobs/{id}", Ct), HttpStatusCode.NotFound);
+
+        // The upload stores it anew (201: it wasn't stored), and both answer again.
+        using var repaired = await PostBytes("/api/blobs", png);
+        Assert.Equal(HttpStatusCode.Created, repaired.StatusCode);
+        Assert.Equal(png, File.ReadAllBytes(file));
+        using var head = await api.SendAsync(new HttpRequestMessage(HttpMethod.Head, $"/api/blobs/{id}"), Ct);
+        Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+        Assert.Equal(png.Length, head.Content.Headers.ContentLength);
+        using var get = await api.GetAsync($"/api/blobs/{id}", Ct);
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        Assert.Equal(png, await get.Content.ReadAsByteArrayAsync(Ct));
+    }
+
     [Fact]
     public async Task Blobs_ThatArentMediaOrBreakAMediaLimit_AreStoredWithAMediaError_AndOverMediaBytesIs413()
     {

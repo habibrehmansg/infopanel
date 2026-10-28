@@ -7,7 +7,8 @@ namespace InfoPanel.Api;
 /// <summary>
 /// Blobs (spec/docs/api.md, "Blobs"): <c>POST /api/blobs</c> stores bytes and answers <c>blobInfo</c> (201 new, 200
 /// already stored, 413 over <c>mediaBytes</c>; the <c>edit</c> scope); <c>HEAD</c> and <c>GET /api/blobs/{id}</c> answer its
-/// size and bytes (<c>read</c>).
+/// size and bytes (<c>read</c>). A stored file whose bytes don't hash to its id is not the blob: both answer 404, and the
+/// next <c>POST</c> of the right bytes stores it again (<see cref="BlobStore"/>'s checked reads).
 /// </summary>
 public static class BlobEndpoints
 {
@@ -31,7 +32,7 @@ public static class BlobEndpoints
 
         api.MapMethods("/{id}", [HttpMethods.Head], (string id, Workspace workspace, HttpContext context) =>
         {
-            if (!BlobStore.IsValidId(id) || workspace.Blobs.Size(id) is not { } size)
+            if (!BlobStore.IsValidId(id) || workspace.Blobs.StoredSize(id) is not { } size)
                 return NotFound(id);
             context.Response.ContentLength = size;
             context.Response.ContentType = "application/octet-stream";
@@ -39,7 +40,7 @@ public static class BlobEndpoints
         }).RequireScope(ApiScope.Read);
 
         api.MapGet("/{id}", (string id, Workspace workspace) =>
-            BlobStore.IsValidId(id) && workspace.Blobs.OpenRead(id) is { } stream
+            BlobStore.IsValidId(id) && workspace.Blobs.OpenVerified(id) is { } stream
                 ? Results.Stream(stream, "application/octet-stream")
                 : NotFound(id)).RequireScope(ApiScope.Read);
     }
