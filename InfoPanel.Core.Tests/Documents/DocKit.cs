@@ -228,7 +228,7 @@ internal static class DocKit
     }
 
     /// <summary>The content as canonical JSON text (member order and number spelling don't matter).</summary>
-    public static string Canonical<T>(T value) => global::InfoPanel.Scenes.CanonicalJson.Write(SpecJson.Write(value));
+    public static string Canonical<T>(T value) => global::InfoPanel.Spec.CanonicalJson.Write(SpecJson.Write(value));
 
     /// <summary>The ids in document order, as "id(parent)".</summary>
     public static string Tree(Generation g)

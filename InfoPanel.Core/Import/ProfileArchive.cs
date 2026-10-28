@@ -203,7 +203,8 @@ public static partial class ProfileArchive
     /// <exception cref="ImportRefusal">
     /// A guard (<c>archive.*</c>, <see cref="ArchiveReader"/>); a 1.x archive (<c>archive.v1</c>); an entry other than
     /// <c>document.json</c> and <c>blobs/{64 hex}</c> (<c>archive.name</c>); no document (<c>archive.document</c>); a
-    /// document over <c>documentBytes</c>, not JSON, or one a create would refuse (its errors under <c>/document</c>); a
+    /// document over <c>documentBytes</c> (in its canonical form; or over <see cref="DocumentStore.ReadCap"/> as stored, not
+    /// read), not JSON, or one a create would refuse (its errors under <c>/document</c>); a
     /// blob the document doesn't refer to (<c>archive.unreferenced</c>), over <c>mediaBytes</c>
     /// (<c>limit.mediaBytes</c>), or whose bytes don't hash to its name (<c>archive.hash</c>).
     /// </exception>
@@ -231,9 +232,11 @@ public static partial class ProfileArchive
         if (documentEntry is null)
             throw new ImportRefusal("archive.document", $"The archive has no {DocumentEntry}.");
 
-        // The document, checked as a create checks one.
-        var documentBytes = reader.Read(documentEntry, workspace.Limits.DocumentBytes)
-            ?? throw new ImportRefusal("limit.documentBytes", $"The document is larger than {workspace.Limits.DocumentBytes} bytes (documentBytes).", "/document");
+        // The document, checked as a create checks one: read within a create body's raw cap, then admitted by its
+        // canonical size (documentBytes, CheckImportDocument).
+        var readCap = DocumentStore.ReadCap(workspace.Limits);
+        var documentBytes = reader.Read(documentEntry, readCap)
+            ?? throw new ImportRefusal("limit.documentBytes", $"The document is larger than {readCap} bytes as stored: documentBytes ({workspace.Limits.DocumentBytes}) plus 64 KiB of room for whitespace and escapes.", "/document");
         JsonDocument json;
         try
         {

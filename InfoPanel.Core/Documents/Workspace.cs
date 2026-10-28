@@ -526,8 +526,9 @@ public sealed class Workspace : IDisposable
 
     /// <summary>
     /// Checks <paramref name="document"/> as <see cref="Create"/> checks a <c>{id, document}</c> body's document (its
-    /// own <c>id</c> replaced, since a create chooses the id), without storing anything: the errors under
-    /// <c>/document</c>, or none when a create with it would store it. An unsupported document is an error here too.
+    /// own <c>id</c> replaced, since a create chooses the id) and admits it by its stored size as a create does
+    /// (<see cref="OverDocumentBytes"/>), without storing anything: the errors under <c>/document</c>, or none when a
+    /// create with it would store it. An unsupported document is an error here too.
     /// </summary>
     public IReadOnlyList<SpecError> CheckImportDocument(JsonElement document)
     {
@@ -539,7 +540,9 @@ public sealed class Workspace : IDisposable
             ? WithId(document, AnyId)
             : JsonDocument.Parse(document.GetRawText(), SpecJson.DocumentOptions);
         var load = Generation.Load(copy.RootElement, 1, Limits, Support, null, jsonChecked: true);
-        return load.Generation is null ? ValidationText.Cap(load.Check.Errors.Select(e => e.Under("/document")).ToList()) : [];
+        if (load.Generation is not { } generation)
+            return ValidationText.Cap(load.Check.Errors.Select(e => e.Under("/document")).ToList());
+        return OverDocumentBytes(generation, "/document", out _) is { } over ? [over] : [];
     }
 
     /// <summary>
@@ -574,16 +577,28 @@ public sealed class Workspace : IDisposable
     }
 
     /// <summary>
+    /// The stored-size admission of a new profile, a create's and an import check's alike: the bytes the store would
+    /// write (<paramref name="bytes"/>, <see cref="Serialize"/>) within <c>documentBytes</c>, else
+    /// <c>limit.documentBytes</c> at <paramref name="path"/>. They are the canonical form validation measured, without
+    /// <c>rev</c> members, so a document that passed its check passes this too; it holds the store to never writing a
+    /// document it won't read back.
+    /// </summary>
+    private SpecError? OverDocumentBytes(Generation generation, string path, out byte[] bytes)
+    {
+        bytes = Serialize(generation);
+        return bytes.Length > Limits.DocumentBytes ? DocumentValidator.Over(path, "documentBytes", bytes.Length, Limits.DocumentBytes) : null;
+    }
+
+    /// <summary>
     /// Stores a checked generation as a new profile and publishes its open document in one step under the workspace
     /// lock (the class's lifetime rule): 409 <c>exists</c> when the id is taken, 404 when a duplicate's
     /// <paramref name="source"/> was deleted meanwhile, 422 <c>limit.documentBytes</c> at <paramref name="path"/> when
-    /// the bytes to store are over the limit (escaping can make them longer than what was sent).
+    /// the bytes to store are over the limit (<see cref="OverDocumentBytes"/>).
     /// </summary>
     private CreateOutcome Store(string id, Generation generation, string path, ProfileDocument? source)
     {
-        var bytes = Serialize(generation);
-        if (bytes.Length > Limits.DocumentBytes)
-            return Invalid([DocumentValidator.Over(path, "documentBytes", bytes.Length, Limits.DocumentBytes)]);
+        if (OverDocumentBytes(generation, path, out var bytes) is { } over)
+            return Invalid([over]);
 
         ProfileDocument doc;
         using (EnterLock())
@@ -716,8 +731,11 @@ public sealed class Workspace : IDisposable
 
     // ---- helpers ---------------------------------------------------------------------------------------------------
 
-    /// <summary>A generation's document as stored: compact JSON without <c>rev</c> members.</summary>
-    public static byte[] Serialize(Generation generation) => JsonSerializer.SerializeToUtf8Bytes(generation.Document, SpecJson.Options);
+    /// <summary>
+    /// A generation's document as stored, saved and exported: its canonical form (spec/docs/limits.md#sizes), without
+    /// <c>rev</c> members. Its length is the generation's measured size (<c>documentBytes</c>).
+    /// </summary>
+    public static byte[] Serialize(Generation generation) => CanonicalJson.Utf8(generation.Document);
 
     private static JsonDocument? Parse(ReadOnlyMemory<byte> body, out IReadOnlyList<SpecError> errors)
     {

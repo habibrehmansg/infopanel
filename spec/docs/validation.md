@@ -4,7 +4,7 @@ Every reader checks content in the same order, and reports problems as `{ path, 
 
 ## Order
 
-Every reader checks what it receives in this order: first the request's size caps on the bytes received (a commit's `limit.commitBytes`, a stored document's `limit.documentBytes` before it is read); then the [JSON-level pass](#json), once, on the content exactly as received, before any member is read for its meaning, taken out or replaced; then the format and its major version; then the size, counts, schema and rules below. Content the JSON-level pass refuses gets its errors and nothing else.
+Every reader checks what it receives in this order: first the read caps on the bytes received or stored (a commit's `limit.commitBytes`; a create's body, an archive's document or a stored document over `documentBytes` plus 64 KiB is `limit.documentBytes`, unread; [sizes](limits.md#sizes)); then the [JSON-level pass](#json), once, on the content exactly as received, before any member is read for its meaning, taken out or replaced; then the format and its major version; then the size (on the canonical form), counts, schema and rules below. Content the JSON-level pass refuses gets its errors and nothing else.
 
 **Scene** (on its own, or inside a document or commit, whose JSON-level pass covers it):
 
@@ -49,7 +49,7 @@ A JSON number means the IEEE 754 64-bit double nearest its text (ties to even), 
 - A member whose type is integer takes any number that reads as a whole double, however it is written (`1.0`, `1e2`, `2.00000000000000001`).
 - Bounds, equality (what a change stamps and the dirty state, [commits](commit.md#what-a-change-stamps)), state keys ([identity](identity.md#runtime-state)) and every other comparison compare these doubles. A value that needs more precision than a double holds is carried as a string.
 
-Where the engine keeps a value as it received it (the opaque members), a number keeps its spelling; elsewhere it may come back spelled otherwise. Its value as a double never changes.
+The engine keeps an opaque member as the same JSON value, not the same text: it stores and exports documents in the canonical form ([sizes](limits.md#sizes)), so a number may come back spelled otherwise (`1.50` as `1.5`, `1e2` as `100`), in opaque members too. Its value as a double never changes.
 
 ## Codes
 

@@ -8,7 +8,7 @@ Every node may have an `id`, unique within its scene (`^[A-Za-z_][A-Za-z0-9_.-]{
 
 The engine keeps a little state between ticks: the value of every **state cell** (the only state in version 1; media playback is a function of the tick clock). State belongs to the renderer, not the document: it is never saved, never part of a revision and never sent to clients.
 
-A state cell's state is keyed by **(item id, cell name, cell definition)**, where the definition is the cell's `init` and `next` in RFC 8785 canonical JSON, each number as the double it reads as ([validation](validation.md#numbers)): `init: 0`, `init: -0` and `init: 0.0` define one cell. So:
+A state cell's state is keyed by **(item id, cell name, cell definition)**, where the definition is the cell's `init` and `next` in the formats' canonical form ([sizes](limits.md#sizes): RFC 8785, each number as the double it reads as, [validation](validation.md#numbers)): `init: 0`, `init: -0` and `init: 0.0` define one cell. So:
 
 | Change | The cell's state |
 |---|---|

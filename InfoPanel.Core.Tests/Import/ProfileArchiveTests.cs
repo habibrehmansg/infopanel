@@ -550,6 +550,87 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.Equal(("json", "/document"), (notJson.Code, notJson.Errors[0].Path));
     }
 
+    [Theory]
+    [InlineData("accented")]
+    [InlineData("spelled")]
+    public void AnArchive_IsRefusedByItsCheck_ExactlyWhenACreateWithItsDocumentIs(string kind)
+    {
+        // The archive check is the create's check: an archive it passes creates, and one a create would refuse is refused
+        // here, with the create's errors. 4,000 é sent unescaped are 8,000 bytes (the store wrote 24,000, escaped, so the
+        // archive passed and its create failed); 800 numbers spelled 1e20 are 4,000 bytes as sent and 17,600 measured.
+        var limits = new SpecLimits { DocumentBytes = 16_000 };
+        var data = kind == "accented"
+            ? new JsonObject { ["text"] = new string('é', 4_000) }
+            : new JsonObject { ["n"] = new JsonArray(Enumerable.Range(0, 800).Select(_ => JsonNode.Parse("1e20")).ToArray()) };
+        var unescaped = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+        var document = Document(data: data);
+        var sent = Encoding.UTF8.GetBytes(document.ToJsonString(unescaped));
+        Assert.True(sent.Length < limits.DocumentBytes);
+
+        string archived;
+        try
+        {
+            Open(Zip(("document.json", sent)), NewWorkspace("archive-" + kind, limits));
+            archived = "";
+        }
+        catch (ImportRefusal refusal)
+        {
+            archived = string.Join("; ", refusal.Errors.Select(e => $"{e.Code} {e.Path}"));
+        }
+        var created = NewWorkspace("create-" + kind, limits).Create(Encoding.UTF8.GetBytes(new JsonObject { ["id"] = Id, ["document"] = document }.ToJsonString(unescaped)));
+        var create = string.Join("; ", created.Invalid?.Errors.Select(e => $"{e.Code} {e.Path}") ?? []);
+
+        Assert.Equal(create, archived);
+        Assert.Equal(kind == "accented" ? "" : "limit.documentBytes /document", archived);
+    }
+
+    [Theory]
+    [InlineData("padded")]
+    [InlineData("spelled")]
+    public void ADocument_IsAdmittedByItsCanonicalSize_AlikeByACreate_TheArchiveCheckAndAReopen(string kind)
+    {
+        // The bytes as sent or stored are only held to a raw read cap, a create body's (documentBytes + 64 KiB); the
+        // canonical size then decides, the same everywhere. Padded with whitespace past documentBytes, a small document
+        // is created, passes the archive check and opens when it is stored by hand; 800 numbers spelled 1e20 (4,000
+        // bytes as sent, 17,600 measured) are refused by all three.
+        var limits = new SpecLimits { DocumentBytes = 16_000 };
+        var compact = Encoding.UTF8.GetBytes((kind == "padded"
+            ? Document()
+            : Document(data: new JsonObject { ["n"] = new JsonArray(Enumerable.Range(0, 800).Select(_ => JsonNode.Parse("1e20")).ToArray()) })).ToJsonString());
+        byte[] sent = kind == "padded" ? [(byte)'{', .. Encoding.ASCII.GetBytes(new string(' ', limits.DocumentBytes)), .. compact.AsSpan(1)] : compact;
+        if (kind == "padded")
+            Assert.InRange(sent.Length, limits.DocumentBytes + 1, limits.DocumentBytes + 64 * 1024 - 1_024);
+        else
+            Assert.True(sent.Length < limits.DocumentBytes);
+
+        byte[] body = [.. Encoding.UTF8.GetBytes($$"""{"id":"{{Id}}","document":"""), .. sent, (byte)'}'];
+        var created = NewWorkspace("create-" + kind, limits).Create(body);
+        var create = string.Join("; ", created.Invalid?.Errors.Select(e => e.Code) ?? []);
+
+        string archived;
+        try
+        {
+            Open(Zip(("document.json", sent)), NewWorkspace("archive-" + kind, limits));
+            archived = "";
+        }
+        catch (ImportRefusal refusal)
+        {
+            archived = string.Join("; ", refusal.Errors.Select(e => e.Code));
+        }
+
+        var paths = new DataPaths(_temp.Combine("reopen-" + kind));
+        Directory.CreateDirectory(paths.ProfileFolder(Id));
+        File.WriteAllText(paths.ProfileOrderFile, $$"""{"order":["{{Id}}"]}""");
+        File.WriteAllBytes(paths.DocumentFile(Id), sent);
+        var restarted = Workspace.Start(paths, new WorkspaceOptions { Limits = limits }, Now);
+        _open.Add(restarted);
+        var entry = Assert.Single(restarted.List());
+        var reopened = entry.Status == "ok" ? "" : entry.Problem!.Code;
+
+        var expected = kind == "padded" ? "" : "limit.documentBytes";
+        Assert.Equal((expected, expected, expected), (create, archived, reopened));
+    }
+
     [Fact]
     public void Limits_DocumentAndMediaBytes()
     {

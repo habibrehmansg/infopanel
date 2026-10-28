@@ -76,4 +76,4 @@ Once per tick, in two phases ([expressions](expressions.md#order-of-evaluation))
 
 ## Limits
 
-A scene is at most 1 MiB of JSON with at most 2,000 nodes nested at most 24 deep, and more limits on expressions, paths, text, media and effects; see [limits](limits.md).
+A scene is at most 1 MiB in the canonical form ([sizes](limits.md#sizes)) with at most 2,000 nodes nested at most 24 deep, and more limits on expressions, paths, text, media and effects; see [limits](limits.md).

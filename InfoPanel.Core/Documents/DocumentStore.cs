@@ -13,7 +13,9 @@ namespace InfoPanel.Documents;
 
 /// <summary>
 /// The saved documents on disk: <c>profiles/{id}/document.json</c> holds a profile's saved generation as the caller's
-/// bytes (parsing and validation are the caller's), <c>profiles.json</c> only the display order (<c>{"order":[ids]}</c>).
+/// bytes (parsing and validation are the caller's; the workspace writes the canonical form, spec/docs/limits.md#sizes,
+/// so a file's size is its document's measured <c>documentBytes</c>), <c>profiles.json</c> only the display order
+/// (<c>{"order":[ids]}</c>).
 /// The folders are the source of truth: <see cref="Open"/> appends a folder missing from the order, drops a listed id
 /// with no folder, and removes what an interrupted operation left (temp files, staging folders, deleted folders), so
 /// there is no consistency between files to keep. Every write goes through <see cref="AtomicFile"/>; a new profile is
@@ -40,7 +42,7 @@ public sealed partial class DocumentStore
     private List<string>? _order;
     private bool _changed;
 
-    /// <param name="limits">Sets <see cref="MaxBytes"/> (<see cref="SpecLimits.DocumentBytes"/>); the defaults when null.</param>
+    /// <param name="limits">Sets <see cref="MaxBytes"/> (<see cref="ReadCap"/> of them); the defaults when null.</param>
     public DocumentStore(DataPaths paths, SpecLimits? limits = null) : this(paths, limits, faults: null)
     {
     }
@@ -48,17 +50,31 @@ public sealed partial class DocumentStore
     internal DocumentStore(DataPaths paths, SpecLimits? limits, IStorageFaults? faults)
     {
         Paths = paths;
-        MaxBytes = (limits ?? SpecLimits.Default).DocumentBytes;
+        MaxBytes = ReadCap(limits ?? SpecLimits.Default);
         _faults = faults;
     }
 
     public DataPaths Paths { get; }
 
     /// <summary>
-    /// The largest document (and order file) read: <c>documentBytes</c>, the largest document the formats allow. A larger
-    /// file is never read whole.
+    /// The largest document (and order file) read: <see cref="ReadCap"/>. A larger file is never read whole; one within it
+    /// is admitted by its canonical size, <c>documentBytes</c> (spec/docs/limits.md#sizes), which a document the workspace
+    /// stored (in the canonical form it was measured in) never exceeds.
     /// </summary>
     public int MaxBytes { get; }
+
+    /// <summary>
+    /// The room a document's bytes as sent or stored (whitespace, escapes, number spellings) may take beyond
+    /// <c>documentBytes</c> before they are read: a create body's allowance for its envelope, 64 KiB.
+    /// </summary>
+    public const int ReadAllowanceBytes = 64 * 1024;
+
+    /// <summary>
+    /// The raw cap on a document's bytes before they are read, the same for a create's body, an archive's document and a
+    /// stored file: <c>documentBytes</c> plus <see cref="ReadAllowanceBytes"/>. It only bounds reading; the canonical size
+    /// decides admission.
+    /// </summary>
+    public static int ReadCap(SpecLimits limits) => limits.DocumentBytes + ReadAllowanceBytes;
 
     /// <summary>The store's lock, which <see cref="BlobSweep"/> holds for the whole sweep.</summary>
     internal Lock SyncRoot => _lock;

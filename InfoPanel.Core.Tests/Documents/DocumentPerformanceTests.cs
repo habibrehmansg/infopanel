@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Core.Tests.Golden;
 using InfoPanel.Core.Tests.Scenes;
@@ -75,6 +76,82 @@ public sealed class DocumentPerformanceTests(ITestOutputHelper output)
         }
         Assert.True(ScenePerformanceTests.Percentiles(commit).P95 <= limit, "setPlacement commit p95");
         Assert.True(ScenePerformanceTests.Percentiles(load).P95 <= limit, "next-generation load p95");
+    }
+
+    /// <summary>
+    /// A valid scene of 1 MiB (<c>sceneBytes</c>) in the canonical form, sent pretty-printed: 32 polylines of 1,000 points
+    /// whose coordinates are whole numbers, short decimals and full-precision doubles (17 digits, the spelling that has to
+    /// be converted), and texts of é and ASCII making up the rest (each é escaped as sent: six bytes, two measured).
+    /// </summary>
+    internal static JsonElement OneMebibyteScene()
+    {
+        var polylines = new List<JsonNode>();
+        for (var p = 0; p < 32; p++)
+        {
+            var points = new JsonArray();
+            for (var i = 0; i < 1_000; i++)
+            {
+                var x = JsonNode.Parse((i * 1.25).ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                var y = JsonNode.Parse((i % 3 == 0 ? i : (p + i) * 0.1 + 0.07).ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                points.Add(new JsonArray(x, y));
+            }
+            polylines.Add(new JsonObject { ["kind"] = "polyline", ["points"] = points, ["stroke"] = new JsonObject { ["paint"] = "#ffffff", ["width"] = 1 } });
+        }
+
+        // The most text that keeps the scene within sceneBytes, by bisection on its length, in texts of at most 4,000.
+        JsonObject Scene(int length)
+        {
+            var nodes = new JsonArray();
+            foreach (var polyline in polylines) nodes.Add(polyline.DeepClone());
+            for (var at = 0; at < length; at += 4_000)
+                nodes.Add(new JsonObject
+                {
+                    ["kind"] = "text", ["y"] = at / 100, ["font"] = new JsonObject { ["family"] = "Inter", ["size"] = 12 }, ["fill"] = "#ffffff",
+                    ["text"] = string.Create(Math.Min(4_000, length - at), 0, (span, _) => { for (var i = 0; i < span.Length; i++) span[i] = i % 4 == 0 ? 'é' : 'x'; }),
+                });
+            return new JsonObject { ["format"] = "infopanel.scene/1", ["nodes"] = nodes };
+        }
+        int low = 0, high = 1_048_576;
+        while (low < high)
+        {
+            var mid = (low + high + 1) / 2;
+            if (GenerationContent.SizeOf(JsonSerializer.SerializeToElement(Scene(mid))) <= 1_048_576) low = mid;
+            else high = mid - 1;
+        }
+        var pretty = Scene(low).ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        using var doc = JsonDocument.Parse(pretty, SpecJson.DocumentOptions);
+        return doc.RootElement.Clone();
+    }
+
+    /// <summary>
+    /// A sizing benchmark, not a commit's: it times only the canonical measure of a 1 MiB scene (<c>sceneBytes</c>), which
+    /// a commit takes once per scene it carries (<see cref="CommitTests.A_commit_measures_each_scene_it_carries_once"/>).
+    /// Validating, compiling and applying the scene are not in it; the whole commit has no bound here. The bound, 20 ms at
+    /// p95, is the same in either build (measured about 9 ms in Debug and 3 ms in Release).
+    /// </summary>
+    [Fact]
+    public void Sizing_benchmark_a_1_MiB_scene_is_measured_within_20_ms()
+    {
+        var scene = OneMebibyteScene();
+        Assert.InRange(GenerationContent.SizeOf(scene), 1_048_000, 1_048_576);
+        const int warmup = 30, samples = 100;
+        List<double> times = [];
+        for (var i = 0; i < warmup + samples; i++)
+        {
+            var t0 = Stopwatch.GetTimestamp();
+            var measured = ValidationText.CanonicalBytes(scene);
+            var t1 = Stopwatch.GetTimestamp();
+            Assert.True(measured > 0);
+            if (i >= warmup) times.Add(Stopwatch.GetElapsedTime(t0, t1).TotalMilliseconds);
+        }
+#if DEBUG
+        const string build = "Debug";
+#else
+        const string build = "Release";
+#endif
+        var (p50, p95, p99) = ScenePerformanceTests.Percentiles(times);
+        output.WriteLine($"{build} sizing a 1 MiB scene ({GenerationContent.SizeOf(scene)} bytes measured, {System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(scene).Length} sent): p50 {p50:0.000} ms, p95 {p95:0.000} ms, p99 {p99:0.000} ms");
+        Assert.True(p95 < 20, $"sizing p95 {p95:0.000} ms");
     }
 
     [Fact]

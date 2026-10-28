@@ -37,6 +37,37 @@ public sealed class CommitTests
         Assert.Same(doc.Saved.Item("b"), doc.Current.Item("b"));
     }
 
+    /// <summary>
+    /// A commit measures each scene it carries once (its <c>sceneBytes</c>, which the generation keeps for
+    /// <c>documentBytes</c>), whether a <c>setDesign</c> or an <c>insert</c> carries it; a scene it doesn't carry isn't
+    /// measured again.
+    /// </summary>
+    [Fact]
+    public void A_commit_measures_each_scene_it_carries_once()
+    {
+        using var doc = Sample();
+        var measured = new Dictionary<string, int>(StringComparer.Ordinal);
+        global::InfoPanel.Spec.CanonicalJson.Measuring = value =>
+        {
+            if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("format", out var format)
+                && format.ValueKind == JsonValueKind.String && format.GetString()!.StartsWith("infopanel.scene/", StringComparison.Ordinal))
+            {
+                var fill = value.GetProperty("nodes")[0].GetProperty("fill").GetString()!;
+                measured[fill] = measured.GetValueOrDefault(fill) + 1;
+            }
+        };
+        try
+        {
+            doc.Ok(Commit(Design("a", Rect("#123456")), Design("b", Rect("#234567")), Insert(Scene("d", 5, 5, Rect("#345678")), "g")));
+        }
+        finally
+        {
+            global::InfoPanel.Spec.CanonicalJson.Measuring = null;
+        }
+
+        Assert.Equal(new Dictionary<string, int> { ["#123456"] = 1, ["#234567"] = 1, ["#345678"] = 1 }, measured);
+    }
+
     [Fact]
     public void An_item_rev_is_its_last_change_and_a_group_keeps_its_own()
     {
@@ -324,8 +355,8 @@ public sealed class CommitTests
         var result = doc.Ok(Commit(Design("a", future), Insert(Scene("pasted", 100, 50, FutureScene()))));
 
         Assert.Equal(["0:a:unsupported", "1:pasted:unsupported"], result.Warnings!.Select(w => $"{w.Op}:{w.Id}:{w.Code}"));
-        Assert.Equal(global::InfoPanel.Scenes.CanonicalJson.Write(Element(future)),
-            global::InfoPanel.Scenes.CanonicalJson.Write(((SceneItem)doc.Current.Item("a")).Scene));
+        Assert.Equal(global::InfoPanel.Spec.CanonicalJson.Write(Element(future)),
+            global::InfoPanel.Spec.CanonicalJson.Write(((SceneItem)doc.Current.Item("a")).Scene));
         Assert.Equal(["a:unsupported", "pasted:unsupported"], doc.Current.Problems.Select(p => $"{p.Id}:{p.Problem}"));
 
         using var runtime = new SceneRuntime(SceneKit.Options());

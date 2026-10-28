@@ -221,28 +221,33 @@ public class DocumentStoreTests
     }
 
     [Fact]
-    public void Read_LargerThanDocumentBytes_Throws()
+    public void Read_LargerThanTheReadCap_Throws()
     {
+        // The raw cap is documentBytes plus the read allowance (the canonical size is the reader's to check): a file of
+        // exactly that many bytes is read, one more is not.
         using var temp = new TempDirectory();
         var paths = new DataPaths(temp.Path);
-        var store = new DocumentStore(paths, Limit(Document(A, "a").Length));
+        var limits = Limit(Document(A, "a").Length);
+        var store = new DocumentStore(paths, limits);
         store.Open();
-        store.Create(A, Document(A, "a"));
-        Assert.Equal(Document(A, "a"), store.Read(A));
+        var atCap = Document(A, "a" + new string('b', DocumentStore.ReadAllowanceBytes));
+        Assert.Equal(DocumentStore.ReadCap(limits), atCap.Length);
+        store.Create(A, atCap);
+        Assert.Equal(atCap, store.Read(A));
 
-        store.Save(A, Document(A, "ab"));
+        store.Save(A, Document(A, "a" + new string('b', DocumentStore.ReadAllowanceBytes + 1)));
 
         Assert.Throws<InvalidDataException>(() => store.Read(A));
     }
 
     [Fact]
-    public void Open_OrderLargerThanDocumentBytes_ListsFoldersById()
+    public void Open_OrderLargerThanTheReadCap_ListsFoldersById()
     {
         using var temp = new TempDirectory();
         var paths = new DataPaths(temp.Path);
         WriteFolder(paths, B);
         WriteFolder(paths, A);
-        File.WriteAllText(paths.ProfileOrderFile, $"{{\"order\":[\"{B}\",\"{A}\"]}}" + new string(' ', 200));
+        File.WriteAllText(paths.ProfileOrderFile, $"{{\"order\":[\"{B}\",\"{A}\"]}}" + new string(' ', 200 + DocumentStore.ReadAllowanceBytes));
 
         Assert.Equal([A, B], new DocumentStore(paths, Limit(200)).Open());
         Assert.Equal([A, B], new DocumentStore(paths).Open());

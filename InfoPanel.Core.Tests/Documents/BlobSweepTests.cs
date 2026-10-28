@@ -147,7 +147,8 @@ public class BlobSweepTests
         var paths = new DataPaths(temp.Path);
         var stores = new Stores(paths).Open();
         var old = Put(stores, "old", Now.AddDays(-30));
-        stores.Documents.Create(A, Document(A, "a"));
+        // Over the store's raw read cap (documentBytes plus the read allowance), so it is not read.
+        stores.Documents.Create(A, Document(A, "a" + new string('b', DocumentStore.ReadAllowanceBytes)));
         var limit = Document(A, "a").Length - 1;
 
         var documents = new DocumentStore(paths, SpecLimits.Default.With(new Dictionary<string, double> { ["documentBytes"] = limit }));

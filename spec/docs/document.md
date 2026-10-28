@@ -27,7 +27,7 @@ A document is one profile: a canvas size, settings, and a tree of items. The eng
 | `window` | The profile's desktop window: `enabled`, `x`/`y` (pixels from the top-left of the matched display), `display` (name and size in pixels; `x`/`y` only tell equal displays apart), `strict` (hide the window when no display matches), `topmost`, `draggable`, `resizable`. A user's drag or resize of the window is an ordinary undoable change of these fields. |
 | `triggerApps` | Process names whose being in front should bring the profile up. Stored and kept; acted on by engines that support it. |
 | `guides` | Editor-only guide lines (below). |
-| `editor` | An opaque object for client data kept with the document, such as defaults for new items. The engine stores and returns it unchanged and never interprets it (at most 64 KiB). |
+| `editor` | An opaque object for client data kept with the document, such as defaults for new items. The engine stores and returns it as the same JSON value and never interprets it (at most 64 KiB). |
 
 ### Guides
 
@@ -52,7 +52,7 @@ A scene item also has:
 
 | Member | Meaning |
 |---|---|
-| `scene` | What it draws. Kept as received; checked on its own ([unsupported content](unsupported.md)). |
+| `scene` | What it draws. Kept as the JSON value received (stored in the canonical form, [below](#size-and-nesting)); checked on its own ([unsupported content](unsupported.md)). |
 | `layout` | Its layout box `{ "w", "h" }`; an absent dimension is automatic ([geometry](geometry.md)). |
 | `bindings` | The sensor each scene input reads ([bindings](bindings.md)). |
 | `source` | How the client produced the scene (below). |
@@ -89,8 +89,12 @@ Revisions are meaningful within one run of the engine: `GET /api/session` report
 
 ## Content identity
 
-Every stored blob (media assets and other files) is named by the SHA-256 of its bytes, `sha256:` followed by 64 lower-case hex digits. Documents and items have a content hash too: the SHA-256 of their JSON in RFC 8785 canonical form (JCS) with the revision metadata removed. That is exactly the `rev` member of the document, of `profile` and of every item (groups' children included), and nothing else: a member named `rev` inside an opaque member (`scene`, `source`, `origin`, `editor`) is content and is hashed. Two items with the same hash are the same item content, whoever wrote them; an engine API that reports hashes uses this definition.
+Every stored blob (media assets and other files) is named by the SHA-256 of its bytes, `sha256:` followed by 64 lower-case hex digits.
 
 ## Size and nesting
 
-A document is at most 16 MiB of JSON with at most 2,000 items, groups nested at most 8 levels and at most 32 bindings per item; see [limits](limits.md) for these and the aggregate budgets across its scenes.
+A document is at most 16 MiB with at most 2,000 items, groups nested at most 8 levels and at most 32 bindings per item; see [limits](limits.md) for these and the aggregate budgets across its scenes. Its size, and that of its scenes, sources, origins and editor data, is measured on its canonical form ([sizes](limits.md#sizes)), however it was sent; its own size leaves out its `rev` members.
+
+The engine stores a document in that form, without its `rev` members, so its stored size is its measured size, and exports a document it can open in the same form. A stored document in another form (written by hand, say) is read the same way, and its next save writes the canonical form.
+
+A document stored before sizes were measured this way is measured the same way, so it can measure larger than it was stored and no longer open: an origin holding 200 numbers written `1e20` is 1,007 bytes as stored and 4,407 in the canonical form, over `originBytes`, and its document is `unreadable`. The formats are a draft until version 1 first ships ([versioning](versioning.md)), so this narrowing is allowed; after that, no limit is measured differently within a major version.

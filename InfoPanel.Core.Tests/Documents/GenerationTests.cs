@@ -14,9 +14,9 @@ using static InfoPanel.Core.Tests.Documents.DocKit;
 namespace InfoPanel.Core.Tests.Documents;
 
 /// <summary>
-/// Generations: their size (<c>documentBytes</c>) is exactly the serialized document; the scene runtime loads one checked
-/// with other limits or support as its own check would; a JSON load takes the document's own <c>rev</c>; and a chain of
-/// JSON loads keeps only the latest scenes.
+/// Generations: their size (<c>documentBytes</c>) is exactly the stored document (its canonical form), measured as
+/// validation measures; the scene runtime loads one checked with other limits or support as its own check would; a JSON
+/// load takes the document's own <c>rev</c>; and a chain of JSON loads keeps only the latest scenes.
 /// </summary>
 [Collection(GoldenCollection.Name)]
 public sealed class GenerationTests
@@ -37,12 +37,39 @@ public sealed class GenerationTests
         }
         """;
 
-    private static long Serialized(Generation g) => JsonSerializer.SerializeToUtf8Bytes(g.Document, SpecJson.Options).LongLength;
+    /// <summary>The document as the store writes it: its canonical form.</summary>
+    private static long Serialized(Generation g) => Workspace.Serialize(g).LongLength;
 
     private static JsonElement Parse(string json)
     {
         using var doc = JsonDocument.Parse(json, SpecJson.DocumentOptions);
         return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public void Validation_and_the_generation_measure_a_scene_alike()
+    {
+        // Whitespace, escapes, members out of order and long number spellings are how the scene was sent, not its size:
+        // both measure its canonical form, so a scene at sceneBytes exactly passes and one byte less refuses it.
+        var escaped = "\\" + "u00e9";
+        var text = $$"""
+            {
+              "nodes" : [ { "kind" : "rect", "w" : 2E1, "h" : 10.000, "fill" : "#ff0000" },
+                          { "fill" : "#ffffff", "text" : "Caf{{escaped}} é ✓ \/", "kind" : "text", "font" : { "size" : 24, "family" : "Inter" } } ],
+              "format" : "infopanel.scene/1"
+            }
+            """;
+        var scene = Parse(text);
+        var size = GenerationContent.SizeOf(scene);
+        Assert.Equal(Encoding.UTF8.GetByteCount(global::InfoPanel.Spec.CanonicalJson.Write(scene)), size);
+        Assert.True(size < Encoding.UTF8.GetByteCount(text) - 50, $"{size} bytes measured, {Encoding.UTF8.GetByteCount(text)} sent");
+
+        var at = SceneValidator.Check(scene, SpecLimits.Default with { SceneBytes = (int)size });
+        Assert.True(at.Status == CheckStatus.Valid, string.Join("; ", at.Errors.Select(e => $"{e.Code} {e.Path} {e.Message}")));
+        var under = SceneValidator.Check(scene, SpecLimits.Default with { SceneBytes = (int)size - 1 });
+        var error = Assert.Single(under.Errors);
+        Assert.Equal(("limit.sceneBytes", ""), (error.Code, error.Path));
+        Assert.Contains($"is {size} bytes", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -96,6 +123,40 @@ public sealed class GenerationTests
     }
 
     /// <summary>
+    /// documentBytes measures what is stored: the document without its revision metadata (the <c>rev</c> of the document,
+    /// of <c>profile</c> and of every item, groups' children included), so a copy of an API document, revisions and all,
+    /// passes at the size it will be stored at. A <c>rev</c> inside an opaque member is content and is measured.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_document_is_measured_without_its_revisions_at_documentBytes_exactly_and_not_one_byte_more(bool withRevisions)
+    {
+        // Already in the canonical form, so its length is its size, whatever the writer does.
+        const string canonical = """{"format":"infopanel.document/1","id":"8a1d4a52-0c1f-4f0b-9d55-2a8f5c2f1e01","items":[{"id":"a","kind":"scene","origin":{"from":"x","rev":6},"placement":{"x":1,"y":2},"scene":{"format":"infopanel.scene/1","nodes":[{"fill":"#ff0000","h":10,"kind":"rect","w":20}]}},{"children":[{"children":[],"id":"empty","kind":"group","placement":{"x":0,"y":0}}],"id":"g","kind":"group","placement":{"x":0,"y":0}}],"profile":{"editor":{"rev":5},"height":100,"name":"Café","width":200}}""";
+        long stored = Encoding.UTF8.GetByteCount(canonical);
+
+        var sent = JsonNode.Parse(canonical)!.AsObject();
+        if (withRevisions)
+        {
+            sent["rev"] = 123_456_789;
+            sent["profile"]!["rev"] = 123_456_788;
+            sent["items"]![0]!["rev"] = 123_456_787;
+            sent["items"]![1]!["rev"] = 123_456_786;
+            sent["items"]![1]!["children"]![0]!["rev"] = 123_456_785;
+        }
+
+        using (var doc = Open(Element(sent)))
+            Assert.Equal(stored, Serialized(doc.Current));
+        foreach (var (limit, fits) in new[] { (stored, true), (stored - 1, false) })
+        {
+            var check = DocumentValidator.Check(Element(sent), SpecLimits.Default with { DocumentBytes = (int)limit }, EngineSupport.All);
+            Assert.True(fits == (check.Status == CheckStatus.Valid), $"limit {limit}: {check.Status} {string.Join("; ", check.Errors.Select(e => $"{e.Code} {e.Message}"))}");
+            if (!fits) Assert.Equal("limit.documentBytes", Assert.Single(check.Errors).Code);
+        }
+    }
+
+    /// <summary>
     /// A body within jsonDepth can still make a document deeper than it: the document nests what an op carries under the
     /// groups it lands in. Seven nested groups put a scene item's scene at level 18 of the document but at level 5 of an
     /// insert's body, so an unsupported scene (kept as sent) holding n nested arrays makes the document 18 + n deep.
@@ -113,7 +174,7 @@ public sealed class GenerationTests
         void Usable(int depth)
         {
             Assert.Equal(depth, doc.Current.Content.JsonDepth);
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(doc.Current.Document, SpecJson.Options);
+            var bytes = Workspace.Serialize(doc.Current);
             Assert.Equal(depth, SpecJson.Depth(bytes));
             Assert.Equal(bytes.LongLength, doc.Current.Content.Bytes);
             doc.Save();

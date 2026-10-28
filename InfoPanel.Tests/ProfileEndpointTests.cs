@@ -470,7 +470,8 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         Assert.Equal(SeededEngineFactory.SourceJson, SourceOf(document));
         Assert.Equal(15, document.GetProperty("items")[0].GetProperty("placement").GetProperty("rotation").GetDouble());
         var exported = await (await api.GetAsync($"/api/profiles/{id}/document", Ct)).Content.ReadAsStringAsync(Ct);
-        Assert.Contains(SeededEngineFactory.SourceJson, exported);
+        // The export is the canonical form the store writes (spec/docs/limits.md#sizes): the same source, members sorted.
+        Assert.Contains("""{"deps":["sha256:1111111111111111111111111111111111111111111111111111111111111111"],"ref":"c1c2b7f0-opaque-reference"}""", exported);
 
         // A copy keeps it; removing it from the copy leaves the original alone.
         var copy = NewId();

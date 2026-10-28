@@ -13,7 +13,14 @@ public sealed record SceneCost(int Nodes, int Work, int TextNodes, int EffectCos
 }
 
 /// <summary>The outcome of <see cref="SceneValidator.Check"/>; <see cref="Scene"/> is set when the scene is valid.</summary>
-public sealed record SceneCheck(CheckStatus Status, Scene? Scene, IReadOnlyList<SpecError> Errors, SceneCost Cost);
+public sealed record SceneCheck(CheckStatus Status, Scene? Scene, IReadOnlyList<SpecError> Errors, SceneCost Cost)
+{
+    /// <summary>
+    /// The scene's size as the check measured it (<c>sceneBytes</c>: its canonical form's length), for the document's
+    /// size to reuse; -1 when the check stopped before measuring it (the JSON-level pass, the format or <c>requires</c>).
+    /// </summary>
+    public long Bytes { get; init; } = -1;
+}
 
 /// <summary>
 /// Checks a scene in the order every reader uses (spec/docs/validation.md): the JSON-level pass, the format and
@@ -42,7 +49,13 @@ public static class SceneValidator
         if (ValidationText.CheckFormat(scene, "scene", support.SceneCapabilities) is { } pre)
             return new SceneCheck(pre.Status, null, [pre.Error], SceneCost.Zero);
 
-        var bytes = ValidationText.Utf8Bytes(scene);
+        var bytes = ValidationText.CanonicalBytes(scene);
+        return CheckMeasured(scene, bytes, limits, support) with { Bytes = bytes };
+    }
+
+    /// <summary><see cref="CheckRead"/> from the size on, with the scene's measured size.</summary>
+    private static SceneCheck CheckMeasured(JsonElement scene, long bytes, SpecLimits limits, EngineSupport support)
+    {
         if (bytes > limits.SceneBytes)
             return Invalid(new SpecError("", "limit.sceneBytes", $"The scene is {bytes} bytes; the limit is {limits.SceneBytes}."));
 

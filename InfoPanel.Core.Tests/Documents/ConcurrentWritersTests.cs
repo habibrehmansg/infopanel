@@ -265,7 +265,7 @@ public sealed class ConcurrentWritersTests
         }
     }
 
-    private static string Canon(JsonNode node) => global::InfoPanel.Scenes.CanonicalJson.Write(JsonSerializer.SerializeToElement(node));
+    private static string Canon(JsonNode node) => global::InfoPanel.Spec.CanonicalJson.Write(JsonSerializer.SerializeToElement(node));
 
     private sealed record Next(OState State, List<string> Changed, List<string> Removed, bool ProfileChanged);
 

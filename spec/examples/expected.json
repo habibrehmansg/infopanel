@@ -92,6 +92,7 @@
   "document/invalid/items.json": {"code": "limit.items", "path": "/items", "limits": {"items": 2}},
   "document/invalid/lone-surrogate.json": {"code": "json", "path": "/profile/name"},
   "document/invalid/missing-placement.json": {"code": "schema", "path": "/items/0"},
+  "document/invalid/origin-bytes-canonical.json": {"code": "limit.originBytes", "path": "/items/0/origin", "limits": {"originBytes": 64}},
   "document/invalid/origin-bytes.json": {"code": "limit.originBytes", "path": "/items/0/origin", "limits": {"originBytes": 16}},
   "document/invalid/profile-size.json": {"code": "schema", "path": "/profile/width"},
   "document/invalid/repeated-member.json": {"code": "schema", "path": "/profile"},

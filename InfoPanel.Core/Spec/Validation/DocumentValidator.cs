@@ -49,7 +49,8 @@ public static class DocumentValidator
         if (ValidationText.CheckFormat(document, "document", support.DocumentCapabilities) is { } pre)
             return new DocumentCheck(pre.Status, null, [pre.Error], []);
 
-        var bytes = ValidationText.Utf8Bytes(document);
+        // Measured as it will be stored: without its revision metadata.
+        var bytes = CanonicalJson.DocumentSize(document);
         if (bytes > limits.DocumentBytes)
             return Invalid([new SpecError("", "limit.documentBytes", $"The document is {bytes} bytes; the limit is {limits.DocumentBytes}.")]);
 
@@ -71,8 +72,8 @@ public static class DocumentValidator
         }
 
         var errors = new List<SpecError>();
-        if (parsed.Profile.Editor is { } editor && ValidationText.Utf8Bytes(editor) > limits.EditorBytes)
-            errors.Add(Over("/profile/editor", "editorBytes", ValidationText.Utf8Bytes(editor), limits.EditorBytes));
+        if (parsed.Profile.Editor is { } editor && ValidationText.CanonicalBytes(editor) is var editorBytes && editorBytes > limits.EditorBytes)
+            errors.Add(Over("/profile/editor", "editorBytes", editorBytes, limits.EditorBytes));
 
         var tree = new ItemTreeRules(limits, support, new HashSet<string>(StringComparer.Ordinal), checkScene);
         tree.Walk(parsed.Items, "/items", 1);
@@ -150,8 +151,8 @@ public static class DocumentValidator
             Count++;
             if (!ids.Add(item.Id)) Errors.Add(new SpecError(p + "/id", "id.duplicate", $"Another item has the id '{item.Id}'."));
             if (depth > limits.GroupDepth) Errors.Add(Over(p, "groupDepth", depth, limits.GroupDepth));
-            if (item.Origin is { } origin && ValidationText.Utf8Bytes(origin) > limits.OriginBytes)
-                Errors.Add(Over(p + "/origin", "originBytes", ValidationText.Utf8Bytes(origin), limits.OriginBytes));
+            if (item.Origin is { } origin && ValidationText.CanonicalBytes(origin) is var originBytes && originBytes > limits.OriginBytes)
+                Errors.Add(Over(p + "/origin", "originBytes", originBytes, limits.OriginBytes));
 
             switch (item)
             {
@@ -174,7 +175,7 @@ public static class DocumentValidator
     internal static void CheckSource(ItemSource? source, string path, SpecLimits limits, List<SpecError> errors)
     {
         if (source is null) return;
-        var bytes = ValidationText.Utf8Bytes(SpecJson.Write(source));
+        var bytes = CanonicalJson.Size(source);
         if (bytes > limits.SourceBytes) errors.Add(Over(path, "sourceBytes", bytes, limits.SourceBytes));
     }
 }
@@ -197,8 +198,8 @@ public static class CommitValidator
         limits ??= SpecLimits.Default;
         support ??= EngineSupport.Base;
 
-        // The request's size cap first, then the JSON-level pass (spec/docs/validation.md).
-        var bytes = ValidationText.Utf8Bytes(commit);
+        // The request's size cap first, on the bytes received, then the JSON-level pass (spec/docs/validation.md).
+        var bytes = ValidationText.ReceivedBytes(commit);
         if (bytes > limits.CommitBytes)
             return Fail(DocumentValidator.Over("", "commitBytes", bytes, limits.CommitBytes));
         if (ValidationText.CheckJson(commit, limits.JsonDepth) is { } json)
@@ -247,8 +248,8 @@ public static class CommitValidator
             {
                 case SetDesignOp design:
                     DocumentValidator.CheckSource(design.Source, p + "/source", limits, errors);
-                    if (design.Origin is { } origin && ValidationText.Utf8Bytes(origin) > limits.OriginBytes)
-                        errors.Add(DocumentValidator.Over(p + "/origin", "originBytes", ValidationText.Utf8Bytes(origin), limits.OriginBytes));
+                    if (design.Origin is { } origin && ValidationText.CanonicalBytes(origin) is var originBytes && originBytes > limits.OriginBytes)
+                        errors.Add(DocumentValidator.Over(p + "/origin", "originBytes", originBytes, limits.OriginBytes));
                     Scene(design.Scene, p + "/scene", i, design.Id);
                     break;
                 case SetBindingsOp bindings when bindings.Bindings.Count > limits.Bindings:
@@ -267,8 +268,8 @@ public static class CommitValidator
                     }
                     break;
                 }
-                case ProfileOp profile when profile.Set.Editor is { } editor && ValidationText.Utf8Bytes(editor) > limits.EditorBytes:
-                    errors.Add(DocumentValidator.Over(p + "/set/editor", "editorBytes", ValidationText.Utf8Bytes(editor), limits.EditorBytes));
+                case ProfileOp profile when profile.Set.Editor is { } editor && ValidationText.CanonicalBytes(editor) is var editorBytes && editorBytes > limits.EditorBytes:
+                    errors.Add(DocumentValidator.Over(p + "/set/editor", "editorBytes", editorBytes, limits.EditorBytes));
                     break;
             }
         }

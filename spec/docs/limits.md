@@ -25,11 +25,19 @@ The numbers below are justified from measurements of the current renderer on its
 
 `jsonDepth` is the deepest nesting of arrays and objects in any document or request body an engine reads, and in any document a commit would produce: a number, string, boolean or null is at depth 0, and an array or object is one level deeper than its deepest member (`[]` and `{}` are at depth 1, `{"a": [1]}` at depth 2). Content nested deeper gets one error, `limit.jsonDepth` at `""`, in place of the schema's ([validation](validation.md#order)), and is checked no further. Opaque members (editor data, a source's data, an origin, a scene of a newer format) are held to it where they sit: a value a commit carries sits deeper in the document than in the commit's body, under the groups it lands in, so a commit is also checked on the document it would produce ([commits](commit.md#what-the-engine-checks-when-it-applies-a-commit)).
 
+## Sizes
+
+The five content sizes, `sceneBytes`, `documentBytes`, `sourceBytes`, `originBytes` and `editorBytes`, are measured on the content's **canonical form**: [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (the JSON Canonicalization Scheme) in UTF-8, every number written as the double it reads as ([validation](validation.md#numbers)). That is: no whitespace; members sorted by their names' UTF-16 code units; strings that escape only `"` and `\` (as `\"` and `\\`) and the control characters U+0000 to U+001F (`\b`, `\t`, `\n`, `\f`, `\r`, the others as `\u00xx` in lower case), every other character in UTF-8 as it is; numbers in ECMAScript's shortest form (`1.0` is `1`, `1e2` is `100`, `-0` is `0`, `0.0000001` is `1e-7`). How the content was sent doesn't count: whitespace, escapes (`"\u00e9"` is the two bytes of `é`) and a number's spelling (`1e20` is 21 digits) are measured as the canonical form has them.
+
+`documentBytes` measures the document without its revision metadata: the `rev` member of the document, of `profile` and of every item (groups' children included), and nothing else; a `rev` inside an opaque member (`scene`, `source`, `origin`, `editor`) is content and is measured. The engine stores documents in the canonical form without those members, so a stored document's size is its measured size, and a document read with its revisions (a copy of one the API returned) is measured as it will be stored.
+
+A document's bytes as received or stored are held only to a read cap, which bounds reading and decides nothing else: a create's body, an archive's document and a stored document are read when they are at most `documentBytes` plus 64 KiB (otherwise `limit.documentBytes`, unread); then the document's canonical size decides. Only `commitBytes` and the size caps on other request bodies measure the bytes received.
+
 ## Scene limits
 
 | Limit | Value | Why this number |
 |---|---|---|
-| `sceneBytes` | 1 MiB of JSON | Two orders above a typical scene (a few KB); bounds parsing and storage. |
+| `sceneBytes` | 1 MiB in the canonical form ([sizes](#sizes)) | Two orders above a typical scene (a few KB); bounds parsing and storage. |
 | `nodes` | 2,000 | Each of the 1.x item kinds needs fewer than 30 nodes (a 101-image gauge is one media node); a 60-segment gauge with ticks about 150. Shapes draw in roughly a microsecond each, so 2,000 stays within a frame. |
 | `depth` | 24 | Node nesting; real scenes need under 8. Bounds recursion. |
 | `inputs` | 32 | Widgets bind one to a few sensors; 32 covers a multi-sensor card. |
@@ -52,13 +60,13 @@ Schema-level bounds also apply: up to 16 gradient stops, 16 dash lengths, 8 tran
 
 | Limit | Value | Why |
 |---|---|---|
-| `documentBytes` | 16 MiB | Fits 2,000 items of ordinary size with room; bounds memory per document (the parsed model is a small multiple of it). |
+| `documentBytes` | 16 MiB in the canonical form ([sizes](#sizes)), as stored | Fits 2,000 items of ordinary size with room; bounds memory per document (the parsed model is a small multiple of it). |
 | `items` | 2,000 | 1.x profiles have tens to a few hundred items. |
 | `groupDepth` | 8 | Group nesting. |
 | `bindings` | 32 per item | As `inputs`. |
-| `sourceBytes` | 256 KiB per item | A client's description of how it produced a scene; usually a few KB. |
-| `originBytes` | 4 KiB | Where an item came from. |
-| `editorBytes` | 64 KiB | Client data on the profile. |
+| `sourceBytes` | 256 KiB per item, in the canonical form | A client's description of how it produced a scene; usually a few KB. |
+| `originBytes` | 4 KiB, in the canonical form | Where an item came from. |
+| `editorBytes` | 64 KiB, in the canonical form | Client data on the profile. |
 | `documentNodes` | 20,000 | Aggregate over the document's scenes: about 10× the reference. |
 | `documentWork` | 200,000 | Aggregate expression work: a few milliseconds per tick at most. |
 | `documentTextNodes` | 1,000 | Aggregate text nodes: even if every string changed every tick, layout stays around 25 ms (estimated at about 25 µs per changed string; to be measured). |

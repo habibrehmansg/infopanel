@@ -148,16 +148,17 @@ internal sealed class GenerationContent
     public IReadOnlyDictionary<string, SpecError> OverBudget { get; }
 
     /// <summary>
-    /// The document's size (<c>documentBytes</c>): exactly the bytes of <see cref="Document"/> as compact JSON
-    /// (<see cref="SpecJson.Options"/>, no <c>rev</c> members), summed from each item's cached size and the separators
-    /// between the top-level items.
+    /// The document's size (<c>documentBytes</c>): exactly the bytes of <see cref="Document"/> (no <c>rev</c> members) in
+    /// the canonical form (<see cref="CanonicalJson"/>), which is what the store writes, summed from each item's cached
+    /// size and the separators between the top-level items. Each member's canonical text is the same wherever the
+    /// member sorts, so the sizes of parts add up to the size of the whole.
     /// </summary>
     public long Bytes => EnvelopeBytes + ItemBytes + Math.Max(0, Document.Items.Count - 1);
 
     /// <summary>The sum of every item's <see cref="ItemEntry.Bytes"/>.</summary>
     public long ItemBytes { get; }
 
-    /// <summary>The serialized size of the document with no items.</summary>
+    /// <summary>The canonical size of the document with no items.</summary>
     public long EnvelopeBytes { get; }
 
     /// <summary>The JSON nesting depth of the document with no items (its profile's editor data included).</summary>
@@ -170,7 +171,7 @@ internal sealed class GenerationContent
     /// </summary>
     public int JsonDepth => _jsonDepth >= 0 ? _jsonDepth : _jsonDepth = MeasureDepth();
 
-    /// <summary>The serialized size of the profile.</summary>
+    /// <summary>The canonical size of the profile.</summary>
     public long ProfileBytes => _profileBytes >= 0 ? _profileBytes : _profileBytes = SizeOf(Document.Profile);
 
     public IReadOnlyList<ItemCheck> Problems => _problems ??= FindProblems();
@@ -191,14 +192,14 @@ internal sealed class GenerationContent
         return new GenerationContent(document, entries, limits, support, overBudget, sum, envelope ?? EnvelopeOf(document));
     }
 
-    /// <summary>The serialized size and depth of <paramref name="document"/> without its items.</summary>
+    /// <summary>The canonical size and the depth of <paramref name="document"/> without its items.</summary>
     public static Envelope EnvelopeOf(Document document)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(document with { Items = [] }, SpecJson.Options);
+        var bytes = CanonicalJson.Utf8(document with { Items = [] });
         return new Envelope(bytes.LongLength, SpecJson.Depth(bytes));
     }
 
-    /// <summary>What the document without its items serializes to: its size and its JSON nesting depth.</summary>
+    /// <summary>The document without its items: its canonical size and its JSON nesting depth.</summary>
     public readonly record struct Envelope(long Bytes, int Depth);
 
     private int MeasureDepth()
@@ -282,7 +283,11 @@ internal sealed class GenerationContent
         return problems;
     }
 
-    internal static long SizeOf<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, SpecJson.Options).LongLength;
+    /// <summary>A model value's size: its canonical form's length (<see cref="CanonicalJson"/>).</summary>
+    internal static long SizeOf<T>(T value) => CanonicalJson.Size(value);
+
+    /// <summary>A JSON value's size (a scene's, as validation measures it): its canonical form's length.</summary>
+    internal static long SizeOf(JsonElement value) => CanonicalJson.Size(value);
 }
 
 /// <summary>
@@ -301,7 +306,7 @@ internal sealed class ItemEntry(Item item, string? parentId, DesignFacts design,
 
     public DesignFacts Design { get; } = design;
 
-    /// <summary>The serialized size of the item without its design and children (placement, bindings, attributes).</summary>
+    /// <summary>The canonical size of the item without its design and children (placement, bindings, attributes).</summary>
     public long OwnBytes
     {
         get
@@ -329,8 +334,8 @@ internal sealed class ItemEntry(Item item, string? parentId, DesignFacts design,
         if (_ownBytes >= 0 && _ownDepth >= 0) return;
         var bytes = Item switch
         {
-            SceneItem s => JsonSerializer.SerializeToUtf8Bytes<Item>(s with { Scene = DesignFacts.EmptyObject, Source = null, Origin = null, Layout = null }, SpecJson.Options),
-            GroupItem g => JsonSerializer.SerializeToUtf8Bytes<Item>(g with { Children = [], Origin = null }, SpecJson.Options),
+            SceneItem s => CanonicalJson.Utf8<Item>(s with { Scene = DesignFacts.EmptyObject, Source = null, Origin = null, Layout = null }),
+            GroupItem g => CanonicalJson.Utf8<Item>(g with { Children = [], Origin = null }),
             _ => [],
         };
         _ownDepth = SpecJson.Depth(bytes);
@@ -338,7 +343,7 @@ internal sealed class ItemEntry(Item item, string? parentId, DesignFacts design,
     }
 
     /// <summary>
-    /// The serialized size of the item without its children's records: for a group, its own members with the separators
+    /// The canonical size of the item without its children's records: for a group, its own members with the separators
     /// between its children. The document's size is the sum of these over every item plus its envelope.
     /// </summary>
     public long Bytes => OwnBytes + Design.Bytes + (Item is GroupItem { Children.Count: > 1 } g ? g.Children.Count - 1 : 0);
@@ -371,7 +376,7 @@ internal sealed class DesignFacts
     public SceneFacts? Scene { get; }
 
     /// <summary>
-    /// The serialized size the design's members add to the item's <see cref="ItemEntry.OwnBytes"/> (which holds an empty
+    /// The canonical size the design's members add to the item's <see cref="ItemEntry.OwnBytes"/> (which holds an empty
     /// scene object and no layout, source or origin), exactly.
     /// </summary>
     public long Bytes { get; }
@@ -435,7 +440,7 @@ internal sealed class SceneFacts
     /// <summary>Why a valid scene couldn't be compiled (it is drawn as invalid); the path is relative to the scene.</summary>
     public SpecError? CompileError { get; }
 
-    /// <summary>The scene's serialized size as part of a document (compact, <see cref="SpecJson.Options"/>).</summary>
+    /// <summary>The scene's size: its canonical form's length, as validation measures it and as it is stored in a document.</summary>
     public long Bytes { get; }
 
     /// <summary>The scene's JSON nesting depth (1 for an empty object).</summary>
@@ -498,8 +503,10 @@ internal sealed class SceneChecker(SpecLimits limits, EngineSupport support, Sce
             _facts[text] = facts;
             return facts;
         }
-        // Every scene checked here is inside a document or commit that passed the JSON-level pass as received.
-        facts = SceneFacts.Create(scene, SceneValidator.CheckRead(scene, limits, support), limits, GenerationContent.SizeOf(scene));
+        // Every scene checked here is inside a document or commit that passed the JSON-level pass as received. Its size
+        // is the one the check measured (one canonical measure a scene), or measured here when the check stopped first.
+        var check = SceneValidator.CheckRead(scene, limits, support);
+        facts = SceneFacts.Create(scene, check, limits, check.Bytes >= 0 ? check.Bytes : GenerationContent.SizeOf(scene));
         _facts[text] = facts;
         return facts;
     }

@@ -37,7 +37,15 @@ internal static class ValidationText
     internal static readonly Regex FormatString = new(@"^infopanel\.(scene|document)/([0-9]{1,4})\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     internal static readonly Regex Capability = new(@"^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*)*\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
-    internal static int Utf8Bytes(JsonElement e) => System.Text.Encoding.UTF8.GetByteCount(e.GetRawText());
+    /// <summary>
+    /// A content size (<c>sceneBytes</c>, <c>originBytes</c>, <c>editorBytes</c>, <c>sourceBytes</c>): the length of its
+    /// canonical form (spec/docs/limits.md#sizes), however it was sent. A document's (<c>documentBytes</c>) leaves out its
+    /// revision metadata: <see cref="CanonicalJson.DocumentSize"/>.
+    /// </summary>
+    internal static long CanonicalBytes(JsonElement e) => CanonicalJson.Size(e);
+
+    /// <summary>A request's size cap (<c>commitBytes</c>): the bytes of the value as received.</summary>
+    internal static long ReceivedBytes(JsonElement e) => System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(e).Length;
 
     /// <summary>
     /// A schema validation's or JSON-level pass's errors as checks report them: <c>schema</c> (a repeated member name
