@@ -241,7 +241,10 @@ public static class V1Assets
         var result = new List<V1AssetUse>();
         foreach (var item in ItemTree.Walk(items))
         {
-            if (item is not ImageDisplayItem { Type: ImageDisplayItem.ImageType.FILE } image || string.IsNullOrEmpty(image.FilePath))
+            // An HTTP sensor image's source is its sensor: its Type hides the base one, which stays FILE, so a leftover
+            // FilePath isn't a file it draws. SensorImageDisplayItem doesn't hide Type and is read as any image.
+            if (item is HttpImageDisplayItem
+                || item is not ImageDisplayItem { Type: ImageDisplayItem.ImageType.FILE } image || string.IsNullOrEmpty(image.FilePath))
                 continue;
             if (seen.Add((image.FilePath, image.RelativePath)))
                 result.Add(new V1AssetUse(image.FilePath, image.RelativePath, pathOf(item) ?? "/items", item.Name));

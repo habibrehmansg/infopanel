@@ -98,6 +98,23 @@ public sealed class V1AssetsTests : IDisposable
     }
 
     [Fact]
+    public void HttpSensorImages_AreNotFileAssets()
+    {
+        // An HTTP sensor image's source is its sensor: its Type hides the base one, which stays FILE, so a leftover
+        // FilePath must not be read as a file.
+        var logo = Asset("logo.png");
+        var xml = Items("""<DisplayItem xsi:type="HttpImageDisplayItem"><Name>Web</Name><FilePath>logo.png</FilePath><RelativePath>true</RelativePath></DisplayItem>""");
+
+        var envelope = _kit.ReadArchive(V1Archive(xml, ("assets/logo.png", logo)));
+
+        Assert.Equal(["httpImage"], envelope.Items.Select(i => i.Kind));
+        Assert.Empty(envelope.Assets);
+        Assert.DoesNotContain(envelope.Diagnostics, d => d.Path.StartsWith("/assets/", StringComparison.Ordinal));
+        Assert.False(_kit.Stored(logo));
+        Assert.Equal(0, _kit.BlobCount);
+    }
+
+    [Fact]
     public void Media_OverMediaBytes_IsNotStored()
     {
         // The workspace's mediaBytes is 32 MiB; one byte over is refused before the media check runs.
