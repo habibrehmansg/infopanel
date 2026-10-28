@@ -69,6 +69,79 @@ public class SensorHistoryTests
     }
 
     [Fact]
+    public async Task TheInterval_FollowsTheGraphRate_Live_AndKeepsTheSamplesTaken()
+    {
+        // 1.4.x: TargetGraphUpdateRate, 1000 ms by default (Models/Settings.cs), read on every graph draw; the graph's
+        // queues are kept when it changes.
+        var time = NewTime();
+        var reader = new CountingReader();
+        var history = new SensorHistory(reader, time);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        Assert.Equal(TimeSpan.FromMilliseconds(1000), history.Interval);
+        Assert.Equal(4096, SensorHistory.MaxSamples);
+
+        history.GetSamples(Key);
+        var run = history.RunAsync(cts.Token);
+        for (var expected = 1; expected <= 2; expected++)
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            var n = expected;
+            await Wait.Until(() => history.GetSamples(Key).Count == n);
+        }
+
+        history.Interval = TimeSpan.FromMilliseconds(250);
+
+        time.Advance(TimeSpan.FromMilliseconds(249));
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        Assert.Equal(2, history.GetSamples(Key).Count);
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        await Wait.Until(() => history.GetSamples(Key).Count == 3);
+        for (var expected = 4; expected <= 5; expected++)
+        {
+            time.Advance(TimeSpan.FromMilliseconds(250));
+            var n = expected;
+            await Wait.Until(() => history.GetSamples(Key).Count == n);
+        }
+
+        Assert.Equal([1, 2, 3, 4, 5], history.GetSamples(Key));
+        Assert.Equal(TimeSpan.FromMilliseconds(250), history.Interval);
+
+        await cts.CancelAsync();
+        await run;
+    }
+
+    [Fact]
+    public async Task AnIntervalGivenAtConstruction_IsTheFirstPeriod()
+    {
+        var time = NewTime();
+        var reader = new CountingReader();
+        var history = new SensorHistory(reader, time, interval: TimeSpan.FromMilliseconds(100));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        history.GetSamples(Key);
+        var run = history.RunAsync(cts.Token);
+        time.Advance(TimeSpan.FromMilliseconds(99));
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        Assert.Empty(history.GetSamples(Key));
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        await Wait.Until(() => history.GetSamples(Key).Count == 1);
+
+        await cts.CancelAsync();
+        await run;
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void AnIntervalThatIsntPositive_IsRefused(int milliseconds)
+    {
+        var history = new SensorHistory(new CountingReader(), NewTime());
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => history.Interval = TimeSpan.FromMilliseconds(milliseconds));
+        Assert.Equal(TimeSpan.FromMilliseconds(1000), history.Interval);
+    }
+
+    [Fact]
     public void OnlyRequestedKeysAreSampled()
     {
         var reader = new CountingReader();

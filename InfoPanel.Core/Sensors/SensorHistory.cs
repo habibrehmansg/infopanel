@@ -9,8 +9,8 @@ namespace InfoPanel.Sensors;
 
 /// <summary>
 /// Samples the sensors someone asked for. <see cref="GetSamples"/> registers interest in a key (seeding it from the
-/// source's backfill when there is one); <see cref="SampleNow"/>, called every <see cref="Interval"/> by
-/// <see cref="RunAsync"/>, appends each tracked key's current value (at most <see cref="MaxSamples"/>, oldest
+/// source's backfill when there is one); <see cref="SampleNow"/>, called every <see cref="Interval"/> (the engine's
+/// graph rate, which may change while it runs; the samples already taken are kept) by <see cref="RunAsync"/>, appends each tracked key's current value (at most <see cref="MaxSamples"/>, oldest
 /// dropped first; buffers grow on demand) and drops keys nobody asked for in <see cref="IdleTimeout"/>. Text and
 /// table readings, and keys with no reading, add no sample. A key with no reading when first asked for is not
 /// tracked, and at most <see cref="MaxSeries"/> keys are (the least recently requested is evicted).
@@ -21,7 +21,9 @@ public sealed class SensorHistory : ISensorHistory
 
     /// <summary>At most this many keys are tracked; a new one evicts the least recently requested.</summary>
     public const int MaxSeries = 1024;
-    public static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(1000);
+
+    /// <summary>The time between samples when none is given: the graph rate's default.</summary>
+    public static readonly TimeSpan DefaultInterval = TimeSpan.FromMilliseconds(1000);
     public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(10);
 
     /// <summary>A ring buffer that starts small and doubles on demand up to <see cref="MaxSamples"/>.</summary>
@@ -81,15 +83,52 @@ public sealed class SensorHistory : ISensorHistory
     private readonly Func<SensorKey, IReadOnlyList<double>>? _backfill;
     private readonly Lock _lock = new();
     private readonly Dictionary<SensorKey, Series> _series = [];
+    private readonly Lock _timerLock = new();
+    private TimeSpan _interval;
+    private PeriodicTimer? _timer;
 
     /// <param name="reader">Where samples are read from (the <see cref="SensorHub"/>).</param>
     /// <param name="time">The clock for idle eviction and <see cref="RunAsync"/>'s timer.</param>
     /// <param name="backfill">Initial values for a key that starts being tracked, oldest first.</param>
-    public SensorHistory(ISensorReader reader, TimeProvider time, Func<SensorKey, IReadOnlyList<double>>? backfill = null)
+    /// <param name="interval">The first <see cref="Interval"/>; <see cref="DefaultInterval"/> when null.</param>
+    public SensorHistory(ISensorReader reader, TimeProvider time, Func<SensorKey, IReadOnlyList<double>>? backfill = null, TimeSpan? interval = null)
     {
         _reader = reader;
         _time = time;
         _backfill = backfill;
+        _interval = Positive(interval ?? DefaultInterval);
+    }
+
+    /// <summary>
+    /// The time between samples. Setting it while <see cref="RunAsync"/> runs re-times its timer at once: the next sample
+    /// comes one new interval after the change. The samples already taken are kept.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">Zero or negative.</exception>
+    public TimeSpan Interval
+    {
+        get
+        {
+            lock (_timerLock)
+                return _interval;
+        }
+        set
+        {
+            Positive(value);
+            lock (_timerLock)
+            {
+                if (value == _interval)
+                    return;
+                _interval = value;
+                if (_timer != null)
+                    _timer.Period = value;
+            }
+        }
+    }
+
+    private static TimeSpan Positive(TimeSpan interval)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(interval, TimeSpan.Zero, nameof(Interval));
+        return interval;
     }
 
     /// <summary>The buffer length of a tracked key's series (grows on demand), or 0 when it isn't tracked. For tests.</summary>
@@ -187,7 +226,9 @@ public sealed class SensorHistory : ISensorHistory
     /// <summary>Calls <see cref="SampleNow"/> every <see cref="Interval"/> until cancelled.</summary>
     public async Task RunAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(Interval, _time);
+        PeriodicTimer timer;
+        lock (_timerLock)
+            _timer = timer = new PeriodicTimer(_interval, _time);
         try
         {
             while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
@@ -195,6 +236,15 @@ public sealed class SensorHistory : ISensorHistory
         }
         catch (OperationCanceledException)
         {
+        }
+        finally
+        {
+            lock (_timerLock)
+            {
+                if (_timer == timer)
+                    _timer = null;
+                timer.Dispose();
+            }
         }
     }
 }

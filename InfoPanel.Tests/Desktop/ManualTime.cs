@@ -22,6 +22,16 @@ public sealed class ManualTime(DateTimeOffset start) : TimeProvider
         return timer;
     }
 
+    /// <summary>
+    /// Whether a timer is due exactly <paramref name="at"/> after the start: lets a test wait until a timer it is about to
+    /// pass is armed, instead of advancing past a timer that hasn't been set yet.
+    /// </summary>
+    public bool HasTimerDueAt(TimeSpan at)
+    {
+        lock (_lock)
+            return _timers.Any(t => t.DueAt == at.Ticks);
+    }
+
     public void Advance(TimeSpan by)
     {
         var now = Interlocked.Add(ref _ticks, by.Ticks);

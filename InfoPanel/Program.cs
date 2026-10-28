@@ -170,10 +170,13 @@ try
 
     builder.Services.AddSingleton(sp => new SensorHub(sp.GetServices<ISensorSource>(), new SensorHubOptions { SimulateUnknown = options.Mock }));
     builder.Services.AddSingleton<ISensorReader>(sp => sp.GetRequiredService<SensorHub>());
+    // The history samples at the graph rate setting, re-timed when it changes.
     builder.Services.AddSingleton(sp =>
     {
         var hub = sp.GetRequiredService<SensorHub>();
-        return new SensorHistory(hub, sp.GetRequiredService<TimeProvider>(), hub.GetBackfill);
+        var history = new SensorHistory(hub, sp.GetRequiredService<TimeProvider>(), hub.GetBackfill, settings.Current.Settings.GraphInterval);
+        settings.Changed += snapshot => history.Interval = snapshot.Settings.GraphInterval;
+        return history;
     });
     builder.Services.AddSingleton<ISensorHistory>(sp => sp.GetRequiredService<SensorHistory>());
     // One media cache for the process, over the blob store; every render loop's runtime and every thumbnail reads it. A

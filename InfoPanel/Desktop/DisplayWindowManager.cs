@@ -1,6 +1,7 @@
 using InfoPanel.Documents;
 using InfoPanel.Hosting;
 using InfoPanel.Output;
+using InfoPanel.Settings;
 using InfoPanel.Spec;
 
 namespace InfoPanel.Desktop;
@@ -21,6 +22,8 @@ namespace InfoPanel.Desktop;
 /// finished drag (<c>window</c> with the <c>x</c>, <c>y</c> and
 /// <c>display</c> of the display holding the window's top-left), one per resize after <see cref="ResizeQuiet"/>
 /// without changes (<c>width</c>, <c>height</c>, and <c>window.x</c>/<c>y</c> relative to the window's display).</item>
+/// <item>Every window is drawn at the engine's frame rate setting (<see cref="SettingsStore"/>); a change re-times every
+/// window's render loop at once, without reattaching it.</item>
 /// <item>All its state lives on the platform's UI thread: every event is posted there (<see cref="IDesktopPlatform.Post"/>).</item>
 /// </list>
 /// Nothing happens with <c>--no-windows</c>; on a platform that can't show windows it logs
@@ -30,6 +33,7 @@ public sealed class DisplayWindowManager(
     IDesktopPlatform platform,
     Workspace workspace,
     RenderService render,
+    SettingsStore settings,
     EngineOptions options,
     TimeProvider time,
     ILogger<DisplayWindowManager> logger) : IHostedService
@@ -52,6 +56,8 @@ public sealed class DisplayWindowManager(
     private readonly string _gestureClient = Guid.NewGuid().ToString("N");
     private int _gestures;
     private IReadOnlyList<DisplayInfo>? _displays;
+    /// <summary>The frame rate the windows' loops were last told of (UI thread).</summary>
+    private int _frameRate;
     private bool _running;
     private bool _stopped;
 
@@ -79,8 +85,10 @@ public sealed class DisplayWindowManager(
         }
 
         _running = true;
+        _frameRate = FrameRate();
         workspace.ProfilesChanged += OnProfilesChanged;
         platform.DisplaysChanged += OnDisplaysChanged;
+        settings.Changed += OnSettingsChanged;
         platform.Post(SyncProfiles);
         return Task.CompletedTask;
     }
@@ -94,6 +102,7 @@ public sealed class DisplayWindowManager(
         _running = false;
         workspace.ProfilesChanged -= OnProfilesChanged;
         platform.DisplaysChanged -= OnDisplaysChanged;
+        settings.Changed -= OnSettingsChanged;
 
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         platform.Post(() =>
@@ -121,6 +130,26 @@ public sealed class DisplayWindowManager(
         {
             logger.LogWarning("Desktop windows didn't close before shutdown");
         }
+    }
+
+    /// <summary>The frames a second every window asks for: the frame rate setting.</summary>
+    private int FrameRate() => settings.Current.Settings.FrameRate;
+
+    /// <summary>Any thread (the settings' lock held): when the frame rate changed, re-times every window's loop, on the UI thread.</summary>
+    private void OnSettingsChanged(SettingsSnapshot snapshot)
+    {
+        var fps = snapshot.Settings.FrameRate;
+        platform.Post(() =>
+        {
+            if (_stopped || fps == _frameRate)
+                return;
+            _frameRate = fps;
+            foreach (var entry in _windows.Values)
+            {
+                if (entry.Sink is { } sink)
+                    render.RequestChanged(sink);
+            }
+        });
     }
 
     /// <summary>Says once that windows can't be shown here, when a profile asks for one.</summary>
@@ -231,7 +260,7 @@ public sealed class DisplayWindowManager(
         var scale = displays.FirstOrDefault()?.Scale ?? 1;
         var window = platform.CreateWindow(settings.Style, new PointRect(0, 0, settings.Width / scale, settings.Height / scale));
         var entry = new WindowEntry(id, doc, window);
-        entry.Sink = new DesktopWindowSink(id, platform, frame => ShowFrame(entry, frame), reason => OnSinkClosed(entry, reason));
+        entry.Sink = new DesktopWindowSink(id, platform, FrameRate, frame => ShowFrame(entry, frame), reason => OnSinkClosed(entry, reason));
         window.UserMoved += () => OnUserMoved(entry);
         window.UserResized += () => OnUserResized(entry);
         window.BackingScaleChanged += () => OnBackingScaleChanged(entry);
