@@ -1,4 +1,5 @@
 {
+  "api/authMessage/invalid/unknown-member.json": {"code": "schema", "path": "/resume"},
   "api/authMessage/invalid/without-token.json": {"code": "schema", "path": ""},
   "api/blobInfo/invalid/media-and-error.json": {"code": "schema", "path": ""},
   "api/blobInfo/invalid/no-media-result.json": {"code": "schema", "path": ""},
@@ -50,6 +51,7 @@
   "api/sensorEntry/invalid/unknown-status.json": {"code": "schema", "path": "/status"},
   "api/sensorValue/invalid/history-of-text.json": {"code": "schema", "path": "/history/0"},
   "api/sensorValue/invalid/unavailable.json": {"code": "schema", "path": "/status"},
+  "api/subscribeMessage/invalid/unknown-member.json": {"code": "schema", "path": "/zoom"},
   "api/subscribeMessage/invalid/without-profile.json": {"code": "schema", "path": ""},
   "api/subscribeMessage/invalid/zero-fps.json": {"code": "schema", "path": "/maxFps"},
   "api/subscribeMessage/invalid/zero-scale.json": {"code": "schema", "path": "/scale"},
@@ -60,7 +62,9 @@
   "api/tokenInfo/invalid/upper-case-id.json": {"code": "schema", "path": "/id"},
   "api/tokenInfo/invalid/with-secret.json": {"code": "schema", "path": "/token"},
   "api/unsubscribeMessage/invalid/other-type.json": {"code": "schema", "path": "/type"},
+  "api/unsubscribeMessage/invalid/unknown-member.json": {"code": "schema", "path": "/all"},
   "api/viewMessage/invalid/fractional-fps.json": {"code": "schema", "path": "/maxFps"},
+  "api/viewMessage/invalid/unknown-member.json": {"code": "schema", "path": "/bounds"},
   "commit/invalid/bad-op-id.json": {"code": "schema", "path": "/opId"},
   "commit/invalid/bindings.json": {"code": "limit.bindings", "path": "/ops/0/bindings", "limits": {"bindings": 1}},
   "commit/invalid/commit-bytes.json": {"code": "limit.commitBytes", "path": "", "limits": {"commitBytes": 64}},

@@ -53,6 +53,31 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
     private static long MoveTo(ProfileDocument doc, int x) => TestDocs.Commit(doc, TestDocs.Place("shape", x, 0)).Rev;
 
     [Fact]
+    public async Task AViewOrUnsubscribeWithAMemberItDoesntDefine_GetsAnError_AndChangesNothing()
+    {
+        // Client messages are closed (spec/docs/versioning.md): a refused message is not acted on in part.
+        var id = NewProfile("Closed messages");
+        var (socket, session, run) = await Start();
+        await socket.ReceiveAsync(new { type = "subscribe", profileId = id, scale = 1, maxFps = 30 });
+        await socket.NextAsync(m => m.IsText("doc"));
+        var sink = session.CurrentSink!;
+        var request = sink.Request;
+
+        await socket.ReceiveTextAsync("""{"type":"view","scale":2,"maxFps":5,"bounds":false}""");
+        var error = await socket.NextAsync(m => m.IsText("error"));
+        Assert.Equal("Unknown member \"bounds\" in view.", error.Json.GetProperty("message").GetString());
+        Assert.Equal(request, sink.Request);
+
+        await socket.ReceiveTextAsync("""{"type":"unsubscribe","all":true}""");
+        error = await socket.NextAsync(m => m.IsText("error"));
+        Assert.Equal("Unknown member \"all\" in unsubscribe.", error.Json.GetProperty("message").GetString());
+        Assert.Same(sink, session.CurrentSink);
+        Assert.True(_render.IsRendering(id));
+
+        await Stop(socket, run);
+    }
+
+    [Fact]
     public async Task ALateFrameOfAReplacedSubscription_NeverDisplacesTheCurrentOnesFrame()
     {
         var a = NewProfile("Late A");

@@ -2,7 +2,7 @@
 
 Schema: `urn:infopanel:api:1` (`schemas/api.schema.json`). Requests: `openapi.json` (OpenAPI 3.1.1), every request below with its parameters and every status it answers, by these definitions. Examples: `examples/api/`, one folder per definition; each `invalid/` folder holds bodies its definition refuses, or that break a check beyond the schema ([below](#checks-beyond-the-schema)).
 
-The engine serves a REST API under `/api` and a preview socket at `/ws`. This page specifies the bodies that carry the formats, the tokens that give access to them, and the engine behaviour behind them; commits, undo, redo, revert and save have their own page ([commits](commit.md)). Members are camelCase, and errors are `application/problem+json` ([errors](#errors)). A client ignores members it doesn't know in what the engine sends ([versioning](versioning.md#the-engine-api)).
+The engine serves a REST API under `/api` and a preview socket at `/ws`. This page specifies the bodies that carry the formats, the tokens that give access to them, and the engine behaviour behind them; commits, undo, redo, revert and save have their own page ([commits](commit.md)). Members are camelCase, and errors are `application/problem+json` ([errors](#errors)). Request bodies and the socket's client messages are closed, and what the engine sends is read tolerantly ([versioning](versioning.md#unknown-members-and-values)).
 
 Every request under `/api` needs a token ([authentication](#authentication)): without a valid one the engine answers 401, and to a token without the scope the request needs, 403 `scopeProblem`. The preview socket takes its token its own way ([below](#connecting)); `GET /healthz` and `GET /auth/{token}` need none.
 
@@ -88,7 +88,7 @@ The engine listens on the loopback interface only, and answers a request whose `
 
 `GET /api/session` describes the engine and this run of it:
 
-- `protocol` is the engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore; members and endpoints are added without changing it.
+- `protocol` is the engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore; members and endpoints are added without changing it ([versioning](versioning.md#the-engine-api)).
 - `instance` is new every time the engine starts. Revisions (a document's `rev`, an item's, a commit's `baseRev`) are only comparable within one instance: those read from an earlier instance mean nothing to the current one, and a commit, undo, redo or revert that names an old instance is refused ([commits](commit.md#baserev-conflicts)).
 - `formatSupport` is what the engine reads: formats, the newest minor version of each, optional capabilities and the limits ([versioning](versioning.md)).
 - `engineVersion`, `platform` (`macos`, `windows`, `linux` or `other`) and `dataDir` (the folder the engine keeps its data in) describe the engine.
@@ -111,7 +111,7 @@ The engine listens on the loopback interface only, and answers a request whose `
 | `unsupported` | The document needs a format major version (`unsupported.format`, at `/format`) or a document capability (`unsupported.capability`, at `/requires/i`) this engine lacks. | `problem`; `name` when the document's `profile.name` is a string of 1–256 characters |
 | `unreadable` | The stored file can't be read (`io`), isn't JSON (`json`), or breaks the document schema or a document limit outside its scenes (the document check's code and path, [validation](validation.md)). | `problem` |
 
-`problem` is the first problem found, `{ path, code, message }`, with a JSON pointer into the stored document. A profile that isn't `ok` is never opened, changed or rewritten: it is listed, and it can be deleted and exported as stored ([unsupported content](unsupported.md#document-level)). Every other request on its document answers 409 `profileStatusProblem`, whose `code` is the status and whose `problem` is the entry's.
+`problem` is the first problem found, `{ path, code, message }`, with a JSON pointer into the stored document. A profile that isn't `ok` is never opened, changed or rewritten: it is listed, and it can be deleted and exported as stored ([unsupported content](unsupported.md#document-level)). Every other request on its document answers 409 `profileStatusProblem`, whose `code` is the status and whose `problem` is the entry's. A client treats a status it doesn't know as a profile it can't open.
 
 ### Creating and duplicating
 
@@ -174,7 +174,7 @@ The engine closes a socket with:
 |---|---|---|
 | 1008 | `auth timeout` | No `auth` message within 5 seconds of the upgrade (the engine sends nothing before it) |
 | 1008 | `auth rejected` | The `auth` message's token isn't valid |
-| 1008 | `auth expected` | The first message isn't an `auth` message (or isn't text, is over 4,096 bytes, or isn't JSON as the formats read it, [below](#messages)) |
+| 1008 | `auth expected` | The first message isn't an `auth` message, with no members but `type` and `token` (or isn't text, is over 4,096 bytes, or isn't JSON as the formats read it, [below](#messages)) |
 | 1008 | `token revoked` | The integration token the socket was opened with was revoked; every other socket stays open |
 | 1009 | `Messages are at most 4096 bytes.` | A client message over 4,096 bytes in UTF-8 |
 | 1001 | `The engine is stopping.` | The engine stops |
@@ -191,7 +191,7 @@ A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`clientMessag
 - `unsubscribe` (`unsubscribeMessage`): no more `doc` messages or frames until the next `subscribe`.
 - `auth` (`authMessage`): only as the first message, above.
 
-The engine reads each message as the formats read JSON ([validation](validation.md#json)) before reading any member of it, members it doesn't define included: a message nested deeper than `jsonDepth`, with a number that rounds to ±∞, an object that repeats a member name (never resolved by keeping one) or a string or member name that isn't Unicode text is one it can't act on. It then ignores members a message doesn't define. It answers `error` to a message it can't act on and keeps the socket open: one that isn't JSON as the formats read it or isn't a JSON object with a string `type`, a binary message, an unknown `type`, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number or a `maxFps` that isn't a whole number from 1 to 2,147,483,647, or a `view` without a subscription.
+The engine reads each message as the formats read JSON ([validation](validation.md#json)) before reading any member of it, members it doesn't define included: a message nested deeper than `jsonDepth`, with a number that rounds to ±∞, an object that repeats a member name (never resolved by keeping one) or a string or member name that isn't Unicode text is one it can't act on. Client messages are closed ([versioning](versioning.md#unknown-members-and-values)): a message with a member its definition doesn't have is one the engine can't act on, and it acts on no part of it. It answers `error` to a message it can't act on and keeps the socket open: one that isn't JSON as the formats read it or isn't a JSON object with a string `type`, a binary message, an unknown `type`, a member the message's definition doesn't have, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number or a `maxFps` that isn't a whole number from 1 to 2,147,483,647, or a `view` without a subscription.
 
 The engine sends (`serverMessage`):
 

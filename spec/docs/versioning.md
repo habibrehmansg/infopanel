@@ -7,11 +7,15 @@
 | Document | `infopanel.document/1` | `urn:infopanel:document:1` |
 | Scene | `infopanel.scene/1` | `urn:infopanel:scene:1` |
 | Expressions, shared definitions | (part of the scene and document formats) | `urn:infopanel:expression:1`, `urn:infopanel:common:1` |
-| Engine API bodies | (versioned with the engine API) | `urn:infopanel:api:1` |
+| Engine API: its bodies, requests, the preview socket's messages and the frame header | (versioned with the engine API, [below](#the-engine-api)) | `urn:infopanel:api:1` |
 
 The format string names the **major** version. Within a major version there are **minor** versions (1.0, 1.1, ...), identified by the capabilities they add. The schema files always describe the newest minor version; each addition says in its description which version and capability introduced it.
 
-Until the engine release that first ships version 1, the formats are a draft and may change in any way. After it, these rules hold.
+## What freezes
+
+Until the first engine release, every format here is a draft and may change in any way. That release freezes them all at once: every format an engine stores, or that passes between versions of the engine and of the clients that talk to it, which is every format in the table above and every one this specification adds before that release. After it, each changes only as this page allows.
+
+A major version's limits ([limits](limits.md)) and error codes ([validation](validation.md#codes)) are frozen with it. The engine's budgets are not part of the formats ([limits](limits.md)), so they are not frozen.
 
 ## Minor versions
 
@@ -22,6 +26,17 @@ A minor version may only **add**, and every addition belongs to a named capabili
 - values of any enumeration, required discriminators included (a new `kind`, `type` or `op`, a new `fit` or `blend` mode); content that uses a new value lists its capability in `requires`, so an engine without it treats the content as unsupported before it reads the value. Existing values never change meaning.
 
 A minor version never removes or renames anything, never changes a default or what existing content means or how it is drawn (beyond fixing a bug against this specification), never makes an optional member required and never changes a limit. Limits are fixed for a major version: every engine that reads version 1 accepts everything within version 1's limits.
+
+### Shipping a minor version
+
+Each addition ships with:
+
+1. its capability, named as below and listed in this page's table with the minor version that defines it;
+2. the schema change, whose description names that version and capability;
+3. the docs that specify it;
+4. examples: a valid one, and an invalid one for each new rule or limit, with its code and path in `examples/expected.json`;
+5. the regenerated types (`types/index.d.ts`);
+6. the engine's `formatSupport` ([API](api.md#session)): the new minor version, and the capability when the engine has it.
 
 ## Capabilities and `requires`
 
@@ -41,8 +56,41 @@ An engine reports what it supports in `GET /api/session` (`urn:infopanel:api:1#/
 
 ## Major versions
 
-Anything else (removing or renaming, changing meaning, changing limits) needs a new major version, with a new format string (`infopanel.scene/2`). An engine may read several major versions. It never converts content from one to another on its own, because that would rewrite content silently; a client may offer the user to.
+Anything else (removing or renaming, changing meaning, changing limits) needs a new major version, with a new format string (`infopanel.scene/2`). A new major version never strands what a user has saved:
+
+- an engine keeps content in a major version it can't read exactly as stored ([unsupported content](unsupported.md)), and never converts content from one major version to another on its own, because that would rewrite it silently;
+- the engine that brings a new major version offers the user an upgrade that converts the content losslessly and keeps the original;
+- it keeps reading the earlier major version only where that conversion can't be exact.
+
+Until a second major version exists, nothing in an engine prepares for one.
+
+## Unknown members and values
+
+Closed where the engine interprets, tolerant where a client reads what an engine of another version sent:
+
+- **Closed:** content (scenes and documents), request bodies and the preview socket's client messages. The engine refuses a member it doesn't know, so an addition sent to an engine that predates it fails out loud instead of being ignored. Additions to content come under a capability, which a reader checks before anything else ([above](#capabilities-and-requires)).
+- **Tolerant:** what the engine sends, that is response bodies, the preview socket's server messages and its frame header. A client ignores members it doesn't know and server messages whose `type` it doesn't know, and treats an HTTP status it doesn't expect by its class (4xx: refused, 5xx: the engine failed). Every enumeration in what the engine sends is open: a later engine may add a value, and the definition's description says what a client does with a value it doesn't know. The schemas list today's members and values, closed, for the engine's own conformance tests; a client reads them openly.
 
 ## The engine API
 
-The engine API bodies (session, sensors, profile list, profile creation and duplication, document, blob, commit, undo, redo and revert, result, problems, token, the preview socket's messages, frame header and change event) and its requests (`openapi.json`: each operation, its parameters and the statuses it answers) are versioned with the engine API, which reports its version in `GET /api/session` (`protocol`, [API](api.md#session)). Within a version it only adds, compatibly: operations, statuses an operation may answer, optional members, and socket message types. A client ignores members it doesn't know in what the engine sends, and socket messages whose `type` it doesn't know, and treats a status it doesn't expect by its class (4xx: refused, 5xx: the engine failed). The engine refuses members it doesn't know in a request body; in a preview socket message it ignores them.
+The engine API's bodies (session, sensors, profile list, profile creation and duplication, document, blob, commit, undo, redo and revert, result, problems, token, the preview socket's messages, frame header and change event) and its requests (`openapi.json`: each operation, its parameters and the statuses it answers) are versioned with the engine API, which reports its version in `GET /api/session` (`protocol`, [API](api.md#session)). Within a version it only adds, compatibly: operations, statuses an operation may answer, optional members, values of the enumerations in what it sends, and socket message types. A member added later to a request body or a client message is refused by an engine that predates it ([above](#unknown-members-and-values)).
+
+Three identifiers name the API's layers, each changing on its own. `protocol` (2, in `GET /api/session` and the socket's `hello`) is the API's version: what its requests, bodies and messages mean; it goes up only for a change a client can't ignore. `infopanel.v1`, the preview socket's subprotocol, names how the socket carries messages: JSON text messages both ways, binary frame messages from the engine. `IPF1`, the first four bytes of every frame message, names a frame message's layout: the magic, the header's length, the JSON header, then the payload. A change to the socket's framing or to the frame layout would take a new subprotocol or a new magic; neither has rules for growing within itself yet.
+
+## Four markers, four questions
+
+Four markers say what a reader may do, each answering its own question; folding two into one would hide different failures.
+
+| Marker | The question it answers |
+|---|---|
+| A scene's or document's `requires` | Can this engine read this saved content? |
+| The data folder's marker, with its own `requires` | Is it safe for this engine to touch this data folder? |
+| `instance` in a request, with `baseRev` | Is this request about the state I read? |
+| `protocol`, and named API features | Can this engine do this operation? |
+
+- **Content `requires`.** A scene that draws media from a provider configured on the engine lists `media.provider`; an engine without it draws the item as a placeholder and keeps the scene exactly as stored. An engine lists the capabilities it has, per format, in `formatSupport`.
+- **The data folder's marker.** The data folder isn't part of these formats: it is the engine's own, documented with the engine. Its marker lists what an engine must understand before it repairs, sweeps or writes anything there: a later engine that kept blob references outside the profiles' folders would list a capability, so an earlier engine stops at start-up instead of deleting blobs it doesn't see referenced. Not in this draft yet.
+- **`instance`.** A commit, undo, redo or revert names the `instance` it read with; one that names another is refused (409, reason `instance`) instead of being applied to state it never saw.
+- **API features.** `protocol` goes up only for a change a client can't ignore. An operation added after version 1 comes under a feature name in `GET /api/session`, and a client offers it only when the engine lists it. Not in this draft yet.
+
+Choosing one: a new saved member, node kind or value is a content capability; a new file or folder holding blob references outside a profile's folder, a data-folder capability; a new operation, an API feature; a new guard on an existing request, `instance` or `baseRev`, never a new marker.

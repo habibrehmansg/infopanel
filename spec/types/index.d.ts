@@ -17,7 +17,7 @@ export interface Session {
    */
   protocol: number;
   instance: InstanceId;
-  /** The operating system the engine runs on. */
+  /** The operating system the engine runs on. A client treats a platform it doesn't know as `other`. */
   platform: "macos" | "windows" | "linux" | "other";
   /**
    * The folder the engine keeps its data in: an absolute path on the engine's machine.
@@ -33,7 +33,7 @@ export interface Session {
  */
 export type InstanceId = string;
 
-/** One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). */
+/** One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open. */
 export type ProfileEntry = ProfileEntryOk | ProfileEntryUnsupported | ProfileEntryUnreadable;
 
 /** A profile whose document the engine opens. A document with invalid or unsupported scenes is ok: those items are placeholders (docs/unsupported.md). */
@@ -88,7 +88,7 @@ export interface ProfileStatusProblem {
   title?: string;
   detail?: string;
   status: 409;
-  /** The profile's status. */
+  /** The profile's status. A client treats a status it doesn't know as a profile it can't open. */
   code: "unsupported" | "unreadable";
   /** The profile's `problem` (profileEntry). */
   problem: ValidationError;
@@ -298,6 +298,7 @@ export interface BlobInfoMediaError {
 
 /** A media asset as the engine read it from its header, without decoding it (docs/validation.md). Sizes are in pixels; an SVG's come from its `width` and `height` or its `viewBox` (docs/svg.md). */
 export interface MediaInfo {
+  /** The asset's format. A client treats a format it doesn't know as it treats the others: media the engine draws. */
   format: "png" | "jpeg" | "gif" | "webp" | "svg";
   /** Range: ≥ 0. */
   width: number;
@@ -495,7 +496,7 @@ export interface Conflict {
   /** The op that conflicts. Absent when the conflict is the whole request's: reason instance, and every conflict of an undo, redo or revert. */
   op?: OpIndex;
   id?: ItemId;
-  /** changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the engine restarted since the client's `instance`. */
+  /** changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the engine restarted since the client's `instance`. A client treats a reason it doesn't know as it treats every conflict: it refetches and rebuilds its change. */
   reason: "changed" | "missing" | "instance";
   /** The item's (or profile's) current rev. */
   rev?: Revision;
@@ -542,7 +543,7 @@ export interface ItemBounds {
   frame: Rect;
   ink: Rect;
   rotation: number;
-  /** Set when the item is drawn as a placeholder: unsupported (needs a newer engine), invalid (breaks a rule or limit), budget (over a document or process budget). */
+  /** Set when the item is drawn as a placeholder: unsupported (needs a newer engine), invalid (breaks a rule or limit), budget (over a document or process budget). A client treats a problem it doesn't know as a placeholder whose reason it can't name. */
   problem?: "unsupported" | "invalid" | "budget";
 }
 
@@ -700,7 +701,7 @@ export interface ScopeProblem {
   detail?: string;
   status: 403;
   code: "scope";
-  /** What the request needs. */
+  /** What the request needs. A client shows a scope it doesn't know by its name: the request is refused all the same. */
   scope: "read" | "edit" | "session";
 }
 
@@ -721,7 +722,7 @@ export interface Problem {
   traceId?: string;
 }
 
-/** One sensor in GET /api/sensors, an array of these: a sensor the engine's sources offer, with the `key` a binding names (docs/bindings.md) and its status now. A client treats a status it doesn't know as no reading. */
+/** One sensor in GET /api/sensors, an array of these: a sensor the engine's sources offer, with the `key` a binding names (docs/bindings.md) and its status now. */
 export interface SensorEntry {
   /**
    * The sensor's key, as a binding's `key` names it. Opaque.
@@ -736,7 +737,7 @@ export interface SensorEntry {
   name: string;
   /** The unit of its values, for people ("°C", "%"); empty when it has none. */
   unit: string;
-  /** `live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `permission-denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed). */
+  /** `live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `permission-denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed). A client treats a status it doesn't know as no reading. */
   status: "live" | "stale" | "unavailable" | "permission-denied" | "simulated" | "missing";
 }
 
@@ -764,11 +765,11 @@ export interface SensorValue {
    * Items: ≤ 4096.
    */
   history?: number[];
-  /** `live`, or `stale` for the last value of a sensor that has stopped updating. */
+  /** `live`, or `stale` for the last value of a sensor that has stopped updating. A client treats a status it doesn't know as no reading. */
   status: "live" | "stale";
 }
 
-/** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. The engine ignores members a message doesn't define, and answers an error message to one it can't act on. */
+/** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket). */
 export type ClientMessage = AuthMessage | SubscribeMessage | ViewMessage | UnsubscribeMessage;
 
 /** The first message on /ws when no `auth.{token}` subprotocol was offered: the token, within 5 seconds of the upgrade. The engine sends nothing before it; a token it doesn't accept, any other message, or none in time closes the socket with 1008. */
@@ -810,7 +811,7 @@ export type FrameRequestScale = number;
  */
 export type FrameRequestFps = number;
 
-/** A text message the engine sends on /ws (docs/api.md#the-preview-socket): a JSON object with a `type`. Frames are binary messages (frameHeader). A client ignores a type and members it doesn't know. */
+/** A text message the engine sends on /ws (docs/api.md#the-preview-socket): a JSON object with a `type`. Frames are binary messages (frameHeader). Read tolerantly (docs/versioning.md#unknown-members-and-values): a client ignores a type and members it doesn't know. */
 export type ServerMessage = HelloMessage | DocEvent | ProfilesMessage | ErrorMessage;
 
 /** The engine's first message on /ws, once the connection is authenticated. */
@@ -833,7 +834,7 @@ export interface ProfilesMessage {
   version: number;
 }
 
-/** Something the engine couldn't do for the client: a message it can't act on (not JSON, binary, an unknown type, a member of the wrong type, a view without a subscription), or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted. The connection stays open. */
+/** Something the engine couldn't do for the client: a message it can't act on (not JSON, binary, an unknown type, a member the message doesn't define or of the wrong type, a view without a subscription), or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted. The connection stays open. */
 export interface ErrorMessage {
   type: "error";
   /** What went wrong, for people. */

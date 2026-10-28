@@ -246,6 +246,10 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     [InlineData("""{"type":"subscribe","profileId":"a\uD800b","scale":0.25}""", "Unicode")]
     [InlineData("""{"type":"unsubscribe","\uD800":1}""", "Unicode")]
     [InlineData("""{"type":"dance","type":"unsubscribe"}""", "Duplicate property \"type\"")]
+    // Client messages are closed: a member a message doesn't define refuses it, before anything else it would check.
+    [InlineData("""{"type":"unsubscribe","zoom":1}""", "Unknown member \"zoom\" in unsubscribe.")]
+    [InlineData("""{"type":"view","scale":2,"zoom":1}""", "Unknown member \"zoom\" in view.")]
+    [InlineData("""{"type":"subscribe","zoom":1}""", "Unknown member \"zoom\" in subscribe.")]
     public async Task BadMessages_GetAnError_AndTheConnectionStaysUsable(string text, string expected)
     {
         await using var client = await Connect();
@@ -263,19 +267,56 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         head.TrimEnd('}') + ",\"pad\":" + new string('[', depth) + new string(']', depth) + "}";
 
     [Fact]
-    public async Task ADeepMemberAMessageDoesntUse_WithinJsonDepth_DoesntBreakSubscribeOrUnsubscribe()
+    public async Task ASubscribeWithAMemberItDoesntDefine_GetsAnError_AndSubscribesNothing()
     {
-        // 100 levels in a member the message doesn't define: within jsonDepth (256), so the message is read as any other.
+        // Client messages are closed (spec/docs/versioning.md): an option a later engine adds, sent to this one, is refused
+        // out loud instead of being ignored.
+        var (id, _) = await CreateProfile("Unknown member preview");
+        await using var client = await Connect();
+        await client.SendTextAsync($$"""{"type":"subscribe","profileId":"{{id}}","scale":0.25,"zoom":2}""", Ct);
+        var error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Equal("Unknown member \"zoom\" in subscribe.", error.GetProperty("message").GetString());
+        Assert.DoesNotContain("doc", client.ReceivedTypes);
+        Assert.False(Render.IsRendering(id));
+
+        await client.SendTextAsync($$"""{"type":"subscribe","profileId":"{{id}}","scale":0.25}""", Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+        await client.ReceiveFrameAsync(Ct);
+    }
+
+    [Fact]
+    public async Task ANameCutShortInAnError_IsCutBetweenWholeCharacters()
+    {
+        // An error quotes at most 64 UTF-16 units of a name; one that would end inside a surrogate pair ends before it, so
+        // the error is Unicode text.
+        var name = new string('a', 63) + "\U0001F600";
+        var cut = new string('a', 63) + "…";
+        await using var client = await Connect();
+
+        await client.SendAsync(new Dictionary<string, object> { ["type"] = "unsubscribe", [name] = 1 }, Ct);
+        var error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Equal($"Unknown member \"{cut}\" in unsubscribe.", error.GetProperty("message").GetString());
+
+        await client.SendAsync(new { type = name }, Ct);
+        error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Equal($"Unknown message type '{cut}'.", error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task ADeepMemberAMessageDoesntDefine_WithinJsonDepth_IsRefusedForTheMember_NotItsDepth()
+    {
+        // 100 levels in a member no message defines: within jsonDepth (256), so the message reads as JSON, then is refused
+        // for the member, as any message with a member it doesn't define is.
         var (id, _) = await CreateProfile("Deep member preview");
         await using var client = await Connect();
         await client.SendTextAsync(WithDeepPad($$"""{"type":"subscribe","profileId":"{{id}}","scale":0.25}""", 100), Ct);
-        await client.ReceiveTextAsync("doc", Ct);
-        await client.ReceiveFrameAsync(Ct);
-        Assert.True(Render.IsRendering(id));
+        var error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Equal("Unknown member \"pad\" in subscribe.", error.GetProperty("message").GetString());
+        Assert.False(Render.IsRendering(id));
 
         await client.SendTextAsync(WithDeepPad("""{"type":"unsubscribe"}""", 100), Ct);
-        await WaitUntil(() => !Render.IsRendering(id));
-        Assert.DoesNotContain("error", client.ReceivedTypes);
+        error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Equal("Unknown member \"pad\" in unsubscribe.", error.GetProperty("message").GetString());
     }
 
     [Fact]

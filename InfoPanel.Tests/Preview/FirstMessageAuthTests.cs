@@ -158,6 +158,8 @@ public class FirstMessageAuthTests(ShortAuthTimeoutEngineFactory factory) : ICla
     [InlineData("""{"type":"auth","token":"wrong","token":""" + "\"" + EngineFactory.Token + "\"}")]
     [InlineData("""{"type":"subscribe","type":"auth","token":""" + "\"" + EngineFactory.Token + "\"}")]
     [InlineData("""{"type":"auth","token":""" + "\"" + EngineFactory.Token + "\",\"\\uD800\":1}")]
+    // Client messages are closed: an auth message with a member it doesn't define is not an auth message, right token or not.
+    [InlineData("""{"type":"auth","token":""" + "\"" + EngineFactory.Token + "\",\"resume\":\"x\"}")]
     public async Task AnotherFirstMessage_ClosesWith1008(string message)
     {
         using var socket = await Connect();
@@ -166,12 +168,13 @@ public class FirstMessageAuthTests(ShortAuthTimeoutEngineFactory factory) : ICla
     }
 
     [Fact]
-    public async Task AuthMessage_WithADeepMemberItDoesntUse_WithinJsonDepth_StartsTheSession()
+    public async Task AuthMessage_WithADeepMemberItDoesntDefine_WithinJsonDepth_ClosesWith1008()
     {
-        // 100 levels in a member auth doesn't define: within jsonDepth (256), so it is read as any other auth message.
+        // 100 levels in a member auth doesn't define: within jsonDepth (256), so it reads as JSON, then is refused for the
+        // member, as any client message with a member it doesn't define is.
         using var socket = await Connect();
         await Send(socket, $$"""{"type":"auth","token":"{{EngineFactory.Token}}","pad":{{new string('[', 100) + new string(']', 100)}}}""");
-        Assert.Equal("hello", (await Receive(socket)).Kind);
+        await AssertClosedWithPolicyViolation(socket, PreviewSocketHandler.AuthFailedMessage);
     }
 
     [Fact]

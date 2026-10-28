@@ -1,7 +1,9 @@
 using InfoPanel.Output;
 using InfoPanel.Spec;
+using InfoPanel.Spec.Schema;
 using System.Buffers.Binary;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace InfoPanel.Preview;
 
@@ -61,8 +63,17 @@ public static class FrameCodec
         return message;
     }
 
-    /// <summary>Splits a message into its header and payload.</summary>
-    /// <exception cref="FormatException">Not a frame message: wrong magic, a length past the end, or a header that isn't the expected JSON.</exception>
+    /// <summary>
+    /// Splits a message into its header and payload. The header is read as a client reads what the engine sends
+    /// (spec/docs/versioning.md): first the whole header as the formats read JSON (spec/docs/validation.md#json), members
+    /// it doesn't know included; then members it doesn't know are skipped, at any depth, and every member it knows is
+    /// read as strictly as the formats read it.
+    /// </summary>
+    /// <exception cref="FormatException">
+    /// Not a frame message: wrong magic, a length past the end, a header the formats' JSON-level pass refuses (nested
+    /// deeper than <c>jsonDepth</c>, a number that rounds to ±∞, a member name repeated in one object, a string or name
+    /// that isn't Unicode text), or one that isn't the expected JSON.
+    /// </exception>
     public static (FrameHeader Header, ReadOnlyMemory<byte> Payload) Decode(ReadOnlyMemory<byte> message)
     {
         var span = message.Span;
@@ -76,7 +87,16 @@ public static class FrameCodec
         FrameHeader header;
         try
         {
-            using var json = JsonDocument.Parse(message.Slice(PrefixSize, (int)length));
+            // Parsed at any depth, so that nesting is the JSON-level pass's jsonDepth, not the parser's own default (64).
+            using var json = JsonDocument.Parse(message.Slice(PrefixSize, (int)length), SpecJson.DocumentOptions);
+            var check = SchemaSet.CheckJson(json.RootElement, SpecLimits.Default.JsonDepth);
+            if (!check.IsValid)
+            {
+                var first = check.Errors[0];
+                throw new FormatException(
+                    $"The frame header is not valid: at {(first.InstancePath.Length == 0 ? "the header" : first.InstancePath)}, {first.Message}");
+            }
+
             header = ReadHeader(json.RootElement);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or NotSupportedException)
@@ -89,6 +109,18 @@ public static class FrameCodec
 
     private static byte[] HeaderJson(FrameHeader header) => JsonSerializer.SerializeToUtf8Bytes(header, SpecJson.Options);
 
+    /// <summary>The formats' options, except that a member the model doesn't have is skipped; a repeated one is still refused.</summary>
+    private static readonly JsonSerializerOptions Tolerant = CreateTolerant();
+
+    private static JsonSerializerOptions CreateTolerant()
+    {
+        var options = new JsonSerializerOptions(SpecJson.Options) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip };
+        options.MakeReadOnly();
+        return options;
+    }
+
     private static FrameHeader ReadHeader(JsonElement root) =>
-        root.ValueKind == JsonValueKind.Object ? SpecJson.Read<FrameHeader>(root) : throw new JsonException("The header is not an object.");
+        root.ValueKind == JsonValueKind.Object
+            ? root.Deserialize<FrameHeader>(Tolerant) ?? throw new JsonException("The header is null.")
+            : throw new JsonException("The header is not an object.");
 }

@@ -64,13 +64,34 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
     [InlineData("""{"type":"subscribe"}""")]
     [InlineData("""{"type":"view","maxFps":2.5}""")]
     [InlineData("""{"type":"dance"}""")]
+    // Client messages are closed (docs/versioning.md): a member a message doesn't define puts it outside the spec.
+    [InlineData("""{"type":"unsubscribe","pad":""}""")]
+    [InlineData("""{"type":"subscribe","profileId":"3dd19c0e-675a-4591-b096-83417853861f","zoom":2}""")]
+    [InlineData("""{"type":"view","bounds":false}""")]
+    [InlineData("""{"type":"auth","token":"t","resume":"x"}""")]
     public void AClientMessageOutsideTheSpec_IsCaught(string text) => Assert.NotNull(SocketContract.CheckClientText(text));
 
     [Fact]
     public void AClientMessageOverTheCap_IsCaught()
     {
-        Assert.Null(SocketContract.CheckClientText("""{"type":"unsubscribe","pad":""}"""));
-        Assert.NotNull(SocketContract.CheckClientText("{\"type\":\"unsubscribe\",\"pad\":\"" + new string('x', PreviewSocketHandler.MaxClientMessageBytes) + "\"}"));
+        // Padded with white space, so the cap is the only thing wrong with the longer one.
+        Assert.Null(SocketContract.CheckClientText("""{"type":"unsubscribe"   }"""));
+        Assert.NotNull(SocketContract.CheckClientText("{\"type\":\"unsubscribe\"" + new string(' ', PreviewSocketHandler.MaxClientMessageBytes) + "}"));
+    }
+
+    [Fact]
+    public void TheMembersTheEngineTakes_AreEachClientMessagesMembers()
+    {
+        // The engine refuses a member a message doesn't define; the members it takes are exactly the schema's.
+        var defs = JsonNode.Parse(SpecSchemas.Files["api.schema.json"])!["$defs"]!;
+        var types = ApiContract.MessageTypes(ApiContract.Instance.Socket.ClientMessage);
+        Assert.Equal(types.Order(), PreviewSocketHandler.ClientMessageMembers.Keys.Order());
+        foreach (var type in types)
+        {
+            var schema = defs[type + "Message"]!;
+            Assert.False((bool)schema["additionalProperties"]!, $"{type}Message is closed.");
+            Assert.Equal(schema["properties"]!.AsObject().Select(p => p.Key).Order(), PreviewSocketHandler.ClientMessageMembers[type].Order());
+        }
     }
 
     [Fact]

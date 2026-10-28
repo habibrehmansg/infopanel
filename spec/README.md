@@ -2,7 +2,7 @@
 
 The formats an InfoPanel engine reads and writes, specified so that any client can produce them: the **document** (a profile and its items), the **scene** each item draws, and the engine API that carries them: its requests and bodies (the session, sensors, the profile list, documents, blobs, commits, conflicts, problems, the preview socket's messages, frames and their bounds). A client writes or generates scenes against this specification; the engine validates, stores and renders them. How a client produces a scene is up to the client.
 
-**Status: draft.** `infopanel.document/1` and `infopanel.scene/1` may still change until the engine release that first ships them. From then on they change only as [versioning](docs/versioning.md) allows.
+**Status: draft** until the first engine release, which freezes every format here at once; from then on they change only as [versioning](docs/versioning.md#what-freezes) allows.
 
 ## Contents
 
@@ -13,7 +13,7 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 | `types/index.d.ts` | TypeScript types, generated from the schemas (`npm run gen`), and `ApiOperations`, generated from `openapi.json`: each request, keyed `'METHOD /path'`, with its `params`, `query`, `request` and `responses` by status. |
 | `docs/` | The specification in prose (below). |
 | `examples/` | Valid and invalid documents, scenes, commits, API bodies (`api/{definition}/`, refused ones in its `invalid/`) and media; `examples/expected.json` gives each invalid example's error code and path. |
-| `tools/` | `gen-types.mjs` (schemas and `openapi.json` to TypeScript, no dependencies), `check.mjs` (the types are current; `openapi.json` keeps to its subset, its `$ref`s resolve, its operation ids are unique, every `api` definition is used by a request or the socket, and `docs/api.md`'s request table lists exactly its operations; with `TSC` set, every valid example type-checks, except those nested deeper than 32 levels, which the compiler can't compare with the recursive JSON types, and so do `ApiOperations` and the response examples assigned to it). |
+| `tools/` | `gen-types.mjs` (schemas and `openapi.json` to TypeScript, no dependencies), `check.mjs` (the types are current; `openapi.json` keeps to its subset, its `$ref`s resolve, its operation ids are unique, every `api` definition is used by a request or the socket, every enumeration in what the engine sends says what a client does with a value it doesn't know, and `docs/api.md`'s request table lists exactly its operations; with `TSC` set, every valid example type-checks, except those nested deeper than 32 levels, which the compiler can't compare with the recursive JSON types, and so do `ApiOperations` and the response examples assigned to it). |
 | `package.json` | `@infopanel/spec`, private for now: use it by path. |
 
 ## The specification
@@ -28,7 +28,7 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 8. [Commits](docs/commit.md): per-item per-field ops, what a change stamps, `baseRev`, `opId` and the retry window, coalescing, 409 and 422; undo, redo, revert and save.
 9. [Engine API](docs/api.md): the requests, errors and tokens, the session, fonts and sensors, the profile list and its statuses, creating, duplicating, deleting and exporting profiles, documents, blobs, the preview socket's messages, frames and change events.
 10. [Unsupported content](docs/unsupported.md): placeholders, never rewriting what an engine can't read.
-11. [Versioning](docs/versioning.md): formats, minor and major versions, capabilities and `requires`.
+11. [Versioning](docs/versioning.md): formats, what freezes, minor versions and what each ships with, capabilities and `requires`, major versions, unknown members and values, the engine API and its identifiers, the four markers.
 12. [Validation](docs/validation.md): the order of checks and every error code.
 13. [Limits and budgets](docs/limits.md): the numbers, and the performance budgets they serve.
 14. [SVG profile](docs/svg.md): the restricted SVG that media assets may use.

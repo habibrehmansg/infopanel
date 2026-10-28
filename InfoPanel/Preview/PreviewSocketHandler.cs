@@ -38,8 +38,8 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// <list type="bullet">
 /// <item>Client → server (JSON text, at most <see cref="MaxClientMessageBytes"/>; the spec's <c>clientMessage</c>):
 /// <c>subscribe {profileId, scale?, maxFps?}</c>, <c>view {scale?, maxFps?}</c>, <c>unsubscribe</c>. Each is read as the
-/// formats read JSON first (<see cref="ReadClientMessage"/>), every member included; members a message doesn't define
-/// are then ignored.</item>
+/// formats read JSON first (<see cref="ReadClientMessage"/>), every member included. Client messages are closed
+/// (<see cref="ClientMessageMembers"/>): one with a member it doesn't define is refused, never acted on in part.</item>
 /// <item>Server → client (the spec's <c>serverMessage</c>, written from its models): <c>hello</c> on connect
 /// (<c>protocol</c> 2); <c>doc</c> (<c>docEvent</c>)
 /// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
@@ -204,7 +204,8 @@ public static class PreviewSocketHandler
         var root = json.RootElement;
         if (root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "auth"
-            || !root.TryGetProperty("token", out var token) || token.ValueKind != JsonValueKind.String)
+            || !root.TryGetProperty("token", out var token) || token.ValueKind != JsonValueKind.String
+            || UnknownMember(root, "auth") != null)
         {
             return AuthFailedMessage;
         }
@@ -218,6 +219,32 @@ public static class PreviewSocketHandler
 
     /// <summary>The <c>error</c> for a message that isn't a JSON object with a string <c>type</c>.</summary>
     internal const string NotAMessage = "Messages must be JSON objects with a \"type\".";
+
+    /// <summary>
+    /// The members each client message defines, by <c>type</c> (the spec's <c>clientMessage</c>). Client messages are
+    /// closed, as request bodies are (spec/docs/versioning.md): a message with any other member is refused, so a member a
+    /// later engine adds, sent to this one, fails out loud instead of being ignored.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, string[]> ClientMessageMembers = new Dictionary<string, string[]>
+    {
+        ["auth"] = ["type", "token"],
+        ["subscribe"] = ["type", "profileId", "scale", "maxFps"],
+        ["view"] = ["type", "scale", "maxFps"],
+        ["unsubscribe"] = ["type"],
+    };
+
+    /// <summary>The first member of <paramref name="message"/> (an object) that a <paramref name="type"/> message doesn't define, else null.</summary>
+    internal static string? UnknownMember(JsonElement message, string type)
+    {
+        var members = ClientMessageMembers[type];
+        foreach (var member in message.EnumerateObject())
+        {
+            if (Array.IndexOf(members, member.Name) < 0)
+                return member.Name;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// A client message read as the formats read JSON (spec/docs/validation.md#json), before any member is read: parsed
@@ -464,6 +491,12 @@ internal sealed class PreviewSession
             }
 
             var type = typeElement.GetString()!;
+            if (type is "subscribe" or "view" or "unsubscribe" && PreviewSocketHandler.UnknownMember(root, type) is { } unknown)
+            {
+                SendError($"Unknown member \"{Truncate(unknown)}\" in {type}.");
+                return;
+            }
+
             switch (type)
             {
                 case "subscribe":
@@ -808,5 +841,7 @@ internal sealed class PreviewSession
 
     private bool CanSend => _socket.State is WebSocketState.Open or WebSocketState.CloseReceived;
 
-    private static string Truncate(string value) => value.Length <= 64 ? value : value[..64] + "…";
+    /// <summary>At most 64 UTF-16 units of <paramref name="value"/>, cut before a surrogate pair rather than inside it, so an error stays Unicode text.</summary>
+    private static string Truncate(string value) =>
+        value.Length <= 64 ? value : value[..(char.IsHighSurrogate(value[63]) ? 63 : 64)] + "…";
 }

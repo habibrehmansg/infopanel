@@ -1,8 +1,9 @@
 // node tools/check.mjs
 // Checks that types/index.d.ts is what tools/gen-types.mjs generates from schemas/ and openapi.json (which checks both
 // against their subsets, every $ref and the operation ids); that every definition of the API schema is used by a request
-// or the preview socket in openapi.json; and that docs/api.md's request table lists exactly openapi.json's operations,
-// one row each. With TSC set to a TypeScript compiler (TSC=path/to/tsc), also type-checks the types, every valid example
+// or the preview socket in openapi.json; that every enumeration in what the engine sends says what a client does with a
+// value it doesn't know (docs/versioning.md#unknown-members-and-values); and that docs/api.md's request table lists
+// exactly openapi.json's operations, one row each. With TSC set to a TypeScript compiler (TSC=path/to/tsc), also type-checks the types, every valid example
 // against them (each scene, document, commit and API body under examples/ is assigned to its type as an object
 // literal, so excess or misspelt members fail), and ApiOperations: its keys are the operations, and every example of a
 // definition an operation names is assigned to that operation's request or response. Examples nested deeper than tsc
@@ -79,6 +80,60 @@ const unused = Object.keys(apiSchema.$defs).filter((def) => !reached.has(`${API_
 if (unused.length > 0) {
   fail(`schemas/api.schema.json: ${unused.map((d) => `$defs/${d}`).join(', ')} ${unused.length === 1 ? 'is' : 'are'} used by no request or socket message in openapi.json.`);
 }
+
+// ---- every enumeration the engine sends says what a client does with a value it doesn't know ----
+// What the engine sends (every response body, the socket's server messages and frame header) is read tolerantly: a later
+// engine may add a value to any enumeration in it (docs/versioning.md#unknown-members-and-values), so each one, inline in
+// a response (an array of strings, a header) or reached through the API schema's own definitions, has a description
+// saying what a client does with a value it doesn't know. Content (the other schemas) grows under `requires` instead.
+
+const pointer = (key) => String(key).replaceAll('~', '~0').replaceAll('/', '~1');
+const sentDefs = [];
+const walked = new Set();
+const silent = [];
+let enums = 0;
+/** Walks a schema node the engine sends for enumerations; `local`: in api.schema.json, where `#/$defs/…` is its own. */
+const walkSent = (value, at, local) => {
+  if (Array.isArray(value)) value.forEach((v, i) => walkSent(v, `${at}/${i}`, local));
+  else if (value !== null && typeof value === 'object') {
+    if (Array.isArray(value.enum)) {
+      enums++;
+      if (!/\bdoesn't know\b/.test(value.description ?? '')) silent.push(at);
+    }
+    for (const [k, v] of Object.entries(value)) {
+      if (k !== '$ref') walkSent(v, `${at}/${pointer(k)}`, local);
+      else if (typeof v === 'string') {
+        const m = (local ? /^(?:urn:infopanel:api:1)?#\/\$defs\/([^/]+)$/ : /^urn:infopanel:api:1#\/\$defs\/([^/]+)$/).exec(v);
+        if (m) sentDefs.push(m[1]);
+      }
+    }
+  }
+};
+// Each response is walked itself as well as through the definitions it refers to; responses shared through
+// components.responses are answers too.
+walkSent(openapi.json.components?.responses ?? {}, 'openapi.json#/components/responses', false);
+for (const [path, item] of Object.entries(openapi.json.paths)) {
+  for (const [method, op] of Object.entries(item)) {
+    if (op === null || typeof op !== 'object' || Array.isArray(op)) continue;
+    const at = `openapi.json#/paths/${pointer(path)}/${pointer(method)}`;
+    walkSent(op.responses ?? {}, `${at}/responses`, false);
+    const socket = op['x-infopanel-socket'];
+    if (socket) {
+      walkSent(socket.serverMessage, `${at}/x-infopanel-socket/serverMessage`, false);
+      walkSent(socket.frameHeader, `${at}/x-infopanel-socket/frameHeader`, false);
+    }
+  }
+}
+while (sentDefs.length > 0) {
+  const def = sentDefs.pop();
+  if (walked.has(def)) continue;
+  walked.add(def);
+  walkSent(apiSchema.$defs[def], `schemas/api.schema.json#/$defs/${pointer(def)}`, true);
+}
+if (silent.length > 0) {
+  fail(`The engine sends ${silent.length === 1 ? 'this enumeration' : 'these enumerations'}, but the description doesn't say what a client does with a value it doesn't know ("… it doesn't know …"):\n${silent.join('\n')}`);
+}
+console.log(`What the engine sends: ${enums} enumerations, each with a client's fallback.`);
 
 // ---- docs/api.md's request table lists exactly the operations ----
 

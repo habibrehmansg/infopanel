@@ -107,10 +107,71 @@ public class FrameCodecTests
             { "not an object", WithHeader("[1,2]") },
             { "missing field", WithHeader("""{"profileId":"0f8fad5b-d9cb-469f-a165-70867728950e","rev":1}""") },
             { "wrong type", WithHeader(Json(Header).Replace("\"rev\":42", "\"rev\":\"42\"")) },
-            { "unknown member", WithHeader(Json(Header).Replace("\"rev\":42", "\"rev\":42,\"revision\":42")) },
+            // A member it doesn't know is skipped (below); one it knows, repeated, is still refused, never resolved to one.
+            { "repeated member", WithHeader(Json(Header).Replace("\"rev\":42", "\"rev\":42,\"rev\":42")) },
             { "bounds not an array", WithHeader(Json(Header with { ItemBounds = [] }).Replace("\"itemBounds\":[]", "\"itemBounds\":{}")) },
             { "bound missing a field", WithHeader(Json(Header).Replace(",\"rotation\":0", "")) },
+            // The whole header is JSON as the formats read it (spec/docs/validation.md#json) before any member is read or
+            // skipped: a member it doesn't know is no exception.
+            { "repeated name in an unknown member", WithAdded("\"future\":{\"x\":1,\"x\":2}") },
+            { "unknown member repeated", WithAdded("\"future\":1,\"future\":2") },
+            { "+infinity in an unknown member", WithAdded("\"future\":1e400") },
+            { "-infinity in an unknown member", WithAdded("\"future\":[-1e400]") },
+            { "lone surrogate in an unknown member", WithAdded("\"future\":\"\\ud800\"") },
+            { "lone surrogate in an unknown member's name", WithAdded("\"\\udc00\":1") },
         };
+    }
+
+    /// <summary>
+    /// The frame header is what the engine sends, read tolerantly (spec/docs/versioning.md): a reader skips members it
+    /// doesn't know, at any depth, so a later engine can add one without breaking an earlier reader. Every member it
+    /// knows is read as strictly as before (<see cref="Malformed"/>).
+    /// </summary>
+    [Fact]
+    public void AHeaderWithMembersItDoesntKnow_Decodes_AsWithoutThem()
+    {
+        var json = Json(Header)
+            .Replace("\"rev\":42,", "\"rev\":42,\"revision\":{\"of\":[42,{\"at\":null}]},")
+            .Replace("\"rotation\":0", "\"rotation\":0,\"opacity\":0.5")
+            .Replace("\"x\":648,", "\"x\":648,\"z\":3,");
+        foreach (var added in new[] { "\"revision\"", "\"opacity\"", "\"z\"" })
+            Assert.Contains(added, json);
+
+        var (header, payload) = FrameCodec.Decode(WithHeader(json));
+
+        Assert.Equal(Text(Header), Text(header));
+        Assert.Equal(Header.ItemBounds, header.ItemBounds);
+        Assert.Equal(new byte[2], payload.ToArray());
+    }
+
+    /// <summary>
+    /// An unknown member nests as deeply as the formats allow (<c>jsonDepth</c>, 256, the header object counting as 1):
+    /// 100 levels and the whole limit decode; one level more is refused for the limit.
+    /// </summary>
+    [Theory]
+    [InlineData(100, true)]
+    [InlineData(255, true)]
+    [InlineData(256, false)]
+    public void AnUnknownMemberNested_UpToJsonDepth_IsSkipped_AndDeeperIsRefused(int arrays, bool decodes)
+    {
+        var message = WithAdded("\"future\":" + new string('[', arrays) + new string(']', arrays));
+
+        if (decodes)
+            Assert.Equal(Text(Header), Text(FrameCodec.Decode(message).Header));
+        else
+            Assert.Contains("nested deeper than 256 levels", Assert.Throws<FormatException>(() => FrameCodec.Decode(message)).Message);
+    }
+
+    /// <summary>An enumeration's value it doesn't know is read as it is, for the reader's own fallback (spec/docs/versioning.md).</summary>
+    [Fact]
+    public void ValuesItDoesntKnow_DecodeAsTheyAre()
+    {
+        var json = Json(Header).Replace("\"problem\":\"invalid\"", "\"problem\":\"overheated\"").Replace("\"encoding\":\"png\"", "\"encoding\":\"tiles\"");
+
+        var (header, _) = FrameCodec.Decode(WithHeader(json));
+
+        Assert.Equal("overheated", header.ItemBounds[1].Problem);
+        Assert.Equal("tiles", header.Encoding);
     }
 
     [Theory]
@@ -126,6 +187,9 @@ public class FrameCodecTests
         var prefix = FrameCodec.EncodePrefix(header);
         return Encoding.UTF8.GetString(prefix, 8, prefix.Length - 8);
     }
+
+    /// <summary>The header with <paramref name="members"/> (JSON text) added after <c>rev</c>.</summary>
+    private static byte[] WithAdded(string members) => WithHeader(Json(Header).Replace("\"rev\":42", "\"rev\":42," + members));
 
     private static byte[] WithHeader(string json)
     {

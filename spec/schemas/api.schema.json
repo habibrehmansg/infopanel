@@ -16,7 +16,7 @@
           "minimum": 1
         },
         "instance": { "$ref": "#/$defs/instanceId" },
-        "platform": { "description": "The operating system the engine runs on.", "enum": ["macos", "windows", "linux", "other"] },
+        "platform": { "description": "The operating system the engine runs on. A client treats a platform it doesn't know as `other`.", "enum": ["macos", "windows", "linux", "other"] },
         "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
         "formatSupport": { "$ref": "#/$defs/formatSupport" }
       }
@@ -29,7 +29,7 @@
     },
 
     "profileEntry": {
-      "description": "One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md).",
+      "description": "One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open.",
       "oneOf": [
         { "$ref": "#/$defs/profileEntryOk" },
         { "$ref": "#/$defs/profileEntryUnsupported" },
@@ -95,7 +95,7 @@
         "title": { "type": "string" },
         "detail": { "type": "string" },
         "status": { "const": 409 },
-        "code": { "description": "The profile's status.", "enum": ["unsupported", "unreadable"] },
+        "code": { "description": "The profile's status. A client treats a status it doesn't know as a profile it can't open.", "enum": ["unsupported", "unreadable"] },
         "problem": { "$ref": "#/$defs/validationError", "description": "The profile's `problem` (profileEntry)." }
       }
     },
@@ -343,7 +343,7 @@
       "required": ["format", "width", "height", "frames", "duration"],
       "additionalProperties": false,
       "properties": {
-        "format": { "enum": ["png", "jpeg", "gif", "webp", "svg"] },
+        "format": { "description": "The asset's format. A client treats a format it doesn't know as it treats the others: media the engine draws.", "enum": ["png", "jpeg", "gif", "webp", "svg"] },
         "width": { "type": "integer", "minimum": 0 },
         "height": { "type": "integer", "minimum": 0 },
         "frames": { "description": "1 for a still image; an animation's frame count.", "type": "integer", "minimum": 1 },
@@ -610,7 +610,7 @@
         "op": { "$ref": "#/$defs/opIndex", "description": "The op that conflicts. Absent when the conflict is the whole request's: reason instance, and every conflict of an undo, redo or revert." },
         "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
         "reason": {
-          "description": "changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the engine restarted since the client's `instance`.",
+          "description": "changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the engine restarted since the client's `instance`. A client treats a reason it doesn't know as it treats every conflict: it refetches and rebuilds its change.",
           "enum": ["changed", "missing", "instance"]
         },
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The item's (or profile's) current rev." },
@@ -677,7 +677,7 @@
         "ink": { "$ref": "#/$defs/rect" },
         "rotation": { "type": "number" },
         "problem": {
-          "description": "Set when the item is drawn as a placeholder: unsupported (needs a newer engine), invalid (breaks a rule or limit), budget (over a document or process budget).",
+          "description": "Set when the item is drawn as a placeholder: unsupported (needs a newer engine), invalid (breaks a rule or limit), budget (over a document or process budget). A client treats a problem it doesn't know as a placeholder whose reason it can't name.",
           "enum": ["unsupported", "invalid", "budget"]
         }
       }
@@ -813,7 +813,7 @@
     },
     "tokenId": { "description": "An integration token's id, used to revoke it (DELETE /api/tokens/{id}): 32 lower-case hex digits. Not a secret.", "type": "string", "pattern": "^[0-9a-f]{32}$" },
     "tokenName": { "description": "A token's name, for people: 1 to 64 letters, digits, spaces, dots, underscores and hyphens, without a space at either end.", "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]([A-Za-z0-9 ._-]{0,62}[A-Za-z0-9._-])?$" },
-    "tokenScopes": { "type": "array", "items": { "enum": ["read", "edit"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true },
+    "tokenScopes": { "type": "array", "items": { "description": "A scope (docs/api.md#authentication). In what the engine sends, a client shows a scope it doesn't know by its name.", "enum": ["read", "edit"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true },
     "timestamp": { "description": "A UTC time to the second (RFC 3339), such as \"2026-10-27T09:30:00Z\".", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
     "scopeProblem": {
       "description": "403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication).",
@@ -826,7 +826,7 @@
         "detail": { "type": "string" },
         "status": { "const": 403 },
         "code": { "const": "scope" },
-        "scope": { "description": "What the request needs.", "enum": ["read", "edit", "session"] }
+        "scope": { "description": "What the request needs. A client shows a scope it doesn't know by its name: the request is refused all the same.", "enum": ["read", "edit", "session"] }
       }
     },
     "problem": {
@@ -844,7 +844,7 @@
     },
 
     "sensorEntry": {
-      "description": "One sensor in GET /api/sensors, an array of these: a sensor the engine's sources offer, with the `key` a binding names (docs/bindings.md) and its status now. A client treats a status it doesn't know as no reading.",
+      "description": "One sensor in GET /api/sensors, an array of these: a sensor the engine's sources offer, with the `key` a binding names (docs/bindings.md) and its status now.",
       "type": "object",
       "required": ["key", "source", "group", "name", "unit", "status"],
       "additionalProperties": false,
@@ -855,7 +855,7 @@
         "name": { "description": "The sensor's name, for people.", "type": "string" },
         "unit": { "description": "The unit of its values, for people (\"°C\", \"%\"); empty when it has none.", "type": "string" },
         "status": {
-          "description": "`live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `permission-denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed).",
+          "description": "`live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `permission-denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed). A client treats a status it doesn't know as no reading.",
           "enum": ["live", "stale", "unavailable", "permission-denied", "simulated", "missing"]
         }
       }
@@ -879,12 +879,12 @@
           "items": { "type": "number" },
           "maxItems": 4096
         },
-        "status": { "description": "`live`, or `stale` for the last value of a sensor that has stopped updating.", "enum": ["live", "stale"] }
+        "status": { "description": "`live`, or `stale` for the last value of a sensor that has stopped updating. A client treats a status it doesn't know as no reading.", "enum": ["live", "stale"] }
       }
     },
 
     "clientMessage": {
-      "description": "A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. The engine ignores members a message doesn't define, and answers an error message to one it can't act on.",
+      "description": "A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket).",
       "oneOf": [
         { "$ref": "#/$defs/authMessage" },
         { "$ref": "#/$defs/subscribeMessage" },
@@ -896,6 +896,7 @@
       "description": "The first message on /ws when no `auth.{token}` subprotocol was offered: the token, within 5 seconds of the upgrade. The engine sends nothing before it; a token it doesn't accept, any other message, or none in time closes the socket with 1008.",
       "type": "object",
       "required": ["type", "token"],
+      "additionalProperties": false,
       "properties": {
         "type": { "const": "auth" },
         "token": { "description": "The session token or an integration token (either has the `read` scope).", "type": "string" }
@@ -905,6 +906,7 @@
       "description": "Subscribes to a profile's document: its doc messages and its frames, at `scale` and at most `maxFps` frames a second. It ends the connection's earlier subscription. A profile that doesn't exist or can't be opened is answered with an error message.",
       "type": "object",
       "required": ["type", "profileId"],
+      "additionalProperties": false,
       "properties": {
         "type": { "const": "subscribe" },
         "profileId": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
@@ -916,6 +918,7 @@
       "description": "Changes the current subscription's scale or frame rate; a member left out keeps its value. Without a subscription it is answered with an error message.",
       "type": "object",
       "required": ["type"],
+      "additionalProperties": false,
       "properties": {
         "type": { "const": "view" },
         "scale": { "$ref": "#/$defs/frameRequestScale" },
@@ -926,6 +929,7 @@
       "description": "Ends the subscription: no more doc messages or frames until the next subscribe.",
       "type": "object",
       "required": ["type"],
+      "additionalProperties": false,
       "properties": {
         "type": { "const": "unsubscribe" }
       }
@@ -943,7 +947,7 @@
     },
 
     "serverMessage": {
-      "description": "A text message the engine sends on /ws (docs/api.md#the-preview-socket): a JSON object with a `type`. Frames are binary messages (frameHeader). A client ignores a type and members it doesn't know.",
+      "description": "A text message the engine sends on /ws (docs/api.md#the-preview-socket): a JSON object with a `type`. Frames are binary messages (frameHeader). Read tolerantly (docs/versioning.md#unknown-members-and-values): a client ignores a type and members it doesn't know.",
       "oneOf": [
         { "$ref": "#/$defs/helloMessage" },
         { "$ref": "#/$defs/docEvent" },
@@ -972,7 +976,7 @@
       }
     },
     "errorMessage": {
-      "description": "Something the engine couldn't do for the client: a message it can't act on (not JSON, binary, an unknown type, a member of the wrong type, a view without a subscription), or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted. The connection stays open.",
+      "description": "Something the engine couldn't do for the client: a message it can't act on (not JSON, binary, an unknown type, a member the message doesn't define or of the wrong type, a view without a subscription), or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted. The connection stays open.",
       "type": "object",
       "required": ["type", "message"],
       "additionalProperties": false,
