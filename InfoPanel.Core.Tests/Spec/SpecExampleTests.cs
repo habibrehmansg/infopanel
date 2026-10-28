@@ -64,12 +64,29 @@ public class SpecExampleTests
             ? SpecLimits.Default.With(limits.ToDictionary(p => p.Key, p => p.Value!.GetValue<double>()))
             : SpecLimits.Default;
 
-    private static void AssertHas(IReadOnlyList<SpecError> errors, JsonObject expected, string rel)
+    /// <summary>
+    /// <paramref name="errors"/> holds the expected code at exactly the expected path: codes and paths are part of the
+    /// contract (spec/docs/versioning.md#error-codes-and-paths), so a path is never matched by prefix.
+    /// </summary>
+    private static void AssertHas(IReadOnlyList<(string Path, string Code)> errors, JsonObject expected, string rel)
     {
         var code = (string)expected["code"]!;
-        var path = (string?)expected["path"];
-        Assert.True(errors.Any(e => e.Code == code && (path is null || e.Path.StartsWith(path, StringComparison.Ordinal))),
-            $"{rel}: expected {code} at {path ?? "(any path)"}, got: {string.Join("; ", errors.Select(e => $"{e.Code} {e.Path} {e.Message}"))}");
+        var path = (string?)expected["path"] ?? throw new Xunit.Sdk.XunitException($"expected.json gives {rel} no path.");
+        Assert.True(errors.Contains((path, code)),
+            $"{rel}: expected {code} at '{path}', got: {string.Join("; ", errors.Select(e => $"{e.Code} '{e.Path}'"))}");
+    }
+
+    private static void AssertHas(IReadOnlyList<SpecError> errors, JsonObject expected, string rel) =>
+        AssertHas([.. errors.Select(e => (e.Path, e.Code))], expected, rel);
+
+    [Fact]
+    public void AnExpectedPath_MatchesOnlyItself_NotAPathItIsAPrefixOf()
+    {
+        IReadOnlyList<(string, string)> errors = [("/values/b/args/0", "cycle.value")];
+        AssertHas(errors, new JsonObject { ["code"] = "cycle.value", ["path"] = "/values/b/args/0" }, "exact");
+        foreach (var path in new[] { "", "/values/b", "/values/b/args" })
+            Assert.ThrowsAny<Exception>(() => AssertHas(errors, new JsonObject { ["code"] = "cycle.value", ["path"] = path }, "prefix"));
+        Assert.ThrowsAny<Exception>(() => AssertHas(errors, new JsonObject { ["code"] = "cycle.value" }, "no path"));
     }
 
     // ---- scenes ------------------------------------------------------------------------------------------------
@@ -137,8 +154,9 @@ public class SpecExampleTests
         var expected = Expect(rel);
         var check = DocumentValidator.Check(Load(rel), Limits(expected), EngineSupport.All);
         Assert.Equal(CheckStatus.Valid, check.Status);
-        var want = expected["items"]!.AsArray().Select(i => ((string)i!["path"]!, (string)i["problem"]!, (string)i["code"]!)).ToList();
-        var got = check.Items.Select(i => (i.Path, i.Problem, i.Errors.First().Code)).ToList();
+        // Each placeholder's path, problem, and its first error's code and exact path.
+        var want = expected["items"]!.AsArray().Select(i => ((string)i!["path"]!, (string)i["problem"]!, (string)i["code"]!, (string)i["errorPath"]!)).ToList();
+        var got = check.Items.Select(i => (i.Path, i.Problem, i.Errors.First().Code, i.Errors.First().Path)).ToList();
         Assert.Equal(want, got);
     }
 
@@ -228,7 +246,14 @@ public class SpecExampleTests
         var code = (string)expected["code"]!;
         var path = (string)expected["path"]!;
         var result = SpecSchemas.Strict.Validate(json, $"{SpecSchemas.Api}#/$defs/{def}");
-        if (code == "schema")
+        if (code == "schema" && def == "createProfileRequest")
+        {
+            // A union whose branch the body's members choose ({id, document} or an empty profile's members): the schema
+            // can only say it matches neither, and the engine reads the branch it chose, so the path is the engine's.
+            Assert.False(result.IsValid, $"{rel} matches {def}");
+            AssertHas(EngineCreateErrors(File.ReadAllBytes(Path.Combine(ExamplesDir, rel))), expected, rel);
+        }
+        else if (code == "schema")
         {
             Assert.False(result.IsValid, $"{rel} matches {def}");
             Assert.True(result.Errors.All(e => e.InstancePath == path),
@@ -240,6 +265,18 @@ public class SpecExampleTests
             var errors = ApiBodyRules.Check(def, json);
             Assert.True(errors.SequenceEqual([(path, code)]), $"{rel}: expected only {code} at '{path}', got: {string.Join("; ", errors)}");
         }
+    }
+
+    /// <summary>The errors of the engine's 422 to <c>POST /api/profiles</c> with <paramref name="body"/>, on an empty workspace.</summary>
+    private static IReadOnlyList<(string Path, string Code)> EngineCreateErrors(byte[] body)
+    {
+        using var temp = new Persistence.TempDirectory();
+        using var workspace = InfoPanel.Documents.Workspace.Start(new InfoPanel.Persistence.DataPaths(temp.Path),
+            new InfoPanel.Documents.WorkspaceOptions { HistoryBudget = new InfoPanel.Documents.HistoryBudget(InfoPanel.Documents.HistoryBudget.DefaultMaxBytes) },
+            DateTimeOffset.UnixEpoch);
+        var created = workspace.Create(body);
+        Assert.Equal(422, created.Status);
+        return [.. created.Invalid!.Errors.Select(e => (e.Path, e.Code))];
     }
 
     /// <summary>

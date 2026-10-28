@@ -80,7 +80,10 @@ internal static class ValidationText
     {
         if (e.ValueKind != JsonValueKind.Object)
             return (CheckStatus.Invalid, new SpecError("", "schema", $"A {kind} is a JSON object."));
-        if (!e.TryGetProperty("format", out var format) || format.ValueKind != JsonValueKind.String)
+        // Missing: at the object it is missing from; not a string: at the member.
+        if (!e.TryGetProperty("format", out var format))
+            return (CheckStatus.Invalid, new SpecError("", "schema", $"A {kind} needs a string \"format\"."));
+        if (format.ValueKind != JsonValueKind.String)
             return (CheckStatus.Invalid, new SpecError("/format", "schema", $"A {kind} needs a string \"format\"."));
         var match = FormatString.Match(format.GetString()!);
         if (!match.Success || match.Groups[1].Value != kind)

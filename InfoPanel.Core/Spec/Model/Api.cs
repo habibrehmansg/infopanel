@@ -511,10 +511,19 @@ public sealed record ProfilesMessage
     public required long Version { get; init; }
 }
 
-/// <summary>Something the engine couldn't do for the client; the connection stays open. <see cref="Type"/> is always <c>error</c>.</summary>
+/// <summary>
+/// Something the engine couldn't do for the client; the connection stays open. <see cref="Type"/> is always <c>error</c>;
+/// <see cref="Code"/> and <see cref="Path"/> are what a client acts on (spec/docs/api.md#errors-on-the-socket), <see cref="Message"/>
+/// is for people.
+/// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/errorMessage")]
 public sealed record ErrorMessage
 {
     public required string Type { get; init; }
+    public required string Code { get; init; }
+
+    /// <summary>A JSON pointer into the client message the error answers: "" for the whole message, or when it answers none.</summary>
+    public required string Path { get; init; }
+
     public required string Message { get; init; }
 }

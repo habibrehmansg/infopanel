@@ -38,7 +38,7 @@ A request on a profile is checked in this order, and the first failure answers: 
 
 ## Errors
 
-Every error under `/api` is `application/problem+json`: the definition the request names in `openapi.json` for its status, or else `problem`, the HTTP layer's error (`title`, `status`, and `type`, `detail` and `traceId` when given). Besides what the table lists, a request answers:
+Every error under `/api` is `application/problem+json`: the definition the request names in `openapi.json` for its status, or else `problem`, the HTTP layer's error (`title`, `status`, and `type`, `detail` and `traceId` when given). Its codes and paths are part of the API, and its `title` and `detail` text for people ([versioning](versioning.md#error-codes-and-paths)). Besides what the table lists, a request answers:
 
 - 401 `problem` without a valid token, on every request under `/api` and on `/ws`;
 - 403 `scopeProblem` to a token without the scope a request that changes something needs (`edit`), or that only the session token may make (`session`); every token has `read`;
@@ -168,7 +168,7 @@ A client subscribes to a document on `/ws` at a scale and frame rate. The engine
 
 `GET /ws` is a WebSocket upgrade with the subprotocol `infopanel.v1`, and the token either as a second subprotocol, `auth.{token}`, or, when no `auth.*` subprotocol is offered, as the first message (`authMessage`, `{"type": "auth", "token": "…"}`) within 5 seconds. The token is the session token or an integration token. The engine accepts the socket with `infopanel.v1` alone, so the token is never echoed. An upgrade without `infopanel.v1`, or with an `auth.*` subprotocol whose token isn't valid, is answered 401 `problem`; a request to `/ws` that isn't an upgrade, 400 `problem`.
 
-The engine closes a socket with:
+The engine closes a socket only with these statuses and reasons, a fixed list ([versioning](versioning.md#error-codes-and-paths)):
 
 | Status | Reason | When |
 |---|---|---|
@@ -186,7 +186,7 @@ After an `auth` failure, the engine waits at most 2 seconds for the client's clo
 
 A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`clientMessage`):
 
-- `subscribe` (`subscribeMessage`): `profileId`, and optionally `scale` (frame pixels per profile pixel, 1 when absent, [frame size](#frame-size)) and `maxFps` (30 when absent; the engine draws at most 60). It ends any earlier subscription; the engine answers with a `doc` message, then frames.
+- `subscribe` (`subscribeMessage`): `profileId`, and optionally `scale` (frame pixels per profile pixel, 1 when absent, [frame size](#frame-size)) and `maxFps` (30 when absent; the engine draws at most 60). A subscription the engine starts ends any earlier one, and is answered with a `doc` message, then frames; one it can't start is answered with an `error` and leaves the earlier one as it was.
 - `view` (`viewMessage`): a new `scale` or `maxFps` for the current subscription; a member left out keeps its value.
 - `unsubscribe` (`unsubscribeMessage`): no more `doc` messages or frames until the next `subscribe`.
 - `auth` (`authMessage`): only as the first message, above.
@@ -198,7 +198,24 @@ The engine sends (`serverMessage`):
 - `hello` (`helloMessage`): first, once the socket is authenticated, with `protocol` ([session](#session)).
 - `doc` (`docEvent`): the subscribed document's state ([below](#change-events)).
 - `profiles` (`profilesMessage`): the profile list changed (a profile was created, duplicated or deleted, by any client); the client reads `GET /api/profiles`. `version` is greater for a later change; the engine keeps only the newest to send.
-- `error` (`errorMessage`): a `message` for people about a message the engine couldn't act on, or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted (which also ends the subscription).
+- `error` (`errorMessage`): a message the engine couldn't act on, or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted (which also ends the subscription), with its `code` and `path` ([below](#errors-on-the-socket)) and a `message` for people.
+
+#### Errors on the socket
+
+An `error` names what went wrong with a `code`, and with a `path`: the JSON pointer to what it is about in the client message it answers, `""` for the whole message and for an error that answers none. Codes and paths are part of the API, and a client handles a code it doesn't know by its family, else as a message the engine didn't act on ([versioning](versioning.md#error-codes-and-paths)).
+
+| Code | Path | When |
+|---|---|---|
+| `json` | The value, or `""` | The message isn't JSON as the formats read it ([validation](validation.md#json)): it isn't UTF-8 JSON text, or is binary (at `""`); a number rounds to ±∞ (at the number); a string isn't Unicode text (at the string; a member name's at its object) |
+| `limit.jsonDepth` | `""` | The message is nested deeper than `jsonDepth` |
+| `schema` | The value | The message isn't an object with a `type` (at `""`); its `type` isn't a string, or is a type the engine doesn't take (at `/type`); it has a member its definition doesn't (at the member) or repeats a member name (at its object); a `subscribe` has no `profileId` (at `""`) or one that isn't a string (at `/profileId`); a `scale` that isn't a positive number (at `/scale`); a `maxFps` that isn't a whole number from 1 to 2,147,483,647 (at `/maxFps`) |
+| `subscription.missing` | `""` | A `view` without a subscription |
+| `profile.missing` | `/profileId` | A `subscribe` to a profile that doesn't exist |
+| `profile.unsupported`, `profile.unreadable` | `/profileId` | A `subscribe` to a profile that can't be opened: `profile.` and its status ([profiles](#profiles)) |
+| `profile.deleted` | `/profileId`, or `""` | The profile was deleted: at `/profileId` as the `subscribe` started, else at `""`. The subscription has ended |
+| `profile.unrenderable` | `/profileId`, or `""` | The engine can't draw the profile: it can't be drawn within the frame limit at any scale ([frame size](#frame-size)), or the engine is stopping (the socket then closes with 1001). At `/profileId` as the `subscribe` started, else at `""`. The subscription has ended |
+
+A `profile.*` code means there is no subscription to that profile. One at `""`, which ends a subscription, is always about the latest one: it is never sent once a later `subscribe` has started another.
 
 ### Change events
 

@@ -1,6 +1,6 @@
 # Validation
 
-Every reader checks content in the same order, and reports problems as `{ path, code, message }` with a JSON pointer into what it checked.
+Every reader checks content in the same order, and reports problems as `{ path, code, message }` with a JSON pointer into what it checked. Codes and paths are part of the formats: frozen with their major version, each path exact, and a code a client doesn't know handled by its family ([versioning](versioning.md#error-codes-and-paths)); `message` is for people.
 
 ## Order
 
@@ -53,10 +53,12 @@ The engine keeps an opaque member as the same JSON value, not the same text: it 
 
 ## Codes
 
+Each code is reported at the value it is about ([versioning](versioning.md#error-codes-and-paths)), as the examples pin it.
+
 | Code | Meaning |
 |---|---|
 | `json` | Not JSON as these formats read it ([JSON](#json)): a stored or imported document (or other body) that isn't well-formed UTF-8 JSON; a number whose text rounds to ±∞ ([numbers](#numbers)), at that number; a string that isn't Unicode text, at that string (a member name's at its object). Content nested too deeply is `limit.jsonDepth`, not `json`. |
-| `schema` | The JSON doesn't match the schema (unknown or missing member, wrong type, value out of the schema's range or pattern), or an object repeats a member name ([JSON](#json)), at that object. The message names the schema keyword; `complexity` when the content is too complex to check within the validator's work budget ([limits](limits.md#checking-hostile-content)). |
+| `schema` | The JSON doesn't match the schema (unknown or missing member, wrong type, value out of the schema's range or pattern), or an object repeats a member name ([JSON](#json)): at the value that breaks it (an unknown member or a member name the schema refuses at that member), and at the object a member is missing from or repeated in. The message names the schema keyword; `complexity` when the content is too complex to check within the validator's work budget ([limits](limits.md#checking-hostile-content)). |
 | `unsupported.format` | A format major version this engine doesn't read. |
 | `unsupported.capability` | A capability in `requires` this engine lacks. |
 | `requires.missing` | The scene uses a capability it doesn't list in `requires`. |
@@ -94,4 +96,4 @@ Conflicts and other refusals that depend on the document's state (409: `conflict
 
 ## The examples
 
-`examples/` holds valid content using every node, paint, effect, transform, operation and op, and invalid content for every rule and limit that can be checked without a document to apply to (the `op.*`, `opId.reused` and `baseRev.future` checks need one); `examples/expected.json` gives each invalid example's code and path, and the limits an example tightens to stay small. The engine's tests check every example against the schemas and the rules; any validator for these formats can run the same set.
+`examples/` holds valid content using every node, paint, effect, transform, operation and op, and invalid content for every rule and limit that can be checked without a document to apply to (the `op.*`, `opId.reused` and `baseRev.future` checks need one); `examples/expected.json` gives each invalid example's code and exact path (`""` for a media asset), each placeholder's path, problem, and its first error's code and path (`errorPath`), and the limits an example tightens to stay small. A create's body is read as the shape its members choose (`{ "id", "document" }` when it has a `document`, else an empty profile's), so its errors are at their paths in that shape, where a schema validator that tries both shapes can only refuse the body as a whole. The engine's tests check every example against the schemas and the rules, comparing paths exactly ([versioning](versioning.md#error-codes-and-paths)); any validator for these formats can run the same set.

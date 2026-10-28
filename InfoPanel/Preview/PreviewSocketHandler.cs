@@ -44,7 +44,8 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// (<c>protocol</c> 2); <c>doc</c> (<c>docEvent</c>)
 /// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
 /// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>error</c> for a bad message, an unknown profile,
-/// one that can't be opened or a deleted one; binary frames (<see cref="FrameCodec"/>).</item>
+/// one that can't be opened or a deleted one, each with its code and its path into the message it answers
+/// (spec/docs/api.md#errors-on-the-socket); binary frames (<see cref="FrameCodec"/>).</item>
 /// </list>
 /// </summary>
 public static class PreviewSocketHandler
@@ -220,6 +221,9 @@ public static class PreviewSocketHandler
     /// <summary>The <c>error</c> for a message that isn't a JSON object with a string <c>type</c>.</summary>
     internal const string NotAMessage = "Messages must be JSON objects with a \"type\".";
 
+    /// <summary>The JSON pointer to a member of a message: <c>/</c> and the name, with <c>~</c> and <c>/</c> escaped (RFC 6901).</summary>
+    internal static string Pointer(string member) => "/" + member.Replace("~", "~0").Replace("/", "~1");
+
     /// <summary>
     /// The members each client message defines, by <c>type</c> (the spec's <c>clientMessage</c>). Client messages are
     /// closed, as request bodies are (spec/docs/versioning.md): a message with any other member is refused, so a member a
@@ -251,9 +255,10 @@ public static class PreviewSocketHandler
     /// at any depth, then the JSON-level pass on the whole message, members it doesn't define included. Content nested
     /// deeper than <c>jsonDepth</c>, a number that rounds to ±∞, a member name repeated in one object (never resolved
     /// to one occurrence) or a string or member name that isn't Unicode text refuses it. Null when the message may not
-    /// be read further, with <paramref name="problem"/> saying why for people; otherwise every string in it decodes.
+    /// be read further, with <paramref name="problem"/> its <c>error</c>: the first of the pass's errors, with the code a
+    /// check reports it with (spec/docs/validation.md#codes) and its path; otherwise every string in it decodes.
     /// </summary>
-    internal static JsonDocument? ReadClientMessage(ReadOnlySpan<byte> utf8, out string problem)
+    internal static JsonDocument? ReadClientMessage(ReadOnlySpan<byte> utf8, out PreviewError problem)
     {
         JsonDocument json;
         try
@@ -262,21 +267,27 @@ public static class PreviewSocketHandler
         }
         catch (JsonException)
         {
-            problem = NotAMessage;
+            problem = new PreviewError("json", "", NotAMessage);
             return null;
         }
 
         var check = SchemaSet.CheckJson(json.RootElement, SpecLimits.Default.JsonDepth);
         if (check.IsValid)
         {
-            problem = "";
+            problem = default;
             return json;
         }
 
         json.Dispose();
         var first = check.Errors[0];
         var at = first.InstancePath.Length == 0 ? "the message" : first.InstancePath;
-        problem = Cut($"Messages must be JSON as the formats read it: at {at}, {first.Message}", 256);
+        var code = first.Keyword switch
+        {
+            "json" => "json",
+            "depth" => "limit.jsonDepth",
+            _ => "schema", // a repeated member name, at its object
+        };
+        problem = new PreviewError(code, first.InstancePath, Cut($"Messages must be JSON as the formats read it: at {at}, {first.Message}", 256));
         return null;
     }
 
@@ -313,6 +324,13 @@ public static class PreviewSocketHandler
 }
 
 /// <summary>
+/// An <c>error</c> message's content (spec/docs/api.md#errors-on-the-socket): its <paramref name="Code"/>, the JSON pointer
+/// <paramref name="Path"/> into the client message it answers ("" for the whole message, or when it answers none), and
+/// its <paramref name="Message"/> for people.
+/// </summary>
+internal readonly record struct PreviewError(string Code, string Path, string Message);
+
+/// <summary>
 /// One <c>/ws</c> connection. A receive loop parses client messages; one send loop does every send, so the render
 /// thread and event handlers only ever set state and wake it. What it sends, in this order on every wake:
 /// <list type="bullet">
@@ -338,10 +356,16 @@ internal sealed class PreviewSession
     /// <summary>How many <c>error</c> messages wait at most; the oldest is dropped beyond that.</summary>
     internal const int MaxQueuedErrors = 64;
 
-    private readonly Channel<string> _errors = Channel.CreateBounded<string>(new BoundedChannelOptions(MaxQueuedErrors) { FullMode = BoundedChannelFullMode.DropOldest });
+    /// <summary>
+    /// Queued errors, each with the subscription it ends (0 for an answer to a message): an ending is sent only while no
+    /// later subscription has started, so it never follows that one's <c>doc</c> (a client would read it as that one's).
+    /// </summary>
+    private readonly Channel<(string Text, long Ends)> _errors = Channel.CreateBounded<(string, long)>(new BoundedChannelOptions(MaxQueuedErrors) { FullMode = BoundedChannelFullMode.DropOldest });
     private readonly SemaphoreSlim _signal = new(0, 1);
     private readonly Lock _lock = new();
     private WebPreviewSink? _sink;
+    /// <summary>How many subscriptions have started: the current or last one's number. Changed under the lock.</summary>
+    private long _subscriptions;
     private ProfileDocument? _doc;
     private int _docChanged;
     private int _docSubscribed;
@@ -361,6 +385,12 @@ internal sealed class PreviewSession
 
     /// <summary>Tests: called with the profile's id after a subscribe found its document, before frames are attached.</summary>
     internal Action<string>? Found;
+
+    /// <summary>
+    /// Tests: called with the profile's id when a subscription ends on its own (deleted, unrenderable), once it is no
+    /// longer the current one and before its error is queued.
+    /// </summary>
+    internal Action<string>? Ended;
 
     /// <summary>The current subscription's sink (tests use it to hand an earlier subscription a late frame).</summary>
     internal WebPreviewSink? CurrentSink
@@ -449,7 +479,7 @@ internal sealed class PreviewSession
 
             if (result.MessageType != WebSocketMessageType.Text)
             {
-                SendError("Send JSON text messages; binary messages are not accepted.");
+                SendError("json", "", "Send JSON text messages; binary messages are not accepted.");
                 continue;
             }
 
@@ -483,17 +513,22 @@ internal sealed class PreviewSession
         using (json)
         {
             var root = json.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var typeElement)
-                || typeElement.ValueKind != JsonValueKind.String)
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var typeElement))
             {
-                SendError(PreviewSocketHandler.NotAMessage);
+                SendError("schema", "", PreviewSocketHandler.NotAMessage);
+                return;
+            }
+
+            if (typeElement.ValueKind != JsonValueKind.String)
+            {
+                SendError("schema", "/type", PreviewSocketHandler.NotAMessage);
                 return;
             }
 
             var type = typeElement.GetString()!;
             if (type is "subscribe" or "view" or "unsubscribe" && PreviewSocketHandler.UnknownMember(root, type) is { } unknown)
             {
-                SendError($"Unknown member \"{Truncate(unknown)}\" in {type}.");
+                SendError("schema", PreviewSocketHandler.Pointer(unknown), $"Unknown member \"{Truncate(unknown)}\" in {type}.");
                 return;
             }
 
@@ -509,17 +544,23 @@ internal sealed class PreviewSession
                     Unsubscribe();
                     break;
                 default:
-                    SendError($"Unknown message type '{Truncate(type)}'.");
+                    SendError("schema", "/type", $"Unknown message type '{Truncate(type)}'.");
                     break;
             }
         }
     }
 
+    /// <summary>
+    /// Subscribes to the profile the message names. One the engine can't start (a bad member, no such profile, one that
+    /// can't be opened) is answered with an <c>error</c> and leaves the current subscription as it was; one it starts
+    /// ends the current one first.
+    /// </summary>
     private void Subscribe(JsonElement message)
     {
         if (!message.TryGetProperty("profileId", out var idElement) || idElement.ValueKind != JsonValueKind.String)
         {
-            SendError("subscribe needs a \"profileId\".");
+            // Missing: at the object it is missing from; not a string: at the member.
+            SendError("schema", idElement.ValueKind == JsonValueKind.Undefined ? "" : "/profileId", "subscribe needs a \"profileId\".");
             return;
         }
 
@@ -528,22 +569,25 @@ internal sealed class PreviewSession
         if (!TryReadRequest(message, new FrameRequest(1, RenderLoop.DefaultFps), out var request))
             return;
 
-        Unsubscribe();
-
         var found = _workspace.Find(profileId);
         if (found.Document is not { } doc)
         {
-            SendError(found.Problem is { } problem
-                ? $"Profile '{Truncate(profileId)}' can't be opened: it is {problem.Code}."
-                : $"No profile '{Truncate(profileId)}'.");
+            // profile.{status} for one that can't be opened: its status in the profile list (unsupported, unreadable).
+            if (found.Problem is { } problem)
+                SendError("profile." + problem.Code, "/profileId", $"Profile '{Truncate(profileId)}' can't be opened: it is {problem.Code}.");
+            else
+                SendError("profile.missing", "/profileId", $"No profile '{Truncate(profileId)}'.");
             return;
         }
+
+        Unsubscribe();
 
         WebPreviewSink sink;
         lock (_lock)
         {
             sink = new WebPreviewSink(profileId, request, Wake, OnSinkClosed);
             _sink = sink;
+            _subscriptions++;
             _doc = doc;
             doc.Changed += OnDocumentChanged;
         }
@@ -552,19 +596,19 @@ internal sealed class PreviewSession
         Volatile.Write(ref _docSubscribed, 1);
         Wake();
         Found?.Invoke(profileId);
-        string error;
+        PreviewError error;
         try
         {
             // Frames and doc events come from the one document found: deleted since (its id perhaps created again), the
             // subscription ends as a delete ends it.
             if (_render.Attach(sink, doc))
                 return;
-            error = $"Profile '{Truncate(profileId)}' was deleted.";
+            error = new PreviewError("profile.deleted", "/profileId", $"Profile '{Truncate(profileId)}' was deleted.");
         }
         catch (ObjectDisposedException)
         {
             // The engine is stopping (the close follows).
-            error = $"Profile '{profileId}' can't be previewed.";
+            error = new PreviewError("profile.unrenderable", "/profileId", $"Profile '{Truncate(profileId)}' can't be previewed.");
         }
 
         Unsubscribe();
@@ -579,7 +623,7 @@ internal sealed class PreviewSession
 
         if (sink == null)
         {
-            SendError("view needs a subscription; send subscribe first.");
+            SendError("subscription.missing", "", "view needs a subscription; send subscribe first.");
             return;
         }
 
@@ -606,7 +650,7 @@ internal sealed class PreviewSession
         {
             if (scaleElement.ValueKind != JsonValueKind.Number || !JsonNumber.TryRead(scaleElement, out var requested) || requested <= 0)
             {
-                SendError("\"scale\" must be a positive number.");
+                SendError("schema", "/scale", "\"scale\" must be a positive number.");
                 return false;
             }
 
@@ -620,7 +664,7 @@ internal sealed class PreviewSession
             // A whole number in any spelling (30, 30.0, 3e1), read as the spec's validator reads it.
             if (fpsElement.ValueKind != JsonValueKind.Number || !JsonNumber.TryReadInteger(fpsElement, out var fps) || fps < 1 || fps > int.MaxValue)
             {
-                SendError("\"maxFps\" must be a whole number from 1 to 2147483647.");
+                SendError("schema", "/maxFps", "\"maxFps\" must be a whole number from 1 to 2147483647.");
                 return false;
             }
 
@@ -685,11 +729,13 @@ internal sealed class PreviewSession
 
     private void OnSinkClosed(WebPreviewSink sink, FrameSinkClosedReason reason)
     {
+        long ends;
         lock (_lock)
         {
             if (sink != _sink)
                 return;
 
+            ends = _subscriptions;
             if (_doc != null)
                 _doc.Changed -= OnDocumentChanged;
             _sink = null;
@@ -697,13 +743,15 @@ internal sealed class PreviewSession
         }
 
         sink.Retire();
+        Ended?.Invoke(sink.ProfileId);
         switch (reason)
         {
+            // Not an answer to a message: at "".
             case FrameSinkClosedReason.ProfileDeleted:
-                SendError($"Profile '{sink.ProfileId}' was deleted.");
+                SendError(new PreviewError("profile.deleted", "", $"Profile '{sink.ProfileId}' was deleted."), ends);
                 break;
             case FrameSinkClosedReason.Unrenderable:
-                SendError($"Profile '{sink.ProfileId}' is too large to preview.");
+                SendError(new PreviewError("profile.unrenderable", "", $"Profile '{sink.ProfileId}' is too large to preview."), ends);
                 break;
             default:
                 BeginClose(WebSocketCloseStatus.EndpointUnavailable, "The engine is stopping.");
@@ -733,10 +781,26 @@ internal sealed class PreviewSession
         }, SpecJson.Options);
     }
 
-    private void SendError(string message)
+    private void SendError(string code, string path, string message) => SendError(new PreviewError(code, path, message));
+
+    /// <summary>Queues an error: an answer, or, with <paramref name="ends"/>, the ending of that subscription.</summary>
+    private void SendError(PreviewError error, long ends = 0)
     {
-        if (_errors.Writer.TryWrite(JsonSerializer.Serialize(new ErrorMessage { Type = "error", Message = message }, SpecJson.Options)))
+        var text = JsonSerializer.Serialize(new ErrorMessage { Type = "error", Code = error.Code, Path = error.Path, Message = error.Message }, SpecJson.Options);
+        if (_errors.Writer.TryWrite((text, ends)))
             Wake();
+    }
+
+    /// <summary>
+    /// An ending queued before a later subscription started, read under the lock subscriptions start under: one not
+    /// stale now is sent before anything of a later subscription, which this send loop sends after it.
+    /// </summary>
+    private bool IsStale(long ends)
+    {
+        if (ends == 0)
+            return false;
+        lock (_lock)
+            return ends != _subscriptions;
     }
 
     private void Wake()
@@ -789,11 +853,13 @@ internal sealed class PreviewSession
         {
             await _signal.WaitAsync(ct);
 
-            while (_errors.Reader.TryRead(out var text))
+            while (_errors.Reader.TryRead(out var error))
             {
+                if (IsStale(error.Ends))
+                    continue;
                 if (!CanSend)
                     return;
-                await SendTextAsync(text, ct);
+                await SendTextAsync(error.Text, ct);
             }
 
             if (_closing)

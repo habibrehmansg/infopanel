@@ -530,10 +530,11 @@ export interface InvalidProblem {
 }
 
 export interface ValidationError {
-  /** JSON pointer into what was checked: the request body, or the stored document or blob. */
+  /** The exact JSON pointer to what the error is about, in what was checked: the request body, or the stored document or blob (docs/versioning.md#error-codes-and-paths). */
   path: string;
-  /** A code from docs/limits.md and docs/validation.md (schema, limit.*, ref.*, type.*, ...). */
+  /** A code from docs/limits.md and docs/validation.md (schema, limit.*, ref.*, type.*, ...). A later engine may add codes: a client handles a code it doesn't know by its family, else by the answer's HTTP status (docs/versioning.md#error-codes-and-paths). */
   code: string;
+  /** What went wrong, for people: display text, never read by a client. */
   message: string;
 }
 
@@ -837,7 +838,14 @@ export interface ProfilesMessage {
 /** Something the engine couldn't do for the client: a message it can't act on (not JSON, binary, an unknown type, a member the message doesn't define or of the wrong type, a view without a subscription), or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted. The connection stays open. */
 export interface ErrorMessage {
   type: "error";
-  /** What went wrong, for people. */
+  /**
+   * What went wrong, for a client to act on (docs/api.md#errors-on-the-socket): `json`, `limit.jsonDepth` or `schema` for a message the engine can't act on, `subscription.missing` for a view without a subscription, `profile.*` for a subscription that didn't start or has ended. A later engine may add codes: a client handles a code it doesn't know by its family, else as a message the engine didn't act on (docs/versioning.md#error-codes-and-paths).
+   * Length: ≥ 1.
+   */
+  code: string;
+  /** The JSON pointer to what the error is about in the client message it answers: "" for the whole message, or when it answers none (a subscription that ended). */
+  path: string;
+  /** What went wrong, for people: display text, never read by a client. */
   message: string;
 }
 

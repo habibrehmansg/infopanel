@@ -43,7 +43,8 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
                  {
                      new HelloMessage { Type = "hello", Protocol = ReadEndpoints.Protocol },
                      new ProfilesMessage { Type = "profiles", Version = 1 },
-                     new ErrorMessage { Type = "error", Message = "No profile 'x'." },
+                     new ErrorMessage { Type = "error", Code = "profile.missing", Path = "/profileId", Message = "No profile 'x'." },
+                     new ErrorMessage { Type = "error", Code = "profile.deleted", Path = "", Message = "Profile 'x' was deleted." },
                      new DocEvent { Type = "doc", ProfileId = "3dd19c0e-675a-4591-b096-83417853861f", Rev = 1, Dirty = false, CanUndo = false, CanRedo = false },
                  })
         {
@@ -56,6 +57,9 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
     [InlineData("""{"type":"hello"}""")]
     [InlineData("""{"type":"welcome","protocol":2}""")]
     [InlineData("""{"type":"error","message":7}""")]
+    // An error carries its code and path (docs/api.md#errors-on-the-socket).
+    [InlineData("""{"type":"error","message":"No profile 'x'."}""")]
+    [InlineData("""{"type":"error","code":"profile.missing","message":"No profile 'x'."}""")]
     [InlineData("""not json""")]
     public void AServerMessageOutsideTheSpec_IsCaught(string text) => Assert.NotNull(SocketContract.CheckServerText(text));
 
@@ -70,6 +74,37 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
     [InlineData("""{"type":"view","bounds":false}""")]
     [InlineData("""{"type":"auth","token":"t","resume":"x"}""")]
     public void AClientMessageOutsideTheSpec_IsCaught(string text) => Assert.NotNull(SocketContract.CheckClientText(text));
+
+    /// <summary>The client messages the spec's examples refuse: <c>api/{subscribe,view,unsubscribe}Message/invalid/*</c>.</summary>
+    public static TheoryData<string> InvalidClientMessageExamples()
+    {
+        var data = new TheoryData<string>();
+        var api = Path.Combine(ApiContract.FindSpecDir(), "examples", "api");
+        foreach (var def in new[] { "subscribeMessage", "viewMessage", "unsubscribeMessage" })
+            foreach (var file in Directory.EnumerateFiles(Path.Combine(api, def, "invalid")).Order(StringComparer.Ordinal))
+                data.Add($"api/{def}/invalid/{Path.GetFileName(file)}");
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidClientMessageExamples))]
+    public async Task AnInvalidClientMessageExample_IsAnsweredWithTheCodeAndPathItsExpectationGives(string rel)
+    {
+        // The engine's answer is the examples' (examples/expected.json): exactly that code at exactly that path. Sent during
+        // a subscription, so a view is checked for what it holds, not refused for want of one.
+        var spec = ApiContract.FindSpecDir();
+        var expected = JsonNode.Parse(File.ReadAllText(Path.Combine(spec, "examples", "expected.json")))![rel]!;
+        using var api = factory.CreateApiClient();
+        var id = JsonDocument.Parse(await api.GetStringAsync("/api/profiles", Ct)).RootElement[0].GetProperty("id").GetString();
+        await using var client = await PreviewClient.ConnectAsync(factory, Ct);
+        await client.ReceiveTextAsync("hello", Ct);
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.25, maxFps = 10 }, Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+
+        await client.SendTextAsync(File.ReadAllText(Path.Combine(spec, "examples", rel)).Trim(), Ct);
+        var error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Equal(((string)expected["code"]!, (string)expected["path"]!), (error.GetProperty("code").GetString(), error.GetProperty("path").GetString()));
+    }
 
     [Fact]
     public void AClientMessageOverTheCap_IsCaught()

@@ -48,7 +48,16 @@ public sealed class SceneHostileTests
     [MemberData(nameof(InvalidScenes))]
     public void Every_invalid_or_unsupported_example_scene_is_a_placeholder(string rel)
     {
-        var doc = SceneKit.Doc(SceneKit.Example(rel), 200, 200);
+        var scene = SceneKit.Example(rel);
+        var doc = SceneKit.Doc(scene, 200, 200);
+        if (!scene.TryGetProperty("format", out var format) || format.ValueKind != JsonValueKind.String)
+        {
+            // A document's schema checks each scene for a string format (spec/docs/validation.md), so one without is the
+            // document's error, at the scene's path as the example gives it in the scene (missing: the scene itself).
+            var refused = Assert.Throws<SceneDocumentException>(() => SceneRuntime.RenderOnce(doc, SceneKit.Now, SceneKit.Options()));
+            Assert.Equal(("schema", "/items/0/scene" + ExpectedPath(rel)), (Assert.Single(refused.Check.Errors).Code, refused.Check.Errors[0].Path));
+            return;
+        }
         if (ExpectedCode(rel) == "json")
         {
             // Not JSON as the formats read it (a number that rounds to infinity): the document holding it isn't either.
@@ -147,6 +156,10 @@ public sealed class SceneHostileTests
     /// <summary>An invalid or unsupported example's expected code (spec/examples/expected.json).</summary>
     private static string? ExpectedCode(string rel) =>
         (string?)System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(ExamplesDir, "expected.json")))![rel.Replace('\\', '/')]?["code"];
+
+    /// <summary>An invalid or unsupported example's expected path (spec/examples/expected.json).</summary>
+    private static string ExpectedPath(string rel) =>
+        (string)System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(ExamplesDir, "expected.json")))![rel.Replace('\\', '/')]!["path"]!;
 
     /// <summary>The limits an example tightens to stay small (spec/examples/expected.json).</summary>
     private static SpecLimits ExpectedLimits(string rel)

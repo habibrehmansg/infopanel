@@ -45,6 +45,10 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         return (id, "shape");
     }
 
+    /// <summary>An <c>error</c>'s code and path (spec/docs/api.md#errors-on-the-socket), which a client acts on; its message is for people.</summary>
+    private static (string Code, string Path) CodeAndPath(JsonElement error) =>
+        (error.GetProperty("code").GetString()!, error.GetProperty("path").GetString()!);
+
     [Fact]
     public async Task Connect_IsAcceptedWithInfopanelV1Only_AndSaysHello()
     {
@@ -192,6 +196,25 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         await client.SendAsync(new { type = "subscribe", profileId = id }, Ct);
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains("unsupported", error.GetProperty("message").GetString());
+        Assert.Equal(("profile.unsupported", "/profileId"), CodeAndPath(error));
+        Assert.True(workspace.Delete(id));
+    }
+
+    [Fact]
+    public async Task SubscribingToAProfileThatCantBeRead_IsAnError()
+    {
+        var workspace = factory.Services.GetRequiredService<Workspace>();
+        var id = TestDocs.NewId();
+        var folder = Path.Combine(factory.DataDir, "profiles", id);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "document.json"), "not json");
+        workspace.Documents.Open(); // lists the folder, as the next start would
+
+        await using var client = await Connect();
+        await client.SendAsync(new { type = "subscribe", profileId = id }, Ct);
+        var error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Contains("unreadable", error.GetProperty("message").GetString());
+        Assert.Equal(("profile.unreadable", "/profileId"), CodeAndPath(error));
         Assert.True(workspace.Delete(id));
     }
 
@@ -230,33 +253,41 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     }
 
     [Theory]
-    [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000"}""", "No profile")]
-    [InlineData("""{"type":"subscribe","profileId":"nope"}""", "No profile 'nope'")]
-    [InlineData("""{"type":"subscribe","profileId":7}""", "profileId")]
-    [InlineData("""{"type":"subscribe"}""", "profileId")]
-    [InlineData("""not json""", "JSON")]
-    [InlineData("""[1]""", "JSON")]
-    [InlineData("""{"type":7}""", "JSON")]
-    [InlineData("""{"type":"dance"}""", "Unknown message type 'dance'")]
-    [InlineData("""{"type":"view","scale":2}""", "subscribe first")]
-    // Read as the formats read JSON, before any member is: a lone surrogate isn't Unicode text, and a repeated member is
-    // refused, not resolved to its last occurrence.
-    [InlineData("""{"type":"\uD800"}""", "Unicode")]
-    [InlineData("""{"type":"subscribe","profileId":"\uDC00"}""", "Unicode")]
-    [InlineData("""{"type":"subscribe","profileId":"a\uD800b","scale":0.25}""", "Unicode")]
-    [InlineData("""{"type":"unsubscribe","\uD800":1}""", "Unicode")]
-    [InlineData("""{"type":"dance","type":"unsubscribe"}""", "Duplicate property \"type\"")]
+    [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000"}""", "No profile", "profile.missing", "/profileId")]
+    [InlineData("""{"type":"subscribe","profileId":"nope"}""", "No profile 'nope'", "profile.missing", "/profileId")]
+    [InlineData("""{"type":"subscribe","profileId":7}""", "profileId", "schema", "/profileId")]
+    [InlineData("""{"type":"subscribe"}""", "profileId", "schema", "")]
+    [InlineData("""not json""", "JSON", "json", "")]
+    [InlineData("""{"type":"subscribe",""", "JSON", "json", "")]
+    [InlineData("""[1]""", "JSON", "schema", "")]
+    [InlineData("""{}""", "JSON", "schema", "")]
+    [InlineData("""{"type":7}""", "JSON", "schema", "/type")]
+    [InlineData("""{"type":"dance"}""", "Unknown message type 'dance'", "schema", "/type")]
+    [InlineData("""{"type":"view","scale":2}""", "subscribe first", "subscription.missing", "")]
+    [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000","scale":0}""", "scale", "schema", "/scale")]
+    [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000","maxFps":2.5}""", "maxFps", "schema", "/maxFps")]
+    // Read as the formats read JSON, before any member is: a number past the double range, a lone surrogate (in a member
+    // name: at its object), and a repeated member, refused at its object, not resolved to its last occurrence.
+    [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000","maxFps":1e400}""", "maxFps", "json", "/maxFps")]
+    [InlineData("""{"type":"\uD800"}""", "Unicode", "json", "/type")]
+    [InlineData("""{"type":"subscribe","profileId":"\uDC00"}""", "Unicode", "json", "/profileId")]
+    [InlineData("""{"type":"subscribe","profileId":"a\uD800b","scale":0.25}""", "Unicode", "json", "/profileId")]
+    [InlineData("""{"type":"unsubscribe","\uD800":1}""", "Unicode", "json", "")]
+    [InlineData("""{"type":"dance","type":"unsubscribe"}""", "Duplicate property \"type\"", "schema", "")]
+    [InlineData("""{"type":"subscribe","view":{"a":1,"a":2}}""", "Duplicate property \"a\"", "schema", "/view")]
     // Client messages are closed: a member a message doesn't define refuses it, before anything else it would check.
-    [InlineData("""{"type":"unsubscribe","zoom":1}""", "Unknown member \"zoom\" in unsubscribe.")]
-    [InlineData("""{"type":"view","scale":2,"zoom":1}""", "Unknown member \"zoom\" in view.")]
-    [InlineData("""{"type":"subscribe","zoom":1}""", "Unknown member \"zoom\" in subscribe.")]
-    public async Task BadMessages_GetAnError_AndTheConnectionStaysUsable(string text, string expected)
+    [InlineData("""{"type":"unsubscribe","zoom":1}""", "Unknown member \"zoom\" in unsubscribe.", "schema", "/zoom")]
+    [InlineData("""{"type":"view","scale":2,"zoom":1}""", "Unknown member \"zoom\" in view.", "schema", "/zoom")]
+    [InlineData("""{"type":"subscribe","zoom":1}""", "Unknown member \"zoom\" in subscribe.", "schema", "/zoom")]
+    [InlineData("""{"type":"unsubscribe","a/b~c":1}""", "Unknown member \"a/b~c\" in unsubscribe.", "schema", "/a~1b~0c")]
+    public async Task BadMessages_GetAnErrorWithItsCodeAndPath_AndTheConnectionStaysUsable(string text, string expected, string code, string path)
     {
         await using var client = await Connect();
         await client.SendTextAsync(text, Ct);
 
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains(expected, error.GetProperty("message").GetString());
+        Assert.Equal((code, path), CodeAndPath(error));
 
         await client.SendAsync(new { type = "subscribe", profileId = await ExampleProfileId(), scale = 0.25 }, Ct);
         await client.ReceiveFrameAsync(Ct);
@@ -276,6 +307,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         await client.SendTextAsync($$"""{"type":"subscribe","profileId":"{{id}}","scale":0.25,"zoom":2}""", Ct);
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Equal("Unknown member \"zoom\" in subscribe.", error.GetProperty("message").GetString());
+        Assert.Equal(("schema", "/zoom"), CodeAndPath(error));
         Assert.DoesNotContain("doc", client.ReceivedTypes);
         Assert.False(Render.IsRendering(id));
 
@@ -326,6 +358,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         await client.SendTextAsync(WithDeepPad("""{"type":"unsubscribe"}""", 300), Ct);
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains("JSON", error.GetProperty("message").GetString());
+        Assert.Equal(("limit.jsonDepth", ""), CodeAndPath(error));
 
         await client.SendAsync(new { type = "subscribe", profileId = await ExampleProfileId(), scale = 0.25 }, Ct);
         await client.ReceiveFrameAsync(Ct);
@@ -340,6 +373,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         await client.SendTextAsync($$"""{"type":"subscribe","profileId":"nope","profileId":"{{id}}","scale":0.25}""", Ct);
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains("Duplicate property \"profileId\"", error.GetProperty("message").GetString());
+        Assert.Equal(("schema", ""), CodeAndPath(error));
         Assert.DoesNotContain("doc", client.ReceivedTypes);
 
         await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.25 }, Ct);
@@ -356,6 +390,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         await client.SendAsync(new { type = "subscribe", profileId = await ExampleProfileId(), scale }, Ct);
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains("scale", error.GetProperty("message").GetString());
+        Assert.Equal(("schema", "/scale"), CodeAndPath(error));
     }
 
     [Fact]
@@ -365,6 +400,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         await client.Socket.SendAsync(new byte[] { 1, 2, 3 }, WebSocketMessageType.Binary, true, Ct);
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains("binary", error.GetProperty("message").GetString());
+        Assert.Equal(("json", ""), CodeAndPath(error));
     }
 
     [Fact]
@@ -427,6 +463,8 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
 
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains("deleted", error.GetProperty("message").GetString());
+        // It answers no message, so its path is "".
+        Assert.Equal(("profile.deleted", ""), CodeAndPath(error));
         Assert.False(Render.IsRendering(id));
     }
 

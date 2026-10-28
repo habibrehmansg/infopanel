@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmdirSync, unlinkSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GenError, generate, isJsonMedia, pascalCase, readOperations } from './gen-types.mjs';
+import { GenError, SUBSCHEMA_LIST, SUBSCHEMA_MAP, SUBSCHEMA_ONE, generate, isJsonMedia, pascalCase, readOperations } from './gen-types.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const schemaDir = join(root, 'schemas');
@@ -92,31 +92,44 @@ const sentDefs = [];
 const walked = new Set();
 const silent = [];
 let enums = 0;
-/** Walks a schema node the engine sends for enumerations; `local`: in api.schema.json, where `#/$defs/…` is its own. */
-const walkSent = (value, at, local) => {
-  if (Array.isArray(value)) value.forEach((v, i) => walkSent(v, `${at}/${i}`, local));
-  else if (value !== null && typeof value === 'object') {
-    if (Array.isArray(value.enum)) {
-      enums++;
-      if (!/\bdoesn't know\b/.test(value.description ?? '')) silent.push(at);
-    }
-    for (const [k, v] of Object.entries(value)) {
-      if (k !== '$ref') walkSent(v, `${at}/${pointer(k)}`, local);
-      else if (typeof v === 'string') {
-        const m = (local ? /^(?:urn:infopanel:api:1)?#\/\$defs\/([^/]+)$/ : /^urn:infopanel:api:1#\/\$defs\/([^/]+)$/).exec(v);
-        if (m) sentDefs.push(m[1]);
-      }
-    }
+/**
+ * Walks a schema the engine sends for enumerations, through its subschemas only: data (`default`, `examples`, `const`,
+ * an enumeration's values) is never read as a schema, whatever members it holds. `local`: in api.schema.json, where
+ * `#/$defs/…` is its own.
+ */
+const walkSent = (s, at, local) => {
+  if (s === null || typeof s !== 'object' || Array.isArray(s)) return;
+  if (Array.isArray(s.enum)) {
+    enums++;
+    if (!/\bdoesn't know\b/.test(s.description ?? '')) silent.push(at);
+  }
+  if (typeof s.$ref === 'string') {
+    const m = (local ? /^(?:urn:infopanel:api:1)?#\/\$defs\/([^/]+)$/ : /^urn:infopanel:api:1#\/\$defs\/([^/]+)$/).exec(s.$ref);
+    if (m) sentDefs.push(m[1]);
+  }
+  for (const k of SUBSCHEMA_ONE) if (k in s) walkSent(s[k], `${at}/${k}`, local);
+  for (const k of SUBSCHEMA_LIST) if (Array.isArray(s[k])) s[k].forEach((v, i) => walkSent(v, `${at}/${k}/${i}`, local));
+  for (const k of SUBSCHEMA_MAP) {
+    if (s[k] !== null && typeof s[k] === 'object') for (const [name, v] of Object.entries(s[k])) walkSent(v, `${at}/${k}/${pointer(name)}`, local);
+  }
+};
+/** The schemas of a map of responses (status → response, or a `$ref` to a shared one, walked where it is defined): their bodies' and headers'. */
+const walkResponses = (responses, at) => {
+  for (const [status, r] of Object.entries(responses ?? {})) {
+    if (r === null || typeof r !== 'object') continue;
+    const rp = `${at}/${pointer(status)}`;
+    for (const [media, m] of Object.entries(r.content ?? {})) walkSent(m?.schema, `${rp}/content/${pointer(media)}/schema`, false);
+    for (const [name, h] of Object.entries(r.headers ?? {})) walkSent(h?.schema, `${rp}/headers/${pointer(name)}/schema`, false);
   }
 };
 // Each response is walked itself as well as through the definitions it refers to; responses shared through
 // components.responses are answers too.
-walkSent(openapi.json.components?.responses ?? {}, 'openapi.json#/components/responses', false);
+walkResponses(openapi.json.components?.responses, 'openapi.json#/components/responses');
 for (const [path, item] of Object.entries(openapi.json.paths)) {
   for (const [method, op] of Object.entries(item)) {
     if (op === null || typeof op !== 'object' || Array.isArray(op)) continue;
     const at = `openapi.json#/paths/${pointer(path)}/${pointer(method)}`;
-    walkSent(op.responses ?? {}, `${at}/responses`, false);
+    walkResponses(op.responses, `${at}/responses`);
     const socket = op['x-infopanel-socket'];
     if (socket) {
       walkSent(socket.serverMessage, `${at}/x-infopanel-socket/serverMessage`, false);

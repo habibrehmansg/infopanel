@@ -52,6 +52,54 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
 
     private static long MoveTo(ProfileDocument doc, int x) => TestDocs.Commit(doc, TestDocs.Place("shape", x, 0)).Rev;
 
+    private static (string Code, string Path) CodeAndPath(FakeWebSocket.Sent error) =>
+        (error.Json.GetProperty("code").GetString()!, error.Json.GetProperty("path").GetString()!);
+
+    [Fact]
+    public async Task ASubscribeTheEngineCantStart_LeavesTheCurrentSubscriptionAsItWas()
+    {
+        var id = NewProfile("Kept subscription");
+        var unsupported = TestDocs.NewId();
+        var folder = Path.Combine(factory.DataDir, "profiles", unsupported);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "document.json"), """{"format":"infopanel.document/9"}""");
+        Workspace.Documents.Open(); // lists the folder, as the next start would
+        var (socket, session, run) = await Start();
+        await socket.ReceiveAsync(new { type = "subscribe", profileId = id });
+        await socket.NextAsync(m => m.IsText("doc"));
+        var sink = session.CurrentSink!;
+
+        // No such profile, and one that can't be opened: each answered, and the subscription goes on as it was.
+        foreach (var (other, code) in new[] { ("6f1b8a3e-0000-4000-8000-000000000000", "profile.missing"), (unsupported, "profile.unsupported") })
+        {
+            await socket.ReceiveAsync(new { type = "subscribe", profileId = other });
+            Assert.Equal((code, "/profileId"), CodeAndPath(await socket.NextAsync(m => m.IsText("error"))));
+            Assert.Same(sink, session.CurrentSink);
+            Assert.True(_render.IsRendering(id));
+        }
+
+        var revision = MoveTo(Workspace.Open(id)!, 30);
+        Assert.Equal(revision, Revision(await socket.NextAsync(m => m.IsText("doc"))));
+        Assert.Equal(1, _render.Tick(id));
+        Assert.Equal(id, (await socket.NextAsync(m => m.Type == WebSocketMessageType.Binary)).Frame.ProfileId);
+
+        await Stop(socket, run);
+        Assert.True(Workspace.Delete(unsupported));
+    }
+
+    [Fact]
+    public async Task ASubscribeWhileTheEngineStops_CantBePreviewed()
+    {
+        var id = NewProfile("Stopping");
+        var (socket, session, run) = await Start();
+        await _render.DisposeAsync();
+
+        await socket.ReceiveAsync(new { type = "subscribe", profileId = id });
+        Assert.Equal(("profile.unrenderable", "/profileId"), CodeAndPath(await socket.NextAsync(m => m.IsText("error"))));
+        Assert.Null(session.CurrentSink);
+        await Stop(socket, run);
+    }
+
     [Fact]
     public async Task AViewOrUnsubscribeWithAMemberItDoesntDefine_GetsAnError_AndChangesNothing()
     {
@@ -66,6 +114,7 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
         await socket.ReceiveTextAsync("""{"type":"view","scale":2,"maxFps":5,"bounds":false}""");
         var error = await socket.NextAsync(m => m.IsText("error"));
         Assert.Equal("Unknown member \"bounds\" in view.", error.Json.GetProperty("message").GetString());
+        Assert.Equal(("schema", "/bounds"), CodeAndPath(error));
         Assert.Equal(request, sink.Request);
 
         await socket.ReceiveTextAsync("""{"type":"unsubscribe","all":true}""");
@@ -127,6 +176,8 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
         await socket.ReceiveAsync(new { type = "subscribe", profileId = id });
         var error = await socket.NextAsync(m => m.IsText("error"));
         Assert.Equal($"Profile '{id}' was deleted.", error.Json.GetProperty("message").GetString());
+        // It answers the subscribe, at the profile it named.
+        Assert.Equal(("profile.deleted", "/profileId"), CodeAndPath(error));
         Assert.Null(session.CurrentSink);
         Assert.False(_render.IsRendering(id));
 
@@ -135,6 +186,44 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
         Assert.Equal(0, _render.Tick(id));
         await Stop(socket, run);
         Assert.DoesNotContain(socket.Drain(), m => m.Type == WebSocketMessageType.Binary || (m.IsText("doc") && Revision(m) > 1));
+    }
+
+    [Fact]
+    public async Task AnEndedSubscriptionsError_NeverFollowsTheNextSubscriptionsDoc()
+    {
+        var a = NewProfile("Ended A");
+        var b = NewProfile("Ended B");
+        var (socket, session, run) = await Start();
+        await socket.ReceiveAsync(new { type = "subscribe", profileId = a });
+        await socket.NextAsync(m => m.IsText("doc"));
+
+        // A is deleted, and its close callback held once A is no longer current, before its error is queued.
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.Ended = ended =>
+        {
+            session.Ended = null;
+            held.SetResult();
+            Assert.True(resume.Task.Wait(TimeSpan.FromSeconds(5)));
+        };
+        var deleting = Task.Run(() => Workspace.Delete(a));
+        await held.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Null(session.CurrentSink);
+
+        // B's subscription starts and its doc goes out; then A's callback finishes.
+        await socket.ReceiveAsync(new { type = "subscribe", profileId = b });
+        await socket.NextAsync(m => m.IsText("doc") && m.Json.GetProperty("profileId").GetString() == b);
+        resume.SetResult();
+        Assert.True(await deleting.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        // The next error is the answer to the next message, not A's ending: a client would read it as B's.
+        await socket.ReceiveTextAsync("""{"type":"dance"}""");
+        Assert.Equal(("schema", "/type"), CodeAndPath(await socket.NextAsync(m => m.IsText("error"))));
+        Assert.Equal(b, session.CurrentSink!.ProfileId);
+        Assert.True(_render.IsRendering(b));
+
+        await Stop(socket, run);
+        Assert.DoesNotContain(socket.Drain(), m => m.IsText("error"));
     }
 
     [Fact]

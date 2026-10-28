@@ -74,3 +74,21 @@ test('an enumeration inline in a response, with a fallback, passes', () => {
   const r = checkWith(withInlineEnum("A family; a client shows a value it doesn't know as it is."));
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
+
+/** openapi.json with GET /api/fonts answering a header whose schema is `schema`. */
+function withHeader(schema) {
+  const json = openapi();
+  json.paths['/api/fonts'].get.responses['200'].headers = { 'X-Meta': { schema } };
+  return json;
+}
+
+test("a schema's data (default, examples) is not read as a schema, even when it holds an enum member", () => {
+  const r = checkWith(withHeader({ type: 'object', default: { enum: ['a'] }, examples: [{ enum: ['b'] }] }));
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('an enumeration in a response header, with no fallback, fails the check where it is', () => {
+  const r = checkWith(withHeader({ type: 'string', enum: ['a'] }));
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /^openapi\.json#\/paths\/~1api~1fonts\/get\/responses\/200\/headers\/X-Meta\/schema$/m);
+});

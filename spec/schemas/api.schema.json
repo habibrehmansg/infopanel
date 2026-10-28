@@ -660,9 +660,9 @@
       "required": ["path", "code", "message"],
       "additionalProperties": false,
       "properties": {
-        "path": { "description": "JSON pointer into what was checked: the request body, or the stored document or blob.", "type": "string" },
-        "code": { "description": "A code from docs/limits.md and docs/validation.md (schema, limit.*, ref.*, type.*, ...).", "type": "string" },
-        "message": { "type": "string" }
+        "path": { "description": "The exact JSON pointer to what the error is about, in what was checked: the request body, or the stored document or blob (docs/versioning.md#error-codes-and-paths).", "type": "string" },
+        "code": { "description": "A code from docs/limits.md and docs/validation.md (schema, limit.*, ref.*, type.*, ...). A later engine may add codes: a client handles a code it doesn't know by its family, else by the answer's HTTP status (docs/versioning.md#error-codes-and-paths).", "type": "string" },
+        "message": { "description": "What went wrong, for people: display text, never read by a client.", "type": "string" }
       }
     },
 
@@ -978,11 +978,17 @@
     "errorMessage": {
       "description": "Something the engine couldn't do for the client: a message it can't act on (not JSON, binary, an unknown type, a member the message doesn't define or of the wrong type, a view without a subscription), or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted. The connection stays open.",
       "type": "object",
-      "required": ["type", "message"],
+      "required": ["type", "code", "path", "message"],
       "additionalProperties": false,
       "properties": {
         "type": { "const": "error" },
-        "message": { "description": "What went wrong, for people.", "type": "string" }
+        "code": {
+          "description": "What went wrong, for a client to act on (docs/api.md#errors-on-the-socket): `json`, `limit.jsonDepth` or `schema` for a message the engine can't act on, `subscription.missing` for a view without a subscription, `profile.*` for a subscription that didn't start or has ended. A later engine may add codes: a client handles a code it doesn't know by its family, else as a message the engine didn't act on (docs/versioning.md#error-codes-and-paths).",
+          "type": "string",
+          "minLength": 1
+        },
+        "path": { "description": "The JSON pointer to what the error is about in the client message it answers: \"\" for the whole message, or when it answers none (a subscription that ended).", "type": "string" },
+        "message": { "description": "What went wrong, for people: display text, never read by a client.", "type": "string" }
       }
     }
   }

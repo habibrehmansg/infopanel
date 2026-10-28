@@ -25,6 +25,12 @@ const KEYWORDS = new Set([
   'pattern', 'minItems', 'maxItems', 'uniqueItems', 'required', 'minProperties', 'maxProperties',
 ]);
 
+// The keywords whose values are schemas: one schema, an array of them, or an object of them by name. Every other keyword
+// holds data (`default`, `examples`, `const`, `enum`'s values, ...), which is never read as a schema.
+export const SUBSCHEMA_ONE = ['not', 'additionalProperties', 'propertyNames', 'items'];
+export const SUBSCHEMA_LIST = ['allOf', 'anyOf', 'oneOf', 'prefixItems'];
+export const SUBSCHEMA_MAP = ['properties', '$defs'];
+
 // Keywords that carry no type information; a root made only of these is a `$defs` container.
 const ANNOTATIONS = new Set([
   '$schema', '$id', '$defs', '$comment', 'title', 'description', 'default', 'examples',
@@ -147,15 +153,15 @@ function validate(s, entry, byId, p) {
     if (!KEYWORDS.has(k)) fail(ptr(p, k), `unknown keyword "${k}"`);
   }
   if (has(s, '$ref')) resolveRef(s.$ref, entry, byId, ptr(p, '$ref'));
-  for (const k of ['allOf', 'anyOf', 'oneOf', 'prefixItems']) {
+  for (const k of SUBSCHEMA_LIST) {
     if (!has(s, k)) continue;
     if (!Array.isArray(s[k])) fail(ptr(p, k), `${k} must be an array`);
     s[k].forEach((sub, i) => validate(sub, entry, byId, ptr(p, k, i)));
   }
-  for (const k of ['not', 'additionalProperties', 'propertyNames', 'items']) {
+  for (const k of SUBSCHEMA_ONE) {
     if (has(s, k)) validate(s[k], entry, byId, ptr(p, k));
   }
-  for (const k of ['properties', '$defs']) {
+  for (const k of SUBSCHEMA_MAP) {
     if (!has(s, k)) continue;
     if (!isObj(s[k])) fail(ptr(p, k), `${k} must be an object`);
     for (const key of Object.keys(s[k])) validate(s[k][key], entry, byId, ptr(p, k, key));
