@@ -267,21 +267,9 @@ public static class ProfileSerializer
         return text.ToString();
     }
 
-    /// <summary>Reads a profile written by <see cref="SnapshotProfile"/>.</summary>
-    /// <exception cref="InvalidDataException">The XML is malformed or not a profile.</exception>
-    public static Profile ReadProfileSnapshot(string xml)
-    {
-        try
-        {
-            using var reader = XmlReader.Create(new StringReader(xml));
-            return SingleProfileSerializer.Deserialize(reader) as Profile
-                ?? throw new InvalidDataException("The profile XML is empty.");
-        }
-        catch (InvalidOperationException ex)
-        {
-            throw new InvalidDataException("The profile XML could not be read: " + (ex.InnerException ?? ex).Message, ex);
-        }
-    }
+    /// <summary>Reads a profile written by <see cref="SnapshotProfile"/>, through <see cref="SafeXml"/> as every read is.</summary>
+    /// <exception cref="InvalidDataException">The XML is malformed, refused (<see cref="SafeXml"/>) or not a profile.</exception>
+    public static Profile ReadProfileSnapshot(string xml) => ReadProfile(Load(() => SafeXml.Load(xml), "profile"), report: null);
 
     private static T Deserialize<T>(XmlSerializer serializer, XDocument document, XmlReadReport? report, string what) where T : class
     {

@@ -119,5 +119,10 @@ public class SafeXmlTests
 
         var deep = "<ArrayOfDisplayItem>" + string.Concat(Enumerable.Repeat("<x>", 70)) + string.Concat(Enumerable.Repeat("</x>", 70)) + "</ArrayOfDisplayItem>";
         Assert.Throws<InvalidDataException>(() => ProfileSerializer.ReadItems(new StringReader(deep)));
+
+        // A snapshot with an ignored subtree nested past the depth limit (65 levels with the root).
+        var snapshot = "<Profile>" + string.Concat(Enumerable.Repeat("<x>", 64)) + string.Concat(Enumerable.Repeat("</x>", 64)) + "</Profile>";
+        Assert.Throws<InvalidDataException>(() => ProfileSerializer.ReadProfileSnapshot(snapshot));
+        Assert.Equal("Snap", ProfileSerializer.ReadProfileSnapshot(ProfileSerializer.SnapshotProfile(new InfoPanel.Models.Profile("Snap", 10, 10))).Name);
     }
 }
