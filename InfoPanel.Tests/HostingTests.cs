@@ -1,5 +1,7 @@
 using System.Text.Json;
 using InfoPanel.Hosting;
+using InfoPanel.Import;
+using InfoPanel.Persistence;
 using Xunit;
 
 namespace InfoPanel.Tests;
@@ -85,6 +87,23 @@ public sealed class HostingTests : IDisposable
         File.WriteAllText(Path.Combine(_dir, "blobs", new string('a', 64)), "x");
         Directory.CreateDirectory(Path.Combine(_dir, "assets"));
         Directory.CreateDirectory(Path.Combine(_dir, "fonts"));
+
+        Assert.Null(DataFolder.CheckWipeable(_dir));
+        DataFolder.Wipe(_dir, lockPath);
+
+        Assert.Equal([lockPath], Directory.GetFileSystemEntries(_dir));
+    }
+
+    [Fact]
+    public void Wipe_AfterAMigrationRecordIsWritten_KeepsOnlyTheLock()
+    {
+        // --fresh on a folder whose 1.x migration ran: the run-once record, written as the import writes it, and a
+        // temp file an interrupted write of it left.
+        var lockPath = Path.Combine(_dir, "engine.lock");
+        using var held = InstanceLock.TryAcquire(lockPath, out _);
+        new V1Folder(_dir + "-v1").WriteRecord(new DataPaths(_dir), [], "skipped", DateTimeOffset.UnixEpoch);
+        File.WriteAllText(Path.Combine(_dir, $"{V1Folder.RecordFileName}.{Guid.NewGuid():N}.tmp"), "x");
+        Assert.True(File.Exists(Path.Combine(_dir, V1Folder.RecordFileName)));
 
         Assert.Null(DataFolder.CheckWipeable(_dir));
         DataFolder.Wipe(_dir, lockPath);

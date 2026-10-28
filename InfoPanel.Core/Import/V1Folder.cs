@@ -37,7 +37,7 @@ public sealed class V1Folder
     public const string ProfilesFile = "profiles.xml", SettingsFile = "settings.xml", SettingsBackupFile = "settings.xml.bak";
 
     /// <summary>The run-once record's name in the engine's data folder.</summary>
-    public const string RecordFileName = "import-v1.json";
+    public const string RecordFileName = DataPaths.ImportRecordFileName;
 
     public const string StateNone = "none", StatePending = "pending", StateDone = "done";
 
@@ -65,12 +65,11 @@ public sealed class V1Folder
     private static readonly string[] ProtectedFolders = ["profiles", "assets"];
 
     /// <summary>
-    /// The top-level entries the engine writes in its data folder: the store, the tokens, the runtime file, the lock,
-    /// fonts, logs, step-1's files and the run-once record. A file the engine writes by renaming a temp file over it
-    /// replaces a link instead of writing through it; the folders and the lock are written through.
+    /// The top-level entries the engine writes in its data folder (<see cref="DataPaths.EngineFiles"/> and
+    /// <see cref="DataPaths.EngineFolders"/>). A file the engine writes by renaming a temp file over it replaces a link
+    /// instead of writing through it; the folders and the lock are written through.
     /// </summary>
-    private static readonly string[] DataEntries =
-        ["profiles.json", "tokens.json", "runtime.json", "engine.lock", "profiles.xml", RecordFileName, "profiles", "blobs", "fonts", "logs", "assets"];
+    private static readonly string[] DataEntries = [.. DataPaths.EngineFiles, .. DataPaths.EngineFolders];
 
     /// <summary>
     /// Why a 1.x folder at <paramref name="v1Root"/> can't be used with the data folder <paramref name="dataRoot"/>, or

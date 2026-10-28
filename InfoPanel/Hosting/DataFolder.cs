@@ -1,30 +1,11 @@
-using System.Text.RegularExpressions;
 using InfoPanel.Extensions;
+using InfoPanel.Persistence;
 
 namespace InfoPanel.Hosting;
 
 /// <summary>Start-up chores on the data folder.</summary>
-public static partial class DataFolder
+public static class DataFolder
 {
-    /// <summary>
-    /// Top-level files the engine writes in its data folder: the 2.0 store's profile order, the integration tokens,
-    /// the runtime file and the lock, and step-1's profile list (which this engine leaves alone).
-    /// </summary>
-    private static readonly HashSet<string> EngineFiles = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "profiles.json", "tokens.json", "runtime.json", "engine.lock", "profiles.xml",
-    };
-
-    /// <summary>Top-level folders the engine writes in its data folder (<c>assets</c> is step-1's).</summary>
-    private static readonly HashSet<string> EngineFolders = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "profiles", "blobs", "fonts", "logs", "assets",
-    };
-
-    /// <summary>A temp file left by an interrupted write of an engine file (<c>{name}.{guid:N}.tmp</c>).</summary>
-    [GeneratedRegex("^(profiles\\.json|tokens\\.json|profiles\\.xml|runtime\\.json)\\.[0-9a-f]{32}\\.tmp$", RegexOptions.IgnoreCase)]
-    private static partial Regex EngineTempFile();
-
     /// <summary>Owner-only (0700) for folders the engine creates on Unix.</summary>
     private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
@@ -49,9 +30,10 @@ public static partial class DataFolder
     /// <summary>
     /// Whether <c>--fresh</c> may wipe <paramref name="root"/>: null when it may, else why not. Checked on the real
     /// path (links resolved): it must not be a filesystem root, the home folder or a folder above it, and it may hold
-    /// only what the engine writes there (<c>profiles.json</c>, <c>tokens.json</c>, <c>profiles/</c>, <c>blobs/</c>, <c>fonts/</c>,
-    /// <c>logs/</c>, <c>runtime.json</c>, <c>engine.lock</c>, step-1's <c>profiles.xml</c> and <c>assets/</c>, and their
-    /// write temp files). A folder that doesn't exist yet may be wiped.
+    /// only what the engine writes there (<see cref="DataPaths.IsEngineEntry"/>: <c>profiles.json</c>, <c>tokens.json</c>,
+    /// <c>profiles/</c>, <c>blobs/</c>, <c>fonts/</c>, <c>logs/</c>, <c>runtime.json</c>, <c>engine.lock</c>, step-1's
+    /// <c>profiles.xml</c> and <c>assets/</c>, the 1.x migration's <c>import-v1.json</c>, and their write temp files).
+    /// A folder that doesn't exist yet may be wiped.
     /// </summary>
     public static string? CheckWipeable(string root)
     {
@@ -76,7 +58,7 @@ public static partial class DataFolder
         {
             foreach (var entry in new DirectoryInfo(real).EnumerateFileSystemInfos())
             {
-                if (!IsEngineEntry(entry.Name))
+                if (!DataPaths.IsEngineEntry(entry.Name))
                     return $"--fresh refuses to wipe {shown}: it holds '{entry.Name}', which the engine didn't create. " +
                         "Use an empty folder or one the engine made, or empty it yourself.";
             }
@@ -88,9 +70,6 @@ public static partial class DataFolder
 
         return null;
     }
-
-    private static bool IsEngineEntry(string name) =>
-        EngineFiles.Contains(name) || EngineFolders.Contains(name) || EngineTempFile().IsMatch(name);
 
     /// <summary>
     /// <c>--fresh</c>: deletes everything in <paramref name="root"/> (its real path) except the engine lock, which
