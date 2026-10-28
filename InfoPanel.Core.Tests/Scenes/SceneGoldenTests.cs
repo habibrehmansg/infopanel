@@ -52,6 +52,7 @@ public sealed class SceneGoldenTests
         ["effects"] = new("scene/valid/effects.json", 220, 140, 0, 0, null, null),
         ["expressions"] = new("scene/valid/expressions.json", 560, 60, 4, 4, 300, 48, Load),
         ["gauge-sequence"] = new("scene/valid/gauge-sequence.json", 148, 148, 10, 10, null, null, i => i.Number("test:v", 60)),
+        ["gradient-stops"] = new("scene/valid/gradient-stops.json", 220, 108, 10, 10, null, null),
         ["graph"] = new("scene/valid/graph.json", 260, 100, 10, 10, null, null, Load),
         ["histogram"] = new("scene/valid/histogram.json", 260, 100, 10, 10, 240, 80, Load),
         ["image"] = new("scene/valid/image.json", 220, 140, 10, 10, 200, 120),

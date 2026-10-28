@@ -190,7 +190,18 @@ internal sealed class CMedia : CNode
     public bool Nearest;
 }
 
-internal sealed record CCell(string Name, string DefinitionKey, CExpr Init, CExpr Next);
+/// <summary>
+/// A compiled state cell. Its state is keyed by <see cref="Key"/>: its name, its definition (<c>init</c> and <c>next</c>
+/// in the canonical form) and its resolved type, which can change while the definition doesn't (a value it reads turns
+/// from a colour into text), so the cell starts again then (spec/docs/identity.md).
+/// </summary>
+internal sealed record CCell(string Name, string DefinitionKey, Ty Type, CExpr Init, CExpr Next)
+{
+    public CellKey Key { get; } = new(Name, DefinitionKey, Type);
+}
+
+/// <summary>What a state cell's runtime state is kept by: name, canonical definition and resolved type.</summary>
+internal readonly record struct CellKey(string Name, string Definition, Ty Type);
 
 /// <summary>A compiled scene.</summary>
 internal sealed class CompiledScene
@@ -307,7 +318,7 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
             var def = cellDefs[cellNames[i]];
             // Every number literal is finite: the model reads none that rounds to ±∞ (SpecJson refuses it).
             var key = CanonicalJson.Write(SpecJson.Write(def));
-            cells[i] = new CCell(cellNames[i], key, _x.Compile(def.Init), _x.Compile(def.Next));
+            cells[i] = new CCell(cellNames[i], key, _scope.CellTypes[i], _x.Compile(def.Init), _x.Compile(def.Next));
         }
 
         foreach (var i in order.Where(i => readsState[i]))

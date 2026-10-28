@@ -15,7 +15,10 @@ internal abstract class RGeom
     /// <summary>The outline's bounds (control points for curves of static paths), without any stroke.</summary>
     public abstract SKRect Bounds { get; }
 
-    /// <summary>The outline's length, for the dash budget (an estimate for curves).</summary>
+    /// <summary>
+    /// The outline's length, for the dash budget (an estimate for curves): the length Skia strokes, never negative, so
+    /// lengths summed over several outlines never cancel.
+    /// </summary>
     public abstract double Length { get; }
 
     /// <summary>The outline's contours, for the dash budget: a dash pattern starts again on each.</summary>
@@ -39,7 +42,7 @@ internal sealed class RectGeom(float x, float y, float w, float h, SKPoint[]? ra
     public SKPoint[]? Radii { get; } = radii;
 
     public override SKRect Bounds => Rect;
-    public override double Length => 2.0 * (Rect.Width + Rect.Height);
+    public override double Length => 2.0 * (Math.Abs(Rect.Width) + Math.Abs(Rect.Height)); // Skia strokes a reversed rectangle in full
     public override bool HasCorners => false; // right angles: a miter reaches exactly the rectangle grown by half the width
 
     public override SKPath ToPath()
@@ -79,7 +82,7 @@ internal sealed class EllipseGeom(float cx, float cy, float rx, float ry) : RGeo
     {
         get
         {
-            double a = Oval.Width / 2, b = Oval.Height / 2;
+            double a = Math.Abs(Oval.Width) / 2, b = Math.Abs(Oval.Height) / 2;
             return Math.PI * (3 * (a + b) - Math.Sqrt((3 * a + b) * (a + 3 * b))); // Ramanujan
         }
     }
@@ -422,14 +425,15 @@ internal sealed record RStroke(RPaint Paint, float Width, SKStrokeCap Cap, SKStr
 
     /// <summary>
     /// The dash segments this stroke draws along <paramref name="contours"/> contours of <paramref name="length"/> in
-    /// all; 0 without a dash. The pattern starts again on each contour, so each counts at least one (partial) period.
+    /// all; 0 without a dash. Dashes follow the trimmed outline (trimming comes first, and keeps the same fraction of
+    /// each path's length), and the pattern starts again on each contour, so each counts at least one (partial) period.
     /// </summary>
     public double DashSegments(double length, double contours)
     {
         if (Dash is not { Length: > 0 } dash) return 0;
         double sum = 0;
         foreach (var d in dash) sum += d;
-        return (length / sum + Math.Max(1, contours)) * dash.Length;
+        return (length * (TrimEnd - TrimStart) / sum + Math.Max(1, contours)) * dash.Length;
     }
 }
 

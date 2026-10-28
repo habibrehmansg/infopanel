@@ -24,6 +24,8 @@ A scene is what one item draws: a tree of nodes in the item's local coordinates.
 - Out-of-range values are clamped where a member says so (opacity 0–1, sigma 0–64, sweep −360…360, …) and otherwise draw what they say: a rectangle with a negative width or height, an ellipse with a radius at or below 0 and an arc with `inner` ≥ `r` draw nothing.
 - Every node has an optional `id` (its instance id, unique in the scene), `visible` (bool, default true) and `opacity` (0–1, default 1).
 
+**Defaults.** An optional member that is absent reads as the `default` the schema gives it (`schemas/scene.schema.json`); those defaults are as normative as this text, which repeats only some of them. For example, a `translate` step without `y` moves along x only, `rotate` and `scale` without `cx` and `cy` turn and scale about (0, 0), and a `skew` without `y` skews along x only. An optional member without a `default` means what this text says of its absence: a shape without `fill` isn't filled.
+
 ## Nodes
 
 | `kind` | Geometry members | Paint members |
@@ -52,7 +54,9 @@ A paint is a colour (a literal `#RRGGBB`/`#RRGGBBAA` or a colour expression) or 
 | `sweep` | `cx`, `cy`, `start` (default 0), `end` (default start + 360), `stops`, `spread`; angles as for arcs |
 | `compose` | `blend`, `dst`, `src`: two paints combined per pixel, `src` blended onto `dst`, then drawn as one paint (two perpendicular linear gradients multiplied make a diamond). Compose paints nest at most 16 deep (`composeDepth`, [limits](limits.md#scene-limits)) |
 
-`stops` are 2–16 `{ "at", "color" }`, used in the order given, `at` clamped to 0–1; both may be expressions, so a gradient can move with time or a value. `spread` says what lies outside 0–1: `pad` (default: the end colours), `repeat`, `reflect`. Animated gradients are expressions over `{"op": "time", "field": "elapsed"}`: a rotating sweep, a pulsing radial, a moving linear (`examples/scene/valid/shapes.json`).
+`stops` are 2–16 `{ "at", "color" }`, used in the order given, `at` clamped to 0–1 (below); both may be expressions, so a gradient can move with time or a value. `spread` says what lies outside 0–1: `pad` (default: the end colours), `repeat`, `reflect`. Animated gradients are expressions over `{"op": "time", "field": "elapsed"}`: a rotating sweep, a pulsing radial, a moving linear (`examples/scene/valid/shapes.json`).
+
+**Stop positions.** Each tick a gradient's stops are taken in the order written: each `at` is clamped to 0–1, then raised to the previous stop's position when it is below it, so positions never decrease and stops are never reordered (positions written `0.2, 0.6, 0.4, 1` are drawn at `0.2, 0.6, 0.6, 1`). Stops at one position make a hard edge there: the colours before it blend towards the first of them, those after it start from the last, and a stop between those two shows nowhere. Inside 0–1, before the first stop's position the paint is the first colour and after the last stop's the last colour, whatever `spread` says (`examples/scene/valid/gradient-stops.json`).
 
 ## Strokes
 

@@ -15,13 +15,14 @@ internal sealed class CellState(Val value, double updated)
 }
 
 /// <summary>
-/// What the runtime keeps for one item between ticks: its state cells, keyed by (cell name, canonical definition) so a
-/// changed definition starts again (spec/docs/identity.md), and its text layouts, so unchanged text keeps its layout.
+/// What the runtime keeps for one item between ticks: its state cells, keyed by (cell name, canonical definition, resolved
+/// type) so a changed definition or type starts again (spec/docs/identity.md), and its text layouts, so unchanged text
+/// keeps its layout.
 /// </summary>
 internal sealed class ItemRuntime(string id)
 {
     public string Id { get; } = id;
-    public readonly Dictionary<(string Name, string Definition), CellState> Cells = new();
+    public readonly Dictionary<CellKey, CellState> Cells = new();
     public CompiledScene? Scene;
     public readonly Dictionary<int, (TextLayoutKey Key, TextLayout Layout)> Texts = new();
     public readonly Dictionary<(int Table, int Row, int Column), (TextLayoutKey Key, TextLayout Layout)> TableCells = new();
@@ -180,7 +181,7 @@ internal sealed class SceneEvaluator
         var existing = new CellState?[cells.Length];
         for (var i = 0; i < cells.Length; i++)
         {
-            if (advance && _rt.Cells.TryGetValue((cells[i].Name, cells[i].DefinitionKey), out var s))
+            if (advance && _rt.Cells.TryGetValue(cells[i].Key, out var s))
             {
                 existing[i] = s;
                 e.State[i] = s.Value;
@@ -201,7 +202,7 @@ internal sealed class SceneEvaluator
         e.Dt = 0;
         for (var i = 0; i < cells.Length; i++)
         {
-            var key = (cells[i].Name, cells[i].DefinitionKey);
+            var key = cells[i].Key;
             if (existing[i] is { } s)
             {
                 e.State[i] = next[i];
@@ -639,7 +640,10 @@ internal sealed class SceneEvaluator
 
         var children = new List<RNode>();
         var line = new PolyGeom(points, false, SKPathFillType.Winding);
-        var stroke = Stroke(s.Stroke, line);
+        // One stroke per series, evaluated once per tick however many bars it outlines; its dashes are counted along
+        // everything it strokes (the line, or every bar's outline).
+        var stroke = Stroke(s.Stroke, null);
+        if (s.Mode != SeriesMode.Bars) CheckDash(stroke, line.Length, line.Contours);
         switch (s.Mode)
         {
             case SeriesMode.Line:
@@ -657,12 +661,20 @@ internal sealed class SceneEvaluator
                 }
                 break;
             case SeriesMode.Bars:
+            {
+                // A bar is a rectangle: with a negative width it draws nothing, so no bar is drawn or counted.
+                if (barWidth < 0) break;
+                double length = 0, contours = 0;
                 foreach (var p in points)
                 {
                     var bar = new RectGeom(p.X - barWidth, p.Y, barWidth, bottom - p.Y, null);
-                    children.Add(new RShape { Geom = bar, Fill = fill, Stroke = Stroke(s.Stroke, bar) });
+                    length += bar.Length;
+                    contours += bar.Contours;
+                    children.Add(new RShape { Geom = bar, Fill = fill, Stroke = stroke });
                 }
+                CheckDash(stroke, length, contours);
                 break;
+            }
         }
         return new RGroup { Clip = new RectGeom(x, y, w, h, null), Children = children.ToArray(), BoundsOverride = box };
     }

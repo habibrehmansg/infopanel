@@ -76,8 +76,8 @@ public sealed class SceneProcessBudget(int maxNodes)
 /// <summary>
 /// Renders one document in the scene format: loads a generation (<see cref="Load"/>), then advances it tick by tick
 /// (<see cref="Tick"/>), each tick producing one <see cref="TickSnapshot"/> that every output, scale, thumbnail and
-/// bounds measurement of the tick shares. Holds the document's runtime state (state cells by item, cell and definition;
-/// text layouts). Ticks are serialised; snapshots may be drawn on any thread.
+/// bounds measurement of the tick shares. Holds the document's runtime state (state cells by item, cell, definition and
+/// resolved type; text layouts). Ticks are serialised; snapshots may be drawn on any thread.
 /// </summary>
 public sealed class SceneRuntime : IDisposable
 {
@@ -131,8 +131,8 @@ public sealed class SceneRuntime : IDisposable
     /// Loads an already-checked generation as the next one. A generation checked with this runtime's limits and support
     /// keeps its checked and compiled scenes, reused by identity, so a generation that changed one item costs one item's
     /// work; one checked with others is checked again with this runtime's (its document as JSON), so what is drawn
-    /// doesn't depend on how the generation was made. Items keep their state across generations (by id, cell name and
-    /// definition). Snapshots report the generation's <see cref="Generation.Rev"/>. Throws
+    /// doesn't depend on how the generation was made. Items keep their state across generations (by id, cell name,
+    /// definition and resolved type). Snapshots report the generation's <see cref="Generation.Rev"/>. Throws
     /// <see cref="SceneDocumentException"/> when the generation's document is unsupported or invalid as a whole here.
     /// </summary>
     public void Load(Generation generation)
@@ -332,8 +332,8 @@ public sealed class SceneRuntime : IDisposable
     /// <summary>
     /// Brings the runtime state in line with a newly loaded generation (spec/docs/identity.md), whether or not any
     /// tick evaluates it: a removed item's state is dropped at once (undoing the removal brings the item back with its
-    /// cells at init), and an item keeps only the cells its scene still defines by name and definition. Hidden items
-    /// keep theirs; an item drawn as a placeholder has no cells.
+    /// cells at init), and an item keeps only the cells its scene still defines by name, definition and resolved
+    /// type. Hidden items keep theirs; an item drawn as a placeholder has no cells.
     /// </summary>
     private void Reconcile(SceneDocumentModel model)
     {
@@ -352,7 +352,7 @@ public sealed class SceneRuntime : IDisposable
                 continue;
             }
             if (rt.Cells.Count == 0) continue;
-            HashSet<(string, string)> defined = scene is null ? [] : scene.Cells.Select(c => (c.Name, c.DefinitionKey)).ToHashSet();
+            HashSet<CellKey> defined = scene is null ? [] : scene.Cells.Select(c => c.Key).ToHashSet();
             foreach (var key in rt.Cells.Keys.Where(k => !defined.Contains(k)).ToList()) rt.Cells.Remove(key);
         }
     }

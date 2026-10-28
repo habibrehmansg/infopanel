@@ -1,0 +1,63 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": 200,
+      "h": 24,
+      "fill": {
+        "type": "linear",
+        "x1": 0,
+        "y1": 0,
+        "x2": 200,
+        "y2": 0,
+        "stops": [
+          {"at": 0.2, "color": "#22c55e"},
+          {"at": 0.6, "color": "#eab308"},
+          {"at": 0.4, "color": "#ef4444"},
+          {"at": 1, "color": "#7f1d1d"}
+        ]
+      }
+    },
+    {
+      "kind": "rect",
+      "y": 32,
+      "w": 200,
+      "h": 24,
+      "fill": {
+        "type": "linear",
+        "x1": 0,
+        "y1": 0,
+        "x2": 200,
+        "y2": 0,
+        "stops": [
+          {"at": 0, "color": "#0ea5e9"},
+          {"at": 0.5, "color": "#1e3a8a"},
+          {"at": 0.5, "color": "#ffffff"},
+          {"at": 0.5, "color": "#f97316"},
+          {"at": 1, "color": "#fde68a"}
+        ]
+      }
+    },
+    {
+      "kind": "rect",
+      "y": 64,
+      "w": 200,
+      "h": 24,
+      "fill": {
+        "type": "linear",
+        "x1": 0,
+        "y1": 0,
+        "x2": 100,
+        "y2": 0,
+        "spread": "repeat",
+        "stops": [
+          {"at": -0.5, "color": "#a855f7"},
+          {"at": 0.25, "color": "#a855f7"},
+          {"at": 0.75, "color": "#14b8a6"},
+          {"at": 1.5, "color": "#14b8a6"}
+        ]
+      }
+    }
+  ]
+}

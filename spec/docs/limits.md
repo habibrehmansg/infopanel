@@ -174,7 +174,7 @@ Content within the limits can still be expensive on a given tick. An engine draw
 |---|---|
 | Text layouts per document tick | 4,000 (layouts made, not ones kept from earlier ticks; every paragraph laid out counts, `fit` probes and ellipsis passes included) |
 | Text layouts per item tick | 2,000, counted the same way |
-| Dashes per stroke | 100,000 along its outline: a shape's, or the glyph outlines of a text or table. The pattern starts again on every contour (each glyph has one or more), so each contour counts at least one period however short it is |
+| Dashes per stroke | 100,000 along the part of its outline it draws after trimming: a shape's, or the glyph outlines of a text or table. The pattern starts again on every contour (each glyph has one or more), so each contour counts at least one period however short it is |
 | Expression work per item tick | twice `exprWork`, so a valid scene always stays under it |
 | Watchdog | 50 ms: an item whose evaluation or drawing takes over it on three ticks running is drawn as over budget for 5 s, then tried again. A tick counts once, by its evaluation and its slowest draw, however many outputs and scales draw it |
 
