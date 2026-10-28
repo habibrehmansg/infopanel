@@ -257,8 +257,11 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         Assert.Contains("isn't JSON", error.Message);
     }
 
-    [Fact]
-    public async Task ALiveSocket_FailsItsDisposal_OnAMessageOutsideTheSpec_AfterTheLastWait()
+    [Theory]
+    [InlineData("""{"type":"welcome"}""", "welcome")]
+    // JSON reads the lone surrogate, but decoding the string for the check throws: that fails the disposal too.
+    [InlineData("""{"type":"\uD800"}""", "check of a message")]
+    public async Task ALiveSocket_FailsItsDisposal_OnAMessageOutsideTheSpec_AfterTheLastWait(string outside, string reported)
     {
         // A peer on real Kestrel that answers the subscribe with a hello, then sends a message no serverMessage allows.
         var sent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -271,7 +274,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
             using var socket = await context.WebSockets.AcceptWebSocketAsync(EngineRuntime.WebSocketProtocol);
             var buffer = new byte[4096];
             await socket.ReceiveAsync(buffer, context.RequestAborted);
-            foreach (var text in new[] { """{"type":"hello","protocol":2}""", """{"type":"welcome"}""" })
+            foreach (var text in new[] { """{"type":"hello","protocol":2}""", outside })
                 await socket.SendAsync(System.Text.Encoding.UTF8.GetBytes(text), System.Net.WebSockets.WebSocketMessageType.Text, true, context.RequestAborted);
             sent.SetResult();
             while (socket.State == System.Net.WebSockets.WebSocketState.Open)
@@ -287,7 +290,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
             "3dd19c0e-675a-4591-b096-83417853861f", 0.5, 30, Ct);
         await sent.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
         var error = await Assert.ThrowsAsync<InvalidOperationException>(async () => await live.DisposeAsync());
-        Assert.Contains("welcome", error.InnerException?.Message);
+        Assert.Contains(reported, error.InnerException?.Message);
     }
 
     [Fact]

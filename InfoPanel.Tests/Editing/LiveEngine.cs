@@ -199,8 +199,11 @@ internal sealed class LiveSocket : IAsyncDisposable
     private Exception? _failure;
     private SocketContractViolation? _violation;
 
-    /// <summary>A message the engine sent outside the spec: it fails the connection, and its disposal too.</summary>
-    private sealed class SocketContractViolation(string message) : InvalidOperationException(message);
+    /// <summary>
+    /// A message the engine sent outside the spec, or one its check or decoding threw on: it fails the connection, and
+    /// its disposal too.
+    /// </summary>
+    private sealed class SocketContractViolation(string message, Exception? inner = null) : InvalidOperationException(message, inner);
 
     private LiveSocket(ClientWebSocket socket) => _socket = socket;
 
@@ -305,35 +308,7 @@ internal sealed class LiveSocket : IAsyncDisposable
 
                 var bytes = buffer.ToArray();
                 buffer.SetLength(0);
-                var now = Stopwatch.GetTimestamp();
-                var outside = result.MessageType == WebSocketMessageType.Binary
-                    ? SocketContract.CheckFrame(bytes)
-                    : SocketContract.CheckServerText(Encoding.UTF8.GetString(bytes));
-                if (outside != null)
-                    throw new SocketContractViolation($"The engine sent a message outside the spec. {outside}");
-                lock (_gate)
-                {
-                    if (result.MessageType == WebSocketMessageType.Binary)
-                    {
-                        var rev = FrameCodec.Decode(bytes).Header.Rev;
-                        _frameRevs.Add(rev);
-                        _firstFrameAt.TryAdd(rev, now);
-                    }
-                    else
-                    {
-                        var json = JsonDocument.Parse(bytes).RootElement;
-                        switch (json.GetProperty("type").GetString())
-                        {
-                            case "doc":
-                                _docs.Add(DocState.From(json));
-                                break;
-                            case "error":
-                                _errors.Add(json.GetRawText());
-                                break;
-                        }
-                    }
-                    Signal();
-                }
+                Record(result.MessageType, bytes, Stopwatch.GetTimestamp());
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
@@ -350,6 +325,49 @@ internal sealed class LiveSocket : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Checks one message against the spec and records it. Anything that isn't a lost connection, a close or the stop,
+    /// that is whatever the check or the decoding throws, is a <see cref="SocketContractViolation"/>.
+    /// </summary>
+    private void Record(WebSocketMessageType type, byte[] bytes, long now)
+    {
+        try
+        {
+            var outside = type == WebSocketMessageType.Binary
+                ? SocketContract.CheckFrame(bytes)
+                : SocketContract.CheckServerText(Encoding.UTF8.GetString(bytes));
+            if (outside != null)
+                throw new SocketContractViolation($"The engine sent a message outside the spec. {outside}");
+            lock (_gate)
+            {
+                if (type == WebSocketMessageType.Binary)
+                {
+                    var rev = FrameCodec.Decode(bytes).Header.Rev;
+                    _frameRevs.Add(rev);
+                    _firstFrameAt.TryAdd(rev, now);
+                }
+                else
+                {
+                    var json = JsonDocument.Parse(bytes).RootElement;
+                    switch (json.GetProperty("type").GetString())
+                    {
+                        case "doc":
+                            _docs.Add(DocState.From(json));
+                            break;
+                        case "error":
+                            _errors.Add(json.GetRawText());
+                            break;
+                    }
+                }
+                Signal();
+            }
+        }
+        catch (Exception ex) when (ex is not SocketContractViolation)
+        {
+            throw new SocketContractViolation($"The check of a message the engine sent threw {ex.GetType().Name}: {ex.Message}", ex);
+        }
+    }
+
     private void Signal()
     {
         var changed = _changed;
@@ -359,7 +377,7 @@ internal sealed class LiveSocket : IAsyncDisposable
 
     /// <summary>
     /// Closes the connection, reading what the engine sent until its close (for at most 2 s), and throws if any of it was
-    /// outside the spec, however late it came. A close or a lost connection is quiet.
+    /// outside the spec or threw in its check, however late it came. A close, a lost connection or the stop is quiet.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
