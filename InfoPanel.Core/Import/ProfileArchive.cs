@@ -64,7 +64,8 @@ public static partial class ProfileArchive
     /// The archive of profile <paramref name="id"/>, built in a temporary file: null and no problem when there is no such
     /// profile; the problem (409) when its file can't be read at all. An archive its own import would refuse under
     /// <paramref name="limits"/> isn't exported: more entries than <see cref="ImportLimits.Entries"/>
-    /// (<c>archive.entries</c>), more bytes read than <see cref="ImportLimits.ExpandedBytes"/>, or a file over
+    /// (<c>archive.entries</c>; the document is one, with or without blobs), more bytes read than
+    /// <see cref="ImportLimits.ExpandedBytes"/> (the document's own bytes count, checked while it is copied), or a file over
     /// <see cref="ImportLimits.ArchiveBytes"/> (both <c>archive.expanded</c>); the temporary file is gone.
     /// </summary>
     /// <exception cref="ImportRefusal">The archive couldn't be imported back.</exception>
@@ -87,19 +88,21 @@ public static partial class ProfileArchive
             using (document)
             using (var zip = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: true))
             {
-                var scanned = WriteDocument(zip, document.Content, workspace.Limits.DocumentBytes, now, out var expanded);
+                // What its own import counts: the entries, and every byte it reads (the document, then each blob).
+                if (limits.Entries < 1)
+                    throw TooManyEntries(limits);
+                var scanned = WriteDocument(zip, document.Content, workspace.Limits.DocumentBytes, limits.ExpandedBytes, now, out var expanded);
                 name = scanned is null ? null : NameOf(scanned);
                 var references = scanned is null ? [] : References(scanned);
                 foreach (var blob in references.Where(r => r != NoImage).Order(StringComparer.Ordinal))
                 {
                     if (ReadVerified(workspace.Blobs, blob) is not { } bytes)
                         continue;
-                    // What its own import counts: the entries, and every byte it reads (the document and each blob).
                     if (1 + written.Count + 1 > limits.Entries)
-                        throw new ImportRefusal("archive.entries", $"The archive would have more than {limits.Entries} entries, which an import refuses.");
+                        throw TooManyEntries(limits);
                     expanded += bytes.Length;
                     if (expanded > limits.ExpandedBytes)
-                        throw new ImportRefusal("archive.expanded", $"The archive would hold more than {limits.ExpandedBytes} bytes, which an import refuses.");
+                        throw TooManyBytes(limits.ExpandedBytes);
                     var entry = zip.CreateEntry(BlobsFolder + blob[BlobStore.IdPrefix.Length..], CompressionLevel.Optimal);
                     entry.LastWriteTime = now;
                     using (var stream = entry.Open())
@@ -120,11 +123,19 @@ public static partial class ProfileArchive
         }
     }
 
+    private static ImportRefusal TooManyEntries(ImportLimits limits) =>
+        new("archive.entries", $"The archive would have more than {limits.Entries} entries, which an import refuses.");
+
+    private static ImportRefusal TooManyBytes(long maxExpanded) =>
+        new("archive.expanded", $"The archive would hold more than {maxExpanded} bytes, which an import refuses.");
+
     /// <summary>
     /// Copies the document into its entry, keeping its bytes for the reference scan when they are at most
-    /// <paramref name="maxBytes"/> (a larger stored document can't be imported anyway); null otherwise.
+    /// <paramref name="maxBytes"/> (a larger stored document can't be imported anyway); null otherwise. Refuses
+    /// (<c>archive.expanded</c>) as soon as more than <paramref name="maxExpanded"/> bytes are copied, as its import would.
     /// </summary>
-    private static byte[]? WriteDocument(ZipArchive zip, Stream content, int maxBytes, DateTimeOffset now, out long length)
+    /// <exception cref="ImportRefusal">The document is over <paramref name="maxExpanded"/>.</exception>
+    private static byte[]? WriteDocument(ZipArchive zip, Stream content, int maxBytes, long maxExpanded, DateTimeOffset now, out long length)
     {
         length = 0;
         var entry = zip.CreateEntry(DocumentEntry, CompressionLevel.Optimal);
@@ -136,8 +147,10 @@ public static partial class ProfileArchive
         var keeping = true;
         while ((read = content.Read(chunk, 0, chunk.Length)) > 0)
         {
-            output.Write(chunk, 0, read);
             length += read;
+            if (length > maxExpanded)
+                throw TooManyBytes(maxExpanded);
+            output.Write(chunk, 0, read);
             if (!keeping)
                 continue;
             if (kept.Length + read > maxBytes)

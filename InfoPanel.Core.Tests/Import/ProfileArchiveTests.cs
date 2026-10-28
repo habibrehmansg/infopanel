@@ -169,6 +169,63 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.Equal(3, Open(zip, NewWorkspace("target"), limits).Blobs.Count);
     }
 
+    /// <summary>A workspace holding one profile whose document refers to no blob, and that document's export length.</summary>
+    private (Workspace Source, long Length) DocumentOnly()
+    {
+        var workspace = NewWorkspace("document-only");
+        var document = new JsonObject
+        {
+            ["format"] = "infopanel.document/1",
+            ["id"] = Id,
+            ["profile"] = new JsonObject { ["name"] = "Plain", ["width"] = 200, ["height"] = 100, ["background"] = "#000000" },
+            ["items"] = new JsonArray(),
+        };
+        var created = workspace.Create(Encoding.UTF8.GetBytes(new JsonObject { ["id"] = Id, ["document"] = document }.ToJsonString()));
+        Assert.True(created.Entry is not null, string.Join("; ", created.Invalid?.Errors.Select(e => $"{e.Code} {e.Path} {e.Message}") ?? []));
+        return (workspace, ExportBytes(workspace, Id).Length);
+    }
+
+    [Theory]
+    [InlineData("entries", "archive.entries")]
+    [InlineData("expanded", "archive.expanded")]
+    [InlineData("expanded-none", "archive.expanded")]
+    public void Export_DocumentOnly_ThatAnImportWouldRefuse_IsRefused(string limit, string code)
+    {
+        var (source, length) = DocumentOnly();
+        var limits = limit switch
+        {
+            "entries" => new ImportLimits { Entries = 0 },
+            "expanded" => new ImportLimits { ExpandedBytes = length - 1 },
+            _ => new ImportLimits { ExpandedBytes = 0 },
+        };
+        FileStream? file = null;
+
+        var error = Assert.Throws<ImportRefusal>(() => ProfileArchive.Export(source, Id, Now, limits, () => file = TempFile.Create()));
+
+        // The import, given the same limits, refuses the archive exported without them with the same code.
+        var (archive, _) = ProfileArchive.Export(source, Id, Now);
+        byte[] zip;
+        using (archive)
+            zip = Bytes(archive!);
+        Assert.Equal((code, code, false), (error.Code, Assert.Throws<ImportRefusal>(() => Open(zip, NewWorkspace("target"), limits)).Code, File.Exists(file!.Name)));
+    }
+
+    [Fact]
+    public void Export_DocumentOnly_AtTheImportLimits_Exports_AndImportsWithThem()
+    {
+        var (source, length) = DocumentOnly();
+        var limits = new ImportLimits { Entries = 1, ExpandedBytes = length };
+
+        var (archive, problem) = ProfileArchive.Export(source, Id, Now, limits);
+        Assert.Null(problem);
+        byte[] zip;
+        using (archive)
+            zip = Bytes(archive!);
+
+        Assert.Equal([ProfileArchive.DocumentEntry], Names(zip));
+        Assert.Empty(Open(zip, NewWorkspace("target"), limits).Blobs);
+    }
+
     [Fact]
     public void RoundTrip_TheDocumentComesBackByteEqual_WithEachBlobOnce()
     {
