@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
+using InfoPanel.Settings;
 using InfoPanel.Spec;
 
 namespace InfoPanel.Import;
@@ -11,8 +12,11 @@ namespace InfoPanel.Import;
 /// Reads the user data of 1.x's <c>settings.xml</c> (Core has no 1.x settings model; 1.x's is WPF-typed): the frame and
 /// graph rates, the Libre toggles, the program-specific panel toggles, the device list of the eight panel families, the
 /// multi-device flags and the hotkeys, each as 1.4.x would use it (after its 1.3.1 settings upgrade). An absent element gives 1.4.x's default
-/// (<c>Settings.cs</c>); a value that doesn't parse gives the default too, with an <c>import.setting</c> warning. Theme, UI
-/// scale, window size and pane state are left out.
+/// (<c>Settings.cs</c>); a value that doesn't parse gives the default too, with an <c>import.setting</c> warning. The frame
+/// rate, the graph rate and the storage interval are kept within the engine settings' ranges (<see cref="SettingsLimits"/>,
+/// which are 1.4.x's controls' ranges): a hand-edited file's value outside one is clamped to it, with an
+/// <c>import.setting</c> warning, so the envelope carries only values the engine accepts. Theme, UI scale, window size and
+/// pane state are left out.
 /// </summary>
 internal static class V1SettingsReader
 {
@@ -49,6 +53,16 @@ internal static class V1SettingsReader
                 Warn(path, $"{element} '{Clip(e.Value)}' doesn't parse; 1.4.x's default, {fallback}, is used.", e);
                 return fallback;
             }
+        }
+
+        int Clamped(string element, string path, SettingRange range)
+        {
+            var value = Int(element, path, range.Default);
+            if (range.Contains(value))
+                return value;
+            var clamped = range.Clamp(value);
+            Warn(path, $"{element} {value} is outside {range.Min}–{range.Max}; {clamped} is used.", root.Element(element));
+            return clamped;
         }
 
         bool Bool(string element, string path, bool fallback)
@@ -113,13 +127,13 @@ internal static class V1SettingsReader
         return new V1Settings
         {
             Version = version,
-            TargetFrameRate = Int("TargetFrameRate", "/settings/targetFrameRate", 15),
-            TargetGraphUpdateRate = Int("TargetGraphUpdateRate", "/settings/targetGraphUpdateRate", 1000),
+            TargetFrameRate = Clamped("TargetFrameRate", "/settings/targetFrameRate", SettingsLimits.FrameRate),
+            TargetGraphUpdateRate = Clamped("TargetGraphUpdateRate", "/settings/targetGraphUpdateRate", SettingsLimits.GraphRate),
             Libre = new V1LibreSettings
             {
                 Enabled = Bool("LibreHardwareMonitor", "/settings/libre/enabled", true),
                 Storage = Bool("LibreHardwareMonitorStorage", "/settings/libre/storage", true),
-                StorageInterval = Int("LibreHardwareMonitorStorageInterval", "/settings/libre/storageInterval", 30),
+                StorageInterval = Clamped("LibreHardwareMonitorStorageInterval", "/settings/libre/storageInterval", SettingsLimits.StorageInterval),
             },
             ProgramSpecific = new V1ProgramSpecificSettings
             {

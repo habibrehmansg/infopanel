@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using InfoPanel.Hosting;
 using InfoPanel.Models;
 using InfoPanel.Sensors;
+using InfoPanel.Settings;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -77,6 +78,45 @@ public class EngineStartupTests
             return log.Contains("step-1 profiles");
         });
         Assert.Single(log.Split('\n'), line => line.Contains("step-1 profiles"));
+    }
+
+    [Fact]
+    public async Task TheSettings_AreOpenedAtStartUp_AndAFirstRunWritesNoSettingsFile()
+    {
+        using var factory = new EngineFactory();
+        using (var client = factory.CreateApiClient())
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/session", Ct)).StatusCode);
+
+        var store = factory.Services.GetRequiredService<SettingsStore>();
+        Assert.Equal((SettingsStatus.Ok, 15), (store.Status, store.Current.Settings.FrameRate));
+        Assert.Equal(Path.Combine(factory.DataDir, "settings.json"), store.Path);
+        Assert.False(File.Exists(store.Path));
+    }
+
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("""{"format":"infopanel.settings/1","logLevel":"\uD800"}""")] // a lone surrogate: no text to read
+    public async Task AnUnreadableSettingsFile_DoesntStopTheEngine_IsLogged_AndIsLeftAsItIs(string content)
+    {
+        using var factory = new EngineFactory();
+        Directory.CreateDirectory(factory.DataDir);
+        var path = Path.Combine(factory.DataDir, "settings.json");
+        File.WriteAllText(path, content);
+
+        using (var client = factory.CreateApiClient())
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/session", Ct)).StatusCode);
+
+        var store = factory.Services.GetRequiredService<SettingsStore>();
+        Assert.Equal((SettingsStatus.Unreadable, "json"), (store.Status, store.Problem!.Code));
+        Assert.Equal(15, store.Current.Settings.FrameRate);
+        Assert.Equal(content, File.ReadAllText(path));
+        var log = "";
+        await WaitUntil(() =>
+        {
+            log = string.Join("\n", Directory.GetFiles(Path.Combine(factory.DataDir, "logs")).Select(ReadShared));
+            return log.Contains("The settings file");
+        });
+        Assert.Single(log.Split('\n'), line => line.Contains("The settings file") && line.Contains("[ERR]"));
     }
 
     [Fact]

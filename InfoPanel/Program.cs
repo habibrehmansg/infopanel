@@ -12,6 +12,7 @@ using InfoPanel.Scenes;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.MacOS;
+using InfoPanel.Settings;
 using Microsoft.AspNetCore.HostFiltering;
 using Serilog;
 using Serilog.Events;
@@ -99,6 +100,8 @@ try
 
     // The stores are opened and their blobs swept before anything changes them; the first run stores the example.
     var workspace = Workspace.Start(paths, new WorkspaceOptions { Logger = engineLogger.ForContext<Workspace>() }, DateTimeOffset.UtcNow);
+    // The engine settings: a file that can't be read is logged, leaves the defaults in effect and is never rewritten.
+    var settings = SettingsStore.Open(paths, engineLogger.ForContext<SettingsStore>());
     // Integration tokens: a file that can't be read stops the engine rather than dropping or overwriting them.
     var tokens = TokenStore.Open(paths.TokensFile, paths.Root, TimeProvider.System, engineLogger.ForContext<TokenStore>());
 
@@ -144,6 +147,7 @@ try
     builder.Services.AddSingleton(paths);
     builder.Services.AddSingleton(runtime);
     builder.Services.AddSingleton(tokens);
+    builder.Services.AddSingleton(settings);
     // Made by a factory so the container disposes it (and every open document) after the services that use it.
     builder.Services.AddSingleton(_ => workspace);
     builder.Services.AddSingleton(TimeProvider.System);

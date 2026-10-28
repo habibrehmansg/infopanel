@@ -31,7 +31,7 @@ public static class DataFolder
     /// Whether <c>--fresh</c> may wipe <paramref name="root"/>: null when it may, else why not. Checked on the real
     /// path (links resolved): it must not be a filesystem root, the home folder or a folder above it, and it may hold
     /// only what the engine writes there (<see cref="DataPaths.IsEngineEntry"/>: <c>profiles.json</c>, <c>tokens.json</c>,
-    /// <c>profiles/</c>, <c>blobs/</c>, <c>fonts/</c>, <c>logs/</c>, <c>runtime.json</c>, <c>engine.lock</c>, step-1's
+    /// <c>settings.json</c>, <c>profiles/</c>, <c>blobs/</c>, <c>fonts/</c>, <c>logs/</c>, <c>runtime.json</c>, <c>engine.lock</c>, step-1's
     /// <c>profiles.xml</c> and <c>assets/</c>, the 1.x migration's <c>import-v1.json</c>, and their write temp files).
     /// A folder that doesn't exist yet may be wiped.
     /// </summary>
