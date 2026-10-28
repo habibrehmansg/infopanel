@@ -122,6 +122,19 @@ public class GoldenTests
         ]),
         ["shapes-all"] = () => Scene(440, 330, p => [.. Enum.GetValues<ShapeDisplayItem.ShapeType>().Select((type, i) => Shape(p, type, i))]),
         ["gradients-all"] = () => Scene(440, 220, p => [.. Enum.GetValues<GradientType>().Select((type, i) => Gradient(p, type, i))]),
+        ["shapes-rotated-gradients"] = () => Scene(440, 330, p => [
+            Turned(p, 0, ShapeDisplayItem.ShapeType.Rectangle, 100, 50, GradientType.Linear, 90, 45),
+            Turned(p, 1, ShapeDisplayItem.ShapeType.Ellipse, 96, 64, GradientType.Linear, 30, 30),
+            Turned(p, 2, ShapeDisplayItem.ShapeType.Capsule, 100, 60, GradientType.Sweep, 0, -60),
+            Turned(p, 3, ShapeDisplayItem.ShapeType.Triangle, 96, 96, GradientType.Radial, 45, 135),
+            Turned(p, 4, ShapeDisplayItem.ShapeType.Star, 96, 96, GradientType.Diamond, 30, 20),
+            Turned(p, 5, ShapeDisplayItem.ShapeType.Arrow, 100, 60, GradientType.Reflected, 60, 90),
+            Turned(p, 6, ShapeDisplayItem.ShapeType.Hexagon, 96, 96, GradientType.Spiral, 0, 200, s => s.GradientAnimationSpeed = 300),
+            Turned(p, 7, ShapeDisplayItem.ShapeType.Plus, 96, 96, GradientType.Linear, 0, -15, s => { s.ShowFill = false; s.ShowFrame = true; s.FrameThickness = 6; s.FrameColor = "#FFFF1744"; }),
+        ]),
+        ["bar-rotated-gradient"] = () => Scene(320, 200, p => [
+            Bar(p, 10, 85, 300, 30, b => { b.Gradient = true; b.Color = "#FF00C853"; b.GradientColor = "#FFFFD600"; b.BackgroundColor = "#FF2A2F3A"; b.FrameColor = "#FFFFFFFF"; b.Rotation = 30; }),
+        ]),
         ["group-nested-hidden-child"] = () => Scene(340, 120, p => [NestedGroup(p)]),
         ["composite-scale1"] = () => Composite(),
         ["composite-scale2"] = () => Composite(),
@@ -139,6 +152,39 @@ public class GoldenTests
 
         using var bitmap = scene.Render(profile, items, scale);
         GoldenImage.Verify(name, bitmap);
+    }
+
+    [Fact]
+    public void A_turned_shapes_gradient_stays_level()
+    {
+        // shapes-rotated-gradients' first cell: a 100 x 50 rectangle centred at (55, 82), turned 45 degrees, with a
+        // left-to-right gradient. 1.x fits the gradient to the turned outline on the panel, so every canvas column inside
+        // the rectangle has one colour, and a column of the rectangle crosses the gradient.
+        using var scene = new GoldenScene();
+        var (profile, items) = Cases["shapes-rotated-gradients"]();
+        using var bitmap = scene.Render(profile, items);
+        var (cos, sin) = (Math.Cos(Math.PI / 4), Math.Sin(Math.PI / 4));
+        (double U, double V) Local(int x, int y) =>
+            (50 + (x + 0.5 - 55) * cos + (y + 0.5 - 82) * sin, 25 - (x + 0.5 - 55) * sin + (y + 0.5 - 82) * cos);
+        bool Inside(int x, int y) => Local(x, y) is { U: > 3 and < 97, V: > 3 and < 47 };
+        static int Distance(SkiaSharp.SKColor p, SkiaSharp.SKColor q) =>
+            Math.Max(Math.Abs(p.Red - q.Red), Math.Max(Math.Abs(p.Green - q.Green), Math.Abs(p.Blue - q.Blue)));
+
+        foreach (var x in new[] { 20, 35, 55, 75, 90 })
+        {
+            var ys = Enumerable.Range(0, 165).Where(y => Inside(x, y)).ToList();
+            Assert.True(ys.Count >= 10, $"column {x}: {ys.Count} pixels inside");
+            var first = bitmap.GetPixel(x, ys[0]);
+            foreach (var y in ys)
+                Assert.True(Distance(bitmap.GetPixel(x, y), first) <= 1, $"column {x}: ({x}, {ys[0]}) is {first}, ({x}, {y}) is {bitmap.GetPixel(x, y)}");
+        }
+
+        (int X, int Y) Canvas(double u, double v) =>
+            ((int)Math.Floor(55 + (u - 50) * cos - (v - 25) * sin), (int)Math.Floor(82 + (u - 50) * sin + (v - 25) * cos));
+        var (a, b) = (Canvas(30, 10), Canvas(30, 40));
+        Assert.True(Inside(a.X, a.Y) && Inside(b.X, b.Y));
+        Assert.True(Distance(bitmap.GetPixel(a.X, a.Y), bitmap.GetPixel(b.X, b.Y)) > 30,
+            $"local column 30: {a} is {bitmap.GetPixel(a.X, a.Y)}, {b} is {bitmap.GetPixel(b.X, b.Y)}");
     }
 
     private static (Profile, List<DisplayItem>) Scene(int width, int height, Func<Profile, List<DisplayItem>> items)
@@ -304,6 +350,37 @@ public class GoldenTests
         GradientAnimationSpeed = 300,
         ShowFrame = false,
     };
+
+    /// <summary>
+    /// A gradient shape centred in cell <paramref name="index"/> of a grid of 4 x 2 cells of 110 x 165 and turned about its
+    /// centre by <paramref name="rotation"/>; fill only, the animation stopped, unless <paramref name="configure"/> says
+    /// otherwise.
+    /// </summary>
+    private static ShapeDisplayItem Turned(Profile p, int index, ShapeDisplayItem.ShapeType type, int width, int height, GradientType gradient,
+        int angle, int rotation, Action<ShapeDisplayItem>? configure = null)
+    {
+        var item = new ShapeDisplayItem(type.ToString(), p)
+        {
+            Type = type,
+            X = 55 + index % 4 * 110 - width / 2,
+            Y = 82 + index / 4 * 165 - height / 2,
+            Width = width,
+            Height = height,
+            CornerRadius = 20,
+            Rotation = rotation,
+            ShowFill = true,
+            FillColor = "#FFFF1744",
+            ShowGradient = true,
+            GradientColor = "#FF00E676",
+            GradientColor2 = "#FF2979FF",
+            GradientType = gradient,
+            GradientAngle = angle,
+            GradientAnimationSpeed = 0,
+            ShowFrame = false,
+        };
+        configure?.Invoke(item);
+        return item;
+    }
 
     /// <summary>
     /// Outer group: a shape and an inner group. Inner group: a visible text and a hidden ellipse (not drawn).

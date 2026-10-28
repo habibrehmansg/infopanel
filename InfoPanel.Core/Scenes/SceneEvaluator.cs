@@ -150,8 +150,10 @@ internal sealed class SceneEvaluator
     /// budget's estimate, the most it can be.
     /// </param>
     /// <param name="world">The item's placement in the frame.</param>
+    /// <param name="rotation">The item's rotation on the canvas, which <c>{"op":"box","field":"rotation"}</c> reads.</param>
     public SceneEvaluator(CompiledScene scene, ItemRuntime rt, TickServices services, InputSnap[] inputs, SceneClock clock,
-        double boxW, double boxH, ItemDiagnostics diag, int workLimit, double frameScale = double.PositiveInfinity, SKMatrix? world = null)
+        double boxW, double boxH, ItemDiagnostics diag, int workLimit, double frameScale = double.PositiveInfinity, SKMatrix? world = null,
+        double rotation = 0)
     {
         _scene = scene;
         _frameScale = frameScale;
@@ -172,6 +174,7 @@ internal sealed class SceneEvaluator
             MeasureH = new double[scene.TextNodes.Length],
             BoxW = boxW,
             BoxH = boxH,
+            Rotation = rotation,
             WorkLimit = workLimit,
             TextLength = services.TextLength,
             Diagnostics = diag,

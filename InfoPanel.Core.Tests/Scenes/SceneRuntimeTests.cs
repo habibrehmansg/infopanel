@@ -407,6 +407,48 @@ public sealed class SceneRuntimeTests
         Assert.Equal(3, budget.Used);
     }
 
+    [Fact]
+    public void A_scene_reads_its_items_rotation_on_the_canvas_and_a_turn_keeps_its_state()
+    {
+        // 'seen' holds box.rotation, 'ticks' counts updates, so a cell that started again would show.
+        const string scene = "{'format':'infopanel.scene/1','state':{"
+            + "'seen':{'init':{'op':'box','field':'rotation'},'next':{'op':'box','field':'rotation'}},"
+            + "'ticks':{'init':0,'next':{'op':'add','args':[{'op':'state','name':'ticks'},1]}}},"
+            + "'nodes':[{'kind':'rect','w':{'op':'state','name':'seen'},'h':10,'fill':'#ffffff'}]}";
+        static JsonElement Doc(int group, int inner) => SceneKit.Json(
+            ("{'format':'infopanel.document/1','id':'3dd19c0e-675a-4591-b096-83417853861f','profile':{'name':'R','width':300,'height':300},'items':["
+            + "{'kind':'group','id':'g','placement':{'x':100,'y':100,'rotation':GROUP},'children':["
+            + "{'kind':'scene','id':'inner','placement':{'x':10,'y':10,'rotation':INNER},'layout':{'w':40,'h':20},'scene':SCENE}]},"
+            + "{'kind':'scene','id':'top','placement':{'x':10,'y':200},'layout':{'w':40,'h':20},'scene':SCENE}]}")
+            .Replace("GROUP", group.ToString(System.Globalization.CultureInfo.InvariantCulture)).Replace("INNER", inner.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .Replace("SCENE", scene));
+        using var runtime = new SceneRuntime(SceneKit.Options());
+
+        void TickAndCheck(double t, double inner, double ticks)
+        {
+            using var s = runtime.Tick(t, SceneKit.Now);
+            Assert.Null(s.Bounds.Single(b => b.Id == "inner").Problem);
+            Assert.Equal(inner, runtime.CellValue("inner", "seen"));
+            // The same number the item's bounds report.
+            Assert.Equal(s.Bounds.Single(b => b.Id == "inner").Rotation, runtime.CellValue("inner", "seen"));
+            Assert.Equal(ticks, runtime.CellValue("inner", "ticks"));
+            Assert.Equal(0, runtime.CellValue("top", "seen"));
+        }
+
+        // An item at 30 inside a group at 15 reads 45; an unturned top-level item reads 0.
+        runtime.Load(Doc(15, 30));
+        TickAndCheck(0, 45, 0);
+        TickAndCheck(0.1, 45, 1);
+
+        // The item turned (a placement commit): the next tick reads the new angle, not normalised, and its cells are kept.
+        runtime.Load(Doc(15, 350));
+        TickAndCheck(0.2, 365, 2);
+
+        // Its group turned: the item reads the new sum.
+        runtime.Load(Doc(-40, 350));
+        TickAndCheck(0.3, 310, 3);
+    }
+
     private sealed class GatedAssets(IMediaAssetStore inner) : IMediaAssetStore
     {
         public ManualResetEventSlim Gate { get; } = new();

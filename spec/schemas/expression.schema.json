@@ -258,13 +258,13 @@
       }
     },
     "boxOp": {
-      "description": "The item's layout box size in pixels; an automatic dimension reads as 0.",
+      "description": "The item's layout box size in pixels (`w`, `h`; an automatic dimension reads as 0), or the item's rotation on the canvas in degrees (`rotation`: its placement rotation plus those of the groups it is in, not normalised; the rotation its bounds report). See docs/geometry.md.",
       "type": "object",
       "required": ["op", "field"],
       "additionalProperties": false,
       "properties": {
         "op": { "const": "box" },
-        "field": { "enum": ["w", "h"] }
+        "field": { "enum": ["w", "h", "rotation"] }
       }
     },
     "measureOp": {

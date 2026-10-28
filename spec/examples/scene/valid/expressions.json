@@ -94,6 +94,7 @@
       ]
     },
     "area": {"op": "mul", "args": [{"op": "box", "field": "w"}, {"op": "box", "field": "h"}]},
+    "turned": {"op": "box", "field": "rotation"},
     "trend": {
       "op": "sub",
       "args": [

@@ -45,7 +45,7 @@ Named operands:
 | `time` | `field`, `zone` → number | From the tick's clock: `elapsed` (seconds since the engine started rendering the document, monotonic), `epoch` (seconds since 1970-01-01T00:00:00Z), `dayTime` (seconds since local midnight, with fraction), `year`, `month` (1–12), `day` (1–31), `weekday` (1 Monday … 7 Sunday), `hour` (0–23), `minute`, `second`, `millisecond` |
 | `formatTime` | `pattern`, `locale`, `zone` → string | The tick's date and time as text (below) |
 | `format` | `value`, `decimals`, `group`, `decimalSeparator`, `groupSeparator` → string | A number rounded half away from zero to `decimals` (0–6, default 0) places; with `group`, `groupSeparator` (default ",") between groups of three integer digits; `decimalSeparator` default "." ([number formatting](#number-formatting)) |
-| `box` | `field` (`w`, `h`) → number | The item's layout box; an automatic dimension reads 0 |
+| `box` | `field` (`w`, `h`, `rotation`) → number | The item's layout box; an automatic dimension reads 0. `rotation`: the item's rotation on the canvas in degrees, its own and its groups' summed ([geometry](geometry.md#layout-box-an-input-to-the-scene)) |
 | `measure` | `node`, `field` (`w`, `h`) → number | The measured size of a text node of this scene this tick: its laid-out text (the widest line's width, the lines' height), not its box |
 | `value` | `name` → its type | A named value |
 | `state` | `name` → its type | A state cell (its previous value inside a cell's `next`) |

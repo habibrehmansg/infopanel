@@ -51,6 +51,8 @@ internal sealed class Ev
     public required double[] MeasureW;
     public required double[] MeasureH;
     public double BoxW, BoxH;
+    /// <summary>The item's rotation on the canvas in degrees: its own and its groups', summed (what its bounds report).</summary>
+    public double Rotation;
     public double Dt;
     public int Work;
     public int WorkLimit = int.MaxValue;
@@ -390,12 +392,14 @@ internal sealed class FormatExprC(CExpr value, CExpr? decimals, CExpr? group, st
     }
 }
 
-internal sealed class BoxExprC(bool width) : CExpr
+internal enum BoxField { W, H, Rotation }
+
+internal sealed class BoxExprC(BoxField field) : CExpr
 {
     public override Val Eval(Ev e)
     {
         e.Work++;
-        return Val.Num(width ? e.BoxW : e.BoxH);
+        return Val.Num(field switch { BoxField.W => e.BoxW, BoxField.H => e.BoxH, _ => e.Rotation });
     }
 }
 
@@ -540,7 +544,8 @@ internal sealed class ExprCompiler(ExprScope scope)
                     f.Decimals is null ? null : Compile(f.Decimals, depth + 1),
                     f.Group is null ? null : Compile(f.Group, depth + 1),
                     f.DecimalSeparator ?? ".", f.GroupSeparator ?? ","), Ty.String);
-            case BoxExpr b: return Typed(new BoxExprC(b.Field == "w"), Ty.Number);
+            case BoxExpr b:
+                return Typed(new BoxExprC(b.Field switch { "w" => BoxField.W, "rotation" => BoxField.Rotation, _ => BoxField.H }), Ty.Number);
             case MeasureExpr m:
             {
                 var n = scope.TextNodes.TryGetValue(m.Node, out var k) ? k : -1;

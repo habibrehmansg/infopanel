@@ -38,7 +38,7 @@ public sealed record FormatTimeExpr(string Pattern, string? Locale, string? Zone
 /// <summary><c>{"op":"format"}</c>: a number as text.</summary>
 public sealed record FormatExpr(Expr Value, Expr? Decimals, Expr? Group, string? DecimalSeparator, string? GroupSeparator) : Expr;
 
-/// <summary><c>{"op":"box"}</c>: the item's layout box width or height.</summary>
+/// <summary><c>{"op":"box"}</c>: the item's layout box width or height, or its rotation on the canvas.</summary>
 public sealed record BoxExpr(string Field) : Expr;
 
 /// <summary><c>{"op":"measure"}</c>: a text node's measured width or height.</summary>

@@ -40,6 +40,8 @@ A client without any knowledge of how a scene was produced can move, rotate, reb
 
 The layout box is (0, 0)–(w, h) in local coordinates. The engine doesn't draw it or clip to it: the scene reads it with `{"op": "box", "field": "w"}` and lays itself out in it. An absent dimension is **automatic**: the content decides it (a text that is as wide as it measures), and `box` reads 0 for it.
 
+The scene also reads the item's **rotation on the canvas** with `{"op": "box", "field": "rotation"}`: in degrees, its own placement `rotation` plus those of the groups it is in, not normalised (an item at 350 in a group at 15 reads 365), the same number its bounds report as `rotation` (below). It leaves out the scene's own group transforms, which the scene knows, and the output scale, which doesn't turn anything. Like `w` and `h` it is read once per tick from the document the tick draws, so a turn shows at the next tick and keeps the item's state ([identity](identity.md)). A scene uses it to keep part of its drawing level or upright while the item turns, such as a gradient that stays level with the canvas ([paints](scene.md#paints)).
+
 Resizing an item changes `layout` (with `setDesign`, [commits](commit.md)). A scene that lays itself out from `box` follows the new size at once; a client that bakes sizes into the scene sends a new scene with the new layout in the same op.
 
 ## Measured bounds (reported by the engine)

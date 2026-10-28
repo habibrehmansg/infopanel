@@ -1,0 +1,68 @@
+{
+  "format": "infopanel.scene/1",
+  "values": {
+    "cos": {"op": "cos", "args": [{"op": "box", "field": "rotation"}]},
+    "sin": {"op": "sin", "args": [{"op": "box", "field": "rotation"}]},
+    "halfW": {
+      "op": "div",
+      "args": [
+        {
+          "op": "add",
+          "args": [
+            {"op": "abs", "args": [{"op": "mul", "args": [{"op": "box", "field": "w"}, {"op": "value", "name": "cos"}]}]},
+            {"op": "abs", "args": [{"op": "mul", "args": [{"op": "box", "field": "h"}, {"op": "value", "name": "sin"}]}]}
+          ]
+        },
+        2
+      ]
+    },
+    "halfH": {
+      "op": "div",
+      "args": [
+        {
+          "op": "add",
+          "args": [
+            {"op": "abs", "args": [{"op": "mul", "args": [{"op": "box", "field": "w"}, {"op": "value", "name": "sin"}]}]},
+            {"op": "abs", "args": [{"op": "mul", "args": [{"op": "box", "field": "h"}, {"op": "value", "name": "cos"}]}]}
+          ]
+        },
+        2
+      ]
+    },
+    "half": {
+      "op": "sqrt",
+      "args": [
+        {
+          "op": "add",
+          "args": [
+            {"op": "mul", "args": [{"op": "value", "name": "halfW"}, {"op": "value", "name": "halfW"}]},
+            {"op": "mul", "args": [{"op": "value", "name": "halfH"}, {"op": "value", "name": "halfH"}]}
+          ]
+        }
+      ]
+    },
+    "cx": {"op": "div", "args": [{"op": "box", "field": "w"}, 2]},
+    "cy": {"op": "div", "args": [{"op": "box", "field": "h"}, 2]},
+    "dx": {"op": "mul", "args": [{"op": "value", "name": "half"}, {"op": "value", "name": "cos"}]},
+    "dy": {"op": "mul", "args": [{"op": "value", "name": "half"}, {"op": "value", "name": "sin"}]}
+  },
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": {"op": "box", "field": "w"},
+      "h": {"op": "box", "field": "h"},
+      "fill": {
+        "type": "linear",
+        "x1": {"op": "sub", "args": [{"op": "value", "name": "cx"}, {"op": "value", "name": "dx"}]},
+        "y1": {"op": "add", "args": [{"op": "value", "name": "cy"}, {"op": "value", "name": "dy"}]},
+        "x2": {"op": "add", "args": [{"op": "value", "name": "cx"}, {"op": "value", "name": "dx"}]},
+        "y2": {"op": "sub", "args": [{"op": "value", "name": "cy"}, {"op": "value", "name": "dy"}]},
+        "stops": [
+          {"at": 0, "color": "#ff1744"},
+          {"at": 0.5, "color": "#00e676"},
+          {"at": 1, "color": "#2979ff"}
+        ]
+      }
+    }
+  ]
+}

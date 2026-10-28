@@ -68,6 +68,8 @@ public sealed class SceneGoldenTests
         ["histogram"] = new("scene/valid/histogram.json", 260, 100, 10, 10, 240, 80, Load),
         ["image"] = new("scene/valid/image.json", 220, 140, 10, 10, 200, 120),
         ["image-t1"] = new("scene/valid/image.json", 220, 140, 10, 10, 200, 120, Elapsed: 0.35),
+        ["level-gradient"] = new("scene/valid/level-gradient.json", 300, 250, 100, 100, 100, 50),
+        ["level-gradient-45"] = new("scene/valid/level-gradient.json", 300, 250, 100, 100, 100, 50, Rotation: 45),
         ["peak-hold"] = new("scene/valid/peak-hold.json", 44, 180, 10, 10, null, null, i => i.Number("test:v", 70)),
         ["provider-media"] = new("scene/valid/provider-media.json", 116, 116, 10, 10, null, null, Load, Provider: true),
         ["provider-media-missing"] = new("scene/valid/provider-media.json", 116, 116, 10, 10, null, null, Load),
@@ -115,6 +117,41 @@ public sealed class SceneGoldenTests
     {
         var check = InfoPanel.Spec.SceneValidator.Check(SceneKit.Fixture(Fixtures[name].Scene));
         Assert.True(check.Status == InfoPanel.Spec.CheckStatus.Valid, string.Join("; ", check.Errors.Select(e => $"{e.Code} {e.Path} {e.Message}")));
+    }
+
+    [Fact]
+    public void A_level_gradient_stays_level_while_its_item_turns()
+    {
+        // level-gradient-45: a 100 x 50 rectangle at (100, 100) turned 45 degrees about its centre (150, 125), its
+        // left-to-right gradient turned back by the rotation the scene reads. A canvas column has one colour; a column of
+        // the rectangle (one local x) crosses the gradient.
+        var c = Examples["level-gradient-45"];
+        using var media = SceneKit.SyncMedia();
+        using var bitmap = SceneKit.Render(SceneKit.Doc(SceneKit.Example(c.Scene), c.Width, c.Height, c.X, c.Y, c.W, c.H, rotation: c.Rotation),
+            SceneKit.Options(new FakeSceneInputs(), media));
+        var (cos, sin) = (Math.Cos(Math.PI / 4), Math.Sin(Math.PI / 4));
+        // A pixel's centre in the rectangle's local coordinates, and whether it is at least 3 pixels inside its edges.
+        (double U, double V) Local(int x, int y) =>
+            (50 + (x + 0.5 - 150) * cos + (y + 0.5 - 125) * sin, 25 - (x + 0.5 - 150) * sin + (y + 0.5 - 125) * cos);
+        bool Inside(int x, int y) => Local(x, y) is { U: > 3 and < 97, V: > 3 and < 47 };
+        static int Distance(SKColor p, SKColor q) => Math.Max(Math.Abs(p.Red - q.Red), Math.Max(Math.Abs(p.Green - q.Green), Math.Abs(p.Blue - q.Blue)));
+
+        foreach (var x in new[] { 115, 130, 150, 170, 185 })
+        {
+            var ys = Enumerable.Range(0, c.Height).Where(y => Inside(x, y)).ToList();
+            Assert.True(ys.Count >= 10, $"column {x}: {ys.Count} pixels inside");
+            var first = bitmap.GetPixel(x, ys[0]);
+            foreach (var y in ys)
+                Assert.True(Distance(bitmap.GetPixel(x, y), first) <= 1, $"column {x}: ({x}, {ys[0]}) is {first}, ({x}, {y}) is {bitmap.GetPixel(x, y)}");
+        }
+
+        // Two pixels on the local column u = 30, at v = 10 and v = 40.
+        (int X, int Y) Canvas(double u, double v) =>
+            ((int)Math.Floor(150 + (u - 50) * cos - (v - 25) * sin), (int)Math.Floor(125 + (u - 50) * sin + (v - 25) * cos));
+        var (a, b) = (Canvas(30, 10), Canvas(30, 40));
+        Assert.True(Inside(a.X, a.Y) && Inside(b.X, b.Y));
+        Assert.True(Distance(bitmap.GetPixel(a.X, a.Y), bitmap.GetPixel(b.X, b.Y)) > 30,
+            $"local column 30: {a} is {bitmap.GetPixel(a.X, a.Y)}, {b} is {bitmap.GetPixel(b.X, b.Y)}");
     }
 
     private static void Verify(string name, Case c, JsonElement scene)

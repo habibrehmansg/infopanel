@@ -1285,10 +1285,10 @@ export interface TimeOp {
   zone?: TimeZone;
 }
 
-/** The item's layout box size in pixels; an automatic dimension reads as 0. */
+/** The item's layout box size in pixels (`w`, `h`; an automatic dimension reads as 0), or the item's rotation on the canvas in degrees (`rotation`: its placement rotation plus those of the groups it is in, not normalised; the rotation its bounds report). See docs/geometry.md. */
 export interface BoxOp {
   op: "box";
-  field: "w" | "h";
+  field: "w" | "h" | "rotation";
 }
 
 /** The measured width or height of a text node of this scene (by id), laid out this tick: the laid-out text (widest line, lines' height), not its box. Not allowed in state cells, nor where it would affect the layout of a text node that is measured (see docs/expressions.md, "Order of evaluation"). */
