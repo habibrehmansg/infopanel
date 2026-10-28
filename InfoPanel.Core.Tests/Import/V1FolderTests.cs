@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -397,6 +398,26 @@ public sealed class V1FolderTests : IDisposable
         Directory.CreateDirectory(v1b);
         Directory.CreateSymbolicLink(Path.Combine(v1b, "assets"), _kit.Temp.Combine(decomposed));
         Assert.Equal(OperatingSystem.IsMacOS(), V1Folder.FindOverlap(v1b, _kit.Temp.Combine(composed, "v2")) is not null);
+    }
+
+    [Fact]
+    public void Overlap_ComparesLetterCaseAsThePlatformsFilesystemDoes()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");
+        // 1.x assets is a link to T/Shared; the data folder is T/shared/v2. Windows' and macOS's default filesystems
+        // ignore case, so it is inside 1.x assets there; on a case-sensitive one (Linux's) T/shared is another folder.
+        var v1 = _kit.Temp.Combine("InfoPanel");
+        Directory.CreateDirectory(v1);
+        Directory.CreateDirectory(_kit.Temp.Combine("Shared"));
+        Directory.CreateSymbolicLink(Path.Combine(v1, "assets"), _kit.Temp.Combine("Shared"));
+        var data = _kit.Temp.Combine("shared", "v2");
+
+        Assert.Equal(
+            (true, true, false, !OperatingSystem.IsLinux()),
+            (V1Folder.FindOverlap(v1, data, PathNameRules.For(OSPlatform.Windows)) is not null,
+                V1Folder.FindOverlap(v1, data, PathNameRules.For(OSPlatform.OSX)) is not null,
+                V1Folder.FindOverlap(v1, data, PathNameRules.For(OSPlatform.Linux)) is not null,
+                V1Folder.FindOverlap(v1, data) is not null));
     }
 
     // ---- settings -----------------------------------------------------------------------------------------------

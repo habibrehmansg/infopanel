@@ -81,8 +81,9 @@ public sealed class V1Folder
     /// inside the data folder or any entry the engine writes in it (its top-level entries and each existing profile
     /// folder), and none of those entries may be or hold the 1.x folder, or be elsewhere inside it than in the data
     /// folder. A path that can't be resolved (links that loop, a folder that can't be read) is refused. Names compare as
-    /// the platform's default filesystem compares them (<see cref="PathNameRules.Platform"/>): on macOS a composed
-    /// <c>é</c> and <c>e</c> with a combining accent are one name.
+    /// the platform's default filesystem compares them (<see cref="PathNameRules.Platform"/>): ignoring letter case on
+    /// Windows and macOS, exactly on Linux; on macOS a composed <c>é</c> and <c>e</c> with a combining accent are one
+    /// name. The 1.x <c>profiles</c> and <c>assets</c> folders are still found by name ignoring case, as the import reads them.
     /// </summary>
     public static string? FindOverlap(string v1Root, string dataRoot) => FindOverlap(v1Root, dataRoot, PathNameRules.Platform);
 

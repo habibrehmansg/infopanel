@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace InfoPanel.Import;
@@ -10,11 +11,17 @@ namespace InfoPanel.Import;
 /// </summary>
 internal readonly record struct PathNameRules(bool IgnoreCase, bool UnicodeEquivalent)
 {
+    /// <summary>The rules of this platform's default filesystem (<see cref="For"/>).</summary>
+    public static PathNameRules Platform { get; } =
+        For(OperatingSystem.IsWindows() ? OSPlatform.Windows : OperatingSystem.IsMacOS() ? OSPlatform.OSX : OSPlatform.Linux);
+
     /// <summary>
-    /// The platform's default filesystem: on macOS (APFS, HFS+) Unicode-equivalent spellings are one name, compared
-    /// here in normalisation form C.
+    /// The rules of <paramref name="platform"/>'s default filesystem: Windows' (NTFS) and macOS's (APFS, HFS+) ignore
+    /// letter case, Linux's (and any other) compare it exactly; on macOS Unicode-equivalent spellings are one name,
+    /// compared here in normalisation form C.
     /// </summary>
-    public static PathNameRules Platform { get; } = new(IgnoreCase: true, UnicodeEquivalent: OperatingSystem.IsMacOS());
+    internal static PathNameRules For(OSPlatform platform) =>
+        new(IgnoreCase: platform == OSPlatform.Windows || platform == OSPlatform.OSX, UnicodeEquivalent: platform == OSPlatform.OSX);
 
     /// <summary>Whether the full path <paramref name="child"/> is <paramref name="parent"/> or inside it.</summary>
     public bool IsInside(string child, string parent)
