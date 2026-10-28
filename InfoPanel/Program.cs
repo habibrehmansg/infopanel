@@ -15,6 +15,7 @@ using InfoPanel.Sensors.MacOS;
 using InfoPanel.Settings;
 using Microsoft.AspNetCore.HostFiltering;
 using Serilog;
+using Serilog.Core;
 using Serilog.Events;
 using System.Net;
 using System.Text.Json.Serialization;
@@ -73,9 +74,12 @@ if (options.Fresh)
 
 DataFolder.CreatePrivate(paths.LogsDirectory);
 
-// The sign-in link carries the token, so it goes to the console only; the file gets it redacted (EngineLifetime).
+// The sign-in link carries the token, so it goes to the console only; the file gets it redacted (EngineLifetime), and
+// so do the recent entries kept for clients. The level is the log level setting, set once the settings are open.
+var logLevel = new LoggingLevelSwitch(LogEventLevel.Information);
+var recentLog = new RecentLog();
 var engineLogger = new LoggerConfiguration()
-    .MinimumLevel.Information()
+    .MinimumLevel.ControlledBy(logLevel)
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
     .Enrich.FromLogContext()
@@ -89,7 +93,8 @@ var engineLogger = new LoggerConfiguration()
             rollingInterval: RollingInterval.Day,
             retainedFileCountLimit: 7,
             fileSizeLimitBytes: 100L * 1024 * 1024,
-            rollOnFileSizeLimit: true))
+            rollOnFileSizeLimit: true)
+        .WriteTo.Sink(recentLog))
     .CreateLogger();
 Log.Logger = engineLogger;
 // Errors nothing else catches are logged; before an unhandled exception ends the process the log is written out.
@@ -104,6 +109,8 @@ try
     var workspace = Workspace.Start(paths, new WorkspaceOptions { Logger = engineLogger.ForContext<Workspace>() }, DateTimeOffset.UtcNow);
     // The engine settings: a file that can't be read is logged, leaves the defaults in effect and is never rewritten.
     var settings = SettingsStore.Open(paths, engineLogger.ForContext<SettingsStore>());
+    logLevel.MinimumLevel = LevelOf(settings.Current.Settings.LogLevel);
+    settings.Changed += snapshot => logLevel.MinimumLevel = LevelOf(snapshot.Settings.LogLevel);
     // Integration tokens: a file that can't be read stops the engine rather than dropping or overwriting them.
     var tokens = TokenStore.Open(paths.TokensFile, paths.Root, TimeProvider.System, engineLogger.ForContext<TokenStore>());
 
@@ -150,6 +157,7 @@ try
     builder.Services.AddSingleton(runtime);
     builder.Services.AddSingleton(tokens);
     builder.Services.AddSingleton(settings);
+    builder.Services.AddSingleton(recentLog);
     // Made by a factory so the container disposes it, removing its handlers, when the host stops; the finally below
     // covers a start that fails before the host is built.
     builder.Services.AddSingleton(_ => crashLogging);
@@ -247,5 +255,13 @@ finally
         Log.Logger = Serilog.Core.Logger.None;
     await engineLogger.DisposeAsync();
 }
+
+static LogEventLevel LevelOf(EngineLogLevel level) => level switch
+{
+    EngineLogLevel.Debug => LogEventLevel.Debug,
+    EngineLogLevel.Warning => LogEventLevel.Warning,
+    EngineLogLevel.Error => LogEventLevel.Error,
+    _ => LogEventLevel.Information,
+};
 
 public partial class Program;

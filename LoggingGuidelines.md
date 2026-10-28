@@ -19,6 +19,8 @@ This ensures that the `[SourceContext]` property in logs includes the class name
 
 ## Log Levels
 
+In the 2.0 engine the least severe level written is the `logLevel` setting (`debug`, `information` by default, `warning`, `error`), changed live; `Microsoft.*` stays at Warning. Whatever reaches the log file also reaches the recent entries a client can read (this run's last 2,000), so what this document says about sensitive information applies to both.
+
 ### Debug
 **Purpose:** Detailed diagnostic information useful during development and troubleshooting.
 
