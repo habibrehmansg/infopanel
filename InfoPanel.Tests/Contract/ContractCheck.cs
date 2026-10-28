@@ -130,8 +130,9 @@ internal static class ContractCheck
             // Unbuffered: an accepted upgrade's headers go out when the socket is accepted (on a TestServer through the
             // response body's start, which a buffer would hold back), and the request lasts as long as the socket; it is
             // the socket operation's 101, seen as it starts. A refused one passes through as it is written, and is
-            // checked from a copy once it has gone out, whether or not its client is still there: the copy is what the
-            // engine wrote. The log tracks it until then, and the host's teardown waits for that check.
+            // checked from a copy once it has gone out, whether or not its client is still there and whether or not the
+            // pipeline then threw: the copy is what the engine wrote. The log tracks it until then, and the host's teardown
+            // waits for that check; whatever the check finds, or a failure of the check itself, is recorded first.
             var checking = log.Checking();
             try
             {
@@ -153,18 +154,21 @@ internal static class ContractCheck
                 {
                     await next(context);
                 }
+                catch when (response.HasStarted)
+                {
+                    // A refusal went out, then the pipeline threw (its client went away, say): the client has the
+                    // refusal, so it is checked all the same, and the exception goes on.
+                    response.Body = passing;
+                    CheckRefusal(context, copy, log);
+                    throw;
+                }
                 finally
                 {
                     response.Body = passing;
                 }
 
-                if (response.StatusCode != StatusCodes.Status101SwitchingProtocols
-                    && (copy.Overflowed ? $"A refused upgrade ({context.Request.Method} {context.Request.Path}) answered over {MaxRefusalBytes} bytes." : Check(context, copy.Copied, log)) is { } refused)
-                {
-                    log.Violated(refused);
+                if (CheckRefusal(context, copy, log) is { } refused)
                     throw new ContractViolationException(refused);
-                }
-
                 return;
             }
             finally
@@ -202,6 +206,31 @@ internal static class ContractCheck
             {
             }
         }
+    }
+
+    /// <summary>
+    /// Checks an upgrade's response that went out unbuffered, unless it is the socket's 101, and records what breaks the
+    /// contract: the violation, or the check's own exception (it can't go to a client that already has its answer).
+    /// </summary>
+    private static string? CheckRefusal(HttpContext context, CopyingStream copy, ContractLog log)
+    {
+        if (context.Response.StatusCode == StatusCodes.Status101SwitchingProtocols)
+            return null;
+        string? refused;
+        try
+        {
+            refused = copy.Overflowed
+                ? $"A refused upgrade ({context.Request.Method} {context.Request.Path}) answered over {MaxRefusalBytes} bytes."
+                : Check(context, copy.Copied, log);
+        }
+        catch (Exception e)
+        {
+            refused = $"The check of a refused upgrade ({context.Request.Method} {context.Request.Path}) threw: {e}";
+        }
+
+        if (refused is not null)
+            log.Violated(refused);
+        return refused;
     }
 
     /// <summary>The most of a refused upgrade's body the check copies; a refusal is a small problem.</summary>

@@ -224,8 +224,12 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         Assert.Empty(engine.Contract.Violations);
     }
 
-    /// <summary>Answers every <c>/ws</c> upgrade with a 401 whose problem body isn't JSON, inside the contract check.</summary>
-    private sealed class InvalidRefusal : IStartupFilter
+    /// <summary>
+    /// Answers every <c>/ws</c> upgrade with a 401 whose problem body isn't JSON, inside the contract check; with
+    /// <paramref name="thenCancelled"/>, then throws <see cref="OperationCanceledException"/>, as a client that went away
+    /// can make the engine do.
+    /// </summary>
+    private sealed class InvalidRefusal(bool thenCancelled = false) : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {
@@ -241,6 +245,8 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
                 context.Response.ContentType = "application/problem+json";
                 await context.Response.WriteAsync("not a problem", context.RequestAborted);
                 await context.Response.Body.FlushAsync(context.RequestAborted);
+                if (thenCancelled)
+                    throw new OperationCanceledException("The client went away.");
             });
             next(app);
         };
@@ -257,6 +263,21 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         await Assert.ThrowsAnyAsync<Exception>(() => client.ConnectAsync(new Uri("ws://localhost/ws"), Ct));
 
         // Nothing waits for the check here: the teardown does.
+        var error = await Assert.ThrowsAsync<ContractViolationException>(async () => await engine.DisposeAsync());
+        Assert.Contains("GET /ws", error.Message);
+        Assert.Contains("isn't JSON", error.Message);
+    }
+
+    [Fact]
+    public async Task ARefusedUpgradeOutsideTheSpec_FailsItsHostsTeardown_WhenItsHandlerThrowsAfterItWentOut()
+    {
+        var engine = new EngineFactory();
+        var host = engine.WithWebHostBuilder(builder => builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new InvalidRefusal(thenCancelled: true))));
+        var client = host.Server.CreateWebSocketClient();
+        client.SubProtocols.Add(EngineRuntime.WebSocketProtocol);
+        client.SubProtocols.Add(EngineRuntime.WebSocketAuthPrefix + EngineFactory.Token);
+        await Assert.ThrowsAnyAsync<Exception>(() => client.ConnectAsync(new Uri("ws://localhost/ws"), Ct));
+
         var error = await Assert.ThrowsAsync<ContractViolationException>(async () => await engine.DisposeAsync());
         Assert.Contains("GET /ws", error.Message);
         Assert.Contains("isn't JSON", error.Message);
