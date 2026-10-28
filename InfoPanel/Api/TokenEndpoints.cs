@@ -1,5 +1,6 @@
 using InfoPanel.Security;
 using InfoPanel.Spec;
+using InfoPanel.Spec.Schema;
 using static InfoPanel.Api.ApiResults;
 
 namespace InfoPanel.Api;
@@ -45,12 +46,7 @@ public static class TokenEndpoints
                     Detail = "The request breaks the formats; see errors.",
                     Status = StatusCodes.Status422UnprocessableEntity,
                     Code = "invalid",
-                    Errors = [.. check.Errors.Select(e => new ValidationErrorBody
-                    {
-                        Path = e.InstancePath,
-                        Code = e.Keyword == "depth" ? "limit.jsonDepth" : "schema",
-                        Message = $"{e.Message} ({e.Keyword})",
-                    })],
+                    Errors = [.. check.Errors.Select(Error)],
                 }, StatusCodes.Status422UnprocessableEntity);
             }
 
@@ -67,6 +63,23 @@ public static class TokenEndpoints
         api.MapDelete("/{id}", (string id, TokenStore tokens) =>
             tokens.Revoke(id) ? Results.NoContent() : Problems.NotFound($"No token '{id}'.")).RequireScope(ApiScope.Session);
     }
+
+    /// <summary>
+    /// A validation error as every body reports it (spec/docs/validation.md#codes): <c>schema</c> (a repeated member name
+    /// included), except the count of the errors not listed after the first 100 (<c>more</c>, at <c>""</c>), a number that
+    /// rounds to ±∞ or a string that isn't Unicode text (<c>json</c>), and content nested too deeply (<c>limit.jsonDepth</c>).
+    /// </summary>
+    private static ValidationErrorBody Error(SchemaError e) => new()
+    {
+        Path = e.InstancePath,
+        Code = e.Keyword switch
+        {
+            "more" or "json" => e.Keyword,
+            "depth" => "limit.jsonDepth",
+            _ => "schema",
+        },
+        Message = e.Keyword is "more" or "json" ? e.Message : $"{e.Message} ({e.Keyword})",
+    };
 
     private static TokenInfo Info(TokenRecord record) => new()
     {

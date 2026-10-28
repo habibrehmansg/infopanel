@@ -174,7 +174,7 @@ The engine closes a socket with:
 |---|---|---|
 | 1008 | `auth timeout` | No `auth` message within 5 seconds of the upgrade (the engine sends nothing before it) |
 | 1008 | `auth rejected` | The `auth` message's token isn't valid |
-| 1008 | `auth expected` | The first message isn't an `auth` message (or isn't text, or is over 4,096 bytes) |
+| 1008 | `auth expected` | The first message isn't an `auth` message (or isn't text, is over 4,096 bytes, or isn't JSON as the formats read it, [below](#messages)) |
 | 1008 | `token revoked` | The integration token the socket was opened with was revoked; every other socket stays open |
 | 1009 | `Messages are at most 4096 bytes.` | A client message over 4,096 bytes in UTF-8 |
 | 1001 | `The engine is stopping.` | The engine stops |
@@ -191,7 +191,7 @@ A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`clientMessag
 - `unsubscribe` (`unsubscribeMessage`): no more `doc` messages or frames until the next `subscribe`.
 - `auth` (`authMessage`): only as the first message, above.
 
-The engine ignores members a message doesn't define. It answers `error` to a message it can't act on and keeps the socket open: one that isn't a JSON object with a string `type`, a binary message, an unknown `type`, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number or a `maxFps` that isn't a whole number from 1 to 2,147,483,647, or a `view` without a subscription.
+The engine reads each message as the formats read JSON ([validation](validation.md#json)) before reading any member of it, members it doesn't define included: a message nested deeper than `jsonDepth`, with a number that rounds to ±∞, an object that repeats a member name (never resolved by keeping one) or a string or member name that isn't Unicode text is one it can't act on. It then ignores members a message doesn't define. It answers `error` to a message it can't act on and keeps the socket open: one that isn't JSON as the formats read it or isn't a JSON object with a string `type`, a binary message, an unknown `type`, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number or a `maxFps` that isn't a whole number from 1 to 2,147,483,647, or a `view` without a subscription.
 
 The engine sends (`serverMessage`):
 

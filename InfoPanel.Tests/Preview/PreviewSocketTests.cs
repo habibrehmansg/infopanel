@@ -239,6 +239,13 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     [InlineData("""{"type":7}""", "JSON")]
     [InlineData("""{"type":"dance"}""", "Unknown message type 'dance'")]
     [InlineData("""{"type":"view","scale":2}""", "subscribe first")]
+    // Read as the formats read JSON, before any member is: a lone surrogate isn't Unicode text, and a repeated member is
+    // refused, not resolved to its last occurrence.
+    [InlineData("""{"type":"\uD800"}""", "Unicode")]
+    [InlineData("""{"type":"subscribe","profileId":"\uDC00"}""", "Unicode")]
+    [InlineData("""{"type":"subscribe","profileId":"a\uD800b","scale":0.25}""", "Unicode")]
+    [InlineData("""{"type":"unsubscribe","\uD800":1}""", "Unicode")]
+    [InlineData("""{"type":"dance","type":"unsubscribe"}""", "Duplicate property \"type\"")]
     public async Task BadMessages_GetAnError_AndTheConnectionStaysUsable(string text, string expected)
     {
         await using var client = await Connect();
@@ -248,6 +255,53 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         Assert.Contains(expected, error.GetProperty("message").GetString());
 
         await client.SendAsync(new { type = "subscribe", profileId = await ExampleProfileId(), scale = 0.25 }, Ct);
+        await client.ReceiveFrameAsync(Ct);
+    }
+
+    /// <summary><c>{"type":"…","pad":[[…]]}</c>: a member no message defines, nested <paramref name="depth"/> levels deep inside it.</summary>
+    private static string WithDeepPad(string head, int depth) =>
+        head.TrimEnd('}') + ",\"pad\":" + new string('[', depth) + new string(']', depth) + "}";
+
+    [Fact]
+    public async Task ADeepMemberAMessageDoesntUse_WithinJsonDepth_DoesntBreakSubscribeOrUnsubscribe()
+    {
+        // 100 levels in a member the message doesn't define: within jsonDepth (256), so the message is read as any other.
+        var (id, _) = await CreateProfile("Deep member preview");
+        await using var client = await Connect();
+        await client.SendTextAsync(WithDeepPad($$"""{"type":"subscribe","profileId":"{{id}}","scale":0.25}""", 100), Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+        await client.ReceiveFrameAsync(Ct);
+        Assert.True(Render.IsRendering(id));
+
+        await client.SendTextAsync(WithDeepPad("""{"type":"unsubscribe"}""", 100), Ct);
+        await WaitUntil(() => !Render.IsRendering(id));
+        Assert.DoesNotContain("error", client.ReceivedTypes);
+    }
+
+    [Fact]
+    public async Task AMessageNestedDeeperThanJsonDepth_GetsAnError_AndTheConnectionStaysUsable()
+    {
+        await using var client = await Connect();
+        await client.SendTextAsync(WithDeepPad("""{"type":"unsubscribe"}""", 300), Ct);
+        var error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Contains("JSON", error.GetProperty("message").GetString());
+
+        await client.SendAsync(new { type = "subscribe", profileId = await ExampleProfileId(), scale = 0.25 }, Ct);
+        await client.ReceiveFrameAsync(Ct);
+    }
+
+    [Fact]
+    public async Task ARepeatedMember_GetsAnError_NotTheLastOneTaken()
+    {
+        // Read as JsonDocument resolves a repeated member, the last profileId would subscribe; the engine refuses the message.
+        var id = await ExampleProfileId();
+        await using var client = await Connect();
+        await client.SendTextAsync($$"""{"type":"subscribe","profileId":"nope","profileId":"{{id}}","scale":0.25}""", Ct);
+        var error = await client.ReceiveTextAsync("error", Ct);
+        Assert.Contains("Duplicate property \"profileId\"", error.GetProperty("message").GetString());
+        Assert.DoesNotContain("doc", client.ReceivedTypes);
+
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.25 }, Ct);
         await client.ReceiveFrameAsync(Ct);
     }
 

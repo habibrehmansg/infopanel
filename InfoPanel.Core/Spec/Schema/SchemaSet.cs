@@ -219,7 +219,8 @@ public sealed class SchemaSet
         /// <summary>
         /// An object's members, every occurrence of a repeated one included: a <c>duplicateKey</c> error at the object for
         /// each repeated name, a <c>json</c> error at it for each name that isn't Unicode text (its value left unread: no
-        /// path can name it), and each value walked at <paramref name="depth"/> + 1 (0: each value a root of its own).
+        /// path can name it, though its nesting still counts), and each value walked at <paramref name="depth"/> + 1 (0:
+        /// each value a root of its own).
         /// </summary>
         public bool Members(JsonElement v, int depth)
         {
@@ -229,6 +230,9 @@ public sealed class SchemaSet
             {
                 if (!JsonText.IsScalarText(JsonMarshal.GetRawUtf8PropertyName(p)))
                 {
+                    // Nesting comes first: the value still counts for depth, from its raw text (no name decoded, so no
+                    // path below this object), though nothing else in it is read.
+                    if (depth + SpecJson.Depth(p.Value) > max) return false;
                     Add("json", "A member name isn't Unicode text: it holds a lone surrogate or bytes that aren't UTF-8.");
                     continue;
                 }

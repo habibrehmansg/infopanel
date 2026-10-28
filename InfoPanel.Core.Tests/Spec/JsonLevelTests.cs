@@ -78,6 +78,22 @@ public class JsonLevelTests
     }
 
     [Fact]
+    public void ALoneSurrogateMemberName_DoesntHideNestingTooDeep()
+    {
+        // Nesting comes first: the value of a member whose name isn't Unicode text still counts for depth, though nothing
+        // else in it is read. {"\ud800": V} with V 256 arrays deep is 257 levels: the one error limit.jsonDepth.
+        var deep = new string('[', 256) + new string(']', 256);
+        Assert.Equal("limit.jsonDepth ", Show(DocumentValidator.Check(Parse(Document.Replace("\"items\"", "\"\\ud800\": " + deep + ", \"items\""))).Errors));
+        Assert.Equal(["depth"], SchemaSet.CheckJson(Parse("{\"\\ud800\": " + deep + "}")).Errors.Select(e => e.Keyword));
+        // At the limit, only the name.
+        var within = new string('[', 255) + new string(']', 255);
+        Assert.Equal(["json"], SchemaSet.CheckJson(Parse("{\"\\ud800\": " + within + "}")).Errors.Select(e => e.Keyword));
+        // A create's members are roots of their own, the root object not counted.
+        Assert.Equal(["depth"], SchemaSet.CheckJsonMembers(Parse("{\"\\ud800\": [" + deep + "]}")).Errors.Select(e => e.Keyword));
+        Assert.Equal(["json"], SchemaSet.CheckJsonMembers(Parse("{\"\\ud800\": " + deep + "}")).Errors.Select(e => e.Keyword));
+    }
+
+    [Fact]
     public void ALoneSurrogateOrBrokenUtf8InAString_IsJson()
     {
         Assert.Equal("json /profile/name", Show(DocumentValidator.Check(Parse(Document.Replace("\"P\"", "\"P\\ud800\""))).Errors));

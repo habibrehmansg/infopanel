@@ -153,10 +153,32 @@ public class FirstMessageAuthTests(ShortAuthTimeoutEngineFactory factory) : ICla
     [InlineData("auth test-token_0123456789")]
     [InlineData("""{"type":"auth","token":"\uD800"}""")]
     [InlineData("""{"type":"\uDC00","token":"test-token_0123456789"}""")]
+    // A repeated member is refused, not resolved to its last occurrence (here the right token, or auth); a member name
+    // that isn't Unicode text refuses the message even in a member auth doesn't define.
+    [InlineData("""{"type":"auth","token":"wrong","token":""" + "\"" + EngineFactory.Token + "\"}")]
+    [InlineData("""{"type":"subscribe","type":"auth","token":""" + "\"" + EngineFactory.Token + "\"}")]
+    [InlineData("""{"type":"auth","token":""" + "\"" + EngineFactory.Token + "\",\"\\uD800\":1}")]
     public async Task AnotherFirstMessage_ClosesWith1008(string message)
     {
         using var socket = await Connect();
         await Send(socket, message);
+        await AssertClosedWithPolicyViolation(socket, PreviewSocketHandler.AuthFailedMessage);
+    }
+
+    [Fact]
+    public async Task AuthMessage_WithADeepMemberItDoesntUse_WithinJsonDepth_StartsTheSession()
+    {
+        // 100 levels in a member auth doesn't define: within jsonDepth (256), so it is read as any other auth message.
+        using var socket = await Connect();
+        await Send(socket, $$"""{"type":"auth","token":"{{EngineFactory.Token}}","pad":{{new string('[', 100) + new string(']', 100)}}}""");
+        Assert.Equal("hello", (await Receive(socket)).Kind);
+    }
+
+    [Fact]
+    public async Task AuthMessage_NestedDeeperThanJsonDepth_ClosesWith1008()
+    {
+        using var socket = await Connect();
+        await Send(socket, $$"""{"type":"auth","token":"{{EngineFactory.Token}}","pad":{{new string('[', 300) + new string(']', 300)}}}""");
         await AssertClosedWithPolicyViolation(socket, PreviewSocketHandler.AuthFailedMessage);
     }
 

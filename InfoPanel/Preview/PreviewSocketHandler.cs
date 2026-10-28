@@ -37,8 +37,9 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// </para>
 /// <list type="bullet">
 /// <item>Client → server (JSON text, at most <see cref="MaxClientMessageBytes"/>; the spec's <c>clientMessage</c>):
-/// <c>subscribe {profileId, scale?, maxFps?}</c>, <c>view {scale?, maxFps?}</c>, <c>unsubscribe</c>. Members a message
-/// doesn't define are ignored.</item>
+/// <c>subscribe {profileId, scale?, maxFps?}</c>, <c>view {scale?, maxFps?}</c>, <c>unsubscribe</c>. Each is read as the
+/// formats read JSON first (<see cref="ReadClientMessage"/>), every member included; members a message doesn't define
+/// are then ignored.</item>
 /// <item>Server → client (the spec's <c>serverMessage</c>, written from its models): <c>hello</c> on connect
 /// (<c>protocol</c> 2); <c>doc</c> (<c>docEvent</c>)
 /// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
@@ -196,29 +197,63 @@ public static class PreviewSocketHandler
     private static string CheckAuthMessage(ReadOnlySpan<byte> utf8, EngineRuntime runtime, TokenStore tokens, out Caller? caller)
     {
         caller = null;
-        try
-        {
-            using var json = JsonDocument.Parse(utf8.ToArray());
-            var root = json.RootElement;
-            if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "auth"
-                || !root.TryGetProperty("token", out var token) || token.ValueKind != JsonValueKind.String)
-            {
-                return AuthFailedMessage;
-            }
+        using var json = ReadClientMessage(utf8, out _);
+        if (json == null)
+            return AuthFailedMessage;
 
-            caller = Caller.Authenticate(token.GetString(), runtime, tokens);
-            if (caller?.Allows(ApiScope.Read) == true)
-                return "";
-            caller = null;
-            return AuthFailedToken;
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        var root = json.RootElement;
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "auth"
+            || !root.TryGetProperty("token", out var token) || token.ValueKind != JsonValueKind.String)
         {
-            // InvalidOperationException: a string that isn't valid UTF-16 once unescaped, such as a lone "\uD800".
             return AuthFailedMessage;
         }
+
+        caller = Caller.Authenticate(token.GetString(), runtime, tokens);
+        if (caller?.Allows(ApiScope.Read) == true)
+            return "";
+        caller = null;
+        return AuthFailedToken;
     }
+
+    /// <summary>The <c>error</c> for a message that isn't a JSON object with a string <c>type</c>.</summary>
+    internal const string NotAMessage = "Messages must be JSON objects with a \"type\".";
+
+    /// <summary>
+    /// A client message read as the formats read JSON (spec/docs/validation.md#json), before any member is read: parsed
+    /// at any depth, then the JSON-level pass on the whole message, members it doesn't define included. Content nested
+    /// deeper than <c>jsonDepth</c>, a number that rounds to ±∞, a member name repeated in one object (never resolved
+    /// to one occurrence) or a string or member name that isn't Unicode text refuses it. Null when the message may not
+    /// be read further, with <paramref name="problem"/> saying why for people; otherwise every string in it decodes.
+    /// </summary>
+    internal static JsonDocument? ReadClientMessage(ReadOnlySpan<byte> utf8, out string problem)
+    {
+        JsonDocument json;
+        try
+        {
+            json = JsonDocument.Parse(utf8.ToArray(), SpecJson.DocumentOptions);
+        }
+        catch (JsonException)
+        {
+            problem = NotAMessage;
+            return null;
+        }
+
+        var check = SchemaSet.CheckJson(json.RootElement, SpecLimits.Default.JsonDepth);
+        if (check.IsValid)
+        {
+            problem = "";
+            return json;
+        }
+
+        json.Dispose();
+        var first = check.Errors[0];
+        var at = first.InstancePath.Length == 0 ? "the message" : first.InstancePath;
+        problem = Cut($"Messages must be JSON as the formats read it: at {at}, {first.Message}", 256);
+        return null;
+    }
+
+    private static string Cut(string value, int length) => value.Length <= length ? value : value[..length] + "…";
 
     /// <summary>Sends a close frame and waits (at most <see cref="CloseTimeout"/>) for the client's, then drops the connection.</summary>
     private static async Task<string> CloseAsync(WebSocket socket, WebSocketCloseStatus status, string description,
@@ -411,14 +446,10 @@ internal sealed class PreviewSession
 
     private void Handle(ReadOnlySpan<byte> utf8)
     {
-        JsonDocument json;
-        try
+        // Read as the formats read JSON first: the strings below (type, profileId) then decode.
+        if (PreviewSocketHandler.ReadClientMessage(utf8, out var problem) is not { } json)
         {
-            json = JsonDocument.Parse(utf8.ToArray());
-        }
-        catch (JsonException)
-        {
-            SendError("Messages must be JSON objects with a \"type\".");
+            SendError(problem);
             return;
         }
 
@@ -428,7 +459,7 @@ internal sealed class PreviewSession
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var typeElement)
                 || typeElement.ValueKind != JsonValueKind.String)
             {
-                SendError("Messages must be JSON objects with a \"type\".");
+                SendError(PreviewSocketHandler.NotAMessage);
                 return;
             }
 

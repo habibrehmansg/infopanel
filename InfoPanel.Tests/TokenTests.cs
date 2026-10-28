@@ -116,6 +116,49 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
     }
 
     [Fact]
+    public async Task Create_WithMoreThan100Errors_ListsTheFirst100_ThenOneMore()
+    {
+        // 101 members the body doesn't define: 101 schema errors, of which 100 are listed and the last is counted by `more`.
+        using var session = factory.CreateApiClient();
+        var members = string.Concat(Enumerable.Range(0, 101).Select(i => $",\"x{i:D3}\":0"));
+        using var response = await session.PostAsync("/api/tokens",
+            new StringContent("{\"name\":\"ok\",\"scopes\":[\"read\"]" + members + "}", Encoding.UTF8, "application/json"), Ct);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors").EnumerateArray().ToList();
+        Assert.Equal(101, errors.Count);
+        Assert.All(errors.Take(100), e => Assert.Equal("schema", e.GetProperty("code").GetString()));
+        Assert.Equal("more", errors[100].GetProperty("code").GetString());
+        Assert.Equal("", errors[100].GetProperty("path").GetString());
+        Assert.Single(errors, e => e.GetProperty("code").GetString() == "more");
+    }
+
+    [Fact]
+    public async Task Create_KeepsTheJsonLevelPassesCodes()
+    {
+        // A string that isn't Unicode text is json at it, and 101 of them end with one more, as every body reports them.
+        using var session = factory.CreateApiClient();
+        using (var response = await session.PostAsync("/api/tokens",
+                   new StringContent("""{"name":"\ud800","scopes":["read"]}""", Encoding.UTF8, "application/json"), Ct))
+        {
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+            var error = Assert.Single((await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors").EnumerateArray());
+            Assert.Equal(("json", "/name"), (error.GetProperty("code").GetString(), error.GetProperty("path").GetString()));
+        }
+
+        var scopes = string.Join(",", Enumerable.Repeat("\"\\ud800\"", 101));
+        using (var response = await session.PostAsync("/api/tokens",
+                   new StringContent("{\"name\":\"ok\",\"scopes\":[" + scopes + "]}", Encoding.UTF8, "application/json"), Ct))
+        {
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+            var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors").EnumerateArray().ToList();
+            Assert.Equal(101, errors.Count);
+            Assert.All(errors.Take(100), e => Assert.Equal("json", e.GetProperty("code").GetString()));
+            Assert.Equal(("more", ""), (errors[100].GetProperty("code").GetString(), errors[100].GetProperty("path").GetString()));
+        }
+    }
+
+    [Fact]
     public async Task Delete_UnknownToken_Is404()
     {
         using var session = factory.CreateApiClient();
