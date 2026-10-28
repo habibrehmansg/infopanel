@@ -26,7 +26,7 @@ public sealed record ExportedArchive(FileStream Content, string FileName, IReadO
 /// <c>blobs/{64 lower-case hex}</c>, one per blob the document refers to, named by its SHA-256. No manifest, no
 /// directories, nothing else; entries stored or deflated.
 /// <list type="bullet">
-/// <item><b>Export</b> (<see cref="Export"/>) writes the document as the JSON export gives it (the current generation;
+/// <item><b>Export</b> (<see cref="Export(Workspace, string, DateTimeOffset, ImportLimits?)"/>) writes the document as the JSON export gives it (the current generation;
 /// the stored bytes of a profile that can't be opened) and every blob it refers to that is stored and whose bytes hash to
 /// its name, in id order, into a temporary file before anything is sent. The no-image id and missing or corrupt blobs
 /// are left out.</item>
@@ -62,16 +62,24 @@ public static partial class ProfileArchive
 
     /// <summary>
     /// The archive of profile <paramref name="id"/>, built in a temporary file: null and no problem when there is no such
-    /// profile; the problem (409) when its file can't be read at all.
+    /// profile; the problem (409) when its file can't be read at all. An archive its own import would refuse under
+    /// <paramref name="limits"/> isn't exported: more entries than <see cref="ImportLimits.Entries"/>
+    /// (<c>archive.entries</c>), more bytes read than <see cref="ImportLimits.ExpandedBytes"/>, or a file over
+    /// <see cref="ImportLimits.ArchiveBytes"/> (both <c>archive.expanded</c>); the temporary file is gone.
     /// </summary>
+    /// <exception cref="ImportRefusal">The archive couldn't be imported back.</exception>
     /// <exception cref="IOException">The archive couldn't be written.</exception>
-    public static (ExportedArchive? Archive, ProfileStatusProblem? Problem) Export(Workspace workspace, string id, DateTimeOffset now)
+    public static (ExportedArchive? Archive, ProfileStatusProblem? Problem) Export(Workspace workspace, string id, DateTimeOffset now, ImportLimits? limits = null) =>
+        Export(workspace, id, now, limits ?? ImportLimits.Default, TempFile.Create);
+
+    /// <summary><see cref="Export(Workspace, string, DateTimeOffset, ImportLimits?)"/> into the file <paramref name="createFile"/> makes.</summary>
+    internal static (ExportedArchive? Archive, ProfileStatusProblem? Problem) Export(Workspace workspace, string id, DateTimeOffset now, ImportLimits limits, Func<FileStream> createFile)
     {
         var (document, problem) = workspace.Export(id);
         if (document is null)
             return (null, problem);
 
-        var file = TempFile.Create();
+        var file = createFile();
         try
         {
             string? name;
@@ -79,13 +87,19 @@ public static partial class ProfileArchive
             using (document)
             using (var zip = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: true))
             {
-                var scanned = WriteDocument(zip, document.Content, workspace.Limits.DocumentBytes, now);
+                var scanned = WriteDocument(zip, document.Content, workspace.Limits.DocumentBytes, now, out var expanded);
                 name = scanned is null ? null : NameOf(scanned);
                 var references = scanned is null ? [] : References(scanned);
                 foreach (var blob in references.Where(r => r != NoImage).Order(StringComparer.Ordinal))
                 {
                     if (ReadVerified(workspace.Blobs, blob) is not { } bytes)
                         continue;
+                    // What its own import counts: the entries, and every byte it reads (the document and each blob).
+                    if (1 + written.Count + 1 > limits.Entries)
+                        throw new ImportRefusal("archive.entries", $"The archive would have more than {limits.Entries} entries, which an import refuses.");
+                    expanded += bytes.Length;
+                    if (expanded > limits.ExpandedBytes)
+                        throw new ImportRefusal("archive.expanded", $"The archive would hold more than {limits.ExpandedBytes} bytes, which an import refuses.");
                     var entry = zip.CreateEntry(BlobsFolder + blob[BlobStore.IdPrefix.Length..], CompressionLevel.Optimal);
                     entry.LastWriteTime = now;
                     using (var stream = entry.Open())
@@ -94,6 +108,8 @@ public static partial class ProfileArchive
                 }
             }
             file.Flush();
+            if (file.Length > limits.ArchiveBytes)
+                throw new ImportRefusal("archive.expanded", $"The archive is {file.Length} bytes; an import accepts at most {limits.ArchiveBytes}.");
             file.Position = 0;
             return (new ExportedArchive(file, FileNameFor(name ?? "profile", now), written), null);
         }
@@ -108,8 +124,9 @@ public static partial class ProfileArchive
     /// Copies the document into its entry, keeping its bytes for the reference scan when they are at most
     /// <paramref name="maxBytes"/> (a larger stored document can't be imported anyway); null otherwise.
     /// </summary>
-    private static byte[]? WriteDocument(ZipArchive zip, Stream content, int maxBytes, DateTimeOffset now)
+    private static byte[]? WriteDocument(ZipArchive zip, Stream content, int maxBytes, DateTimeOffset now, out long length)
     {
+        length = 0;
         var entry = zip.CreateEntry(DocumentEntry, CompressionLevel.Optimal);
         entry.LastWriteTime = now;
         using var output = entry.Open();
@@ -120,6 +137,7 @@ public static partial class ProfileArchive
         while ((read = content.Read(chunk, 0, chunk.Length)) > 0)
         {
             output.Write(chunk, 0, read);
+            length += read;
             if (!keeping)
                 continue;
             if (kept.Length + read > maxBytes)

@@ -123,6 +123,52 @@ public sealed class ProfileArchiveTests : IDisposable
 
     // ---- export, import and create ------------------------------------------------------------------------------
 
+    /// <summary>The source's export at the default limits: its entries, the bytes an import reads, and the file's length.</summary>
+    private static (int Entries, long Expanded, long Length) Totals(Workspace source)
+    {
+        var (archive, _) = ProfileArchive.Export(source, Id, Now);
+        using (archive)
+            return (1 + archive!.Blobs.Count, ExportBytes(source, Id).Length + Png.Length + Gif.Length + Template.Length, archive.Content.Length);
+    }
+
+    [Theory]
+    [InlineData("entries", "archive.entries")]
+    [InlineData("expanded", "archive.expanded")]
+    [InlineData("archive", "archive.expanded")]
+    public void Export_ThatAnImportWouldRefuse_IsRefused(string limit, string code)
+    {
+        var source = Source();
+        var (entries, expanded, length) = Totals(source);
+        var limits = limit switch
+        {
+            "entries" => new ImportLimits { Entries = entries - 1 },
+            "expanded" => new ImportLimits { ExpandedBytes = expanded - 1 },
+            _ => new ImportLimits { ArchiveBytes = length - 1 },
+        };
+        FileStream? file = null;
+
+        var error = Assert.Throws<ImportRefusal>(() => ProfileArchive.Export(source, Id, Now, limits, () => file = TempFile.Create()));
+
+        Assert.Equal(code, error.Code);
+        Assert.False(File.Exists(file!.Name));
+    }
+
+    [Fact]
+    public void Export_AtTheImportLimits_Exports_AndImportsWithThem()
+    {
+        var source = Source();
+        var (entries, expanded, length) = Totals(source);
+        var limits = new ImportLimits { Entries = entries, ExpandedBytes = expanded, ArchiveBytes = length };
+
+        var (archive, problem) = ProfileArchive.Export(source, Id, Now, limits);
+        Assert.Null(problem);
+        byte[] zip;
+        using (archive)
+            zip = Bytes(archive!);
+
+        Assert.Equal(3, Open(zip, NewWorkspace("target"), limits).Blobs.Count);
+    }
+
     [Fact]
     public void RoundTrip_TheDocumentComesBackByteEqual_WithEachBlobOnce()
     {
