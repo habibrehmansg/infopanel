@@ -39,6 +39,8 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     private const string Resampled = "raster image resized with linear filtering, not Mitchell";
     private const string Placeholder = "the format's missing-media placeholder";
     private const string HaloCut = "a scrolling text's halo cut at its box before the blur, not only after it";
+    private const string FractionalRows = "rows at fractional offsets, not truncated to whole pixels";
+    private const string TableGlow = "the glow drawn once for the table, not once per cell";
 
     private static SKRectI Box(int x, int y, int w, int h) => SKRectI.Create(x, y, w, h);
 
@@ -83,7 +85,14 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         ["text-marquee-t0"] = new(0.059, Hinting, Unhinted: true),
         ["text-right-auto"] = new(0.094, Hinting, Unhinted: true),
         ["text-rotated-30"] = new(0.029, Hinting, Unhinted: true),
-        ["table"] = new(0.153, Hinting + "; rows at fractional offsets, not truncated to whole pixels", Unhinted: true, TableRows),
+        ["table"] = new(0.153, Hinting + "; " + FractionalRows, Unhinted: true, TableRows),
+        ["table-missing-column"] = new(0.111, Hinting + "; " + FractionalRows, Unhinted: true, TableRows),
+        ["table-rows-0"] = new(0.07, Hinting, Unhinted: true),
+        ["table-single-line-no-ellipsis"] = new(0.089, Hinting + "; " + FractionalRows, Unhinted: true, TableRows),
+        // The data rows and the lines their cells run into below them (checked line by line by the wrapped-cell test).
+        ["table-wrap-off"] = new(0.121, Hinting + "; " + FractionalRows, Unhinted: true, TableRows),
+        // The glow reaches the whole frame; without it the case is the table case (A_glowing_table_differs_only_by_its_glow).
+        ["table-glow"] = new(0.252, Hinting + "; " + FractionalRows + "; " + TableGlow, Unhinted: true, Box(0, 0, 260, 130)),
         ["donut-span270-rotation90"] = new(0.024, RotatedChart, Areas: Box(20, 20, 120, 120)),
         ["composite-scale1"] = new(0.019, Hinting + "; " + RotatedChart, Unhinted: true, Box(360, 128, 88, 88)),
         ["composite-scale2"] = new(0.031, Hinting + "; " + RotatedChart + "; charts drawn at full resolution, not a 1x raster scaled up", Unhinted: true,
@@ -392,63 +401,81 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     /// The table rows' reason, row by row: step 1 put row k (k = 0 is the header) at <c>y + floor(k × line height)</c>, the
     /// runtime at <c>y + k × rowHeight</c> with its glyphs on whole pixels, so row k is step 1's row k (drawn unhinted)
     /// moved down by <c>ceil(y + k × rowHeight) − (y + floor(k × line height))</c> pixels: 0 for the header and 1 for the
-    /// four data rows here. Each row and the empty part below them must match that within the standard tolerance.
+    /// data rows here (<paramref name="shifts"/>). Each row and the part below the rows must match that within the standard
+    /// tolerance. Tables of one-line cells; cells of several lines are checked line by line
+    /// (<see cref="Wrapped_cells_match_step1_line_by_line_at_their_fractional_offsets"/>), and a glowing table without its
+    /// glow (<see cref="A_glowing_table_differs_only_by_its_glow"/>).
     /// </summary>
-    [Fact]
-    public void Table_rows_match_step1_row_by_row_at_their_fractional_offsets()
+    [Theory]
+    [InlineData("table", "0,1,1,1,1")]
+    [InlineData("table-missing-column", "0,1,1,1,1")]
+    [InlineData("table-rows-0", "0")]
+    [InlineData("table-single-line-no-ellipsis", "0,1,1,1,1")]
+    public void Table_rows_match_step1_row_by_row_at_their_fractional_offsets(string name, string shifts)
     {
         GoldenImage.RequireGoldenDirectory(GoldenImage.GoldenDirectory);
-        var (frame, unhinted, layout) = TableFrames();
+        var (frame, unhinted, layout) = TableFrames(name);
         using (frame)
         using (unhinted)
         {
             output.WriteLine($"rows at {string.Join(", ", layout.Step1Tops)} in step 1, moved down by {string.Join(", ", layout.Shifts)}");
-            Assert.Equal([0, 1, 1, 1, 1], layout.Shifts);
+            Assert.Equal(shifts.Split(',').Select(int.Parse), layout.Shifts);
             var problems = TableRowProblems(frame, unhinted, layout);
             Assert.True(problems.Count == 0, string.Join("; ", problems));
         }
     }
 
     /// <summary>The row check fails on missing rows and on a row one pixel off.</summary>
-    [Fact]
-    public void The_table_row_check_fails_on_missing_or_moved_rows()
+    [Theory]
+    [InlineData("table")]
+    [InlineData("table-missing-column")]
+    [InlineData("table-rows-0")]
+    [InlineData("table-single-line-no-ellipsis")]
+    public void The_table_row_check_fails_on_missing_or_moved_rows(string name)
     {
         GoldenImage.RequireGoldenDirectory(GoldenImage.GoldenDirectory);
-        var (frame, unhinted, layout) = TableFrames();
+        var (frame, unhinted, layout) = TableFrames(name);
         using (frame)
         using (unhinted)
         {
             var background = SKColor.Parse(GoldenScene.Background);
+            var tops = layout.Step1Tops;
+            var rows = layout.Shifts.Length;
+            SKRectI Band(int k) => SKRectI.Create(0, tops[k] + layout.Shifts[k], frame.Width, tops[k + 1] - tops[k]);
+
+            // Every data row blanked (the header too when there are none).
+            var first = rows > 1 ? 1 : 0;
             using var blank = frame.Copy();
-            Fill(blank, SKRectI.Create(0, 26, blank.Width, blank.Height - 26), background);
-            Assert.Equal(4, TableRowProblems(blank, unhinted, layout).Count(p => p.StartsWith("row", StringComparison.Ordinal)));
+            Fill(blank, SKRectI.Create(0, Band(first).Top, blank.Width, blank.Height - Band(first).Top), background);
+            Assert.Equal(rows - first, TableRowProblems(blank, unhinted, layout).Count(p => p.StartsWith("row", StringComparison.Ordinal)));
 
+            var last = rows - 1;
             using var lastBlank = frame.Copy();
-            Fill(lastBlank, SKRectI.Create(0, layout.Step1Tops[4] + 1, lastBlank.Width, layout.Step1Tops[5] - layout.Step1Tops[4]), background);
-            Assert.Single(TableRowProblems(lastBlank, unhinted, layout), p => p.StartsWith("row 4", StringComparison.Ordinal));
+            Fill(lastBlank, Band(last), background);
+            Assert.Single(TableRowProblems(lastBlank, unhinted, layout), p => p.StartsWith($"row {last}", StringComparison.Ordinal));
 
+            var middle = Math.Min(2, last);
             using var moved = frame.Copy();
-            var row2 = SKRectI.Create(0, layout.Step1Tops[2] + 1, moved.Width, layout.Step1Tops[3] - layout.Step1Tops[2]);
-            Shift(moved, row2, 0, -1, background);
-            Assert.Contains(TableRowProblems(moved, unhinted, layout), p => p.StartsWith("row 2", StringComparison.Ordinal));
+            Shift(moved, Band(middle), 0, -1, background);
+            Assert.Contains(TableRowProblems(moved, unhinted, layout), p => p.StartsWith($"row {middle}", StringComparison.Ordinal));
         }
     }
 
     private sealed record TableLayout(int[] Step1Tops, int[] Shifts);
 
     /// <summary>The table's frame, the step-1 renderer's frame of it with unhinted glyphs, and both renderers' row offsets.</summary>
-    private static (SKBitmap Frame, SKBitmap Unhinted, TableLayout Layout) TableFrames()
+    private static (SKBitmap Frame, SKBitmap Unhinted, TableLayout Layout) TableFrames(string name)
     {
-        const string name = "table";
         using var scene = new GoldenScene();
         using var media = FixtureMedia();
         var document = SceneKit.Load(Path.Combine(ReferenceDir, name + ".document.json"));
         using var snapshot = SceneRuntime.RenderOnce(document, GoldenScene.UtcNow, Options(scene, media));
         var (profile, items) = GoldenTests.Cases[name]();
         var table = (InfoPanel.Models.TableSensorDisplayItem)items.Single();
-        var rows = table.MaxRows + 1;
-        // Both renderers' table frames are `rows` lines tall: step 1's of its "A" line, the runtime's of rowHeight.
-        var step1Line = scene.Renderer.MeasureBounds(profile, items, new InfoPanel.Drawing.ProfileRenderState { Tick = 1 }).Single().H / rows;
+        var rows = table.MaxRows + (table.ShowHeader ? 1 : 0);
+        // Step 1's rows are one "A" line apart (its cells can be taller); the runtime's table frame is `rows` rowHeights tall.
+        var g = InfoPanel.Drawing.SkiaGraphics.FromEmpty(profile.FontScale); // no canvas, nothing to dispose
+        var (_, step1Line) = g.MeasureString("A", table.Font, table.FontStyle, table.FontSize, table.Bold, table.Italic, table.Underline, table.Strikeout);
         var rowHeight = snapshot.Bounds.Single().Frame.H / rows;
         var y = table.Y;
         var tops = Enumerable.Range(0, rows + 1).Select(k => (int)(y + step1Line * k)).ToArray();
@@ -469,10 +496,148 @@ public sealed class V1ParityTests(ITestOutputHelper output)
             var diff = Differing(unhinted, band, frame, layout.Shifts[k]);
             if (diff > 0) problems.Add($"row {k} (step 1's y {band.Top}–{band.Bottom}, moved {layout.Shifts[k]}): {diff} pixels differ");
         }
-        var below = layout.Step1Tops[rows] + layout.Shifts[rows - 1];
-        var rest = Differing(unhinted, SKRectI.Create(0, below, frame.Width, frame.Height - below), frame, 0);
-        if (rest > 0) problems.Add($"below the rows (y ≥ {below}): {rest} pixels differ");
+        var shift = layout.Shifts[rows - 1];
+        var below = layout.Step1Tops[rows];
+        var rest = Differing(unhinted, SKRectI.Create(0, below, frame.Width, frame.Height - below - Math.Max(0, shift)), frame, shift);
+        if (rest > 0) problems.Add($"below the rows (step 1's y ≥ {below}, moved {shift}): {rest} pixels differ");
         return problems;
+    }
+
+    /// <summary>
+    /// The fractional rows' reason for cells of several lines (1.x with Wrap off), which run over the rows below: one cell
+    /// at a time (every other data cell empty, so no lines overlap), each of its lines is step 1's line (drawn unhinted)
+    /// moved down by its own shift. Step 1 put line j of row k at <c>floor(y + k × line height) + j × line height</c>, the
+    /// runtime at <c>y + k × rowHeight + j × line height</c>, each with its glyphs on whole pixels, so line j moves by
+    /// <c>ceil(runtime top) − ceil(step 1's top)</c> pixels (for the first line, the row's shift). The header and the rest of
+    /// the frame must match unmoved.
+    /// </summary>
+    [Fact]
+    public void Wrapped_cells_match_step1_line_by_line_at_their_fractional_offsets()
+    {
+        GoldenImage.RequireGoldenDirectory(GoldenImage.GoldenDirectory);
+        const string name = "table-wrap-off";
+        var full = GoldenScene.NotesTable();
+        var checkedLines = 0;
+        for (var r = 0; r < full.Rows.Count; r++)
+            for (var c = 0; c < full.Columns.Count; c++)
+            {
+                var only = full.Clone();
+                foreach (System.Data.DataRow source in full.Rows) only.ImportRow(source);
+                for (var rr = 0; rr < only.Rows.Count; rr++)
+                    for (var cc = 0; cc < only.Columns.Count; cc++)
+                        if (rr != r || cc != c) only.Rows[rr][cc] = new InfoPanel.Plugins.PluginText("empty", "");
+                var (frame, unhinted, lines) = CellFrames(name, only, r);
+                using (frame)
+                using (unhinted)
+                {
+                    output.WriteLine($"row {r + 1}, column {c}: lines at step 1's y {string.Join(", ", lines.Select(l => $"{l.Top}–{l.Bottom} moved {l.Shift}"))}");
+                    Assert.NotEmpty(lines);
+                    var problems = new List<string>();
+                    var y = 0;
+                    foreach (var (top, bottom, shift) in lines)
+                    {
+                        var before = Differing(unhinted, SKRectI.Create(0, y, frame.Width, top - y), frame, 0);
+                        if (before > 0) problems.Add($"above y {top}: {before} pixels differ");
+                        var line = Differing(unhinted, SKRectI.Create(0, top, frame.Width, bottom - top), frame, shift);
+                        if (line > 0) problems.Add($"line at {top}–{bottom} (moved {shift}): {line} pixels differ");
+                        y = bottom;
+                    }
+                    var rest = Differing(unhinted, SKRectI.Create(0, y, frame.Width, frame.Height - y - 1), frame, 0);
+                    if (rest > 0) problems.Add($"below y {y}: {rest} pixels differ");
+                    Assert.True(problems.Count == 0, $"row {r + 1}, column {c}: " + string.Join("; ", problems));
+                    checkedLines += lines.Count;
+                }
+            }
+        // Some cells wrap or break: more lines than cells.
+        Assert.True(checkedLines > full.Rows.Count * full.Columns.Count, $"{checkedLines} lines");
+    }
+
+    /// <summary>
+    /// The case drawn with only <paramref name="table"/>'s cells by both renderers, and the bands of the step-1 frame its
+    /// data row <paramref name="row"/> (0 first) draws lines in (each with a pixel of margin) with their shifts.
+    /// </summary>
+    private static (SKBitmap Frame, SKBitmap Unhinted, List<(int Top, int Bottom, int Shift)> Lines) CellFrames(string name, System.Data.DataTable table, int row)
+    {
+        using var scene = new GoldenScene();
+        var (profile, items) = GoldenTests.Cases[name]();
+        var item = (InfoPanel.Models.TableSensorDisplayItem)items.Single();
+        scene.Sensors.Readings[InfoPanel.Sensors.SensorKey.Plugin(item.PluginSensorId)] = new InfoPanel.Models.SensorReading(table, item.TableFormat, "");
+        using var media = FixtureMedia();
+        var document = SceneKit.Load(Path.Combine(ReferenceDir, name + ".document.json"));
+        using var snapshot = SceneRuntime.RenderOnce(document, GoldenScene.UtcNow, Options(scene, media));
+        var g = InfoPanel.Drawing.SkiaGraphics.FromEmpty(profile.FontScale); // no canvas, nothing to dispose
+        var (_, step1Line) = g.MeasureString("A", item.Font, item.FontStyle, item.FontSize, item.Bold, item.Italic, item.Underline, item.Strikeout);
+        var rows = item.MaxRows + (item.ShowHeader ? 1 : 0);
+        var rowHeight = snapshot.Bounds.Single().Frame.H / rows;
+        var lineHeight = TextLayoutEngine.Layout(new TextLayoutKey { Runs = [new TextRun("A", "Inter", item.FontSize * profile.FontScale, 400, false)], BaseSize = item.FontSize * profile.FontScale }).Lines[0].Height;
+        var k = row + (item.ShowHeader ? 1 : 0);
+        var step1Top = (int)(item.Y + step1Line * k);
+
+        using var rendered = snapshot.Render();
+        SKBitmap Step1Unhinted()
+        {
+            var before = TextPaintOptions.Default.Hinting;
+            TextPaintOptions.Default.Hinting = SKFontHinting.None;
+            try
+            {
+                using var step1 = scene.Render(profile, items);
+                return GoldenImage.Normalize(step1);
+            }
+            finally
+            {
+                TextPaintOptions.Default.Hinting = before;
+            }
+        }
+        var unhinted = Step1Unhinted();
+        // The same frame with every data cell empty: the header alone.
+        var empty = table.Clone();
+        foreach (System.Data.DataRow source in table.Rows) empty.Rows.Add(source.ItemArray.Select(_ => (object)new InfoPanel.Plugins.PluginText("empty", "")).ToArray());
+        scene.Sensors.Readings[InfoPanel.Sensors.SensorKey.Plugin(item.PluginSensorId)] = new InfoPanel.Models.SensorReading(empty, item.TableFormat, "");
+        using var header = Step1Unhinted();
+
+        // The cell's lines: bands where the step-1 frame differs from the header alone, line j the j-th.
+        var inked = Enumerable.Range(0, unhinted.Height).Select(y => Enumerable.Range(0, unhinted.Width).Any(x => Delta(unhinted.GetPixel(x, y), header.GetPixel(x, y)) > GoldenImage.ChannelTolerance)).ToArray();
+        // Runs of inked rows less than 4 rows apart are one line (an i's dot, an accent).
+        var runs = new List<(int Top, int Bottom)>();
+        for (var y = 0; y < inked.Length; y++)
+        {
+            if (!inked[y]) continue;
+            var top = y;
+            while (y < inked.Length && inked[y]) y++;
+            if (runs.Count > 0 && top - runs[^1].Bottom < 4) runs[^1] = (runs[^1].Top, y);
+            else runs.Add((top, y));
+        }
+        var lines = new List<(int, int, int)>();
+        foreach (var (top, bottom) in runs)
+        {
+            var j = lines.Count;
+            var shift = (int)Math.Ceiling(item.Y + k * rowHeight + j * lineHeight - 1e-3) - (int)Math.Ceiling(step1Top + j * step1Line - 1e-3);
+            lines.Add((Math.Max(0, top - 1), Math.Min(inked.Length - 1, bottom + 1), shift));
+        }
+        return (GoldenImage.Normalize(rendered), unhinted, lines);
+    }
+
+    /// <summary>The glow's reason: with the glow taken out of both, the glowing table is the table case, pixel for pixel.</summary>
+    [Fact]
+    public void A_glowing_table_differs_only_by_its_glow()
+    {
+        var node = JsonNode.Parse(File.ReadAllText(Path.Combine(ReferenceDir, "table-glow.document.json")))!;
+        var group = node["items"]![0]!["scene"]!["nodes"]![0]!.AsObject();
+        Assert.NotNull(group["effects"]);
+        group.Remove("effects");
+        using var scene = new GoldenScene();
+        using var media = FixtureMedia();
+        using var snapshot = SceneRuntime.RenderOnce(JsonSerializer.SerializeToElement(node), GoldenScene.UtcNow, Options(scene, media));
+        using var frame = snapshot.Render();
+        using var table = RenderScene("table");
+        Assert.Equal(0, SceneKit.DifferingPixels(table, frame, GoldenImage.ChannelTolerance));
+
+        var (_, glowing) = GoldenTests.Cases["table-glow"]();
+        var (_, plain) = GoldenTests.Cases["table"]();
+        var a = (InfoPanel.Models.TableSensorDisplayItem)glowing.Single();
+        var b = (InfoPanel.Models.TableSensorDisplayItem)plain.Single();
+        Assert.True(a.GlowEnabled && !b.GlowEnabled);
+        Assert.Equal((b.TableFormat, b.MaxRows, b.RightAlign, b.FontSize, b.Color, b.X, b.Y), (a.TableFormat, a.MaxRows, a.RightAlign, a.FontSize, a.Color, a.X, a.Y));
     }
 
     /// <summary>

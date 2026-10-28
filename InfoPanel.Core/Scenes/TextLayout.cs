@@ -122,8 +122,11 @@ internal sealed class TextLayout
     /// <summary>Families this layout asked for that the engine doesn't have (drawn in the default family).</summary>
     public IReadOnlyList<string> MissingFamilies = [];
 
-    /// <summary>Layouts made (shaping runs) to produce this one, for the text budget.</summary>
+    /// <summary>Lines made to produce this one (fit probes and ellipsis passes included), for the text budget.</summary>
     public int Cost = 1;
+
+    /// <summary>A fit probe stopped before its last line (it can't fit).</summary>
+    public bool Stopped;
 
     public float FirstBaseline => Lines.Length > 0 ? Lines[0].Baseline : 0;
 
@@ -169,10 +172,15 @@ internal sealed class TextLayout
     }
 }
 
-/// <summary>Paragraph layouts left for one <see cref="TextLayoutEngine.Layout"/> call; one more is over the text budget.</summary>
+/// <summary>
+/// Lines left for one <see cref="TextLayoutEngine.Layout"/> call: each is charged as wrapping produces it, before it is
+/// made; one more than the limit is over the text budget.
+/// </summary>
 internal sealed class LayoutMeter(int limit)
 {
     public int Used;
+
+    public int Left => limit - Used;
 
     public void Charge()
     {
@@ -215,9 +223,16 @@ internal static class TextLayoutEngine
     private const string Ellipsis = "…";
 
     /// <summary>
-    /// Lays out <paramref name="key"/> with at most <paramref name="budget"/> paragraph layouts (fit probes and
-    /// ellipsis passes included); throws <see cref="BudgetExceeded"/> before making one more. The result's
-    /// <see cref="TextLayout.Cost"/> is the paragraph layouts it took.
+    /// Test seam: called on the laying-out thread with the number of lines RichTextKit produced each time it lays out a
+    /// paragraph (every read of a <see cref="TextBlock"/>'s lines that lays it out), whether or not they are kept.
+    /// </summary>
+    [ThreadStatic] internal static Action<int>? LinesProduced;
+
+    /// <summary>
+    /// Lays out <paramref name="key"/> making at most <paramref name="budget"/> lines (every line of every paragraph,
+    /// a blank one too, fit probes and ellipsis passes included); throws <see cref="BudgetExceeded"/> before making one
+    /// more, so a paragraph wrapped to many lines stops there. The result's <see cref="TextLayout.Cost"/> is the lines
+    /// it made.
     /// </summary>
     public static TextLayout Layout(TextLayoutKey key, int budget = int.MaxValue)
     {
@@ -245,10 +260,14 @@ internal static class TextLayoutEngine
         bool Fits(int k)
         {
             var scale = size > 0 ? (size - 0.5f * k) / size : 1;
-            // Probe without truncation, so an ellipsis never counts as fitting.
-            var probe = Lay(key.With(null, scale, key.Overflow == TextOverflow.Ellipsis ? TextOverflow.Visible : key.Overflow), meter);
+            // Probe without truncation, so an ellipsis never counts as fitting. A probe stops as soon as it can't fit (one
+            // line past maxLines, or a line ending below the box), and asks RichTextKit for lines a few at a time, so it
+            // produces little more than its answer needs (every line produced is charged); that answer is the same as
+            // the whole layout's.
+            var probe = Lay(key.With(key.MaxLines + 1, scale, key.Overflow == TextOverflow.Ellipsis ? TextOverflow.Visible : key.Overflow), meter,
+                key.H is { } box ? box + 0.01f : float.PositiveInfinity);
             var lines = probe.Lines.Length;
-            return probe.Width <= key.W!.Value + 0.01f && (key.H is not { } h || probe.Height <= h + 0.01f) && (key.MaxLines is not { } m || lines <= m);
+            return !probe.Stopped && probe.Width <= key.W!.Value + 0.01f && (key.H is not { } h || probe.Height <= h + 0.01f) && (key.MaxLines is not { } m || lines <= m);
         }
         var found = steps;
         if (Fits(0)) found = 0;
@@ -272,19 +291,26 @@ internal static class TextLayoutEngine
         return result;
     }
 
-    private static TextLayout Lay(TextLayoutKey key, LayoutMeter meter)
+    /// <summary>
+    /// Lays out <paramref name="key"/>; with <paramref name="stopBelow"/> (a fit probe), stops after the first line that
+    /// ends below it and marks the layout <see cref="TextLayout.Stopped"/> when lines were left out.
+    /// </summary>
+    private static TextLayout Lay(TextLayoutKey key, LayoutMeter meter, float stopBelow = float.PositiveInfinity)
     {
         var paragraphs = Paragraphs(key.Runs);
         var lines = new List<LaidLine>();
         var remaining = key.MaxLines ?? int.MaxValue;
         var ellipsis = key.Overflow == TextOverflow.Ellipsis;
-        for (var p = 0; p < paragraphs.Count && remaining > 0; p++)
+        var height = 0f;
+        var stopped = false;
+        for (var p = 0; p < paragraphs.Count && remaining > 0 && !stopped; p++)
         {
             var dropsLater = p + 1 < paragraphs.Count && remaining == 1;
-            meter.Charge();
-            var block = LayParagraph(key, paragraphs[p], remaining, dropsLater && ellipsis);
+            var block = LayParagraph(key, paragraphs[p], remaining, dropsLater && ellipsis, meter, stopBelow - height, out stopped);
             lines.AddRange(block);
             remaining -= block.Count;
+            foreach (var line in block) height += line.Height;
+            if (height > stopBelow && p + 1 < paragraphs.Count) stopped = true;
         }
 
         Stack(lines);
@@ -293,6 +319,7 @@ internal static class TextLayoutEngine
             Lines = lines.ToArray(),
             Width = lines.Count == 0 ? 0 : lines.Max(l => l.Width),
             Height = lines.Count == 0 ? 0 : lines[^1].Top + lines[^1].Height,
+            Stopped = stopped,
         };
 
         // Ellipsis with a box height: keep the lines that fit (at least one) and end the last with "…".
@@ -339,8 +366,9 @@ internal static class TextLayoutEngine
         LetterSpacing = key.LetterSpacing,
     };
 
-    private static List<LaidLine> LayParagraph(TextLayoutKey key, List<(int Span, string Text)> fragments, int maxLines, bool forceEllipsis)
+    private static List<LaidLine> LayParagraph(TextLayoutKey key, List<(int Span, string Text)> fragments, int maxLines, bool forceEllipsis, LayoutMeter meter, float stopBelow, out bool stopped)
     {
+        stopped = false;
         var ellipsis = key.Overflow == TextOverflow.Ellipsis;
         var tb = new TextBlock { FontMapper = SceneFontMapper.Instance, Alignment = TextAlignment.Left };
         if (key.Wrap && key.W is { } ww) tb.MaxWidth = Math.Max(0, ww);
@@ -350,12 +378,16 @@ internal static class TextLayoutEngine
             maxLines = 1; // one line, cut with "…" where it is wider than the box
         }
         tb.EllipsisEnabled = ellipsis;
-        if (maxLines < int.MaxValue) tb.MaxLines = maxLines;
+        // RichTextKit stops breaking lines one past what the budget has left (that line is produced, charged and refused),
+        // so a paragraph that would wrap to more lines than the budget allows is never broken further. Below that bound
+        // the lines are the same: the cut only applies when the budget is about to run out.
+        int Cap() => Math.Min(maxLines, meter.Left < int.MaxValue ? meter.Left + 1 : int.MaxValue);
 
         // An empty paragraph (a blank line) still has a line's height, in the font in force where it is.
         var emptySpan = fragments.Count == 0 ? 0 : fragments[0].Span;
         if (fragments.Count == 0)
         {
+            meter.Charge();
             return [EmptyLine(StyleOf(key, Math.Min(emptySpan, key.Runs.Length - 1)), key)];
         }
         foreach (var (span, text) in fragments) tb.AddText(text, StyleOf(key, span));
@@ -365,11 +397,35 @@ internal static class TextLayoutEngine
             tb.AddText(Ellipsis, StyleOf(key, fragments[^1].Span));
         }
 
-        var lines = new List<LaidLine>();
-        foreach (var line in tb.Lines)
+        // Every line RichTextKit produces is charged as soon as it is produced, kept or not. A fit probe (a finite
+        // stopBelow) only needs the lines up to the first that ends below the box, so it asks for a few lines first and
+        // twice as many each time those all fit, up to the cap. RichTextKit may break the last line it is allowed early,
+        // so only the lines before it are taken as the uncapped layout's: when one of them ends below the box, the next
+        // exists and the probe stops there, as it would with every line; otherwise it asks again.
+        var cap = Cap();
+        var limit = float.IsPositiveInfinity(stopBelow) ? cap : Math.Min(cap, FirstProbeLines);
+        IReadOnlyList<TextLine> produced;
+        while (true)
         {
+            tb.MaxLines = limit < int.MaxValue ? limit : null;
+            produced = tb.Lines;
+            LinesProduced?.Invoke(produced.Count);
+            for (var i = 0; i < produced.Count; i++) meter.Charge();
+            if (produced.Count < limit || limit >= cap || EndsBelow(key, produced, produced.Count - 1, emptySpan, stopBelow)) break;
+            cap = Cap();
+            limit = (int)Math.Min(2L * limit, cap);
+        }
+
+        var lines = new List<LaidLine>();
+        var made = 0f; // the lines' height so far
+        foreach (var line in produced)
+        {
+            if (made > stopBelow)
+            {
+                stopped = true;
+                break;
+            }
             var runs = new List<GlyphRun>();
-            float asc = 0, desc = 0, lead = 0, size = 0;
             var lineTop = line.YCoord + line.BaseLine;
             foreach (var run in line.Runs)
             {
@@ -378,10 +434,6 @@ internal static class TextLayoutEngine
                 var fontSize = run.Style.FontSize;
                 using var font = MakeFont(run.Typeface, fontSize);
                 var m = font.Metrics;
-                asc = Math.Max(asc, -m.Ascent);
-                desc = Math.Max(desc, m.Descent);
-                lead = Math.Max(lead, m.Leading);
-                size = Math.Max(size, fontSize);
                 var glyphs = run.Glyphs.AsSpan();
                 if (glyphs.Length == 0 || run.RunKind == FontRunKind.TrailingWhitespace) continue;
                 var positions = run.GlyphPositions.ToArray();
@@ -405,18 +457,53 @@ internal static class TextLayoutEngine
                     StrikeThickness = m.StrikeoutThickness is > 0 ? m.StrikeoutThickness.Value : Math.Max(1, fontSize / 14),
                 });
             }
-            if (size == 0)
-            {
-                var empty = EmptyLine(StyleOf(key, emptySpan), key);
-                empty.Width = line.Width;
-                lines.Add(new LaidLine { Runs = runs.ToArray(), Width = line.Width, Height = empty.Height, Baseline = empty.Baseline });
-                continue;
-            }
-            var (height, baseline) = LineBox(asc, desc, lead, size, key.LineHeight);
+            var (height, baseline) = LineMetrics(key, line, emptySpan);
             lines.Add(new LaidLine { Runs = runs.ToArray(), Width = line.Width, Height = height, Baseline = baseline });
+            made += height;
         }
-        if (lines.Count == 0) lines.Add(EmptyLine(StyleOf(key, emptySpan), key));
+        if (lines.Count == 0)
+        {
+            meter.Charge();
+            lines.Add(EmptyLine(StyleOf(key, emptySpan), key));
+        }
         return lines;
+    }
+
+    /// <summary>Lines a fit probe asks RichTextKit for first.</summary>
+    private const int FirstProbeLines = 8;
+
+    /// <summary>Whether the first <paramref name="count"/> lines end below <paramref name="stopBelow"/>.</summary>
+    private static bool EndsBelow(TextLayoutKey key, IReadOnlyList<TextLine> lines, int count, int emptySpan, float stopBelow)
+    {
+        var made = 0f;
+        for (var i = 0; i < count; i++)
+        {
+            made += LineMetrics(key, lines[i], emptySpan).Height;
+            if (made > stopBelow) return true;
+        }
+        return false;
+    }
+
+    /// <summary>A produced line's height and baseline (from its top): its runs' fonts, or the empty line's when it has no text.</summary>
+    private static (float Height, float Baseline) LineMetrics(TextLayoutKey key, TextLine line, int emptySpan)
+    {
+        float asc = 0, desc = 0, lead = 0, size = 0;
+        foreach (var run in line.Runs)
+        {
+            var fontSize = run.Style.FontSize;
+            using var font = MakeFont(run.Typeface, fontSize);
+            var m = font.Metrics;
+            asc = Math.Max(asc, -m.Ascent);
+            desc = Math.Max(desc, m.Descent);
+            lead = Math.Max(lead, m.Leading);
+            size = Math.Max(size, fontSize);
+        }
+        if (size == 0)
+        {
+            var empty = EmptyLine(StyleOf(key, emptySpan), key);
+            return (empty.Height, empty.Baseline);
+        }
+        return LineBox(asc, desc, lead, size, key.LineHeight);
     }
 
     private static LaidLine EmptyLine(SpanStyle style, TextLayoutKey key)

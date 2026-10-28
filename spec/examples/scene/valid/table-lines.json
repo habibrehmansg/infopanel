@@ -1,0 +1,26 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"lines": {"type": "table", "label": "Notes"}},
+  "nodes": [
+    {
+      "kind": "table",
+      "input": "lines",
+      "x": 8,
+      "y": 8,
+      "rows": 3,
+      "gap": 10,
+      "rowHeight": 40,
+      "columns": [
+        {"column": 0, "w": 70},
+        {"column": 9, "w": 120, "title": "Missing"},
+        {"column": 1, "w": 140, "align": "end"}
+      ],
+      "font": {"family": "Inter", "size": 13},
+      "fill": "#e5e7eb",
+      "headerFill": "#9ca3af",
+      "wrap": "word",
+      "maxLines": 3,
+      "overflow": "visible"
+    }
+  ]
+}

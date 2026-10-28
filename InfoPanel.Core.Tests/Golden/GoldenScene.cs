@@ -47,6 +47,7 @@ internal sealed class GoldenScene : IDisposable
         public static readonly SensorKey Fan = SensorKey.Plugin("/golden/fan/rpm");
         public static readonly SensorKey Gauge = SensorKey.Plugin("/golden/gauge");
         public static readonly SensorKey Processes = SensorKey.Plugin("/golden/processes");
+        public static readonly SensorKey Notes = SensorKey.Plugin("/golden/notes");
         public static readonly SensorKey Camera = SensorKey.Plugin("/golden/camera");
     }
 
@@ -64,6 +65,7 @@ internal sealed class GoldenScene : IDisposable
         Sensors.Readings[Keys.Fan] = new SensorReading(800.0, 1900.0, 1100.0, 1200.0, "RPM");
         Sensors.Readings[Keys.Gauge] = new SensorReading(0.0, 100.0, 50.0, 50.0, "%");
         Sensors.Readings[Keys.Processes] = new SensorReading(ProcessTable(), "0:110|1:60|2:50", "");
+        Sensors.Readings[Keys.Notes] = new SensorReading(NotesTable(), "0:60|1:110", "");
         Sensors.Readings[Keys.Camera] = new SensorReading("https://example.com/camera.png");
 
         History.Samples[Keys.CpuLoad] = [.. Enumerable.Range(0, 160).Select(i => 50 + 30 * Math.Sin(i / 9.0) + 12 * Math.Sin(i / 2.5))];
@@ -90,6 +92,29 @@ internal sealed class GoldenScene : IDisposable
         foreach (var (name, cpu, ram) in rows)
         {
             table.Rows.Add(new PluginText("name", name), new PluginText("cpu", cpu), new PluginText("ram", ram));
+        }
+
+        return table;
+    }
+
+    /// <summary>A table of cells wider than their columns, with several words and with line breaks.</summary>
+    internal static DataTable NotesTable()
+    {
+        var table = new DataTable();
+        table.Columns.Add("Key", typeof(IPluginData));
+        table.Columns.Add("Note", typeof(IPluginData));
+
+        (string Key, string Note)[] rows =
+        [
+            ("build", "Finished in 42 s with two warnings"),
+            ("a\nb", "First line\nSecond line"),
+            ("maintenance", "ok"),
+            ("x", "Waiting for the runner"),
+        ];
+
+        foreach (var (key, note) in rows)
+        {
+            table.Rows.Add(new PluginText("key", key), new PluginText("note", note));
         }
 
         return table;

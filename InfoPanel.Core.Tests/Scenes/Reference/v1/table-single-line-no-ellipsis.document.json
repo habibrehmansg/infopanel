@@ -1,0 +1,97 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "table-single-line-no-ellipsis",
+    "width": 260,
+    "height": 130,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g110",
+      "name": "Notes",
+      "placement": {
+        "x": 10,
+        "y": 8
+      },
+      "bindings": {
+        "t": {
+          "key": "plugin:/golden/notes"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "t": {
+            "label": "Table",
+            "type": "table"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "columns": [
+                  {
+                    "column": 0,
+                    "w": 60
+                  },
+                  {
+                    "column": 1,
+                    "w": 110
+                  }
+                ],
+                "fill": "#e0e0e0ff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 15.960000991821289,
+                  "weight": 400
+                },
+                "gap": 10,
+                "id": "table",
+                "input": "t",
+                "kind": "table",
+                "overflow": "visible",
+                "rows": 4,
+                "visible": {
+                  "field": "available",
+                  "name": "t",
+                  "op": "input"
+                },
+                "wrap": "word"
+              },
+              {
+                "fill": "#e0e0e0ff",
+                "font": {
+                  "family": "Inter",
+                  "italic": false,
+                  "size": 15.960000991821289,
+                  "weight": 400
+                },
+                "id": "invalid",
+                "kind": "text",
+                "maxLines": 1,
+                "text": "Invalid sensor",
+                "visible": {
+                  "args": [
+                    {
+                      "field": "available",
+                      "name": "t",
+                      "op": "input"
+                    }
+                  ],
+                  "op": "not"
+                }
+              }
+            ],
+            "id": "body",
+            "kind": "group"
+          }
+        ]
+      }
+    }
+  ]
+}

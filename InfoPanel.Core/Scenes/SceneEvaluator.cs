@@ -16,16 +16,17 @@ internal sealed class CellState(Val value, double updated)
 
 /// <summary>
 /// What the runtime keeps for one item between ticks: its state cells, keyed by (cell name, canonical definition, resolved
-/// type) so a changed definition or type starts again (spec/docs/identity.md), and its text layouts, so unchanged text
-/// keeps its layout.
+/// type) so a changed definition or type starts again (spec/docs/identity.md), and the text layouts of the last tick it
+/// was drawn on, so unchanged text keeps its layout. Those were all charged to that tick's text budget, so what an item
+/// keeps is bounded by it; a tick that refuses the item keeps none.
 /// </summary>
 internal sealed class ItemRuntime(string id)
 {
     public string Id { get; } = id;
     public readonly Dictionary<CellKey, CellState> Cells = new();
     public CompiledScene? Scene;
-    public readonly Dictionary<int, (TextLayoutKey Key, TextLayout Layout)> Texts = new();
-    public readonly Dictionary<(int Table, int Row, int Column), (TextLayoutKey Key, TextLayout Layout)> TableCells = new();
+    public Dictionary<int, (TextLayoutKey Key, TextLayout Layout)> Texts { get; private set; } = new();
+    public Dictionary<(int Table, int Row, int Column), (TextLayoutKey Key, TextLayout Layout)> TableCells { get; private set; } = new();
     public bool Suspended;
     public long SuspendedAt;
 
@@ -65,8 +66,14 @@ internal sealed class ItemRuntime(string id)
     {
         if (ReferenceEquals(Scene, scene)) return;
         Scene = scene;
-        Texts.Clear();
-        TableCells.Clear();
+        Keep(new(), new());
+    }
+
+    /// <summary>Keeps the text layouts of a tick that drew the item, in place of the earlier ones; empty ones drop them.</summary>
+    public void Keep(Dictionary<int, (TextLayoutKey, TextLayout)> texts, Dictionary<(int, int, int), (TextLayoutKey, TextLayout)> tableCells)
+    {
+        Texts = texts;
+        TableCells = tableCells;
     }
 }
 
@@ -80,7 +87,7 @@ internal sealed class TickServices
     /// <summary>What the tick's nodes hold until the snapshot is released: the paths dashed outlines are drawn from.</summary>
     public readonly List<IDisposable> Owned = [];
 
-    /// <summary>Text layouts left for this tick across the document (cache misses only).</summary>
+    /// <summary>Text lines left to lay out this tick across the document (cache misses only).</summary>
     public int LayoutsLeft = int.MaxValue;
 
     public int TextLength = 4096;
@@ -106,7 +113,10 @@ internal sealed class SceneEvaluator
     /// <summary>Most dash segments one item's dashed strokes may produce in a tick, all together; more is over budget.</summary>
     public const int MaxDashSegments = 100_000;
 
-    /// <summary>Most text layouts one item may make in a tick (cache misses).</summary>
+    /// <summary>
+    /// Most text lines one item may lay out in a tick: every line of every layout it uses, made this tick or kept from an
+    /// earlier one (reuse saves the time, not the budget).
+    /// </summary>
     public const int MaxItemLayouts = 2_000;
 
     private readonly CompiledScene _scene;
@@ -130,6 +140,10 @@ internal sealed class SceneEvaluator
     /// drawer concatenates them, for the dash budget.
     /// </summary>
     private SKMatrix _matrix;
+
+    // The layouts this tick uses, kept for the next tick when the item is drawn.
+    private readonly Dictionary<int, (TextLayoutKey, TextLayout)> _texts = new();
+    private readonly Dictionary<(int, int, int), (TextLayoutKey, TextLayout)> _tableCells = new();
 
     /// <param name="frameScale">
     /// More than any scale the item's frame is drawn at; unknown (infinite) leaves dash patterns unfloored in the
@@ -166,6 +180,23 @@ internal sealed class SceneEvaluator
 
     /// <summary>Evaluates the tick; <paramref name="advance"/> false leaves the item's state untouched (a one-off render).</summary>
     public RNode[] Run(bool advance)
+    {
+        RNode[] nodes;
+        try
+        {
+            nodes = Evaluate(advance);
+        }
+        catch
+        {
+            // A refused or failed item keeps no layouts: they would be uncharged on the next tick's way to the refusal.
+            _rt.Keep(new(), new());
+            throw;
+        }
+        _rt.Keep(_texts, _tableCells);
+        return nodes;
+    }
+
+    private RNode[] Evaluate(bool advance)
     {
         var e = _e;
         foreach (var i in _scene.PhaseBeforeState) e.Values[i] = _scene.Values[i].Eval(e);
@@ -622,16 +653,24 @@ internal sealed class SceneEvaluator
 
     private TextLayout Layout(int textIndex, TextLayoutKey key)
     {
-        if (_rt.Texts.TryGetValue(textIndex, out var cached) && cached.Key.Equals(key)) return cached.Layout;
-        var layout = NewLayout(key);
-        _rt.Texts[textIndex] = (key, layout);
+        var layout = _rt.Texts.TryGetValue(textIndex, out var cached) && cached.Key.Equals(key) ? Kept(cached.Layout) : NewLayout(key);
+        _texts[textIndex] = (key, layout);
+        return layout;
+    }
+
+    /// <summary>A layout kept from an earlier tick: charged to the item's budget as when it was made.</summary>
+    private TextLayout Kept(TextLayout layout)
+    {
+        if (layout.Cost > MaxItemLayouts - _layouts)
+            throw new BudgetExceeded("budget.text", $"Its texts are over this item's budget of {MaxItemLayouts} lines a tick.");
+        _layouts += layout.Cost;
         return layout;
     }
 
     private TextLayout NewLayout(TextLayoutKey key)
     {
-        // What is left of the document's and the item's budgets bounds the layout as it is made (every paragraph and
-        // fit probe), not only before it starts.
+        // What is left of the document's and the item's budgets bounds the layout as it is made (every line of every
+        // paragraph and fit probe, charged before it is made), not only before it starts.
         var left = Math.Min(_services.LayoutsLeft, MaxItemLayouts - _layouts);
         if (left <= 0)
             throw new BudgetExceeded("budget.text", "Too many texts changed this tick; the item is drawn again on a later tick.");
@@ -766,6 +805,21 @@ internal sealed class SceneEvaluator
             return -1;
         }).ToArray();
 
+        // A column the table doesn't have is skipped: no cells, no width. Each drawn column starts after the drawn ones before it.
+        var lefts = new float[t.Columns.Length];
+        var left = x;
+        float totalWidth = 0;
+        var drawn = 0;
+        for (var c = 0; c < t.Columns.Length; c++)
+        {
+            if (columnIndex[c] < 0) continue;
+            lefts[c] = left;
+            left += widths[c] + gap;
+            totalWidth += widths[c];
+            drawn++;
+        }
+        totalWidth += gap * Math.Max(0, drawn - 1);
+
         float rowHeight;
         if (t.RowHeight is { } rh) rowHeight = Math.Max(0, SceneMath.F(rh.Num(e)));
         else
@@ -780,9 +834,9 @@ internal sealed class SceneEvaluator
         {
             for (var c = 0; c < t.Columns.Length; c++)
             {
-                var title = titles[c] ?? (columnIndex[c] >= 0 ? table.Columns[columnIndex[c]] : t.Columns[c].Name ?? "");
-                if (columnIndex[c] < 0 && titles[c] is null) continue;
-                cells.Add(CellNode(t, row, c, new TextRun(e.Cut(title), hFamily, hSize, hWeight, hItalic), headerFill, stroke, x, y, widths, gap, rowHeight));
+                if (columnIndex[c] < 0) continue;
+                var title = titles[c] ?? table.Columns[columnIndex[c]];
+                cells.Add(CellNode(t, row, c, new TextRun(e.Cut(title), hFamily, hSize, hWeight, hItalic), headerFill, stroke, lefts[c], y, widths, rowHeight));
             }
             row++;
         }
@@ -794,7 +848,7 @@ internal sealed class SceneEvaluator
             {
                 var k = columnIndex[c];
                 if (k < 0 || k >= data.Count) continue;
-                cells.Add(CellNode(t, row, c, new TextRun(e.Cut(data[k] ?? ""), family, size, weight, italic), fill, stroke, x, y, widths, gap, rowHeight));
+                cells.Add(CellNode(t, row, c, new TextRun(e.Cut(data[k] ?? ""), family, size, weight, italic), fill, stroke, lefts[c], y, widths, rowHeight));
             }
         }
         if (stroke?.Dash is not null)
@@ -808,18 +862,20 @@ internal sealed class SceneEvaluator
             }
             CheckDash(stroke, length, contours, curved: true);
         }
-        var totalWidth = widths.Sum() + gap * Math.Max(0, widths.Length - 1);
         var bounds = new SKRect(x, y, x + Math.Max(0, totalWidth), y + row * rowHeight);
         return new RGroup { Children = cells.ToArray(), BoundsOverride = bounds };
     }
 
-    private RText CellNode(CTable t, int row, int column, TextRun run, RPaint fill, RStroke? stroke, float x, float y, float[] widths, float gap, float rowHeight)
+    /// <summary>
+    /// A cell laid out as text in its column (the table's wrap, maxLines and overflow): its first line centred vertically
+    /// in its row, further lines below it at the font's line spacing, over the rows below.
+    /// </summary>
+    private RText CellNode(CTable t, int row, int column, TextRun run, RPaint fill, RStroke? stroke, float left, float y, float[] widths, float rowHeight)
     {
         var w = widths[column];
-        var left = x;
-        for (var k = 0; k < column; k++) left += widths[k] + gap;
         var layout = Cell(t, row, column, run, w, t.Overflow);
-        var top = y + row * rowHeight + (rowHeight - layout.Height) / 2;
+        var first = layout.Lines.Length > 0 ? layout.Lines[0].Height : layout.Height;
+        var top = y + row * rowHeight + (rowHeight - first) / 2;
         var cellRect = new SKRect(left, y + row * rowHeight, left + w, y + (row + 1) * rowHeight);
         return new RText
         {
@@ -839,11 +895,10 @@ internal sealed class SceneEvaluator
 
     private TextLayout Cell(CTable t, int row, int column, TextRun run, float? w, TextOverflow overflow)
     {
-        var key = new TextLayoutKey { Runs = [run], W = w, MaxLines = 1, Overflow = overflow, BaseSize = run.Size };
+        var key = new TextLayoutKey { Runs = [run], W = w, Wrap = t.Wrap && w is not null, MaxLines = t.MaxLines, Overflow = overflow, BaseSize = run.Size };
         var cacheKey = (t.TableIndex, row, column);
-        if (_rt.TableCells.TryGetValue(cacheKey, out var cached) && cached.Key.Equals(key)) return cached.Layout;
-        var layout = NewLayout(key);
-        _rt.TableCells[cacheKey] = (key, layout);
+        var layout = _rt.TableCells.TryGetValue(cacheKey, out var cached) && cached.Key.Equals(key) ? Kept(cached.Layout) : NewLayout(key);
+        _tableCells[cacheKey] = (key, layout);
         return layout;
     }
 

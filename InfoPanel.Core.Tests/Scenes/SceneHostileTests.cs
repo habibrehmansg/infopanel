@@ -236,13 +236,51 @@ public sealed class SceneHostileTests
     public void The_longest_largest_text_is_bounded()
     {
         var text = new string('W', 4096);
-        var nodes = $"{{\"kind\":\"text\",\"w\":20,\"wrap\":\"word\",\"font\":{{\"family\":\"Inter\",\"size\":2048}},\"fill\":\"#ffffff\",\"text\":\"{text}\"}},"
-            + $"{{\"kind\":\"text\",\"y\":100,\"font\":{{\"family\":\"Inter\",\"size\":2048}},\"fill\":\"#ffffff\",\"text\":\"{text}\"}},"
+        // The longest text unwrapped at the largest size, and the most words fitted down from it: drawn.
+        var nodes = $"{{\"kind\":\"text\",\"y\":100,\"font\":{{\"family\":\"Inter\",\"size\":2048}},\"fill\":\"#ffffff\",\"text\":\"{text}\"}},"
             + $"{{\"kind\":\"text\",\"w\":300,\"h\":40,\"fit\":{{\"min\":1}},\"wrap\":\"word\",\"font\":{{\"family\":\"Inter\",\"size\":2048}},\"fill\":\"#ffffff\",\"text\":\"{string.Join(' ', Enumerable.Repeat("word", 800))}\"}}";
         var (s, tick, draw) = Time(Scene(nodes), 1920, 480);
         using (s) Assert.Null(s.Bounds.Single().Problem);
         Assert.True(tick < TimeSpan.FromSeconds(10), $"tick {tick}");
         Assert.True(draw < TimeSpan.FromSeconds(5), $"draw {draw}");
+
+        // The same text wrapped: each glyph at 2,048 px is wider than any box, so it is 4,096 lines, over the item's
+        // 2,000 like 4,096 explicit lines are; it stops at the budget.
+        var narrow = $"{{\"kind\":\"text\",\"w\":20,\"wrap\":\"word\",\"font\":{{\"family\":\"Inter\",\"size\":2048}},\"fill\":\"#ffffff\",\"text\":\"{text}\"}}";
+        (s, tick, draw) = Time(Scene(narrow), 1920, 480);
+        using (s)
+        {
+            Assert.Equal("budget", s.Bounds.Single().Problem);
+            Assert.Contains(s.Diagnostics, d => d.Code == "budget.text");
+        }
+        Assert.True(tick < TimeSpan.FromSeconds(10), $"tick {tick}");
+    }
+
+    [Fact]
+    public void Fit_probes_of_one_long_word_make_no_more_lines_than_the_budget()
+    {
+        // 4,096 "W"s fitted into 300 × 40 from 2,048 px: at the large sizes every glyph is a line of its own, so each
+        // probe could lay out thousands of lines before deciding it doesn't fit. Every line RichTextKit produces, across
+        // all the probes, counts: the item makes at most its budget's lines.
+        var text = new string('W', 4096);
+        var fit = $"{{\"kind\":\"text\",\"w\":300,\"h\":40,\"fit\":{{\"min\":1}},\"wrap\":\"word\",\"font\":{{\"family\":\"Inter\",\"size\":2048}},\"fill\":\"#ffffff\",\"text\":\"{text}\"}}";
+        TickSnapshot s = null!;
+        var lines = LinesLaidOut.While(() => (s, _, _) = Time(Scene(fit), 1920, 480, ticks: 1), trap: 1_000_000);
+        using (s) Assert.Null(s.Bounds.Single().Problem);
+        Assert.InRange(lines, 1, SceneEvaluator.MaxItemLayouts);
+    }
+
+    [Fact]
+    public void A_fit_probe_stops_at_the_first_line_that_cannot_fit()
+    {
+        // 800 words fitted into 300 × 40 from 2,048 px: each probe at a size too large stops after the line that ends
+        // below the box, so the probes make a few lines each, not every line of the text at that size.
+        var words = string.Join(' ', Enumerable.Repeat("word", 800));
+        var fit = $"{{\"kind\":\"text\",\"w\":300,\"h\":40,\"fit\":{{\"min\":1}},\"wrap\":\"word\",\"font\":{{\"family\":\"Inter\",\"size\":2048}},\"fill\":\"#ffffff\",\"text\":\"{words}\"}}";
+        TickSnapshot s = null!;
+        var lines = LinesLaidOut.While(() => (s, _, _) = Time(Scene(fit), 1920, 480, ticks: 1));
+        using (s) Assert.Null(s.Bounds.Single().Problem);
+        Assert.InRange(lines, 1, 1_000);
     }
 
     [Fact]
@@ -294,6 +332,37 @@ public sealed class SceneHostileTests
             Assert.Contains(s.Diagnostics, d => d.Code == "budget.text");
         }
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"tick {watch.Elapsed}");
+    }
+
+    [Fact]
+    public void Changing_text_nodes_wrapped_to_the_most_lines_stop_at_the_text_budget()
+    {
+        // Eight text nodes of 4,096 characters ("W " repeated) in a 20 px box at 16 px, up to 1,000 lines each, the
+        // first character changing every tick: 8 paragraphs that would make 8,000 lines. The budget counts lines as
+        // they are made, so the item stops at it.
+        var nodes = string.Join(",", Enumerable.Range(0, 8).Select(i =>
+            $"{{\"kind\":\"text\",\"y\":{i * 10},\"w\":20,\"wrap\":\"word\",\"maxLines\":1000,\"font\":{{\"family\":\"Inter\",\"size\":16}},\"fill\":\"#ffffff\","
+            + "\"text\":{\"op\":\"input\",\"name\":\"t\",\"field\":\"text\"}}"));
+        var inputs = new FakeSceneInputs();
+        string Text(int tick) => (char)('a' + tick) + string.Concat(Enumerable.Repeat(" W", 2_047)) + " ";
+        inputs.Text("test:t", Text(0));
+        var scene = JsonDocument.Parse(Scene(nodes, ",\"inputs\":{\"t\":{\"type\":\"text\"}}"), SpecJson.DocumentOptions).RootElement.Clone();
+        var check = SceneValidator.Check(scene);
+        Assert.True(check.Status == CheckStatus.Valid, string.Join("; ", check.Errors.Take(3).Select(e => $"{e.Code} {e.Path} {e.Message}")));
+        using var runtime = new SceneRuntime(SceneKit.Options(inputs));
+        runtime.Load(SceneKit.Doc(scene, 800, 600));
+        for (var tick = 0; tick < 3; tick++)
+        {
+            inputs.Text("test:t", Text(tick));
+            TickSnapshot s = null!;
+            var lines = LinesLaidOut.While(() => s = runtime.Tick(tick * 0.1, SceneKit.Now));
+            using (s)
+            {
+                Assert.Equal("budget", s.Bounds.Single().Problem);
+                Assert.Contains(s.Diagnostics, d => d.Code == "budget.text");
+            }
+            Assert.InRange(lines, 1, SceneEvaluator.MaxItemLayouts);
+        }
     }
 
     [Fact]

@@ -42,9 +42,11 @@ A number input's history (newest last) drawn in the box (`x`, `y`, `w`, `h`), cl
 
 ## `table`
 
-Example: `table.json`.
+Examples: `table.json`, `table-header-only.json`, `table-lines.json`.
 
-A table input as text. Columns sit side by side from `x`, each `w` wide and `gap` apart; `column` picks the table's column by index (0 first) or by name, and a missing column keeps its width and draws nothing. With `header` (default true) the first row is each column's `title`, or its name, in `headerFont` (overriding `font`) and `headerFill`; then up to `rows` rows (1–100, default 10), each `rowHeight` below the last (default: the font's line height). Each cell is its text, at most `textLength` Unicode scalar values, aligned in its column by `align` and cut by `overflow` (`ellipsis` default, `clip`, `visible`) at the column's width. Cells are single lines, centred vertically in their row's `rowHeight`. A table with no reading draws nothing.
+A table input as text. Columns sit side by side from `x`, each `w` wide and `gap` apart; `column` picks the table's column by index (0 first) or by name. A column the table doesn't have is skipped: it draws nothing, not even its header, and takes no room, so the next column starts where it would have. With `header` (default true) the first row is each column's `title`, or its name, in `headerFont` (overriding `font`) and `headerFill`; then up to `rows` rows (0–100, default 10; 0 shows the header only), each `rowHeight` below the last (default: the font's line height).
+
+Each cell, the header's included, is its text, at most `textLength` Unicode scalar values, laid out as a `text` node with its column's width as `w` and the table's `wrap` (`none` default, `word`), `maxLines` (1–1000, default 1) and `overflow` (`ellipsis` default, `clip`, `visible`), aligned in the column by its `align`. A line break starts a new line, `word` breaks lines within the column as it does for text, and `maxLines` keeps the first lines. A cell's first line is centred vertically in its row; any further lines follow it down at the font's line spacing, drawn over the rows below, which keep their places. `clip` clips a cell to its column and its row. A table with no reading draws nothing.
 
 ## `media`
 

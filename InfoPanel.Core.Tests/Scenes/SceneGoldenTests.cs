@@ -42,6 +42,17 @@ public sealed class SceneGoldenTests
                 ["Finder", "0.4", "96 MB"],
             ]),
         };
+        i.Readings["test:lines"] = new SceneReading
+        {
+            Status = SceneInputStatus.Live,
+            Table = new SceneTable(["Key", "Note"],
+            [
+                ["build", "A note long enough to wrap onto a second line and a third one, then cut"],
+                ["one\ntwo", "First line\nSecond line"],
+                ["test", "short"],
+                ["unseen", "past the rows"],
+            ]),
+        };
     }
 
     private static readonly Dictionary<string, Case> Examples = new()
@@ -65,6 +76,8 @@ public sealed class SceneGoldenTests
         ["shapes"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null),
         ["shapes-t1"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Elapsed: 1.25),
         ["table"] = new("scene/valid/table.json", 340, 120, 0, 0, null, null, Load),
+        ["table-header-only"] = new("scene/valid/table-header-only.json", 260, 40, 0, 0, null, null, Load),
+        ["table-lines"] = new("scene/valid/table-lines.json", 380, 200, 0, 0, null, null, Load),
         ["text-layout"] = new("scene/valid/text-layout.json", 220, 180, 10, 10, null, null, Load),
         ["text-layout-t2"] = new("scene/valid/text-layout.json", 220, 180, 10, 10, null, null, Load, Elapsed: 2),
         ["shapes-scale2"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Scale: 2),

@@ -148,3 +148,30 @@ internal static class SceneKit
         return n;
     }
 }
+
+/// <summary>
+/// Counts the lines RichTextKit produces on this thread while an action runs (the layout's test seam: every line of every
+/// paragraph laid out, fit probes included, kept or not). Past the trap it throws inside the layout, so a layout that
+/// isn't bounded fails fast (the item is then drawn as invalid) instead of running on.
+/// </summary>
+internal static class LinesLaidOut
+{
+    public static int While(Action run, int trap = 20_000)
+    {
+        var lines = 0;
+        var previous = TextLayoutEngine.LinesProduced;
+        TextLayoutEngine.LinesProduced = n =>
+        {
+            if ((lines += n) > trap) throw new InvalidOperationException($"more than {trap} lines laid out");
+        };
+        try
+        {
+            run();
+        }
+        finally
+        {
+            TextLayoutEngine.LinesProduced = previous;
+        }
+        return lines;
+    }
+}

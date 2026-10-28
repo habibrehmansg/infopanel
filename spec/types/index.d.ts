@@ -1749,7 +1749,7 @@ export interface SeriesNode {
   stroke?: Stroke;
 }
 
-/** Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows, one `rowHeight` apart. Columns sit side by side, `gap` apart. See docs/smart-nodes.md. */
+/** Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows (0: the header only), one `rowHeight` apart. Columns sit side by side, `gap` apart. Each cell is laid out as text in its column's width (`wrap`, `maxLines`, `overflow`); its first line is centred in its row and further lines run over the rows below. See docs/smart-nodes.md. */
 export interface TableNode {
   kind: "table";
   id?: NodeId;
@@ -1763,13 +1763,14 @@ export interface TableNode {
   /** Items: 1–16. */
   columns: TableColumn[];
   /**
-   * Range: 1–100.
+   * 0: the header only.
+   * Range: 0–100.
    * @default 10
    */
   rows?: number;
   /** @default true */
   header?: boolean;
-  /** Each cell is centred vertically in it. Absent: the font's line height. */
+  /** Each cell's first line is centred vertically in it. Absent: the font's line height. */
   rowHeight?: NumberExpr;
   /** @default 0 */
   gap?: NumberExpr;
@@ -1779,12 +1780,19 @@ export interface TableNode {
   stroke?: Stroke;
   headerFont?: FontOverride;
   headerFill?: Paint;
+  /** @default "none" */
+  wrap?: "none" | "word";
+  /**
+   * Range: 1–1000.
+   * @default 1
+   */
+  maxLines?: number;
   /** @default "ellipsis" */
   overflow?: "visible" | "clip" | "ellipsis";
 }
 
 export interface TableColumn {
-  /** The table's column by index (0 first) or by name. A missing column draws nothing but keeps its width. */
+  /** The table's column by index (0 first) or by name. A column the table doesn't have is skipped: nothing drawn, no width taken. */
   column: number | string;
   w: NumberExpr;
   /** @default "start" */

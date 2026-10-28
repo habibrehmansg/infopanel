@@ -237,6 +237,8 @@ public sealed record TableNode : SceneNode
     public Stroke? Stroke { get; init; }
     public FontOverride? HeaderFont { get; init; }
     public Paint? HeaderFill { get; init; }
+    public string? Wrap { get; init; }
+    public int? MaxLines { get; init; }
     public string? Overflow { get; init; }
 }
 

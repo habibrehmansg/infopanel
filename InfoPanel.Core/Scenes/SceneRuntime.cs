@@ -31,7 +31,7 @@ public sealed class SceneRuntimeOptions
 
     public CultureInfo? Locale { get; init; }
 
-    /// <summary>Text layouts (cache misses) a document may make per tick; an item that would exceed it is drawn as over budget for that tick.</summary>
+    /// <summary>Text lines (of layouts made, not cached) a document may lay out per tick; an item that would exceed it is drawn as over budget for that tick.</summary>
     public int LayoutsPerTick { get; init; } = 4_000;
 
     /// <summary>An item whose evaluation or drawing takes longer than this, three times running, is suspended.</summary>
@@ -416,6 +416,15 @@ public sealed class SceneRuntime : IDisposable
                 if (key.Name == cell) return state.Value.N;
             return null;
         }
+    }
+
+    /// <summary>For tests: the lines of the text layouts an item keeps between ticks (its text nodes' and table cells').</summary>
+    internal int RetainedLines(string itemId)
+    {
+        lock (_lock)
+            return _items.TryGetValue(itemId, out var rt)
+                ? rt.Texts.Values.Sum(t => t.Layout.Lines.Length) + rt.TableCells.Values.Sum(t => t.Layout.Lines.Length)
+                : 0;
     }
 
     internal int CellCount(string itemId)

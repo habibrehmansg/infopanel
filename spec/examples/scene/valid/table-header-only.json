@@ -1,0 +1,23 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"procs": {"type": "table", "label": "Top processes"}},
+  "nodes": [
+    {
+      "kind": "table",
+      "input": "procs",
+      "x": 8,
+      "y": 8,
+      "rows": 0,
+      "header": true,
+      "gap": 10,
+      "columns": [
+        {"column": "Name", "w": 150},
+        {"column": "CPU", "w": 60, "align": "end", "title": "CPU %"}
+      ],
+      "font": {"family": "Inter", "size": 13},
+      "fill": "#e5e7eb",
+      "headerFont": {"weight": 700},
+      "headerFill": "#9ca3af"
+    }
+  ]
+}

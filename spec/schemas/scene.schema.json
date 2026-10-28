@@ -371,7 +371,7 @@
     },
 
     "tableNode": {
-      "description": "Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows, one `rowHeight` apart. Columns sit side by side, `gap` apart. See docs/smart-nodes.md.",
+      "description": "Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows (0: the header only), one `rowHeight` apart. Columns sit side by side, `gap` apart. Each cell is laid out as text in its column's width (`wrap`, `maxLines`, `overflow`); its first line is centred in its row and further lines run over the rows below. See docs/smart-nodes.md.",
       "type": "object",
       "required": ["kind", "input", "columns", "font"],
       "additionalProperties": false,
@@ -384,15 +384,17 @@
         "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
         "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
         "columns": { "type": "array", "items": { "$ref": "#/$defs/tableColumn" }, "minItems": 1, "maxItems": 16 },
-        "rows": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
+        "rows": { "type": "integer", "minimum": 0, "maximum": 100, "default": 10, "description": "0: the header only." },
         "header": { "type": "boolean", "default": true },
-        "rowHeight": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Each cell is centred vertically in it. Absent: the font's line height." },
+        "rowHeight": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "Each cell's first line is centred vertically in it. Absent: the font's line height." },
         "gap": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
         "font": { "$ref": "#/$defs/font" },
         "fill": { "$ref": "#/$defs/paint", "default": "#000000" },
         "stroke": { "$ref": "#/$defs/stroke" },
         "headerFont": { "$ref": "#/$defs/fontOverride" },
         "headerFill": { "$ref": "#/$defs/paint" },
+        "wrap": { "enum": ["none", "word"], "default": "none" },
+        "maxLines": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 1 },
         "overflow": { "enum": ["visible", "clip", "ellipsis"], "default": "ellipsis" }
       }
     },
@@ -402,7 +404,7 @@
       "additionalProperties": false,
       "properties": {
         "column": {
-          "description": "The table's column by index (0 first) or by name. A missing column draws nothing but keeps its width.",
+          "description": "The table's column by index (0 first) or by name. A column the table doesn't have is skipped: nothing drawn, no width taken.",
           "oneOf": [
             { "type": "integer", "minimum": 0, "maximum": 255 },
             { "type": "string", "minLength": 1, "maxLength": 128 }

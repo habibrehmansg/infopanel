@@ -165,6 +165,8 @@ internal sealed class CTable : CNode
     public CFont? HeaderFont;
     public CPaint? Fill, HeaderFill;
     public CStroke? Stroke;
+    public bool Wrap;
+    public int MaxLines = 1;
     public TextOverflow Overflow = TextOverflow.Ellipsis;
 }
 
@@ -507,7 +509,7 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
                         Index = c.Column.Index, Name = c.Column.Name, W = N(c.W), AlignFraction = Align(c.Align),
                         Title = c.Title is null ? null : _x.Compile(c.Title),
                     }).ToArray(),
-                    Rows = Math.Clamp(tb.Rows ?? 10, 1, 100),
+                    Rows = Math.Clamp(tb.Rows ?? 10, 0, 100),
                     Header = tb.Header ?? true,
                     RowHeight = tb.RowHeight is null ? null : _x.Compile(tb.RowHeight),
                     Gap = N(tb.Gap),
@@ -516,6 +518,8 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
                     Fill = Paint(tb.Fill),
                     HeaderFill = Paint(tb.HeaderFill),
                     Stroke = Stroke(tb.Stroke),
+                    Wrap = tb.Wrap == "word",
+                    MaxLines = Math.Clamp(tb.MaxLines ?? 1, 1, 1000),
                     Overflow = Overflow(tb.Overflow, TextOverflow.Ellipsis),
                 };
             case MediaNode m:
