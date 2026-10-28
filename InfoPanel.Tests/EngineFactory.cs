@@ -10,7 +10,8 @@ namespace InfoPanel.Tests;
 /// The engine on a <c>TestServer</c>, with a temp data folder, a temp web root holding an <c>index.html</c>,
 /// a fixed token, port, dev origin and cross origin, and seeded mock sensors. Every response it gives, on the TestServer
 /// or on Kestrel (<c>LiveEngine</c>), is checked against spec/openapi.json (<see cref="ContractCheck"/>), except in
-/// <c>Category=Performance</c> tests; <see cref="Contract"/> holds what the check saw.
+/// <c>Category=Performance</c> tests; <see cref="Contract"/> holds what the check saw, and disposing the factory fails on
+/// any violation it recorded.
 /// </summary>
 public class EngineFactory : WebApplicationFactory<Program>
 {
@@ -68,12 +69,20 @@ public class EngineFactory : WebApplicationFactory<Program>
         return client;
     }
 
+    private int _asserted;
+
+    /// <summary>Stops the engine, removes its folders, and fails when any response it gave broke the contract.</summary>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
         if (disposing)
         {
             try { Directory.Delete(Root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+
+            // Once (the base's disposal comes back here), after the hosts, those of WithWebHostBuilder and LiveEngine's
+            // included, have stopped.
+            if (Interlocked.Exchange(ref _asserted, 1) == 0)
+                Contract.AssertConformed(TimeSpan.FromSeconds(10));
         }
     }
 }

@@ -38,6 +38,36 @@ public sealed class ContractLog
     internal void Refused(string request, int status) => _refusals.TryAdd((request, status), 0);
 
     internal void Violated(string violation) => _violations.Enqueue(violation);
+
+    /// <summary>The refused upgrades whose check hasn't run yet: each goes out before it is checked.</summary>
+    private readonly ConcurrentDictionary<TaskCompletionSource, byte> _checking = new();
+
+    /// <summary>Tracks a request whose check may run after its client has the response, until <see cref="Checked"/>.</summary>
+    internal TaskCompletionSource Checking()
+    {
+        var checking = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _checking.TryAdd(checking, 0);
+        return checking;
+    }
+
+    internal void Checked(TaskCompletionSource checking)
+    {
+        _checking.TryRemove(checking, out _);
+        checking.TrySetResult();
+    }
+
+    /// <summary>
+    /// The host's teardown: waits (at most <paramref name="timeout"/>) for every check still running, then throws when
+    /// any response broke the contract, so a violation no test saw, a refused upgrade's say, still fails the run.
+    /// </summary>
+    public void AssertConformed(TimeSpan timeout)
+    {
+        var checking = _checking.Keys.Select(c => c.Task).ToArray();
+        if (checking.Length > 0 && !Task.WhenAll(checking).Wait(timeout))
+            Violated($"{_checking.Count} refused upgrade(s) still unchecked {timeout.TotalSeconds:0} s into the host's teardown.");
+        if (Violations is { Count: > 0 } violations)
+            throw new ContractViolationException($"The engine broke spec/openapi.json {violations.Count} time(s): " + string.Join(" | ", violations));
+    }
 }
 
 /// <summary>A response that breaks spec/openapi.json.</summary>
@@ -77,10 +107,12 @@ internal sealed class ContractCheckFilter(ContractLog log) : IStartupFilter
 /// body under <c>/ws</c> and <c>/auth</c>. The web client's files aren't the API and aren't checked.</item>
 /// </list>
 /// A violation is recorded in the host's <see cref="ContractLog"/> and thrown, so the request fails in the test that sent
-/// it (on a TestServer as the exception, on Kestrel as a 500). A WebSocket upgrade is told from its request headers, so
-/// that every host treats it alike, and isn't buffered: an accepted one is recorded as the socket's 101 as it starts (its
-/// messages are the test clients' to check), and a refused one is checked like any other response, but after it went
-/// out, so its client may see the refusal before the check has run. A request the client aborted isn't checked.
+/// it (on a TestServer as the exception, on Kestrel as a 500), and the host's teardown fails on every recorded one
+/// (<see cref="ContractLog.AssertConformed"/>). A WebSocket upgrade is told from its request headers, so that every host
+/// treats it alike, and isn't buffered: an accepted one is recorded as the socket's 101 as it starts (its messages are
+/// the test clients' to check), and a refused one is checked like any other response, but after it went out, so its
+/// client may see the refusal before the check has run: that violation reaches the teardown. Any other request the
+/// client aborted isn't checked.
 /// </summary>
 internal static class ContractCheck
 {
@@ -98,33 +130,47 @@ internal static class ContractCheck
             // Unbuffered: an accepted upgrade's headers go out when the socket is accepted (on a TestServer through the
             // response body's start, which a buffer would hold back), and the request lasts as long as the socket; it is
             // the socket operation's 101, seen as it starts. A refused one passes through as it is written, and is
-            // checked from a copy once it has gone out.
-            response.OnStarting(() =>
-            {
-                if (response.StatusCode == StatusCodes.Status101SwitchingProtocols && OperationOf(context, ApiContract.Instance).Operation is { } socket)
-                    log.See(socket.Key, StatusCodes.Status101SwitchingProtocols);
-                return Task.CompletedTask;
-            });
-            var passing = response.Body;
-            using var copy = new CopyingStream(passing, MaxRefusalBytes);
-            response.Body = copy;
+            // checked from a copy once it has gone out, whether or not its client is still there: the copy is what the
+            // engine wrote. The log tracks it until then, and the host's teardown waits for that check.
+            var checking = log.Checking();
             try
             {
-                await next(context);
+                response.OnStarting(() =>
+                {
+                    if (response.StatusCode == StatusCodes.Status101SwitchingProtocols)
+                    {
+                        if (OperationOf(context, ApiContract.Instance).Operation is { } socket)
+                            log.See(socket.Key, StatusCodes.Status101SwitchingProtocols);
+                        log.Checked(checking);
+                    }
+
+                    return Task.CompletedTask;
+                });
+                var passing = response.Body;
+                using var copy = new CopyingStream(passing, MaxRefusalBytes);
+                response.Body = copy;
+                try
+                {
+                    await next(context);
+                }
+                finally
+                {
+                    response.Body = passing;
+                }
+
+                if (response.StatusCode != StatusCodes.Status101SwitchingProtocols
+                    && (copy.Overflowed ? $"A refused upgrade ({context.Request.Method} {context.Request.Path}) answered over {MaxRefusalBytes} bytes." : Check(context, copy.Copied, log)) is { } refused)
+                {
+                    log.Violated(refused);
+                    throw new ContractViolationException(refused);
+                }
+
+                return;
             }
             finally
             {
-                response.Body = passing;
+                log.Checked(checking);
             }
-
-            if (response.StatusCode != StatusCodes.Status101SwitchingProtocols && !context.RequestAborted.IsCancellationRequested
-                && (copy.Overflowed ? $"A refused upgrade ({context.Request.Method} {context.Request.Path}) answered over {MaxRefusalBytes} bytes." : Check(context, copy.Copied, log)) is { } refused)
-            {
-                log.Violated(refused);
-                throw new ContractViolationException(refused);
-            }
-
-            return;
         }
 
         var original = response.Body;

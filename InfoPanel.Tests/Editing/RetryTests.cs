@@ -219,7 +219,7 @@ public sealed class RetryTests
 }
 
 /// <summary>
-/// A test middleware, first in the engine's pipeline: for a request it was armed for, the engine handles the request
+/// A test middleware, first in the engine's pipeline (ahead of the contract check): for a request it was armed for, the engine handles the request
 /// in full while its answer goes to a buffer, then the connection is aborted, so the client never sees the answer.
 /// </summary>
 internal sealed class ResponseDropper
@@ -231,8 +231,12 @@ internal sealed class ResponseDropper
     /// <summary>What the engine answered to the lost request.</summary>
     public sealed record Held(int Status, string Body);
 
+    /// <summary>
+    /// Outermost, outside the contract check too, so the check reads the answer the engine wrote: inside it, the
+    /// check would read the empty body this middleware leaves it.
+    /// </summary>
     public void Install(IWebHostBuilder builder) =>
-        builder.ConfigureServices(services => services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new Filter(this)));
+        builder.ConfigureServices(services => services.Insert(0, ServiceDescriptor.Singleton<Microsoft.AspNetCore.Hosting.IStartupFilter>(new Filter(this))));
 
     /// <summary>Sends a request whose answer is lost on <paramref name="path"/>; returns what the engine answered.</summary>
     public async Task<Held> Lose(Func<Task<HttpResponseMessage>> send, string path)

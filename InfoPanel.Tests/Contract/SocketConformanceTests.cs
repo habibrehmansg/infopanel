@@ -10,6 +10,7 @@ using InfoPanel.Tests.Preview;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace InfoPanel.Tests.Contract;
@@ -217,6 +218,44 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         Assert.Contains(("GET /ws", 403), engine.Contract.Refusals);
         Assert.Contains(("GET /ws", 101), engine.Contract.Seen);
         Assert.Empty(engine.Contract.Violations);
+    }
+
+    /// <summary>Answers every <c>/ws</c> upgrade with a 401 whose problem body isn't JSON, inside the contract check.</summary>
+    private sealed class InvalidRefusal : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, nextMiddleware) =>
+            {
+                if (!context.Request.Path.StartsWithSegments("/ws") || !ContractCheck.IsUpgrade(context))
+                {
+                    await nextMiddleware(context);
+                    return;
+                }
+
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/problem+json";
+                await context.Response.WriteAsync("not a problem", context.RequestAborted);
+                await context.Response.Body.FlushAsync(context.RequestAborted);
+            });
+            next(app);
+        };
+    }
+
+    [Fact]
+    public async Task ARefusedUpgradeOutsideTheSpec_FailsItsHostsTeardown_ThoughItsClientSawOnlyTheRefusal()
+    {
+        var engine = new EngineFactory();
+        var host = engine.WithWebHostBuilder(builder => builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new InvalidRefusal())));
+        var client = host.Server.CreateWebSocketClient();
+        client.SubProtocols.Add(EngineRuntime.WebSocketProtocol);
+        client.SubProtocols.Add(EngineRuntime.WebSocketAuthPrefix + EngineFactory.Token);
+        await Assert.ThrowsAnyAsync<Exception>(() => client.ConnectAsync(new Uri("ws://localhost/ws"), Ct));
+
+        // Nothing waits for the check here: the teardown does.
+        var error = await Assert.ThrowsAsync<ContractViolationException>(async () => await engine.DisposeAsync());
+        Assert.Contains("GET /ws", error.Message);
+        Assert.Contains("isn't JSON", error.Message);
     }
 
     [Fact]
