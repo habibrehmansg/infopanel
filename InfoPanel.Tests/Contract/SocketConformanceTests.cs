@@ -153,9 +153,8 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         var smallest = FrameScale.Normalize(FrameScale.Min, first.ProfileWidth, first.ProfileHeight);
         await client.SendTextAsync("""{"type":"view","scale":1e100}""", Ct);
         await client.ReceiveFrameAsync(Ct, h => h.Scale == largest);
-        // 1e-100 is a frameRequestScale (JSON Schema compares numbers by value), but the engine's schema validator reads it
-        // as the decimal 0 and calls it invalid, so it goes out past the client's clientMessage check.
-        await client.Socket.SendAsync(System.Text.Encoding.UTF8.GetBytes("""{"type":"view","scale":1e-100}"""), System.Net.WebSockets.WebSocketMessageType.Text, true, Ct);
+        // 1e-100 is a frameRequestScale: JSON Schema compares numbers by value, and so does the client's clientMessage check.
+        await client.SendTextAsync("""{"type":"view","scale":1e-100}""", Ct);
         await client.ReceiveFrameAsync(Ct, h => h.Scale == smallest);
         Assert.DoesNotContain("error", client.ReceivedTypes);
     }

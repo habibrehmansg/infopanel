@@ -67,6 +67,13 @@ public class SchemaSetTests
     [InlineData("1.5", false)]
     [InlineData("-0", true)]
     [InlineData("\"1\"", false)]
+    // By the number's value, past what a decimal (28 digits) or a double holds.
+    [InlineData("1e-100", false)]
+    [InlineData("1.00000000000000000000000000001", false)]
+    [InlineData("0.99999999999999999", false)]
+    [InlineData("1e400", true)]
+    [InlineData("1234567890123456789012345678901234567890000000000e-10", true)]
+    [InlineData("12345678901234567890123456789012345678901e-10", false)]
     public void IntegerSemantics(string instance, bool valid) =>
         Assert.Equal(valid, Check("\"type\":\"integer\"", instance).Count == 0);
 
@@ -85,6 +92,11 @@ public class SchemaSetTests
         Ok("\"const\":{\"a\":1,\"b\":[true]}", "{\"b\":[true],\"a\":1.0}");
         One("\"const\":{\"a\":1}", "{\"a\":1,\"b\":2}", "const");
         One("\"const\":false", "0", "const");
+        // Numbers by value, however they are written.
+        Ok("\"const\":100", "1e2");
+        Ok("\"const\":0.5", "50e-2");
+        One("\"const\":1", "1.00000000000000000000000000001", "const");
+        One("\"const\":0", "1e-100", "const");
     }
 
     [Theory]
@@ -98,6 +110,22 @@ public class SchemaSetTests
     [InlineData("exclusiveMaximum", "5", "4.9", true)]
     [InlineData("minimum", "0.1", "0.1", true)]
     [InlineData("maximum", "1e400", "1e300", true)]
+    // By value, past a decimal's range and precision.
+    [InlineData("exclusiveMinimum", "0", "1e-100", true)]
+    [InlineData("minimum", "0", "-1e-100", false)]
+    [InlineData("minimum", "1e-100", "1e-101", false)]
+    [InlineData("exclusiveMaximum", "1e-100", "0.1e-100", true)]
+    [InlineData("maximum", "1", "1.00000000000000000000000000001", false)]
+    [InlineData("minimum", "1", "0.99999999999999999999999999999", false)]
+    [InlineData("maximum", "1e400", "1e401", false)]
+    [InlineData("minimum", "-1e400", "-1e401", false)]
+    [InlineData("maximum", "-0", "0e5", true)]
+    [InlineData("maximum", "-15", "-1.5E+1", true)]
+    [InlineData("exclusiveMaximum", "-15", "-1.5e1", false)]
+    [InlineData("minimum", "-1e-100", "-0.5e-100", true)]
+    [InlineData("maximum", "-1e-100", "-0.5e-100", false)]
+    [InlineData("minimum", "123.456", "1234.56e-1", true)]
+    [InlineData("exclusiveMinimum", "123.456", "12345.6000000000000000000000000000000000001e-2", true)]
     public void NumberBounds(string keyword, string limit, string instance, bool valid)
     {
         var errors = Check($"\"{keyword}\":{limit}", instance);

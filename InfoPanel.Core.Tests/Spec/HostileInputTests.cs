@@ -406,6 +406,7 @@ public class HostileInputTests
     [Theory]
     [InlineData("double")]
     [InlineData("decimal")]
+    [InlineData("exact")]
     public void UniqueItemsOverCollidingNumbers_IsBounded(string how)
     {
         // The review's reproduction: 20,000 numbers whose double.GetHashCode collides made uniqueItems quadratic (13 s).
@@ -413,11 +414,13 @@ public class HostileInputTests
         // so every comparison is charged to the work budget instead.
         var numbers = Enumerable.Range(0, 20_000).Select(i => how == "double"
             ? BitConverter.Int64BitsToDouble(((0x3FF00000L + i) << 32) | ((0x3FF00000L + i) ^ 0x1234L) & 0xFFFFFFFFL).ToString("R", System.Globalization.CultureInfo.InvariantCulture)
-            : "0.10000000000000000000000" + i.ToString("D5"));
+            : how == "decimal" ? "0.10000000000000000000000" + i.ToString("D5")
+            // Past a decimal's 28 digits: compared exactly from their text.
+            : "0.1" + new string('0', 40) + i.ToString("D5"));
         var array = "[" + string.Join(", ", numbers) + "]";
         var set = SchemaSet.Load(["""{"$id": "urn:t:unique", "uniqueItems": true}"""]);
         var result = Bounded(() => set.Validate(Parse(array), "urn:t:unique"));
-        if (how == "decimal") Assert.Equal("complexity", Assert.Single(result.Errors).Keyword);
+        if (how != "double") Assert.Equal("complexity", Assert.Single(result.Errors).Keyword);
         else Assert.Empty(result.Errors);
 
         // In a scene's requires (now at most 32 items), the same numbers are refused within the bound.
