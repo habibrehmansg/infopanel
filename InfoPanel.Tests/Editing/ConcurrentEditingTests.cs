@@ -347,10 +347,14 @@ public sealed class ConcurrentEditingTests
                         // The first cycle's revert, certain to take a step: a profile name the saved document doesn't have,
                         // then a revert at the revision that answered (the document is dirty there, so an accepted revert
                         // is a step). Anything that came between them refuses the revert, and the pair is tried again until
-                        // the revert lands. Only this one tab loops without a bound; every other writer does a finite amount
-                        // of work, so the loop ends under any schedule.
+                        // the revert lands. Every other writer does a finite amount of work, so the loop ends under any
+                        // schedule; a refusal at the revert's own revision is an engine bug and fails at once, and a deadline
+                        // fails the test (instead of hanging it) should the loop never land.
+                        var deadline = Stopwatch.StartNew();
                         for (var attempt = 0; ; attempt++)
                         {
+                            Assert.True(deadline.Elapsed < TimeSpan.FromSeconds(60),
+                                $"{name}'s certain revert did not land in 60 s, after {attempt} attempts");
                             var op = Profile(new JsonObject { ["name"] = $"Concurrent {name} revert {round}.{attempt}" });
                             op["baseRev"] = Known();
                             var dirtied = await Commit(name, api, null, [op], Read, purpose: "revert-base");
@@ -363,6 +367,9 @@ public sealed class ConcurrentEditingTests
                                 break;
                             }
 
+                            var current = result.Body.GetProperty("rev").GetInt64();
+                            Assert.True(current != result.BaseRev,
+                                $"{name}'s revert on {result.BaseRev} was refused at that same revision (409 reports rev {current}, attempt {attempt}): the engine must take a step on a dirty document at the current revision");
                             known = await RevAsync(api, id, Ct);
                         }
                         break;
