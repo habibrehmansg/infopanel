@@ -38,6 +38,7 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     private const string RotatedChart = "rotated chart drawn as rotated shapes, not a rotated raster";
     private const string Resampled = "raster image resized with linear filtering, not Mitchell";
     private const string Placeholder = "the format's missing-media placeholder";
+    private const string HaloCut = "a scrolling text's halo cut at its box before the blur, not only after it";
 
     private static SKRectI Box(int x, int y, int w, int h) => SKRectI.Create(x, y, w, h);
 
@@ -71,6 +72,13 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         ["sensor-thresholds-precision-unit"] = new(0.045, Hinting, Unhinted: true),
         ["text-center-box"] = new(0.071, Hinting, Unhinted: true),
         ["text-glow"] = new(0.246, Hinting, Unhinted: true),
+        ["text-glow-hard-light"] = new(0.19, Hinting, Unhinted: true),
+        ["text-glow-overlay"] = new(0.039, Hinting, Unhinted: true),
+        ["text-glow-plus"] = new(0.088, Hinting, Unhinted: true),
+        ["text-glow-screen"] = new(0.096, Hinting, Unhinted: true),
+        ["text-glow-soft-light"] = new(0.028, Hinting, Unhinted: true),
+        // The halo within 3 sigma of the box's right side (the text's start is at the left side at elapsed 0).
+        ["text-glow-marquee"] = new(0.194, Hinting + "; " + HaloCut, Unhinted: true, Box(180, 16, 24, 41)),
         ["text-left"] = new(0.078, Hinting, Unhinted: true),
         ["text-marquee-t0"] = new(0.059, Hinting, Unhinted: true),
         ["text-right-auto"] = new(0.094, Hinting, Unhinted: true),

@@ -1,0 +1,248 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "text-glow-marquee",
+    "width": 320,
+    "height": 70,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g104",
+      "name": "Fill",
+      "placement": {
+        "x": 0,
+        "y": 0
+      },
+      "layout": {
+        "h": 70,
+        "w": 130
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": "#e8eaedff",
+            "h": 70,
+            "id": "shape",
+            "kind": "rect",
+            "w": 130
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g105",
+      "name": "Fill",
+      "placement": {
+        "x": 130,
+        "y": 0
+      },
+      "layout": {
+        "h": 70,
+        "w": 190
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": "#c62828ff",
+            "h": 70,
+            "id": "shape",
+            "kind": "rect",
+            "w": 190
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g103",
+      "name": "A glowing marquee wider than its box",
+      "placement": {
+        "x": 24,
+        "y": 16
+      },
+      "layout": {
+        "w": 180
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "fill": "#00e5ffff",
+                        "font": {
+                          "family": "Inter",
+                          "italic": false,
+                          "size": 34.58000183105469,
+                          "weight": 700
+                        },
+                        "id": "halo",
+                        "kind": "text",
+                        "marquee": {
+                          "gap": 40,
+                          "speed": 50
+                        },
+                        "overflow": "marquee",
+                        "text": "A glowing marquee wider than its box",
+                        "w": 180
+                      }
+                    ],
+                    "effects": [
+                      {
+                        "sigma": 8,
+                        "type": "blur"
+                      }
+                    ],
+                    "id": "halo-blur",
+                    "kind": "group"
+                  },
+                  {
+                    "fill": "#ffffffff",
+                    "font": {
+                      "family": "Inter",
+                      "italic": false,
+                      "size": 34.58000183105469,
+                      "weight": 700
+                    },
+                    "id": "text",
+                    "kind": "text",
+                    "marquee": {
+                      "gap": 40,
+                      "speed": 50
+                    },
+                    "overflow": "marquee",
+                    "text": "A glowing marquee wider than its box",
+                    "w": 180
+                  }
+                ],
+                "id": "glow",
+                "kind": "group"
+              }
+            ],
+            "clip": {
+              "h": {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "w",
+                        "node": "text",
+                        "op": "measure"
+                      },
+                      180
+                    ],
+                    "op": "gt"
+                  },
+                  {
+                    "args": [
+                      {
+                        "field": "h",
+                        "node": "text",
+                        "op": "measure"
+                      }
+                    ],
+                    "op": "floor"
+                  },
+                  2000000
+                ],
+                "op": "if"
+              },
+              "kind": "rect",
+              "w": {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "w",
+                        "node": "text",
+                        "op": "measure"
+                      },
+                      180
+                    ],
+                    "op": "gt"
+                  },
+                  180,
+                  2000000
+                ],
+                "op": "if"
+              },
+              "x": {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "w",
+                        "node": "text",
+                        "op": "measure"
+                      },
+                      180
+                    ],
+                    "op": "gt"
+                  },
+                  0,
+                  -1000000
+                ],
+                "op": "if"
+              },
+              "y": {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "field": "w",
+                        "node": "text",
+                        "op": "measure"
+                      },
+                      180
+                    ],
+                    "op": "gt"
+                  },
+                  0,
+                  -1000000
+                ],
+                "op": "if"
+              }
+            },
+            "id": "marquee-clip",
+            "kind": "group"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "scene",
+      "id": "g106",
+      "name": "Fill",
+      "placement": {
+        "x": 200,
+        "y": 8
+      },
+      "layout": {
+        "h": 54,
+        "w": 56
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "nodes": [
+          {
+            "fill": "#2e7d32ff",
+            "h": 54,
+            "id": "shape",
+            "kind": "rect",
+            "w": 56
+          }
+        ]
+      }
+    }
+  ]
+}

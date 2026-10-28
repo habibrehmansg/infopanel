@@ -49,6 +49,12 @@ public class GoldenTests
                 t.GlowColor = "#FF00E5FF";
             }),
         ]),
+        ["text-glow-screen"] = () => GlowOver(Glowing("Glowing text", t => t.GlowBlendMode = "Screen")),
+        ["text-glow-plus"] = () => GlowOver(Glowing("Glowing text", t => t.GlowBlendMode = "Plus")),
+        ["text-glow-overlay"] = () => GlowOver(Glowing("Glowing text", t => t.GlowBlendMode = "Overlay")),
+        ["text-glow-soft-light"] = () => GlowOver(Glowing("Glowing text", t => t.GlowBlendMode = "SoftLight")),
+        ["text-glow-hard-light"] = () => GlowOver(Glowing("Glowing text", t => t.GlowBlendMode = "HardLight")),
+        ["text-glow-marquee"] = () => GlowOver(Glowing("A glowing marquee wider than its box", t => { t.Width = 180; t.Marquee = true; })),
         ["text-rotated-30"] = () => Scene(320, 180, p => [Text(p, "Rotated 30 degrees", 50, 75, t => t.Rotation = 30)]),
         ["text-marquee-t0"] = () => Scene(320, 60, p => [
             Box(p, 20, 10, 200, 40),
@@ -146,6 +152,44 @@ public class GoldenTests
         FrameThickness = 1,
         FrameColor = "#FF5C6370",
     };
+
+    /// <summary>A filled rectangle, without frame or gradient.</summary>
+    private static ShapeDisplayItem Fill(Profile p, int x, int y, int width, int height, string color) => new("Fill", p)
+    {
+        Type = ShapeDisplayItem.ShapeType.Rectangle,
+        X = x,
+        Y = y,
+        Width = width,
+        Height = height,
+        CornerRadius = 0,
+        ShowFill = true,
+        FillColor = color,
+        ShowGradient = false,
+        ShowFrame = false,
+    };
+
+    /// <summary>The text-glow case's glowing text at its place, configured further.</summary>
+    private static Func<Profile, TextDisplayItem> Glowing(string text, Action<TextDisplayItem> configure) => p => Text(p, text, 24, 16, t =>
+    {
+        t.FontSize = 26;
+        t.Bold = true;
+        t.Color = "#FFFFFFFF";
+        t.GlowEnabled = true;
+        t.GlowRadius = 8;
+        t.GlowColor = "#FF00E5FF";
+        configure(t);
+    });
+
+    /// <summary>
+    /// A glowing text over a light and a saturated backdrop (one under each half), and a box drawn after it over its
+    /// end: the glow's blend acts on what is below it, and nothing drawn later.
+    /// </summary>
+    private static (Profile, List<DisplayItem>) GlowOver(Func<Profile, TextDisplayItem> glowing) => Scene(320, 70, p => [
+        Fill(p, 0, 0, 130, 70, "#FFE8EAED"),
+        Fill(p, 130, 0, 190, 70, "#FFC62828"),
+        glowing(p),
+        Fill(p, 200, 8, 56, 54, "#FF2E7D32"),
+    ]);
 
     private static SensorDisplayItem Sensor(Profile p, SensorKey key, int x, int y, Action<SensorDisplayItem>? configure = null)
     {
