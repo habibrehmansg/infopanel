@@ -289,6 +289,22 @@ public sealed class V1FolderTests : IDisposable
     }
 
     [Fact]
+    public void Settings_ARootInAnotherNamespace_IsUnreadable_AndTheBackupIsRead()
+    {
+        // 1.4.x's serializer refuses a Settings root in a namespace and falls back to the backup; read as if it were
+        // Settings, its Version would be missed and taken as 114.
+        Write("settings.xml", """<Settings xmlns="urn:x"><Version>131</Version></Settings>""");
+        Write("settings.xml.bak", SettingsWith("<Version>131</Version><TargetFrameRate>20</TargetFrameRate>"));
+
+        var state = Folder().GetState(_kit.Data);
+
+        Assert.Equal((131, 20), (state.Settings!.Version, state.Settings.TargetFrameRate));
+        Assert.Contains("isn't Settings", Assert.Single(state.Diagnostics!, d => d.Code == "import.settings.backup").Message);
+        Assert.DoesNotContain(state.Diagnostics!, d => d.Code == "import.version");
+        Assert.NotNull(Folder().ReadProfile(Guid.Parse(Desk), _kit.Context()));
+    }
+
+    [Fact]
     public void Settings_NeitherReadable_IsImportSettings()
     {
         Write("settings.xml", "not xml");

@@ -229,9 +229,10 @@ public sealed class V1Folder
         try
         {
             var root = SafeXml.Load(bytes, XmlLimits.From(Limits)).Root;
-            if (root?.Name.LocalName == "Settings")
+            // Settings in no namespace, as 1.4.x's serializer requires; any other root is unreadable, so the backup is read.
+            if (root?.Name == XName.Get("Settings"))
                 return root;
-            problem = $"its root element isn't Settings";
+            problem = "its root element isn't Settings";
         }
         catch (XmlRefusedException ex)
         {
