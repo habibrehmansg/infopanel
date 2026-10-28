@@ -148,6 +148,12 @@ public sealed class V1FolderTests : IDisposable
 
         // Also without 1.x data: migration never runs on its own twice.
         Assert.Equal("done", new V1Folder(_kit.Temp.Combine("gone")).GetState(_kit.Data).State);
+
+        // A complete record with a null outcome is unreadable too.
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data), """{"completed":"2026-01-01T00:00:00Z","folder":"x","profiles":[null],"settings":"skipped"}""");
+        var nullOutcome = Folder().GetState(_kit.Data);
+        Assert.Equal(("done", (V1MigrationRecord?)null), (nullOutcome.State, nullOutcome.Record));
+        Assert.Contains("/profiles/0", Assert.Single(nullOutcome.Diagnostics!, d => d.Code == "import.record").Message);
     }
 
     [Fact]
@@ -168,6 +174,8 @@ public sealed class V1FolderTests : IDisposable
         Assert.Equal("record.v1Id", Refused([Ok(1) with { V1Id = Desk.ToUpperInvariant() }]).Code);
         Assert.Equal("record.id", Refused([Ok(1) with { Id = "not-an-id" }]).Code);
         Assert.Equal("record.settings", Refused([Ok(1)], settings: "partly").Code);
+        var nullOutcome = Refused([Ok(1), null!]);
+        Assert.Equal(("record.outcome", "/profiles/1"), (nullOutcome.Code, nullOutcome.Errors[0].Path));
         Assert.False(File.Exists(V1Folder.RecordFile(_kit.Data)));
 
         // 1,000 outcomes fit, each with both ids and the longest reason.

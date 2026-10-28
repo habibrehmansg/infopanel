@@ -340,6 +340,9 @@ public sealed class V1Folder
         for (var i = 0; i < record.Profiles.Count; i++)
         {
             var outcome = record.Profiles[i];
+            // The serializer refuses a null list, not a null element of it.
+            if (outcome is null)
+                return new ImportRefusal("record.outcome", $"The profile outcome at /profiles/{i} is null.", $"/profiles/{i}");
             if (!Guid.TryParseExact(outcome.V1Id, "D", out var v1Id) || v1Id.ToString() != outcome.V1Id)
                 return new ImportRefusal("record.v1Id", "v1Id must be a 1.x profile's Guid in lower case.", $"/profiles/{i}/v1Id");
             if (outcome.Id is not null && !DocumentStore.IsValidId(outcome.Id))
