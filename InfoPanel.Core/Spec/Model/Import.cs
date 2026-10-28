@@ -66,7 +66,18 @@ public sealed record V1Guide
     public required string Color { get; init; }
     public required int Rotation { get; init; }
     public string? Name { get; init; }
+
+    /// <summary>As stored: a guide in a hidden group keeps its own value (<see cref="Container"/> tells the group).</summary>
     public required bool Hidden { get; init; }
+
+    /// <summary>1.4.x's <c>IsLocked</c>.</summary>
+    public required bool Locked { get; init; }
+
+    /// <summary>
+    /// The JSON pointer of the group's children list the guide sat in (<c>/items/1/children</c>), in the envelope's
+    /// items; null at the top level or when it can't be told.
+    /// </summary>
+    public string? Container { get; init; }
 }
 
 /// <summary>

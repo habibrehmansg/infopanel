@@ -92,8 +92,8 @@ internal sealed class ImportKit : IDisposable
     public static string Frame(string name, string path, string type = "") =>
         $"""<ImageDisplayItem{type}><Name>{name}</Name><Type>FILE</Type><FilePath>{path}</FilePath><RelativePath>true</RelativePath></ImageDisplayItem>""";
 
-    public static string Guide(string name, int x, int y, int length = 300, string color = "#FFFF0000", int rotation = 90) =>
-        $"""<DisplayItem xsi:type="GuideDisplayItem"><Name>{name}</Name><Hidden>false</Hidden><X>{x}</X><Y>{y}</Y><IsLocked>false</IsLocked><Rotation>{rotation}</Rotation><Length>{length}</Length><Color>{color}</Color></DisplayItem>""";
+    public static string Guide(string name, int x, int y, int length = 300, string color = "#FFFF0000", int rotation = 90, bool locked = false) =>
+        $"""<DisplayItem xsi:type="GuideDisplayItem"><Name>{name}</Name><Hidden>false</Hidden><X>{x}</X><Y>{y}</Y><IsLocked>{(locked ? "true" : "false")}</IsLocked><Rotation>{rotation}</Rotation><Length>{length}</Length><Color>{color}</Color></DisplayItem>""";
 
     /// <summary>A 1.x archive: <c>Profile.xml</c>, <c>DisplayItems.xml</c>, then the given entries.</summary>
     public static byte[] V1Archive(string itemsXml, params (string Name, byte[] Bytes)[] entries) =>

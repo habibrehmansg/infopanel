@@ -177,7 +177,7 @@ public static class V1Reader
                 if (skipped.Type is null)
                     diagnostics.Add(ImportDiagnostics.Info, "import.nil", container, "An empty (xsi:nil) item is left out, as 1.x leaves it.", itemsInput.File, skipped.Line);
                 else if (skipped.Type == GuideType)
-                    guides.Add(Guide(skipped.Element));
+                    guides.Add(Guide(skipped.Element, skipped.Container is { Length: > 0 } inGroup ? "/items" + inGroup : null));
                 else
                     diagnostics.Add(ImportDiagnostics.Warning, "import.itemType", container,
                         $"An item of the type '{skipped.Type}', which isn't one of the 14 kinds, is left out.", itemsInput.File, skipped.Line);
@@ -275,8 +275,12 @@ public static class V1Reader
         }
     }
 
-    /// <summary>A 1.4.x guide from its element; an absent or unreadable member gets 1.4.x's default.</summary>
-    private static V1Guide Guide(XElement element)
+    /// <summary>
+    /// A 1.4.x guide from its element; an absent or unreadable member gets 1.4.x's default (the name
+    /// <c>DisplayItem</c>, which 1.4.x's parameterless <c>DisplayItem()</c> sets). <paramref name="container"/> is the
+    /// group's children list it sat in, or null at the top level.
+    /// </summary>
+    private static V1Guide Guide(XElement element, string? container)
     {
         int Int(string name, int fallback) =>
             element.Element(name)?.Value is { } text && int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : fallback;
@@ -295,8 +299,10 @@ public static class V1Reader
             Length = Int("Length", 200),
             Color = element.Element("Color")?.Value ?? "#FF00FFFF",
             Rotation = Int("Rotation", 0),
-            Name = element.Element("Name")?.Value,
+            Name = element.Element("Name")?.Value ?? "DisplayItem",
             Hidden = Bool("Hidden", false),
+            Locked = Bool("IsLocked", false),
+            Container = container,
         };
     }
 }

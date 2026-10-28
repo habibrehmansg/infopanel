@@ -71,14 +71,28 @@ public sealed class V1ReaderTests : IDisposable
 
         Assert.Equal(
             [
-                new V1Guide { X = 320, Y = 0, Length = 480, Color = "#FFFF0000", Rotation = 90, Name = "Centre", Hidden = false },
-                new V1Guide { X = 10, Y = 20, Length = 300, Color = "#FF00FF00", Rotation = 0, Name = "Inner", Hidden = false },
-                // 1.4.x's defaults for an empty guide.
-                new V1Guide { X = 100, Y = 100, Length = 200, Color = "#FF00FFFF", Rotation = 0, Name = null, Hidden = false },
+                new V1Guide { X = 320, Y = 0, Length = 480, Color = "#FFFF0000", Rotation = 90, Name = "Centre", Hidden = false, Locked = false, Container = null },
+                new V1Guide { X = 10, Y = 20, Length = 300, Color = "#FF00FF00", Rotation = 0, Name = "Inner", Hidden = false, Locked = false, Container = "/items/1/children" },
+                // 1.4.x's defaults for an empty guide: DisplayItem() names every item "DisplayItem".
+                new V1Guide { X = 100, Y = 100, Length = 200, Color = "#FF00FFFF", Rotation = 0, Name = "DisplayItem", Hidden = false, Locked = false, Container = null },
             ],
             envelope.Guides);
         Assert.Equal(["text", "group"], envelope.Items.Select(i => i.Kind));
         Assert.Empty(With(envelope, "import.itemType"));
+    }
+
+    [Fact]
+    public void Guides_KeepTheirLock_AndTheGroupTheySatIn()
+    {
+        // A guide is drawn only when its group is visible: the container lets a client tell, and Hidden stays as stored.
+        var envelope = _kit.ReadArchive(V1Archive(Items(
+            Text("Label"),
+            """<DisplayItem xsi:type="GroupDisplayItem"><Name>Off</Name><Hidden>true</Hidden><DisplayItems>""" +
+                Text("Inside") + Guide("Pinned", 5, 6, locked: true) + "</DisplayItems></DisplayItem>")));
+
+        var guide = Assert.Single(envelope.Guides!);
+        Assert.Equal((true, false, "/items/1/children"), (guide.Locked, guide.Hidden, guide.Container));
+        Assert.True((bool)envelope.Items[1].Props["hidden"]!);
     }
 
     [Fact]
