@@ -157,6 +157,22 @@ public sealed class V1FolderTests : IDisposable
     }
 
     [Fact]
+    public void State_Diagnostics_AreCappedOnceForTheWholeAnswer()
+    {
+        // An unreadable record and a folder with three more duplicate ids: two listed, then one 'more'.
+        Directory.CreateDirectory(_kit.Data.Root);
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data), "{ not json");
+        var text = File.ReadAllText(Path.Combine(_root, "profiles.xml"));
+        var start = text.IndexOf("<Profile>", StringComparison.Ordinal);
+        var first = text[start..(text.IndexOf("</Profile>", StringComparison.Ordinal) + "</Profile>".Length)];
+        Write("profiles.xml", text.Replace("</ArrayOfProfile>", first + first + first + "</ArrayOfProfile>"));
+
+        var diagnostics = Folder(new ImportLimits { Diagnostics = 2 }).GetState(_kit.Data).Diagnostics!;
+
+        Assert.Equal(["import.record", "import.profile.duplicate", "more"], diagnostics.Select(d => d.Code));
+    }
+
+    [Fact]
     public void Record_OutsideItsRules_IsRefused_AndNothingIsWritten()
     {
         var folder = Folder();

@@ -129,9 +129,11 @@ public sealed class V1Folder
     /// <summary>Reads the profile list and the settings (each read once per call).</summary>
     public V1FolderContents Read() => Read(new ImportBudget(Limits.ExpandedBytes));
 
-    private V1FolderContents Read(ImportBudget budget)
+    private V1FolderContents Read(ImportBudget budget) => Read(budget, new ImportDiagnostics(Limits.Diagnostics));
+
+    /// <summary>Reads into <paramref name="diagnostics"/>, which may already hold the answer's earlier diagnostics.</summary>
+    private V1FolderContents Read(ImportBudget budget, ImportDiagnostics diagnostics)
     {
-        var diagnostics = new ImportDiagnostics(Limits.Diagnostics);
         var (profiles, report) = ReadProfiles(budget, diagnostics);
         var settings = ReadSettings(budget, diagnostics);
 
@@ -254,19 +256,16 @@ public sealed class V1Folder
         var hasData = HasData;
         var state = record is not null || recordProblem is not null ? StateDone : hasData ? StatePending : StateNone;
 
-        var diagnostics = new List<ImportDiagnostic>();
+        // One collector for the whole answer, so the record's diagnostic and the folder's share one cap.
+        var diagnostics = new ImportDiagnostics(Limits.Diagnostics);
         if (recordProblem is not null)
-            diagnostics.Add(new ImportDiagnostic
-            {
-                Severity = ImportDiagnostics.Warning, Code = "import.record", Path = "/record",
-                Message = $"The migration record can't be read ({recordProblem}); the migration counts as done.", File = RecordFileName,
-            });
+            diagnostics.Add(ImportDiagnostics.Warning, "import.record", "/record",
+                $"The migration record can't be read ({recordProblem}); the migration counts as done.", RecordFileName);
 
         if (!hasData)
-            return new V1Migration { State = state, Folder = Root, Record = record, Diagnostics = diagnostics.Count > 0 ? diagnostics : null };
+            return new V1Migration { State = state, Folder = Root, Record = record, Diagnostics = diagnostics.ToList() is { Count: > 0 } listed ? listed : null };
 
-        var contents = Read();
-        diagnostics.AddRange(contents.Diagnostics);
+        var contents = Read(new ImportBudget(Limits.ExpandedBytes), diagnostics);
         return new V1Migration
         {
             State = state,
@@ -277,7 +276,7 @@ public sealed class V1Folder
                 Id = p.Guid.ToString(), Name = p.Name, Width = p.Width, Height = p.Height, Active = p.Active,
             }).ToList(),
             Settings = contents.Settings,
-            Diagnostics = diagnostics,
+            Diagnostics = contents.Diagnostics,
         };
     }
 
