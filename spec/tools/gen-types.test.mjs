@@ -326,6 +326,15 @@ const openapiErrors = {
     (d) => { d.components.responses.ghost = { description: 'g', content: { 'application/json': { schema: { $ref: 'urn:t:a:1#/$defs/x' } } } }; getX(d).responses[200] = { description: 'ok' }; },
     [/#\/components\/responses\/ghost/, /used by no operation/]],
   'an unused parameter': [(d) => { d.components.parameters = { ghost: { name: 'g', in: 'query', schema: {} } }; }, [/#\/components\/parameters\/ghost/, /used by no operation/]],
+  // A path item's shared parameters are used only through its operations: one without any would keep its parameters'
+  // components and their definitions in use for nothing.
+  'a path item with only parameters': [
+    (d) => {
+      d.components.parameters = { only: { name: 'o', in: 'query', schema: { $ref: 'urn:t:a:1#/$defs/x' } } };
+      d.paths['/only'] = { parameters: [{ $ref: '#/components/parameters/only' }] };
+    },
+    [/#\/paths\/~1only/, /no operation/]],
+  'an empty path item': [(d) => { d.paths['/empty'] = { summary: 's' }; }, [/#\/paths\/~1empty/, /no operation/]],
   'a request body\'s required as a string': [
     (d) => { getX(d).requestBody = { required: 'true', content: { 'application/json': { schema: { $ref: 'urn:t:a:1#/$defs/x' } } } }; }, [/\/requestBody\/required/, /must be a boolean/]],
   'a header\'s required as a string': [

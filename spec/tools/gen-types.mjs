@@ -546,6 +546,9 @@ function checkOpenApi({ file, json: doc }, byId) {
     const pp = ptr('/paths', path);
     if (!/^\/[^?#]*$/.test(path)) fail(pp, `path "${path}" must start with "/"`);
     fields(item, 'pathItem', pp);
+    // Its shared parameters are used only through its operations: without one they would keep their components, and the
+    // definitions those name, in use for nothing.
+    if (!METHODS.some((m) => has(item, m))) fail(pp, 'a path item needs an operation; it has no operation');
     const shared = (item.parameters ?? []).map((v, i) => parameter(v, ptr(pp, 'parameters', i)));
     if (has(item, 'parameters') && !Array.isArray(item.parameters)) fail(ptr(pp, 'parameters'), 'parameters must be an array');
     const templated = [...path.matchAll(/\{([^}]*)\}/g)].map((m) => m[1]);
