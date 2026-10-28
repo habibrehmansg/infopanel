@@ -124,6 +124,20 @@ public sealed class HostingTests : IDisposable
     }
 
     [Fact]
+    public void Wipe_RefusesAFileNamedLikeATempFileButForAFinalNewline_AndDeletesNothing()
+    {
+        // .NET's `$` also matches before a final newline; the engine never writes such a name.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "A file name can't end in a newline on Windows.");
+        var foreign = Path.Combine(_dir, $"{V1Folder.RecordFileName}.{new string('0', 32)}.tmp\n");
+        File.WriteAllText(foreign, "mine");
+
+        Assert.False(DataPaths.IsEngineEntry(Path.GetFileName(foreign)));
+        Assert.Contains(".tmp\n", DataFolder.CheckWipeable(_dir));
+        Assert.Throws<InvalidOperationException>(() => DataFolder.Wipe(_dir, Path.Combine(_dir, "engine.lock")));
+        Assert.True(File.Exists(foreign));
+    }
+
+    [Fact]
     public void Wipe_MissingOrEmptyFolder_IsAllowed()
     {
         Assert.Null(DataFolder.CheckWipeable(_dir));

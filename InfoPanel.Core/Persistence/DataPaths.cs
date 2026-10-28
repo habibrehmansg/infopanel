@@ -52,7 +52,7 @@ public sealed class DataPaths
     private static readonly string[] ReplacedFiles = ["profiles.json", "tokens.json", "runtime.json", "profiles.xml", ImportRecordFileName];
 
     private static readonly Regex EngineTempFile = new(
-        $"^({string.Join('|', ReplacedFiles.Select(Regex.Escape))})\\.[0-9a-f]{{32}}\\.tmp$",
+        $"\\A({string.Join('|', ReplacedFiles.Select(Regex.Escape))})\\.[0-9a-f]{{32}}\\.tmp\\z",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <summary>
