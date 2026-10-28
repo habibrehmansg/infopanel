@@ -12,6 +12,17 @@ namespace InfoPanel.Tests;
 /// <summary>Documents, items and commits as a client sends them (JSON), for the host's tests.</summary>
 internal static class TestDocs
 {
+    /// <summary>
+    /// Deletes the profile as a client that read its entry does, naming its tag (<c>DELETE ...?instance=</c>); false
+    /// when there is no such profile.
+    /// </summary>
+    public static bool DeleteWithItsTag(this Workspace workspace, string id)
+    {
+        var outcome = workspace.Delete(id, workspace.Entry(id)?.Instance ?? "");
+        Assert.Null(outcome.Conflict);
+        return outcome.Deleted;
+    }
+
     /// <summary>A new profile id: a UUID in lower case.</summary>
     public static string NewId() => Guid.NewGuid().ToString();
 
@@ -120,8 +131,9 @@ internal static class TestDocs
 
     // ---- over HTTP --------------------------------------------------------------------------------------------------
 
-    public static async Task<string> InstanceAsync(HttpClient api, CancellationToken ct) =>
-        (await api.GetFromJsonAsync<JsonElement>("/api/session", ct)).GetProperty("instance").GetString()!;
+    /// <summary>The tag of the profile's document (<c>GET /api/profiles/{id}</c>'s <c>instance</c>), which its changes name.</summary>
+    public static async Task<string> TagAsync(HttpClient api, string id, CancellationToken ct) =>
+        (await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", ct)).GetProperty("instance").GetString()!;
 
     /// <summary>The profile's current revision (<c>GET /api/profiles/{id}</c>).</summary>
     public static async Task<long> RevAsync(HttpClient api, string id, CancellationToken ct) =>
@@ -136,9 +148,13 @@ internal static class TestDocs
         return id;
     }
 
-    /// <summary>Commits <paramref name="ops"/> over HTTP, based on the profile's current revision; returns the response.</summary>
-    public static async Task<HttpResponseMessage> CommitAsync(HttpClient api, string id, CancellationToken ct, params JsonObject[] ops) =>
-        await api.PostAsync($"/api/profiles/{id}/commit", Json(CommitBody(await InstanceAsync(api, ct), await RevAsync(api, id, ct), ops)), ct);
+    /// <summary>Commits <paramref name="ops"/> over HTTP, naming the document's tag and based on its current revision; returns the response.</summary>
+    public static async Task<HttpResponseMessage> CommitAsync(HttpClient api, string id, CancellationToken ct, params JsonObject[] ops)
+    {
+        var read = await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", ct);
+        var body = CommitBody(read.GetProperty("instance").GetString()!, read.GetProperty("rev").GetInt64(), ops);
+        return await api.PostAsync($"/api/profiles/{id}/commit", Json(body), ct);
+    }
 
     public static StringContent Json(JsonNode body) => new(body.ToJsonString(), Encoding.UTF8, "application/json");
 }

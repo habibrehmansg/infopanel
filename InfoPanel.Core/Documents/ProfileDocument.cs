@@ -16,10 +16,39 @@ public interface IDocumentPersistence
     void Save(Generation generation);
 }
 
+/// <summary>
+/// A document's lifetime tag, <c>instance</c> (spec/docs/api.md, "A document's tag"; commit.md): opaque, compared for
+/// equality only, and new for every document the engine creates or opens.
+/// </summary>
+public static class DocumentTag
+{
+    /// <summary>A new tag: 32 lower-case hex digits, random, never the same as another document's or a run's.</summary>
+    public static string New() => Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// The 409 to a request naming a tag that isn't the profile's: one conflict, the whole request's,
+    /// <c>reason: "instance"</c>. <paramref name="rev"/> is the document's current revision; null for a profile that
+    /// can't be opened, which has none.
+    /// </summary>
+    public static ConflictProblem Conflict(long? rev) => new()
+    {
+        Title = "Conflict",
+        Detail = "The request names another document: the engine restarted, or the profile was deleted and created again. Read it again and start over.",
+        Status = 409,
+        Code = "conflict",
+        Rev = rev,
+        Conflicts = [new Conflict { Reason = "instance" }],
+    };
+}
+
 public sealed class ProfileDocumentOptions
 {
-    /// <summary>This engine run's instance id (<c>GET /api/session</c>): a commit naming another conflicts (<c>reason: "instance"</c>).</summary>
-    public string Instance { get; init; } = Guid.NewGuid().ToString("N");
+    /// <summary>
+    /// The document's lifetime tag (spec/docs/api.md, "A document's tag"): new for every document the engine creates or
+    /// opens, so a profile deleted and created again under the same id, or opened again by a later run, has another. A
+    /// commit, undo, redo or revert naming another conflicts (<c>reason: "instance"</c>).
+    /// </summary>
+    public string Instance { get; init; } = DocumentTag.New();
 
     /// <summary>The clock for undo coalescing.</summary>
     public TimeProvider Time { get; init; } = TimeProvider.System;
@@ -328,7 +357,7 @@ public sealed class ProfileDocument : IDisposable
 
     /// <summary>
     /// Goes back one step, as a new revision (<c>POST /api/profiles/{id}/undo</c>), when <paramref name="body"/>
-    /// (<c>historyRequest</c>) names this instance and the document's current revision; see <see cref="Step"/>. With
+    /// (<c>historyRequest</c>) names this document's tag and its current revision; see <see cref="Step"/>. With
     /// nothing to undo, answers with the unchanged revision.
     /// </summary>
     public CommitOutcome Undo(JsonElement body) => Step(body, DocumentChange.Undo);
@@ -522,8 +551,7 @@ public sealed class ProfileDocument : IDisposable
         },
     };
 
-    private static CommitOutcome InstanceConflict(long rev) =>
-        Conflict(rev, [new Conflict { Reason = "instance" }], "The engine restarted: start over from a fresh read.");
+    private static CommitOutcome InstanceConflict(long rev) => new() { Conflict = DocumentTag.Conflict(rev) };
 
     private static CommitOutcome Conflict(long rev, IReadOnlyList<Conflict> conflicts, string? detail) => new()
     {

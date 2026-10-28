@@ -137,11 +137,9 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         return await Body(response);
     }
 
-    private async Task<string> Instance()
-    {
-        using var api = Api();
-        return await InstanceAsync(api, Ct);
-    }
+    /// <summary>The profile's tag, from its entry in the list (a profile that can't be opened has one too).</summary>
+    private async Task<string> Tag(string id) =>
+        (await Get("/api/profiles")).EnumerateArray().Single(e => e.GetProperty("id").GetString() == id).GetProperty("instance").GetString()!;
 
     private async Task<byte[]> Thumbnail(string id)
     {
@@ -158,7 +156,8 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         foreach (var entry in entries.Values)
             Assert.True(Valid(entry, "profileEntry"));
 
-        Assert.Equal("""{"id":"0a000000-0000-4000-8000-00000000000a","status":"unsupported","name":"From a newer engine","problem":{"path":"/format","code":"unsupported.format","message":"This engine reads infopanel.document/1, not infopanel.document/2."}}""",
+        var tag = entries[SeededEngineFactory.Unsupported].GetProperty("instance").GetString()!;
+        Assert.Equal($$$"""{"id":"0a000000-0000-4000-8000-00000000000a","status":"unsupported","instance":"{{{tag}}}","name":"From a newer engine","problem":{"path":"/format","code":"unsupported.format","message":"This engine reads infopanel.document/1, not infopanel.document/2."}}""",
             entries[SeededEngineFactory.Unsupported].GetRawText());
         Assert.Equal(("unreadable", "json"), (entries[SeededEngineFactory.NotJson].GetProperty("status").GetString(),
             entries[SeededEngineFactory.NotJson].GetProperty("problem").GetProperty("code").GetString()));
@@ -176,7 +175,9 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var entry = await Body(created);
         Assert.True(Valid(entry, "profileEntryOk"));
-        Assert.Equal($$"""{"id":"{{id}}","status":"ok","name":"Empty","width":64,"height":32,"rev":1,"dirty":false}""", entry.GetRawText());
+        var tag = entry.GetProperty("instance").GetString()!;
+        Assert.Equal($$"""{"id":"{{id}}","status":"ok","instance":"{{tag}}","name":"Empty","width":64,"height":32,"rev":1,"dirty":false}""", entry.GetRawText());
+        Assert.Equal(tag, (await Get($"/api/profiles/{id}")).GetProperty("instance").GetString());
         Assert.True(File.Exists(Path.Combine(factory.DataDir, "profiles", id, "document.json")));
 
         // The same request again (its answer lost): 409 exists, and nothing changes.
@@ -291,9 +292,10 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     public async Task Delete_Is204_ThenTheProfileIsGone_And404()
     {
         var id = await NewProfile(Scene("a"));
+        var query = "?instance=" + await Tag(id);
         using var api = Api();
-        Assert.Equal(HttpStatusCode.NoContent, (await api.DeleteAsync($"/api/profiles/{id}", Ct)).StatusCode);
-        await Problem(await api.DeleteAsync($"/api/profiles/{id}", Ct), HttpStatusCode.NotFound);
+        Assert.Equal(HttpStatusCode.NoContent, (await api.DeleteAsync($"/api/profiles/{id}{query}", Ct)).StatusCode);
+        await Problem(await api.DeleteAsync($"/api/profiles/{id}{query}", Ct), HttpStatusCode.NotFound);
         await Problem(await api.GetAsync($"/api/profiles/{id}", Ct), HttpStatusCode.NotFound);
         Assert.False(Directory.Exists(Path.Combine(factory.DataDir, "profiles", id)));
     }
@@ -301,7 +303,7 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     [Fact]
     public async Task AProfileThatCantBeOpened_IsListedExportedAndDeletable_AndEverythingElseIs409()
     {
-        var instance = await Instance();
+        var instance = await Tag(SeededEngineFactory.NotJson);
         using var api = Api();
         foreach (var path in new[] { "", "/thumbnail" })
         {
@@ -384,7 +386,7 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     public async Task ACommit_RetriedWithTheSameBytes_Replays_AndAnotherBodyWithItsOpIdIs422()
     {
         var id = await NewProfile(Scene("a"));
-        var body = Encoding.UTF8.GetBytes(CommitBody(await Instance(), 1, Place("a", 10, 10)).ToJsonString() + "\n");
+        var body = Encoding.UTF8.GetBytes(CommitBody(await Tag(id), 1, Place("a", 10, 10)).ToJsonString() + "\n");
 
         using var first = await PostBytes($"/api/profiles/{id}/commit", body);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -402,14 +404,14 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         var other = await Problem(await PostBytes($"/api/profiles/{id}/commit", body[..^1]), HttpStatusCode.UnprocessableEntity, "invalidProblem");
         Assert.Equal("opId.reused", other.GetProperty("errors")[0].GetProperty("code").GetString());
         await Problem(await PostBytes($"/api/profiles/{id}/commit", "{"u8.ToArray()), HttpStatusCode.UnprocessableEntity, "invalidProblem");
-        await Problem(await Post($"/api/profiles/{NewId()}/commit", CommitBody(await Instance(), 1, Place("a", 1, 1))), HttpStatusCode.NotFound);
+        await Problem(await Post($"/api/profiles/{NewId()}/commit", CommitBody(await Tag(id), 1, Place("a", 1, 1))), HttpStatusCode.NotFound);
     }
 
     [Fact]
     public async Task AStaleSetDesign_Is409_AndTheFrameIsUnchanged()
     {
         var id = await NewProfile(Scene("a", 10, 10, Rect("#ff0000", 40, 40)));
-        var instance = await Instance();
+        var instance = await Tag(id);
 
         // Another client changes the design after this one read revision 1.
         using (var other = await Post($"/api/profiles/{id}/commit", CommitBody(instance, 1, Design("a", Rect("#00ff00", 40, 40), baseRev: 1))))
@@ -424,7 +426,7 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         Assert.Equal(2, (await Get($"/api/profiles/{id}")).GetProperty("rev").GetInt64());
         Assert.Equal(before, await Thumbnail(id));
 
-        // Another instance's commit is a conflict of the whole request.
+        // A commit naming another document's tag is a conflict of the whole request.
         var foreign = await Problem(await Post($"/api/profiles/{id}/commit", CommitBody(new string('0', 32), 2, Place("a", 1, 1))), HttpStatusCode.Conflict, "conflictProblem");
         Assert.Equal("instance", foreign.GetProperty("conflicts")[0].GetProperty("reason").GetString());
     }
@@ -441,7 +443,7 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     public async Task ABodyOverRequestBytes_Is422LimitRequestBytes(string request, bool withoutLength)
     {
         var id = await NewProfile(Scene("a"));
-        var instance = await Instance();
+        var instance = await Tag(id);
         var body = request == "duplicate" ? $"{{\"id\":\"{NewId()}\"}}" : $"{{\"instance\":\"{instance}\",\"baseRev\":1}}";
         // Bodies that match their definitions, padded with whitespace: 64 KiB is read, one byte more is over the limit;
         // sent with a Content-Length, or without one (chunked), when only the bytes read can tell.
@@ -460,13 +462,13 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     public async Task UndoRedoRevert_AreGuarded_AndSaveIsNot()
     {
         var id = await NewProfile(Scene("a"));
-        var instance = await Instance();
+        var instance = await Tag(id);
         JsonObject History(long baseRev, string? at = null) => new() { ["instance"] = at ?? instance, ["baseRev"] = baseRev };
 
         using (var moved = await Post($"/api/profiles/{id}/commit", CommitBody(instance, 1, Place("a", 50, 0))))
             Assert.Equal(2, (await Body(moved)).GetProperty("rev").GetInt64());
 
-        // A stale baseRev, another instance, a body that isn't the history request: refused, nothing done.
+        // A stale baseRev, another document's tag, a body that isn't the history request: refused, nothing done.
         var stale = await Problem(await Post($"/api/profiles/{id}/undo", History(1)), HttpStatusCode.Conflict, "conflictProblem");
         Assert.Equal(2, stale.GetProperty("rev").GetInt64());
         Assert.Equal("instance", (await Problem(await Post($"/api/profiles/{id}/redo", History(2, new string('0', 32))), HttpStatusCode.Conflict))
@@ -528,7 +530,7 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     public async Task Mutations_NeedTheBearerToken_AndAnAllowedOrigin()
     {
         var id = await NewProfile(Scene("a"));
-        var body = CommitBody(await Instance(), 1, Place("a", 5, 5));
+        var body = CommitBody(await Tag(id), 1, Place("a", 5, 5));
 
         using var raw = factory.CreateRawClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await raw.PostAsync($"/api/profiles/{id}/commit", Json(body), Ct)).StatusCode);

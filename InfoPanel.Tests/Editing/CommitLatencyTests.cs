@@ -27,7 +27,7 @@ public sealed class CommitLatencyTests(ITestOutputHelper output)
         using var live = LiveEngine.Start(engine);
         using var api = live.Client();
         var id = await CreateAsync(api, ReferenceDocument(), Ct);
-        var instance = await LiveEngine.Instance(api, Ct);
+        var instance = await LiveEngine.Tag(api, id, Ct);
         var rev = (await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct)).GetProperty("rev").GetInt64();
         await using var socket = await live.Subscribe(id, Ct, scale: 1, maxFps: 60);
         await socket.FirstFrameAt(rev, 0, TimeSpan.FromSeconds(10), Ct);

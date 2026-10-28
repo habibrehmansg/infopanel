@@ -140,8 +140,11 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
 
         var profile = Assert.Single(profiles.EnumerateArray());
         Assert.True(Valid(profile, "profileEntry"));
-        Assert.Equal("""{"id":"3682945e-c157-4ed7-a6b3-60e651328cf5","status":"ok","name":"Wide bar","width":1920,"height":480,"rev":1,"dirty":false}""",
+        // Its tag is its document's: new each run, so read from the entry and held to the document's answer.
+        var tag = profile.GetProperty("instance").GetString()!;
+        Assert.Equal($$"""{"id":"3682945e-c157-4ed7-a6b3-60e651328cf5","status":"ok","instance":"{{tag}}","name":"Wide bar","width":1920,"height":480,"rev":1,"dirty":false}""",
             profile.GetRawText());
+        Assert.Equal(tag, (await GetJson("/api/profiles/3682945e-c157-4ed7-a6b3-60e651328cf5")).GetProperty("instance").GetString());
     }
 
     [Fact]
@@ -152,7 +155,9 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         var session = await GetJson("/api/session");
 
         Assert.True(Valid(response, "documentResponse"));
-        Assert.Equal(session.GetProperty("instance").GetString(), response.GetProperty("instance").GetString());
+        // The document's tag, not the run's instance.
+        Assert.Matches("^[0-9a-f]{32}$", response.GetProperty("instance").GetString());
+        Assert.NotEqual(session.GetProperty("instance").GetString(), response.GetProperty("instance").GetString());
         Assert.Equal((1, false, false, false), (response.GetProperty("rev").GetInt64(), response.GetProperty("dirty").GetBoolean(),
             response.GetProperty("canUndo").GetBoolean(), response.GetProperty("canRedo").GetBoolean()));
 

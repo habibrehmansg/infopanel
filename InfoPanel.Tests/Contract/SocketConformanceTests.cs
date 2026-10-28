@@ -41,11 +41,11 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         // As the socket handler writes them: the spec model with the format's options.
         foreach (var message in new object[]
                  {
-                     new HelloMessage { Type = "hello", Protocol = ReadEndpoints.Protocol },
+                     new HelloMessage { Type = "hello", Protocol = ReadEndpoints.Protocol, Instance = "7c2f9a41d0e34b8f9e6a5b3c1d2e4f60" },
                      new ProfilesMessage { Type = "profiles", Version = 1 },
                      new ErrorMessage { Type = "error", Code = "profile.missing", Path = "/profileId", Message = "No profile 'x'." },
                      new ErrorMessage { Type = "error", Code = "profile.deleted", Path = "", Message = "Profile 'x' was deleted." },
-                     new DocEvent { Type = "doc", ProfileId = "3dd19c0e-675a-4591-b096-83417853861f", Rev = 1, Dirty = false, CanUndo = false, CanRedo = false },
+                     new DocEvent { Type = "doc", ProfileId = "3dd19c0e-675a-4591-b096-83417853861f", Instance = "0f1e2d3c4b5a69788796a5b4c3d2e1f0", Rev = 1, Dirty = false, CanUndo = false, CanRedo = false },
                  })
         {
             Assert.Null(SocketContract.CheckServerText(JsonSerializer.Serialize(message, message.GetType(), SpecJson.Options)));
@@ -53,8 +53,10 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
     }
 
     [Theory]
-    [InlineData("""{"type":"hello","protocol":2,"engine":"x"}""")]
+    [InlineData("""{"type":"hello","protocol":2,"instance":"7c2f9a41d0e34b8f9e6a5b3c1d2e4f60","engine":"x"}""")]
     [InlineData("""{"type":"hello"}""")]
+    // hello carries the run's instance.
+    [InlineData("""{"type":"hello","protocol":2}""")]
     [InlineData("""{"type":"welcome","protocol":2}""")]
     [InlineData("""{"type":"error","message":7}""")]
     // An error carries its code and path (docs/api.md#errors-on-the-socket).
@@ -373,7 +375,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
             using var socket = await context.WebSockets.AcceptWebSocketAsync(EngineRuntime.WebSocketProtocol);
             var buffer = new byte[4096];
             await socket.ReceiveAsync(buffer, context.RequestAborted);
-            foreach (var text in new[] { """{"type":"hello","protocol":2}""", outside })
+            foreach (var text in new[] { """{"type":"hello","protocol":2,"instance":"7c2f9a41d0e34b8f9e6a5b3c1d2e4f60"}""", outside })
                 await socket.SendAsync(System.Text.Encoding.UTF8.GetBytes(text), System.Net.WebSockets.WebSocketMessageType.Text, true, context.RequestAborted);
             sent.SetResult();
             while (socket.State == System.Net.WebSockets.WebSocketState.Open)

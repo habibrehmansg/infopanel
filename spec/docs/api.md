@@ -15,7 +15,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /api/profiles` | | An array of `profileEntry`, in display order |
 | `POST /api/profiles` | `createProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` ([below](#creating-and-duplicating)) |
 | `POST /api/profiles/{id}/duplicate` | `duplicateProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` |
-| `DELETE /api/profiles/{id}` | | 204 ([below](#deleting)) |
+| `DELETE /api/profiles/{id}` | | 204; 400 `problem` without `instance`, the document's tag; 409 `deleteConflictProblem` for another tag ([below](#deleting)) |
 | `GET /api/profiles/{id}` | | `documentResponse` ([below](#documents)) |
 | `GET /api/profiles/{id}/document` | | The document, to keep or import elsewhere ([below](#exporting)) |
 | `GET /api/profiles/{id}/thumbnail` | | A PNG; 400 for a `w` that isn't a whole number from −2,147,483,648 to 2,147,483,647 ([below](#thumbnails)) |
@@ -34,7 +34,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /healthz` | | 200 `ok` as `text/plain`, without a token |
 | `GET /auth/{token}` | | 302 to `/#token={token}`; 401 for any token but the session token ([below](#signing-in)) |
 
-A request on a profile is checked in this order, and the first failure answers: the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
+A request on a profile is checked in this order, and the first failure answers: its query parameters (else 400 `problem`); the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
 
 A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's or duplicate's to `requestBytes` (64 KiB), a token create's to `tokenRequestBytes` (4 KiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `mediaBytes` (413).
 
@@ -45,7 +45,7 @@ Every error under `/api` is `application/problem+json`: the definition the reque
 - 401 `problem` without a valid token, on every request under `/api` and on `/ws`;
 - 403 `scopeProblem` to a token without the scope a request that changes something needs (`edit`), or that only the session token may make (`session`); every token has `read`;
 - 404 `problem` on a request that names a profile, blob or token that doesn't exist;
-- 400 `problem` for a query parameter that isn't a whole number from −2,147,483,648 to 2,147,483,647 (`w`, `history`);
+- 400 `problem` for a query parameter that isn't a whole number from −2,147,483,648 to 2,147,483,647 (`w`, `history`), and for a `DELETE` of a profile without one `instance` of 1–64 characters ([below](#deleting));
 - 500 `problem` when the engine fails; the error is in its log.
 
 A path under `/api` that isn't a request above, or a method a path doesn't take, is answered 404 (or 405) `problem`. Under `/ws/` and `/auth`, a path that isn't `/ws` or `/auth/{token}` is answered 404 with no body.
@@ -91,7 +91,7 @@ The engine listens on the loopback interface only, and answers a request whose `
 `GET /api/session` describes the engine and this run of it:
 
 - `protocol` is the engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore; members and endpoints are added without changing it ([versioning](versioning.md#the-engine-api)).
-- `instance` is new every time the engine starts. Revisions (a document's `rev`, an item's, a commit's `baseRev`) are only comparable within one instance: those read from an earlier instance mean nothing to the current one, and a commit, undo, redo or revert that names an old instance is refused ([commits](commit.md#baserev-conflicts)).
+- `instance` is new every time the engine starts: a client that sees another (here or in the preview socket's `hello`) knows the engine restarted, and that the document tags and revisions it read before mean nothing now. It is the run's, not a document's: a commit names the tag of the document it changes ([below](#a-documents-tag)).
 - `formatSupport` is what the engine reads: formats, the newest minor version of each, optional capabilities and the limits ([versioning](versioning.md)).
 - `engineVersion`, `platform` (`macos`, `windows`, `linux` or `other`) and `dataDir` (the folder the engine keeps its data in) describe the engine.
 
@@ -107,13 +107,19 @@ The engine listens on the loopback interface only, and answers a request whose `
 
 `GET /api/profiles` lists every profile in display order. Each entry's `status` says whether the engine can open its document, and which members come with it (one schema definition per status, `profileEntryOk`, `profileEntryUnsupported` and `profileEntryUnreadable`):
 
-| `status` | Meaning | Members besides `id` and `status` |
+| `status` | Meaning | Members besides `id`, `status` and `instance` |
 |---|---|---|
 | `ok` | The engine opens the document. A document with invalid or unsupported scenes is `ok`: those items are placeholders ([unsupported content](unsupported.md)). | `name`, `width`, `height`, `rev`, `dirty` |
 | `unsupported` | The document needs a format major version (`unsupported.format`, at `/format`) or a document capability (`unsupported.capability`, at `/requires/i`) this engine lacks. | `problem`; `name` when the document's `profile.name` is a string of 1–256 characters |
 | `unreadable` | The stored file can't be read (`io`), isn't JSON (`json`), or breaks the document schema or a document limit outside its scenes (the document check's code and path, [validation](validation.md)). | `problem` |
 
 `problem` is the first problem found, `{ path, code, message }`, with a JSON pointer into the stored document. A profile that isn't `ok` is never opened, changed or rewritten: it is listed, and it can be deleted and exported as stored ([unsupported content](unsupported.md#document-level)). Every other request on its document answers 409 `profileStatusProblem`, whose `code` is the status and whose `problem` is the entry's. A client treats a status it doesn't know as a profile it can't open.
+
+### A document's tag
+
+Every profile has a lifetime tag, `instance`: an opaque id (`instanceId`, compared for equality only) that the engine gives it when it creates the profile (a create or a duplicate) or first reads it in a run (a profile it can't open too), and keeps until the profile is deleted or the engine stops. A profile deleted and created again under the same id has a new tag, and after a restart every profile has a new one. Its entry in `GET /api/profiles`, the 201 answer that created it, its `documentResponse` and its `doc` events carry it, and the document's revisions belong to it.
+
+A commit, undo, redo or revert names the tag of the document it was built on, and a `DELETE` names the tag of the profile it deletes ([below](#deleting)). A request that names another tag is refused with 409 `conflictProblem` (a `DELETE`'s: `deleteConflictProblem`), one conflict `{ "reason": "instance" }` (the whole request's, without `op`), and nothing is done ([commits](commit.md#baserev-conflicts)): a lost commit retried, or a delete that arrives late, never acts on a profile created again under the same id. The client reads the profile again (its entry or its document) and starts over. The session's `instance` is the run's, not a document's ([session](#session)).
 
 ### Creating and duplicating
 
@@ -126,11 +132,17 @@ A create's body (`createProfileRequest`) is one of:
 
 A duplicate's body (`duplicateProfileRequest`) is `{ "id" }`. The copy is the profile's current document (its latest revision, saved or not), with the same name, content and item ids. Duplicating a profile that isn't `ok` answers 409 `profileStatusProblem`.
 
-The new profile is stored and saved at once, is added at the end of the list, and starts with its own revisions and an empty history (`dirty`, `canUndo` and `canRedo` false). Both answer **201** with its `profileEntry`.
+The new profile is stored and saved at once, is added at the end of the list, and starts with a new tag ([above](#a-documents-tag)), its own revisions and an empty history (`dirty`, `canUndo` and `canRedo` false). Both answer **201** with its `profileEntry`.
 
 ### Deleting
 
-`DELETE /api/profiles/{id}` deletes the profile, whatever its status, with its saved and unsaved document and its history, and answers **204**. It takes no body and isn't guarded: it removes the profile for every client. A profile that doesn't exist answers 404, so a client that lost the answer and deletes again gets 404 for the profile it deleted.
+`DELETE /api/profiles/{id}?instance={tag}` deletes the profile, whatever its status, with its saved and unsaved document and its history, and answers **204**. It takes no body. `instance` is the profile's tag ([above](#a-documents-tag)), from its entry or its document: the delete removes the profile for every client, but only the profile the client read. The engine checks, in order, and nothing is deleted when a check fails:
+
+1. `instance`: given once, of 1–64 characters, else 400 `problem`, before anything else, as every query parameter.
+2. The profile exists, else 404.
+3. `instance` is the profile's tag, else 409 `deleteConflictProblem` with one conflict, `{ "reason": "instance" }`. Its `rev` is the document's current revision, absent for a profile that can't be opened, which has none (`examples/api/deleteConflictProblem/unopened.json`).
+
+A client that lost the answer and deletes again gets 404 for the profile it deleted, or 409 when the id was created again meanwhile.
 
 ### Exporting
 
@@ -145,7 +157,7 @@ The new profile is stored and saved at once, is added at the end of the list, an
 
 ## Documents
 
-`GET /api/profiles/{id}` answers `documentResponse`: the current document (the latest revision, saved or not), the document's state (`rev`, the same as `document.rev`; `dirty`, `canUndo`, `canRedo`) and the `instance` its revisions belong to. The document is in the shape the engine returns (`responseDocument`): `infopanel.document/1` with every revision member set (the `rev` of the document, of the profile and of every item), and every scene exactly as stored (`storedScene`). A scene the engine draws normally matches the scene schema; one it draws as a placeholder (it needs a newer format or a capability the engine lacks, breaks a rule or limit, or can't be compiled) comes back unchanged and may not, so a client checks a scene before it reads it as one. The `rev` read here is what a commit's `baseRev` is based on ([commits](commit.md)).
+`GET /api/profiles/{id}` answers `documentResponse`: the current document (the latest revision, saved or not), the document's state (`rev`, the same as `document.rev`; `dirty`, `canUndo`, `canRedo`) and its tag, `instance`, which its revisions belong to ([above](#a-documents-tag)). The document is in the shape the engine returns (`responseDocument`): `infopanel.document/1` with every revision member set (the `rev` of the document, of the profile and of every item), and every scene exactly as stored (`storedScene`). A scene the engine draws normally matches the scene schema; one it draws as a placeholder (it needs a newer format or a capability the engine lacks, breaks a rule or limit, or can't be compiled) comes back unchanged and may not, so a client checks a scene before it reads it as one. The `rev` read here is what a commit's `baseRev` is based on ([commits](commit.md)).
 
 ## Blobs
 
@@ -197,7 +209,7 @@ The engine reads each message as the formats read JSON ([validation](validation.
 
 The engine sends (`serverMessage`):
 
-- `hello` (`helloMessage`): first, once the socket is authenticated, with `protocol` ([session](#session)).
+- `hello` (`helloMessage`): first, once the socket is authenticated, with `protocol` and the run's `instance` ([session](#session)).
 - `doc` (`docEvent`): the subscribed document's state ([below](#change-events)).
 - `profiles` (`profilesMessage`): the profile list changed (a profile was created, duplicated or deleted, by any client); the client reads `GET /api/profiles`. `version` is greater for a later change; the engine keeps only the newest to send.
 - `error` (`errorMessage`): a message the engine couldn't act on, or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted (which also ends the subscription), with its `code` and `path` ([below](#errors-on-the-socket)) and a `message` for people.
@@ -221,7 +233,7 @@ A `profile.*` code means there is no subscription to that profile. One at `""`, 
 
 ### Change events
 
-The `doc` message (`docEvent`) is the subscribed document's state: `rev`, `dirty`, `canUndo`, `canRedo`. The engine sends it when the subscription starts and after every change to the document or to its state: every commit, undo, redo, revert and save that changes either, whichever client made it. It keeps only the latest state to send, so a client that falls behind gets the newest one and may skip revisions, and the last `doc` message it gets is always the current state. It carries no content: the document at that revision is read with `GET /api/profiles/{id}`.
+The `doc` message (`docEvent`) is the subscribed document's state: its tag (`instance`, [above](#a-documents-tag)), `rev`, `dirty`, `canUndo`, `canRedo`. The engine sends it when the subscription starts and after every change to the document or to its state: every commit, undo, redo, revert and save that changes either, whichever client made it. It keeps only the latest state to send, so a client that falls behind gets the newest one and may skip revisions, and the last `doc` message it gets is always the current state. It carries no content: the document at that revision is read with `GET /api/profiles/{id}`.
 
 ### Frames
 

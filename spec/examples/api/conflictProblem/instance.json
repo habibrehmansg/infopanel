@@ -1,6 +1,6 @@
 {
   "title": "Conflict",
-  "detail": "The engine restarted.",
+  "detail": "The request names another document: the engine restarted, or the profile was deleted and created again.",
   "status": 409,
   "code": "conflict",
   "rev": 3,

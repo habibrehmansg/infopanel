@@ -1,0 +1,7 @@
+{
+  "title": "Conflict",
+  "detail": "The document changed after revision 43.",
+  "status": 409,
+  "code": "conflict",
+  "conflicts": [{"reason": "changed", "rev": 45, "fields": ["design"]}]
+}

@@ -192,9 +192,6 @@ public sealed partial class CrashKillTests
         /// <summary>The document every create sends, and its stored form under its own id (an export of it).</summary>
         public (JsonObject Document, string Id, byte[] Stored)? Template { get; set; }
 
-        /// <summary>The running engine's instance.</summary>
-        public string Instance { get; set; } = "";
-
         public int Saves { get; set; }
 
         public int Creates { get; set; }
@@ -212,6 +209,9 @@ public sealed partial class CrashKillTests
 
         public long Rev { get; set; }
 
+        /// <summary>The document's tag in the running engine, which its commits and its delete name.</summary>
+        public string Tag { get; set; } = "";
+
         public int Inserted { get; set; }
     }
 
@@ -221,7 +221,6 @@ public sealed partial class CrashKillTests
         // Start-up removed every temp and deleted entry the crash left.
         Assert.True(Leftovers(data) is { Count: 0 } left, $"{context}: left after start-up: {string.Join(", ", Leftovers(data))}");
 
-        model.Instance = await LiveEngine.Instance(api, Ct);
         var listed = (await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct)).EnumerateArray().ToList();
         foreach (var entry in listed)
             Assert.True(entry.GetProperty("status").GetString() == "ok", $"{context}: {entry}");
@@ -273,6 +272,7 @@ public sealed partial class CrashKillTests
 
             var state = await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct);
             model.Profiles[id].Rev = state.GetProperty("rev").GetInt64();
+            model.Profiles[id].Tag = state.GetProperty("instance").GetString()!;
             Assert.False(state.GetProperty("dirty").GetBoolean());
         }
 
@@ -313,12 +313,16 @@ public sealed partial class CrashKillTests
         var blob = await Upload(api, model, Png(new SKColor(0x20, 0x80, 0xc0)));
         var document = Doc("Crash", 320, 120, Scene("media", 10, 10, MediaScene(blob)), Scene("box", 100, 10));
         var id = NewId();
+        string tag;
         using (var created = await api.PostAsync("/api/profiles", Json(new JsonObject { ["id"] = id, ["document"] = document.DeepClone() }), Ct))
+        {
             Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+            tag = (await LiveEngine.Body(created, Ct)).GetProperty("instance").GetString()!;
+        }
         var stored = await Export(api, id);
         Assert.Single(Occurrences(stored, Encoding.UTF8.GetBytes(id)));
         model.Template = (document, id, stored);
-        model.Profiles[id] = new Profile { Saved = stored, Rev = 1 };
+        model.Profiles[id] = new Profile { Saved = stored, Rev = 1, Tag = tag };
     }
 
     /// <summary>
@@ -375,13 +379,13 @@ public sealed partial class CrashKillTests
                         var (document, templateId, stored) = model.Template!.Value;
                         var id = NewId();
                         model.CreateInFlight = (id, Replace(stored, templateId, id));
-                        await run.Send(kind, async () =>
+                        var entry = await run.Send(kind, async () =>
                         {
                             using var created = await api.PostAsync("/api/profiles", Json(new JsonObject { ["id"] = id, ["document"] = document.DeepClone() }), ct);
                             Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-                            return await created.Content.ReadAsByteArrayAsync(ct);
+                            return await LiveEngine.Body(created, ct);
                         });
-                        model.Profiles[id] = new Profile { Saved = model.CreateInFlight.Value.Bytes, Rev = 1 };
+                        model.Profiles[id] = new Profile { Saved = model.CreateInFlight.Value.Bytes, Rev = 1, Tag = entry.GetProperty("instance").GetString()! };
                         model.CreateInFlight = null;
                         model.Creates++;
                         break;
@@ -389,10 +393,11 @@ public sealed partial class CrashKillTests
                     case "delete":
                     {
                         var id = ids[rng.Next(ids.Count)];
+                        var tag = model.Profiles[id].Tag;
                         model.DeleteInFlight = id;
                         await run.Send(kind, async () =>
                         {
-                            using var deleted = await api.DeleteAsync($"/api/profiles/{id}", ct);
+                            using var deleted = await api.DeleteAsync($"/api/profiles/{id}?instance={Uri.EscapeDataString(tag)}", ct);
                             Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
                             return deleted.StatusCode;
                         });
@@ -437,7 +442,7 @@ public sealed partial class CrashKillTests
             op = Profile(new JsonObject { ["name"] = $"Renamed {rng.Next(1000)}" });
         }
 
-        var bytes = LiveEngine.Commit(model.Instance, profile.Rev, null, op);
+        var bytes = LiveEngine.Commit(profile.Tag, profile.Rev, null, op);
         var body = await run.Send("commit", async () =>
         {
             using var response = await LiveEngine.PostBytes(api, $"/api/profiles/{id}/commit", bytes, ct);

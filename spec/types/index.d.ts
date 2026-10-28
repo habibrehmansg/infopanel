@@ -16,6 +16,7 @@ export interface Session {
    * Range: ≥ 1.
    */
   protocol: number;
+  /** This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse). */
   instance: InstanceId;
   /** The operating system the engine runs on. A client treats a platform it doesn't know as `other`. */
   platform: "macos" | "windows" | "linux" | "other";
@@ -28,18 +29,20 @@ export interface Session {
 }
 
 /**
- * One run of the engine: a new id every time the engine starts. Revisions are only comparable within one instance. Opaque: compared for equality only.
+ * An opaque id, compared for equality only: a run of the engine (the session's and hello's `instance`), or a document's lifetime tag (a profile entry's, a document response's and a doc event's `instance`, docs/api.md#a-documents-tag), new every time the engine creates or opens the document. A document's revisions belong to its tag.
  * Length: 1–64.
  */
 export type InstanceId = string;
 
-/** One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open. */
+/** One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). Every entry has the document's tag, `instance`, which its DELETE names. An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open. */
 export type ProfileEntry = ProfileEntryOk | ProfileEntryUnsupported | ProfileEntryUnreadable;
 
 /** A profile whose document the engine opens. A document with invalid or unsupported scenes is ok: those items are placeholders (docs/unsupported.md). */
 export interface ProfileEntryOk {
   id: DocumentId;
   status: "ok";
+  /** The document's tag: the same as its document response's and doc events'. */
+  instance: InstanceId;
   /**
    * The profile's name.
    * Length: 1–256.
@@ -65,6 +68,8 @@ export interface ProfileEntryOk {
 export interface ProfileEntryUnsupported {
   id: DocumentId;
   status: "unsupported";
+  /** The profile's tag, new when the engine first reads it in a run: what its DELETE names. */
+  instance: InstanceId;
   /**
    * The document's `profile.name` when that is a string of 1–256 characters, else absent.
    * Length: 1–256.
@@ -78,6 +83,8 @@ export interface ProfileEntryUnsupported {
 export interface ProfileEntryUnreadable {
   id: DocumentId;
   status: "unreadable";
+  /** The profile's tag, new when the engine first reads it in a run: what its DELETE names. */
+  instance: InstanceId;
   /** The first problem found, with a JSON pointer into the stored document: `io` (the file can't be read), `json` (not JSON) or a document check's code (`schema`, `limit.documentBytes`, ...; docs/validation.md). */
   problem: ValidationError;
 }
@@ -193,7 +200,7 @@ export interface ExistsProblem {
 
 /** GET /api/profiles/{id}: the profile's current document, with its revision members (the `rev` of the document, the profile and every item), and its state. */
 export interface DocumentResponse {
-  /** The engine instance these revisions belong to (as in GET /api/session). */
+  /** The document's tag (docs/api.md#a-documents-tag), which these revisions belong to: what its commits, undo, redo, revert and DELETE name. Not the session's instance. */
   instance: InstanceId;
   /** The document's revision: the same as `document.rev`. */
   rev: Revision;
@@ -323,7 +330,7 @@ export interface CommitRequest {
    * Pattern: `^[A-Za-z0-9_.:-]{1,128}$`.
    */
   opId: string;
-  /** The engine instance the client's revisions came from (GET /api/session). A different one: 409 with reason "instance". */
+  /** The tag of the document the client's revisions came from (its documentResponse, profile entry or doc event). Another one (the engine restarted, or the profile was deleted and created again): 409 with reason "instance". */
   instance: InstanceId;
   /** The document revision the commit is based on: the document `rev` the client last read before it built the commit. It tells a retry from a new commit once the engine has forgotten older opIds: an unknown opId with a baseRev older than the engine's retry window is refused (409 expiredProblem). Greater than the document's `rev`: 422 (baseRev.future). Each op's own `baseRev` decides its conflicts. */
   baseRev: Revision;
@@ -443,9 +450,9 @@ export interface ProfileOp {
   };
 }
 
-/** The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. A different instance: 409 conflictProblem (reason "instance"); a `baseRev` greater than the document's `rev`: 422 invalidProblem (baseRev.future); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason "changed"); nothing is done in each case (docs/commit.md). */
+/** The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. Another document's tag: 409 conflictProblem (reason "instance"); a `baseRev` greater than the document's `rev`: 422 invalidProblem (baseRev.future); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason "changed"); nothing is done in each case (docs/commit.md). */
 export interface HistoryRequest {
-  /** The engine instance the client's revision came from (GET /api/session). */
+  /** The tag of the document the client's revision came from (its documentResponse, profile entry or doc event). */
   instance: InstanceId;
   /** The document `rev` the client last read: the request acts only while the document is still at that revision. */
   baseRev: Revision;
@@ -480,7 +487,7 @@ export interface CommitWarning {
   message?: string;
 }
 
-/** 409 application/problem+json to a commit, undo, redo or revert: nothing was applied. The client refetches, rebuilds its change on the current state and sends it again (a commit with a new opId). */
+/** 409 application/problem+json to a commit, undo, redo or revert: nothing was applied. The client refetches, rebuilds its change on the current state and sends it again (a commit with a new opId). A DELETE's 409 is deleteConflictProblem. */
 export interface ConflictProblem {
   type?: string;
   title?: string;
@@ -493,11 +500,24 @@ export interface ConflictProblem {
   conflicts: Conflict[];
 }
 
+/** 409 application/problem+json to a DELETE naming another document's tag: nothing was deleted. The client reads the profile again (its entry or its document). */
+export interface DeleteConflictProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  status: 409;
+  code: "conflict";
+  /** The document's current revision. Absent for a profile that can't be opened, which has none. */
+  rev?: Revision;
+  /** One `instance` conflict. */
+  conflicts: Conflict[];
+}
+
 export interface Conflict {
   /** The op that conflicts. Absent when the conflict is the whole request's: reason instance, and every conflict of an undo, redo or revert. */
   op?: OpIndex;
   id?: ItemId;
-  /** changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the engine restarted since the client's `instance`. A client treats a reason it doesn't know as it treats every conflict: it refetches and rebuilds its change. */
+  /** changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the request names another tag than the document's (the engine restarted, or the profile was deleted and created again, since the client read it). A client treats a reason it doesn't know as it treats every conflict: it refetches and rebuilds its change. */
   reason: "changed" | "missing" | "instance";
   /** The item's (or profile's) current rev. */
   rev?: Revision;
@@ -611,6 +631,8 @@ export interface FrameHeader {
 export interface DocEvent {
   type: "doc";
   profileId: DocumentId;
+  /** The document's tag, which `rev` belongs to (docs/api.md#a-documents-tag). */
+  instance: InstanceId;
   /** The document's revision. */
   rev: Revision;
   /** The document differs from the saved one. */
@@ -824,6 +846,8 @@ export interface HelloMessage {
    * Range: ≥ 1.
    */
   protocol: number;
+  /** This run of the engine, as GET /api/session gives it: another than the client saw before means the engine restarted. */
+  instance: InstanceId;
 }
 
 /** The profile list changed: a profile was created, duplicated or deleted, by any client. The client reads GET /api/profiles. The engine keeps only the newest to send. */
@@ -2223,7 +2247,7 @@ export interface ApiOperations {
     };
   };
   /**
-   * deleteProfile: Deletes the profile, whatever its status, with its document and history.
+   * deleteProfile: Deletes the profile, whatever its status, with its document and history, when the request names its tag.
    *
    * docs/api.md#deleting.
    */
@@ -2232,17 +2256,24 @@ export interface ApiOperations {
       /** The profile's id: its document's id. */
       id: string;
     };
-    query: { [key: string]: never };
+    query: {
+      /** The document's tag, from its profile entry or document: another profile created under the id meanwhile isn't deleted. */
+      instance: InstanceId;
+    };
     request: never;
     responses: {
       /** Deleted. */
       204: null;
+      /** No instance, or not exactly one of 1–64 characters; checked before anything else. */
+      400: Problem;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
       /** No such profile, blob or token. */
       404: Problem;
+      /** The instance isn't the profile's tag (deleteConflictProblem, one instance conflict): nothing was deleted. */
+      409: DeleteConflictProblem;
     };
   };
   /**
@@ -2371,7 +2402,7 @@ export interface ApiOperations {
       403: ScopeProblem;
       /** No such profile, blob or token. */
       404: Problem;
-      /** The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied. */
+      /** The profile can't be opened (profileStatusProblem), or the request names another document's tag or the document changed since baseRev (conflictProblem); nothing was applied. */
       409: ProfileStatusProblem | ConflictProblem;
       /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
       422: InvalidProblem;
@@ -2398,7 +2429,7 @@ export interface ApiOperations {
       403: ScopeProblem;
       /** No such profile, blob or token. */
       404: Problem;
-      /** The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied. */
+      /** The profile can't be opened (profileStatusProblem), or the request names another document's tag or the document changed since baseRev (conflictProblem); nothing was applied. */
       409: ProfileStatusProblem | ConflictProblem;
       /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
       422: InvalidProblem;
@@ -2425,7 +2456,7 @@ export interface ApiOperations {
       403: ScopeProblem;
       /** No such profile, blob or token. */
       404: Problem;
-      /** The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied. */
+      /** The profile can't be opened (profileStatusProblem), or the request names another document's tag or the document changed since baseRev (conflictProblem); nothing was applied. */
       409: ProfileStatusProblem | ConflictProblem;
       /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
       422: InvalidProblem;

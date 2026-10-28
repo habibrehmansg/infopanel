@@ -41,7 +41,7 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// formats read JSON first (<see cref="ReadClientMessage"/>), every member included. Client messages are closed
 /// (<see cref="ClientMessageMembers"/>): one with a member it doesn't define is refused, never acted on in part.</item>
 /// <item>Server → client (the spec's <c>serverMessage</c>, written from its models): <c>hello</c> on connect
-/// (<c>protocol</c> 2); <c>doc</c> (<c>docEvent</c>)
+/// (<c>protocol</c> 2 and the run's <c>instance</c>); <c>doc</c> (<c>docEvent</c>, with the document's tag)
 /// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
 /// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>error</c> for a bad message, an unknown profile,
 /// one that can't be opened or a deleted one, each with its code and its path into the message it answers
@@ -774,6 +774,7 @@ internal sealed class PreviewSession
         {
             Type = "doc",
             ProfileId = doc.Id,
+            Instance = doc.Instance,
             Rev = status.Rev,
             Dirty = status.Dirty,
             CanUndo = status.CanUndo,
@@ -847,7 +848,7 @@ internal sealed class PreviewSession
     {
         string? lastDoc = null;
         long profilesSent = 0;
-        await SendTextAsync(JsonSerializer.Serialize(new HelloMessage { Type = "hello", Protocol = Api.ReadEndpoints.Protocol }, SpecJson.Options), ct);
+        await SendTextAsync(JsonSerializer.Serialize(new HelloMessage { Type = "hello", Protocol = Api.ReadEndpoints.Protocol, Instance = _workspace.Instance }, SpecJson.Options), ct);
 
         while (true)
         {

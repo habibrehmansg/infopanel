@@ -420,7 +420,7 @@ public class RenderLoopTests
         var sink = h.Attach();
         h.Tick();
 
-        Assert.True(h.Workspace.Delete(h.ProfileId));
+        Assert.True(h.Workspace.DeleteWithItsTag(h.ProfileId));
 
         Assert.Equal([FrameSinkClosedReason.ProfileDeleted], sink.Closed);
         Assert.False(h.Service.IsRendering(h.ProfileId));
@@ -436,7 +436,7 @@ public class RenderLoopTests
     {
         await using var h = Bars();
         var deleted = h.Document;
-        Assert.True(h.Workspace.Delete(h.ProfileId));
+        Assert.True(h.Workspace.DeleteWithItsTag(h.ProfileId));
         Assert.Equal(201, h.Workspace.Create(CreatedAgain(h)).Status);
         var current = h.Attach();
 
@@ -447,7 +447,7 @@ public class RenderLoopTests
         Assert.Equal(1, h.Tick());
         Assert.Single(current.Frames);
         Assert.Empty(late.Frames);
-        Assert.True(h.Workspace.Delete(h.ProfileId));
+        Assert.True(h.Workspace.DeleteWithItsTag(h.ProfileId));
         Assert.Equal([FrameSinkClosedReason.ProfileDeleted], current.Closed);
         Assert.Equal(0, h.Service.LoopCount);
     }
@@ -479,7 +479,7 @@ public class RenderLoopTests
             Assert.True(service.Attach(old));
             Assert.Equal(1, service.Tick(h.ProfileId));
 
-            Assert.True(h.Workspace.Delete(h.ProfileId));
+            Assert.True(h.Workspace.DeleteWithItsTag(h.ProfileId));
 
             Assert.Equal([FrameSinkClosedReason.ProfileDeleted], old.Closed);
             Assert.Equal(1, service.LoopCount);
@@ -506,7 +506,7 @@ public class RenderLoopTests
         blocking.Entered.Wait(TestContext.Current.CancellationToken);
 
         // The delete doesn't wait for the sink, and doesn't close it while OnFrame runs.
-        Assert.True(h.Workspace.Delete(h.ProfileId));
+        Assert.True(h.Workspace.DeleteWithItsTag(h.ProfileId));
         Assert.Equal(["frame"], blocking.Events);
         Assert.Equal([FrameSinkClosedReason.ProfileDeleted], other.Closed); // not in OnFrame: closed at once
 

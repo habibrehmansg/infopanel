@@ -30,6 +30,8 @@ public sealed record ProfileEntry
 {
     public required string Id { get; init; }
     public required string Status { get; init; }
+    /// <summary>The document's lifetime tag, whatever the status: what its changes and its <c>DELETE</c> name.</summary>
+    public required string Instance { get; init; }
     public string? Name { get; init; }
     public int? Width { get; init; }
     public int? Height { get; init; }
@@ -258,7 +260,7 @@ public sealed record CommitWarning
     public string? Message { get; init; }
 }
 
-[SpecDef("urn:infopanel:api:1#/$defs/conflictProblem")]
+[SpecDef("urn:infopanel:api:1#/$defs/conflictProblem", "urn:infopanel:api:1#/$defs/deleteConflictProblem")]
 public sealed record ConflictProblem
 {
     public string? Type { get; init; }
@@ -266,7 +268,8 @@ public sealed record ConflictProblem
     public string? Detail { get; init; }
     public required int Status { get; init; }
     public required string Code { get; init; }
-    public required long Rev { get; init; }
+    /// <summary>The document's current revision; always there for a commit, undo, redo or revert, null only in a <c>DELETE</c>'s (<c>deleteConflictProblem</c>) for a profile that can't be opened, which has none.</summary>
+    public long? Rev { get; init; }
     public required IReadOnlyList<Conflict> Conflicts { get; init; }
 }
 
@@ -355,6 +358,8 @@ public sealed record DocEvent
     /// <summary>Always <c>doc</c>.</summary>
     public required string Type { get; init; }
     public required string ProfileId { get; init; }
+    /// <summary>The document's lifetime tag.</summary>
+    public required string Instance { get; init; }
     public required long Rev { get; init; }
     public required bool Dirty { get; init; }
     public required bool CanUndo { get; init; }
@@ -502,6 +507,8 @@ public sealed record HelloMessage
 {
     public required string Type { get; init; }
     public required int Protocol { get; init; }
+    /// <summary>This run of the engine, as <c>GET /api/session</c> gives it.</summary>
+    public required string Instance { get; init; }
 }
 
 /// <summary>The profile list changed (<see cref="Version"/> grows with each change). <see cref="Type"/> is always <c>profiles</c>.</summary>

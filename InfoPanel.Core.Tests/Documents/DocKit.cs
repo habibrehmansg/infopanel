@@ -23,6 +23,17 @@ internal sealed class MemoryPersistence : IDocumentPersistence
 /// <summary>Documents, items and commits for the document tests, as JSON (what a client sends), with a pinned clock.</summary>
 internal static class DocKit
 {
+    /// <summary>
+    /// Deletes the profile as a client that read its entry does, naming its tag (<c>DELETE ...?instance=</c>); false
+    /// when there is no such profile.
+    /// </summary>
+    public static bool DeleteWithItsTag(this Workspace workspace, string id)
+    {
+        var outcome = workspace.Delete(id, workspace.Entry(id)?.Instance ?? "");
+        Assert.Null(outcome.Conflict);
+        return outcome.Deleted;
+    }
+
     public const string Instance = "engine-instance-1";
 
     public static readonly DateTimeOffset Start = new(2026, 10, 27, 9, 0, 0, TimeSpan.Zero);
@@ -104,12 +115,19 @@ internal static class DocKit
     public static JsonElement Commit(string opId, string? coalesceKey, params JsonObject[] ops) => Commit(0, opId, coalesceKey, ops);
 
     /// <summary>A commit of this instance based on revision <paramref name="baseRev"/>.</summary>
-    public static JsonElement Commit(long baseRev, string opId, string? coalesceKey, params JsonObject[] ops)
+    public static JsonElement Commit(long baseRev, string opId, string? coalesceKey, params JsonObject[] ops) =>
+        Commit(Instance, baseRev, opId, coalesceKey, ops);
+
+    /// <summary>A commit to <paramref name="doc"/> (a workspace's, with a tag of its own) based on its current revision.</summary>
+    public static JsonElement Commit(ProfileDocument doc, string opId, string? coalesceKey, params JsonObject[] ops) =>
+        Commit(doc.Instance, doc.Rev, opId, coalesceKey, ops);
+
+    private static JsonElement Commit(string instance, long baseRev, string opId, string? coalesceKey, JsonObject[] ops)
     {
         var body = new JsonObject
         {
             ["opId"] = opId,
-            ["instance"] = Instance,
+            ["instance"] = instance,
             ["baseRev"] = baseRev,
             ["ops"] = new JsonArray(ops.Select(o => (JsonNode)o).ToArray()),
         };

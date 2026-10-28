@@ -56,7 +56,9 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         Assert.Equal(EngineRuntime.WebSocketProtocol, client.Socket.SubProtocol);
 
         var first = await client.ReceiveAsync(Ct);
-        Assert.Equal("""{"type":"hello","protocol":2}""", first.Json!.Value.GetRawText());
+        using var api = factory.CreateApiClient();
+        var run = (await api.GetFromJsonAsync<JsonElement>("/api/session", Ct)).GetProperty("instance").GetString();
+        Assert.Equal($$"""{"type":"hello","protocol":2,"instance":"{{run}}"}""", first.Json!.Value.GetRawText());
     }
 
     [Theory]
@@ -135,7 +137,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
 
         // Undo (another cause of a revision change) also sends a doc event, and so does a save (dirty changes).
         using var second = await TestDocs.CommitAsync(api, id, Ct, TestDocs.Place(shape, 300, 10));
-        var instance = await TestDocs.InstanceAsync(api, Ct);
+        var instance = await TestDocs.TagAsync(api, id, Ct);
         var current = (await second.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("rev").GetInt64();
         using var undo = await api.PostAsync($"/api/profiles/{id}/undo", TestDocs.Json(new JsonObject { ["instance"] = instance, ["baseRev"] = current }), Ct);
         var undone = (await undo.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("rev").GetInt64();
@@ -197,7 +199,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains("unsupported", error.GetProperty("message").GetString());
         Assert.Equal(("profile.unsupported", "/profileId"), CodeAndPath(error));
-        Assert.True(workspace.Delete(id));
+        Assert.True(workspace.DeleteWithItsTag(id));
     }
 
     [Fact]
@@ -215,7 +217,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         var error = await client.ReceiveTextAsync("error", Ct);
         Assert.Contains("unreadable", error.GetProperty("message").GetString());
         Assert.Equal(("profile.unreadable", "/profileId"), CodeAndPath(error));
-        Assert.True(workspace.Delete(id));
+        Assert.True(workspace.DeleteWithItsTag(id));
     }
 
     [Fact]
@@ -458,7 +460,7 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         await client.ReceiveFrameAsync(Ct);
 
         using var api = factory.CreateApiClient();
-        using var deleted = await api.DeleteAsync($"/api/profiles/{id}", Ct);
+        using var deleted = await api.DeleteAsync($"/api/profiles/{id}?instance={await TestDocs.TagAsync(api, id, Ct)}", Ct);
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
 
         var error = await client.ReceiveTextAsync("error", Ct);

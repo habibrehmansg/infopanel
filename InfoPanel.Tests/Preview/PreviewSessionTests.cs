@@ -84,7 +84,7 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
         Assert.Equal(id, (await socket.NextAsync(m => m.Type == WebSocketMessageType.Binary)).Frame.ProfileId);
 
         await Stop(socket, run);
-        Assert.True(Workspace.Delete(unsupported));
+        Assert.True(Workspace.DeleteWithItsTag(unsupported));
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
         session.Found = found =>
         {
             session.Found = null;
-            Assert.True(Workspace.Delete(found));
+            Assert.True(Workspace.DeleteWithItsTag(found));
             var again = TestDocs.Doc("Replacement", 120, 80, TestDocs.Scene("shape"));
             Assert.Equal(201, Workspace.Create(System.Text.Encoding.UTF8.GetBytes(new System.Text.Json.Nodes.JsonObject { ["id"] = found, ["document"] = again }.ToJsonString())).Status);
         };
@@ -206,7 +206,7 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
             held.SetResult();
             Assert.True(resume.Task.Wait(TimeSpan.FromSeconds(5)));
         };
-        var deleting = Task.Run(() => Workspace.Delete(a));
+        var deleting = Task.Run(() => Workspace.DeleteWithItsTag(a));
         await held.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(session.CurrentSink);
 

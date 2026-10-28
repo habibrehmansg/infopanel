@@ -49,7 +49,7 @@ public sealed class ConcurrentEditingTests
         using var session = live.Client();
         var start = Shared[..4].Select((s, i) => Scene(s, 20 + 100 * i, 20)).Append(Group(Folder, Scene("e", 10, 120))).ToArray();
         var id = await CreateAsync(session, Doc("Concurrent", 480, 320, start), Ct);
-        var instance = await LiveEngine.Instance(session, Ct);
+        var instance = await LiveEngine.Tag(session, id, Ct);
         using var script = live.Client(await LiveEngine.CreateToken(session, "concurrent-script", Ct, "edit"));
         var first = await session.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct);
         var oracle = new EditOracle(await Export(session, id), first);
@@ -502,7 +502,7 @@ public sealed class ConcurrentEditingTests
         using var live = LiveEngine.Start(engine);
         using var session = live.Client();
         var id = await CreateAsync(session, Doc("Pairs", 480, 320, Scene("a", 0, 0)), Ct);
-        var instance = await LiveEngine.Instance(session, Ct);
+        var instance = await LiveEngine.Tag(session, id, Ct);
         var rev = await RevAsync(session, id, Ct);
         for (var i = 1; i <= pairs; i++)
         {
@@ -514,8 +514,8 @@ public sealed class ConcurrentEditingTests
         using var tabA = live.Client();
         using var tabB = live.Client();
         // Open both connections first, so the two requests leave together.
-        await LiveEngine.Instance(tabA, Ct);
-        await LiveEngine.Instance(tabB, Ct);
+        await LiveEngine.Tag(tabA, id, Ct);
+        await LiveEngine.Tag(tabB, id, Ct);
 
         foreach (var (kind, round) in Enumerable.Range(1, pairs).Select(r => ("undo", r)).Concat(Enumerable.Range(1, pairs).Select(r => ("redo", r))))
         {
@@ -556,7 +556,7 @@ public sealed class ConcurrentEditingTests
         using var live = LiveEngine.Start(engine);
         using var session = live.Client();
         var id = await CreateAsync(session, Doc("Undo", 480, 320, Scene("a", 0, 0)), Ct);
-        var instance = await LiveEngine.Instance(session, Ct);
+        var instance = await LiveEngine.Tag(session, id, Ct);
         using var script = live.Client(await LiveEngine.CreateToken(session, "undo-script", Ct, "edit"));
         using var tabA = live.Client();
         using var tabB = live.Client();

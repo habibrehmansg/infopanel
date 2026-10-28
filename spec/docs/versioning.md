@@ -95,12 +95,12 @@ Four markers say what a reader may do, each answering its own question; folding 
 |---|---|
 | A scene's or document's `requires` | Can this engine read this saved content? |
 | The data folder's marker, with its own `requires` | Is it safe for this engine to touch this data folder? |
-| `instance` in a request, with `baseRev` | Is this request about the state I read? |
+| A document's tag (`instance`) in a request, with `baseRev` | Is this request about the document I read? |
 | `protocol`, and named API features | Can this engine do this operation? |
 
 - **Content `requires`.** A scene that draws media from a provider configured on the engine lists `media.provider`; an engine without it draws the item as a placeholder and keeps the scene exactly as stored. An engine lists the capabilities it has, per format, in `formatSupport`.
 - **The data folder's marker.** The data folder isn't part of these formats: it is the engine's own, documented with the engine. Its marker lists what an engine must understand before it repairs, sweeps or writes anything there: a later engine that kept blob references outside the profiles' folders would list a capability, so an earlier engine stops at start-up instead of deleting blobs it doesn't see referenced. Not in this draft yet.
-- **`instance`.** A commit, undo, redo or revert names the `instance` it read with; one that names another is refused (409, reason `instance`) instead of being applied to state it never saw.
+- **A document's tag.** Every document has a lifetime tag, `instance`, new every time the engine creates or opens it ([API](api.md#a-documents-tag)). A commit, undo, redo, revert or delete names the tag of the document it read; one that names another is refused (409, reason `instance`) instead of acting on a document it never saw. A profile deleted and imported again under the same id has a new tag, so a delayed commit or delete carrying the old one is refused instead of acting on the new profile. The session's `instance` answers another question: did the engine restart?
 - **API features.** `protocol` goes up only for a change a client can't ignore. An operation added after version 1 comes under a feature name in `GET /api/session`, and a client offers it only when the engine lists it. Not in this draft yet.
 
-Choosing one: a new saved member, node kind or value is a content capability; a new file or folder holding blob references outside a profile's folder, a data-folder capability; a new operation, an API feature; a new guard on an existing request, `instance` or `baseRev`, never a new marker.
+Choosing one: a new saved member, node kind or value is a content capability; a new file or folder holding blob references outside a profile's folder, a data-folder capability; a new operation, an API feature; a new guard on an existing request, the document's tag or `baseRev`, never a new marker.

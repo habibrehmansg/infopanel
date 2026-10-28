@@ -33,7 +33,7 @@ public sealed class RetryTests
         using var live = LiveEngine.Start(engine, drop.Install);
         using var api = live.Client();
         var id = await CreateAsync(api, Doc("Retry", 300, 100, Scene("a", 0, 0)), Ct);
-        var instance = await LiveEngine.Instance(api, Ct);
+        var instance = await LiveEngine.Tag(api, id, Ct);
         var bytes = LiveEngine.Commit(instance, 1, null, Place("a", 50, 25, baseRev: 1));
 
         var held = await drop.Lose(() => LiveEngine.PostBytes(api, $"/api/profiles/{id}/commit", bytes, Ct), $"/api/profiles/{id}/commit");
@@ -78,7 +78,7 @@ public sealed class RetryTests
         using var live = LiveEngine.Start(engine, drop.Install);
         using var api = live.Client();
         var id = await CreateAsync(api, Doc("Retry", 300, 100, Scene("a", 0, 0)), Ct);
-        var instance = await LiveEngine.Instance(api, Ct);
+        var instance = await LiveEngine.Tag(api, id, Ct);
         await Ok(await LiveEngine.PostBytes(api, $"/api/profiles/{id}/commit", LiveEngine.Commit(instance, 1, null, Place("a", 10, 0, baseRev: 1)), Ct));
         await Ok(await LiveEngine.PostBytes(api, $"/api/profiles/{id}/commit", LiveEngine.Commit(instance, 2, null, Place("a", 20, 0, baseRev: 2)), Ct));
         var bytes = LiveEngine.History(instance, 3);
@@ -132,7 +132,7 @@ public sealed class RetryTests
         {
             using var api = first.Client();
             id = await CreateAsync(api, Doc("Retry", 300, 100, Scene("a", 0, 0)), Ct);
-            bytes = LiveEngine.Commit(await LiveEngine.Instance(api, Ct), 1, null, Place("a", 50, 0, baseRev: 1));
+            bytes = LiveEngine.Commit(await LiveEngine.Tag(api, id, Ct), 1, null, Place("a", 50, 0, baseRev: 1));
             var held = await drop.Lose(() => LiveEngine.PostBytes(api, $"/api/profiles/{id}/commit", bytes, Ct), $"/api/profiles/{id}/commit");
             Assert.Equal(StatusCodes.Status200OK, held.Status);
         }
@@ -162,7 +162,7 @@ public sealed class RetryTests
         using var live = LiveEngine.Start(engine, drop.Install);
         using var api = live.Client();
         var id = await CreateAsync(api, Doc("Retry", 300, 100, Scene("a", 0, 0)), Ct);
-        var instance = await LiveEngine.Instance(api, Ct);
+        var instance = await LiveEngine.Tag(api, id, Ct);
         var bytes = LiveEngine.Commit(instance, 1, null, Place("a", -1, 0, baseRev: 1));
         await drop.Lose(() => LiveEngine.PostBytes(api, $"/api/profiles/{id}/commit", bytes, Ct), $"/api/profiles/{id}/commit");
 

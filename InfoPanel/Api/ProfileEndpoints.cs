@@ -44,8 +44,18 @@ public static class ProfileEndpoints
             return outcome.NotFound ? ProfileNotFound(id) : Created(outcome);
         }).RequireScope(ApiScope.Edit);
 
-        api.MapDelete("/{id}", (string id, Workspace workspace) =>
-            workspace.Delete(id) ? Results.NoContent() : ProfileNotFound(id)).RequireScope(ApiScope.Edit);
+        // The document's tag is required, as one query parameter, checked first as a query parameter is (400); then the
+        // profile (404) and the tag (409 instance).
+        api.MapDelete("/{id}", (string id, HttpRequest request, Workspace workspace) =>
+            TagOf(request) is not { } instance
+                ? Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Bad Request",
+                    detail: "Name the document's tag once: DELETE /api/profiles/{id}?instance={tag}, the instance of its entry or document.")
+                : workspace.Delete(id, instance) switch
+                {
+                    { Deleted: true } => Results.NoContent(),
+                    { Conflict: { } conflict } => Problem(conflict, StatusCodes.Status409Conflict),
+                    _ => ProfileNotFound(id),
+                }).RequireScope(ApiScope.Edit);
 
         api.MapGet("/{id}", (string id, Workspace workspace) => WithDocument(workspace, id, doc =>
         {
@@ -103,6 +113,15 @@ public static class ProfileEndpoints
         api.MapPost("/{id}/save", (string id, Workspace workspace) =>
             WithDocument(workspace, id, doc => Acting(id, () => Json(doc.Save())))).RequireScope(ApiScope.Edit);
     }
+
+    /// <summary>
+    /// The <c>instance</c> query parameter: given once, 1–64 characters (the schema's <c>instanceId</c>); null otherwise.
+    /// </summary>
+    private static string? TagOf(HttpRequest request) =>
+        request.Query.TryGetValue("instance", out var values) && values.Count == 1
+        && values[0] is { } tag && tag.EnumerateRunes().Count() is >= 1 and <= 64
+            ? tag
+            : null;
 
     /// <summary>Undo, redo or revert: a <c>historyRequest</c> body, answered with <c>commitResult</c>, 409 or 422.</summary>
     private static void MapHistory(RouteGroupBuilder api, string name, Func<ProfileDocument, JsonElement, CommitOutcome> act) =>

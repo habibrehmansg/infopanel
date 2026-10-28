@@ -15,7 +15,10 @@ namespace InfoPanel.Documents;
 /// <summary>What every document of a workspace shares.</summary>
 public sealed class WorkspaceOptions
 {
-    /// <summary>This engine run's instance id (<c>GET /api/session</c>), shared by every document.</summary>
+    /// <summary>
+    /// This engine run's instance id (<c>GET /api/session</c>, the preview socket's <c>hello</c>). Each document has a
+    /// lifetime tag of its own (<see cref="DocumentTag"/>).
+    /// </summary>
     public string Instance { get; init; } = Guid.NewGuid().ToString("N");
 
     /// <summary>The clock for undo coalescing.</summary>
@@ -71,6 +74,17 @@ public sealed record CreateOutcome
 }
 
 /// <summary>
+/// The answer to a <c>DELETE</c>: the profile deleted (<see cref="Deleted"/>, 204), no such profile (<see cref="Found"/>
+/// false, 404), or a tag that isn't the profile's (<see cref="Conflict"/>, 409 <c>instance</c>), nothing deleted.
+/// </summary>
+public sealed record DeleteOutcome(bool Found, ConflictProblem? Conflict)
+{
+    public static DeleteOutcome NotFound { get; } = new(false, null);
+
+    public bool Deleted => Found && Conflict is null;
+}
+
+/// <summary>
 /// An exported document: the current document as JSON (<see cref="Stored"/> false) or the stored file as it is, read
 /// from disk whatever its size. The caller disposes <see cref="Content"/>.
 /// </summary>
@@ -93,6 +107,10 @@ public sealed record StoredBlob(BlobInfo Info, bool Created);
 /// <item><b>Opening.</b> A document is opened the first time anything reads it (the profile list included) and stays
 /// open until it is deleted or the workspace is disposed, which disposes it. A profile that can't be opened
 /// (<c>unsupported</c>, <c>unreadable</c>) is checked once per run and never rewritten.</item>
+/// <item><b>Tags.</b> Every profile gets a new lifetime tag (<see cref="DocumentTag"/>, its entries' and its document's
+/// <c>instance</c>) when it is created or first read in a run, one that can't be opened too, and keeps it until it is
+/// deleted. Its changes and its delete name it, so a request built on a profile that was deleted and created again
+/// under the same id is refused instead of acting on the new one.</item>
 /// <item><b>One lifetime per document.</b> Everything that begins or ends a profile runs under the workspace lock, as
 /// one step: storing a new profile with publishing its open document, opening a stored one, and deleting one from the
 /// store with removing and disposing its document. So nothing opens a profile before its document is published, a
@@ -422,17 +440,17 @@ public sealed class Workspace : IDisposable
                 if (load.Check.Status == CheckStatus.Unsupported)
                 {
                     Logger.Information("Profile {ProfileId} needs what this engine doesn't read ({Code} at {Path}); it is listed but not opened", id, first.Code, first.Path);
-                    return new Slot(null, new ProfileEntry { Id = id, Status = "unsupported", Name = NameOf(root), Problem = problem });
+                    return new Slot(null, new ProfileEntry { Id = id, Status = "unsupported", Instance = DocumentTag.New(), Name = NameOf(root), Problem = problem });
                 }
 
                 Logger.Warning("Profile {ProfileId} can't be opened ({Code} at {Path}: {Message})", id, first.Code, first.Path, first.Message);
-                return new Slot(null, new ProfileEntry { Id = id, Status = "unreadable", Problem = problem });
+                return new Slot(null, new ProfileEntry { Id = id, Status = "unreadable", Instance = DocumentTag.New(), Problem = problem });
             }
         }
     }
 
     private static Slot Unreadable(string id, string path, string code, string message) =>
-        new(null, new ProfileEntry { Id = id, Status = "unreadable", Problem = new ValidationErrorBody { Path = path, Code = code, Message = message } });
+        new(null, new ProfileEntry { Id = id, Status = "unreadable", Instance = DocumentTag.New(), Problem = new ValidationErrorBody { Path = path, Code = code, Message = message } });
 
     /// <summary>The document's <c>profile.name</c> when it is a string of 1–256 characters (an unsupported profile's entry).</summary>
     private static string? NameOf(JsonElement root) =>
@@ -444,7 +462,7 @@ public sealed class Workspace : IDisposable
     private ProfileDocument OpenDocument(string id, Generation generation) =>
         new(generation, new ProfileDocumentOptions
         {
-            Instance = _options.Instance,
+            Instance = DocumentTag.New(),
             Time = _options.Time,
             HistoryBudget = _options.HistoryBudget,
             Persistence = new StorePersistence(Documents, id),
@@ -460,6 +478,7 @@ public sealed class Workspace : IDisposable
         {
             Id = doc.Id,
             Status = "ok",
+            Instance = doc.Instance,
             Name = profile.Name,
             Width = profile.Width,
             Height = profile.Height,
@@ -628,15 +647,19 @@ public sealed class Workspace : IDisposable
     }
 
     /// <summary>
-    /// Deletes the profile, whatever its status, with its open document; false when there is no such profile. Under the
-    /// workspace lock, the slot follows the store whatever happens: once the store no longer lists the id (even when it
-    /// then failed), the document is removed and disposed, so a save of it under way finishes first and none follows.
+    /// <c>DELETE /api/profiles/{id}</c>: deletes the profile, whatever its status, with its open document, when
+    /// <paramref name="instance"/> is its tag; <see cref="DeleteOutcome.NotFound"/> when there is no such profile, a
+    /// conflict (<c>instance</c>) when the tag is another, nothing deleted. The profile is found, its tag compared and it
+    /// is deleted in one step under the workspace lock, so a profile created again under the id meanwhile is never
+    /// deleted with the tag of the one before. The slot follows the store whatever happens: once the store no longer
+    /// lists the id (even when it then failed), the document is removed and disposed, so a save of it under way
+    /// finishes first and none follows.
     /// </summary>
     /// <exception cref="IOException">The store couldn't delete it (see <see cref="DocumentStore.Delete"/>).</exception>
-    public bool Delete(string id)
+    public DeleteOutcome Delete(string id, string instance)
     {
         if (!DocumentStore.IsValidId(id))
-            return false;
+            return DeleteOutcome.NotFound;
 
         var gone = false;
         try
@@ -645,7 +668,14 @@ public sealed class Workspace : IDisposable
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 if (!Documents.Contains(id))
-                    return false;
+                    return DeleteOutcome.NotFound;
+                // The slot as a read finds it (opened now when nothing read it yet in this run): its tag is the one
+                // every entry and document answer of this profile carried.
+                if (GetSlot(id) is not { } found)
+                    return DeleteOutcome.NotFound;
+                var tag = found.Document?.Instance ?? found.Entry!.Instance;
+                if (!string.Equals(tag, instance, StringComparison.Ordinal))
+                    return new DeleteOutcome(true, DocumentTag.Conflict(found.Document?.Rev));
                 try
                 {
                     Documents.Delete(id);
@@ -671,7 +701,7 @@ public sealed class Workspace : IDisposable
             }
         }
 
-        return true;
+        return new DeleteOutcome(true, null);
     }
 
     /// <summary>

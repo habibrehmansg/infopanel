@@ -144,14 +144,31 @@
       },
       "delete": {
         "operationId": "deleteProfile",
-        "summary": "Deletes the profile, whatever its status, with its document and history.",
+        "summary": "Deletes the profile, whatever its status, with its document and history, when the request names its tag.",
         "description": "docs/api.md#deleting.",
+        "parameters": [
+          {
+            "name": "instance",
+            "in": "query",
+            "required": true,
+            "description": "The document's tag, from its profile entry or document: another profile created under the id meanwhile isn't deleted.",
+            "schema": {"$ref": "urn:infopanel:api:1#/$defs/instanceId"}
+          }
+        ],
         "security": [{"bearer": ["edit"]}],
         "responses": {
           "204": {"description": "Deleted."},
+          "400": {
+            "description": "No instance, or not exactly one of 1–64 characters; checked before anything else.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
           "401": {"$ref": "#/components/responses/unauthorized"},
           "403": {"$ref": "#/components/responses/forbidden"},
-          "404": {"$ref": "#/components/responses/notFound"}
+          "404": {"$ref": "#/components/responses/notFound"},
+          "409": {
+            "description": "The instance isn't the profile's tag (deleteConflictProblem, one instance conflict): nothing was deleted.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/deleteConflictProblem"}}}
+          }
         }
       }
     },
@@ -294,7 +311,7 @@
           "403": {"$ref": "#/components/responses/forbidden"},
           "404": {"$ref": "#/components/responses/notFound"},
           "409": {
-            "description": "The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied.",
+            "description": "The profile can't be opened (profileStatusProblem), or the request names another document's tag or the document changed since baseRev (conflictProblem); nothing was applied.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -330,7 +347,7 @@
           "403": {"$ref": "#/components/responses/forbidden"},
           "404": {"$ref": "#/components/responses/notFound"},
           "409": {
-            "description": "The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied.",
+            "description": "The profile can't be opened (profileStatusProblem), or the request names another document's tag or the document changed since baseRev (conflictProblem); nothing was applied.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -366,7 +383,7 @@
           "403": {"$ref": "#/components/responses/forbidden"},
           "404": {"$ref": "#/components/responses/notFound"},
           "409": {
-            "description": "The profile can't be opened (profileStatusProblem), or the request names another instance or the document changed since baseRev (conflictProblem); nothing was applied.",
+            "description": "The profile can't be opened (profileStatusProblem), or the request names another document's tag or the document changed since baseRev (conflictProblem); nothing was applied.",
             "content": {
               "application/problem+json": {
                 "schema": {

@@ -95,7 +95,7 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(anonymous, "GET", "/auth/not-the-token", 401);
 
         // The engine, fonts and sensors.
-        var instance = (await Send(session, "GET", "/api/session", 200)).GetProperty("instance").GetString()!;
+        await Send(session, "GET", "/api/session", 200);
         await Send(session, "GET", "/api/fonts", 200);
         await Send(session, "GET", "/api/sensors", 200);
         await Send(session, "GET", "/api/sensors/values?history=5", 200);
@@ -115,15 +115,16 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "POST", "/api/profiles", 409, Body($$"""{"id":"{{id}}","name":"Again","width":100,"height":50}"""));
         await Send(session, "POST", "/api/profiles", 422, Body("{}"));
         var copy = NewId();
-        await Send(session, "POST", $"/api/profiles/{id}/duplicate", 201, Body($$"""{"id":"{{copy}}"}"""));
+        var copyTag = (await Send(session, "POST", $"/api/profiles/{id}/duplicate", 201, Body($$"""{"id":"{{copy}}"}"""))).GetProperty("instance").GetString()!;
         await Send(session, "POST", $"/api/profiles/{id}/duplicate", 409, Body($$"""{"id":"{{copy}}"}"""));
         await Send(session, "POST", $"/api/profiles/{SeededEngineFactory.Unsupported}/duplicate", 409, Body($$"""{"id":"{{NewId()}}"}"""));
         await Send(session, "POST", $"/api/profiles/{AbsentProfile}/duplicate", 404, Body($$"""{"id":"{{NewId()}}"}"""));
         await Send(session, "POST", $"/api/profiles/{id}/duplicate", 422, Body("""{"id":"Not-An-Id"}"""));
         await Send(session, "GET", "/api/profiles", 200);
 
-        // A profile's document, export and thumbnail.
+        // A profile's document, export and thumbnail. Its changes name the document's tag.
         async Task<long> Rev() => (await Send(session, "GET", $"/api/profiles/{id}", 200)).GetProperty("rev").GetInt64();
+        var instance = (await Send(session, "GET", $"/api/profiles/{id}", 200)).GetProperty("instance").GetString()!;
         await Send(session, "GET", $"/api/profiles/{AbsentProfile}", 404);
         await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}", 409);
         await Send(session, "GET", $"/api/profiles/{id}/document", 200);
@@ -166,9 +167,11 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", $"/api/blobs/{blob}", 200);
         await Send(session, "GET", $"/api/blobs/{AbsentBlob}", 404);
 
-        // Deleting.
-        await Send(session, "DELETE", $"/api/profiles/{copy}", 204);
-        await Send(session, "DELETE", $"/api/profiles/{AbsentProfile}", 404);
+        // Deleting: with the profile's tag, required, and never another's.
+        await Send(session, "DELETE", $"/api/profiles/{copy}", 400);
+        await Send(session, "DELETE", $"/api/profiles/{copy}?instance={instance}", 409);
+        await Send(session, "DELETE", $"/api/profiles/{copy}?instance={copyTag}", 204);
+        await Send(session, "DELETE", $"/api/profiles/{AbsentProfile}?instance={copyTag}", 404);
         await Send(session, "DELETE", $"/api/tokens/{edit.GetProperty("id").GetString()}", 204);
 
         // The socket: refused without an upgrade or a valid token, then a session that sends and gets every message.

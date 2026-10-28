@@ -13,7 +13,7 @@ POST /api/profiles/{id}/commit
   "ops": [ { "op": "setPlacement", "id": "cpu-bar", "baseRev": 42, "placement": { "x": 52, "y": 108 } } ] }
 ```
 
-Every commit names the engine `instance` its revisions came from and its own `baseRev`, the document `rev` the client last read before it built the commit ([retries](#opid-retries)); each op may carry a `baseRev` of its own, which decides its conflicts ([below](#baserev-conflicts)).
+Every commit names the `instance` of the document its revisions came from (the document's tag, [API](api.md#a-documents-tag)) and its own `baseRev`, the document `rev` the client last read before it built the commit ([retries](#opid-retries)); each op may carry a `baseRev` of its own, which decides its conflicts ([below](#baserev-conflicts)).
 
 ## Ops
 
@@ -61,7 +61,7 @@ For example, a group `gauges` last changed at revision 5 and its child `gpu-gaug
 
 An op on an item that doesn't exist at that point of the commit, or into a parent that doesn't, conflicts too (`reason: "missing"`). A `move` checks both: when neither its item nor its new parent exists, it lists two `missing` conflicts under its `op` index, the item's first, then the parent's.
 
-**A `baseRev` greater than the document's `rev` is refused** (422 `invalidProblem`, code `baseRev.future`, at `/baseRev` for the commit's own and `/ops/{i}/baseRev` for an op's, each one listed), and nothing is applied. No client can have read a revision the document hasn't reached, and an op based on one could never conflict, so it would act as if it had no `baseRev`. It is checked after the `opId` and the `instance` ([below](#what-the-engine-checks-when-it-applies-a-commit)), so a retry of an applied commit still gets its stored result, and revisions from an earlier instance are refused as such.
+**A `baseRev` greater than the document's `rev` is refused** (422 `invalidProblem`, code `baseRev.future`, at `/baseRev` for the commit's own and `/ops/{i}/baseRev` for an op's, each one listed), and nothing is applied. No client can have read a revision the document hasn't reached, and an op based on one could never conflict, so it would act as if it had no `baseRev`. It is checked after the `opId` and the `instance` ([below](#what-the-engine-checks-when-it-applies-a-commit)), so a retry of an applied commit still gets its stored result, and revisions of another tag are refused as such.
 
 On any conflict nothing is applied and the engine answers **409** (`application/problem+json`, `conflictProblem`):
 
@@ -72,7 +72,7 @@ On any conflict nothing is applied and the engine answers **409** (`application/
 
 Every conflicting op is listed, with the item's current `rev` and the field groups that changed. The client refetches what it needs, rebuilds its intent on the current state (producing the scene again if it must) and commits again with a **new** `opId`.
 
-`instance` is the engine instance id from `GET /api/session` that the client's revisions came from; when it isn't the current one (the engine restarted), the commit conflicts with one conflict `{ "reason": "instance" }` (no `op`: it is the whole commit's) and the client starts over from a fresh read.
+`instance` is the tag of the document the client's revisions came from: its `documentResponse`'s, its profile entry's or its `doc` events' ([API](api.md#a-documents-tag)), not the session's. When it isn't the profile's tag now (the engine restarted, or the profile was deleted and created again under the same id), the commit conflicts with one conflict `{ "reason": "instance" }` (no `op`: it is the whole commit's) and the client starts over from a fresh read.
 
 ## `opId`: retries
 
@@ -88,7 +88,7 @@ Every conflicting op is listed, with the item's current `rev` and the field grou
 
 Such a commit may be a retry of one the engine applied before the window started and has since forgotten (a commit that changed the document was applied at a revision newer than its `baseRev`, and no newer than the window's start), and applying it again could apply its edit twice. `rev` is the document's current revision. The client reads the document, decides whether its change is still needed (it may already be there), and if so commits it again with a new `opId` and a current `baseRev`. Before the engine has forgotten any `opId` of the document there is no such refusal, and a commit based on the document's current revision is never refused this way.
 
-So a retry of a commit that changed the document is never applied again: while the engine remembers its `opId` it gets the stored result; once the `opId` is forgotten it is refused (`expired`); after a restart its `instance` is refused first.
+So a retry of a commit that changed the document is never applied again: while the engine remembers its `opId` it gets the stored result; once the `opId` is forgotten it is refused (`expired`); once its document is gone (the engine restarted, or the profile was deleted and created again) its `instance` is refused first.
 
 Reusing an `opId` with a different body is refused (422, `opId.reused`). Bodies are compared byte for byte, so a retry sends exactly the bytes the first attempt sent. A refused commit (409 or 422) is not remembered: retrying it is checked again.
 
@@ -139,7 +139,7 @@ Undo, redo and revert take a body (`historyRequest`) with the state the client's
 The engine checks, in order, and stops at the first that fails; nothing is done when one fails:
 
 1. The body: one that breaks the schema is 422 (`invalidProblem`).
-2. `instance`: when it isn't the current instance, 409 `conflictProblem` with one conflict, `{ "reason": "instance" }`.
+2. `instance`: when it isn't the document's tag, 409 `conflictProblem` with one conflict, `{ "reason": "instance" }`.
 3. `baseRev` newer than the document: when it is greater than the document's `rev`, 422 `invalidProblem` with one error, `baseRev.future` at `/baseRev`, as for a commit ([above](#baserev-conflicts)).
 4. `baseRev` older than the document: when the document's `rev` isn't `baseRev`, 409 `conflictProblem` with a `changed` conflict, without `op`, for each item (its `id`, current `rev` and the `fields` that changed) and for the profile (no `id`) with a field group whose last change is after `baseRev`, as a commit's conflicts list them (`examples/api/conflictProblem/undo-changed.json`). Items removed since aren't listed, and an undo, redo or revert step may change no field group, so the list can be empty.
 5. Otherwise the request acts, ending any merge ([coalescing](#coalescing-and-history)), and answers **200** with a `commitResult`, as a commit does.
@@ -158,7 +158,7 @@ Save takes no body and isn't guarded. It changes neither content nor revision, o
 
 1. **The body, without the document**: its size (`limit.commitBytes`: the whole request body as received, whitespace around the JSON value included), its collection counts (`limit.ops`, and `limit.items` for an inserted item with its children), its nesting (`limit.jsonDepth`), its schema, and each new scene and inserted item on its own ([validation](validation.md)), with errors at their paths in the request. A scene that passes validation but that the engine cannot compile is refused like an invalid one, with an error at that scene's path in the request (`/ops/{i}/scene`, or the scene's path under `/ops/{i}/item`). Any failure is 422 at once, with nothing else checked. This runs for every request, a retry included, before the `opId` is looked up.
 2. `opId`: a remembered one with the same body, byte for byte, returns its stored result (`replayed: true`); with another body it is 422 `opId.reused`.
-3. `instance`: a different one is 409 (one conflict, `reason: "instance"`), with nothing else checked.
+3. `instance`: another tag than the document's is 409 (one conflict, `reason: "instance"`), with nothing else checked.
 4. The retry window: once the engine has forgotten any `opId` of the document, a `baseRev` older than the window's start is 409 `expiredProblem`, with nothing else checked ([retries](#opid-retries)).
 5. Every `baseRev`, the commit's and each op's: one greater than the document's `rev` is 422 `baseRev.future` at its path, every such one listed, with nothing else checked ([conflicts](#baserev-conflicts)). The window's start is never past the document's `rev`, so a commit refused here can't also be expired.
 6. The ops, **in order, against a tentative copy of the document**, each applied to it before the next is checked:

@@ -1,0 +1,7 @@
+{
+  "title": "Conflict",
+  "detail": "The request names another document: the profile was deleted and created again.",
+  "status": 409,
+  "code": "conflict",
+  "conflicts": [{"reason": "instance"}]
+}

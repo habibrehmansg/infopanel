@@ -15,21 +15,21 @@
           "type": "integer",
           "minimum": 1
         },
-        "instance": { "$ref": "#/$defs/instanceId" },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse)." },
         "platform": { "description": "The operating system the engine runs on. A client treats a platform it doesn't know as `other`.", "enum": ["macos", "windows", "linux", "other"] },
         "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
         "formatSupport": { "$ref": "#/$defs/formatSupport" }
       }
     },
     "instanceId": {
-      "description": "One run of the engine: a new id every time the engine starts. Revisions are only comparable within one instance. Opaque: compared for equality only.",
+      "description": "An opaque id, compared for equality only: a run of the engine (the session's and hello's `instance`), or a document's lifetime tag (a profile entry's, a document response's and a doc event's `instance`, docs/api.md#a-documents-tag), new every time the engine creates or opens the document. A document's revisions belong to its tag.",
       "type": "string",
       "minLength": 1,
       "maxLength": 64
     },
 
     "profileEntry": {
-      "description": "One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open.",
+      "description": "One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). Every entry has the document's tag, `instance`, which its DELETE names. An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open.",
       "oneOf": [
         { "$ref": "#/$defs/profileEntryOk" },
         { "$ref": "#/$defs/profileEntryUnsupported" },
@@ -39,11 +39,12 @@
     "profileEntryOk": {
       "description": "A profile whose document the engine opens. A document with invalid or unsupported scenes is ok: those items are placeholders (docs/unsupported.md).",
       "type": "object",
-      "required": ["id", "status", "name", "width", "height", "rev", "dirty"],
+      "required": ["id", "status", "instance", "name", "width", "height", "rev", "dirty"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
         "status": { "const": "ok" },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "The document's tag: the same as its document response's and doc events'." },
         "name": { "description": "The profile's name.", "type": "string", "minLength": 1, "maxLength": 256 },
         "width": { "description": "The canvas width in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
         "height": { "description": "The canvas height in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
@@ -54,11 +55,12 @@
     "profileEntryUnsupported": {
       "description": "A profile whose document needs a format major version or a document capability this engine lacks.",
       "type": "object",
-      "required": ["id", "status", "problem"],
+      "required": ["id", "status", "instance", "problem"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
         "status": { "const": "unsupported" },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "The profile's tag, new when the engine first reads it in a run: what its DELETE names." },
         "name": {
           "description": "The document's `profile.name` when that is a string of 1–256 characters, else absent.",
           "type": "string",
@@ -74,11 +76,12 @@
     "profileEntryUnreadable": {
       "description": "A profile whose stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes.",
       "type": "object",
-      "required": ["id", "status", "problem"],
+      "required": ["id", "status", "instance", "problem"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
         "status": { "const": "unreadable" },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "The profile's tag, new when the engine first reads it in a run: what its DELETE names." },
         "problem": {
           "$ref": "#/$defs/validationError",
           "description": "The first problem found, with a JSON pointer into the stored document: `io` (the file can't be read), `json` (not JSON) or a document check's code (`schema`, `limit.documentBytes`, ...; docs/validation.md)."
@@ -220,7 +223,7 @@
       "required": ["instance", "rev", "dirty", "canUndo", "canRedo", "document"],
       "additionalProperties": false,
       "properties": {
-        "instance": { "$ref": "#/$defs/instanceId", "description": "The engine instance these revisions belong to (as in GET /api/session)." },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "The document's tag (docs/api.md#a-documents-tag), which these revisions belong to: what its commits, undo, redo, revert and DELETE name. Not the session's instance." },
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's revision: the same as `document.rev`." },
         "dirty": { "description": "The document differs from the saved one.", "type": "boolean" },
         "canUndo": { "type": "boolean" },
@@ -364,7 +367,7 @@
         },
         "instance": {
           "$ref": "#/$defs/instanceId",
-          "description": "The engine instance the client's revisions came from (GET /api/session). A different one: 409 with reason \"instance\"."
+          "description": "The tag of the document the client's revisions came from (its documentResponse, profile entry or doc event). Another one (the engine restarted, or the profile was deleted and created again): 409 with reason \"instance\"."
         },
         "baseRev": {
           "$ref": "urn:infopanel:common:1#/$defs/revision",
@@ -540,12 +543,12 @@
     },
 
     "historyRequest": {
-      "description": "The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. A different instance: 409 conflictProblem (reason \"instance\"); a `baseRev` greater than the document's `rev`: 422 invalidProblem (baseRev.future); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason \"changed\"); nothing is done in each case (docs/commit.md).",
+      "description": "The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. Another document's tag: 409 conflictProblem (reason \"instance\"); a `baseRev` greater than the document's `rev`: 422 invalidProblem (baseRev.future); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason \"changed\"); nothing is done in each case (docs/commit.md).",
       "type": "object",
       "required": ["instance", "baseRev"],
       "additionalProperties": false,
       "properties": {
-        "instance": { "$ref": "#/$defs/instanceId", "description": "The engine instance the client's revision came from (GET /api/session)." },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "The tag of the document the client's revision came from (its documentResponse, profile entry or doc event)." },
         "baseRev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document `rev` the client last read: the request acts only while the document is still at that revision." }
       }
     },
@@ -585,7 +588,7 @@
       }
     },
     "conflictProblem": {
-      "description": "409 application/problem+json to a commit, undo, redo or revert: nothing was applied. The client refetches, rebuilds its change on the current state and sends it again (a commit with a new opId).",
+      "description": "409 application/problem+json to a commit, undo, redo or revert: nothing was applied. The client refetches, rebuilds its change on the current state and sends it again (a commit with a new opId). A DELETE's 409 is deleteConflictProblem.",
       "type": "object",
       "required": ["status", "code", "rev", "conflicts"],
       "additionalProperties": false,
@@ -603,6 +606,25 @@
         }
       }
     },
+    "deleteConflictProblem": {
+      "description": "409 application/problem+json to a DELETE naming another document's tag: nothing was deleted. The client reads the profile again (its entry or its document).",
+      "type": "object",
+      "required": ["status", "code", "conflicts"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 409 },
+        "code": { "const": "conflict" },
+        "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's current revision. Absent for a profile that can't be opened, which has none." },
+        "conflicts": {
+          "description": "One `instance` conflict.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/conflict" }
+        }
+      }
+    },
     "conflict": {
       "type": "object",
       "required": ["reason"],
@@ -611,7 +633,7 @@
         "op": { "$ref": "#/$defs/opIndex", "description": "The op that conflicts. Absent when the conflict is the whole request's: reason instance, and every conflict of an undo, redo or revert." },
         "id": { "$ref": "urn:infopanel:common:1#/$defs/itemId" },
         "reason": {
-          "description": "changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the engine restarted since the client's `instance`. A client treats a reason it doesn't know as it treats every conflict: it refetches and rebuilds its change.",
+          "description": "changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the request names another tag than the document's (the engine restarted, or the profile was deleted and created again, since the client read it). A client treats a reason it doesn't know as it treats every conflict: it refetches and rebuilds its change.",
           "enum": ["changed", "missing", "instance"]
         },
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The item's (or profile's) current rev." },
@@ -736,11 +758,12 @@
     "docEvent": {
       "description": "The `doc` message on /ws: the subscribed document's state. Sent when the subscription starts and after every change to the document or its state (a commit, undo, redo, revert or save, from any client). The engine keeps only the latest state to send: a client that falls behind gets the newest, so it may skip revisions, and the last one it gets is always current. It carries no content; the document at that revision is read with GET /api/profiles/{id}.",
       "type": "object",
-      "required": ["type", "profileId", "rev", "dirty", "canUndo", "canRedo"],
+      "required": ["type", "profileId", "instance", "rev", "dirty", "canUndo", "canRedo"],
       "additionalProperties": false,
       "properties": {
         "type": { "const": "doc" },
         "profileId": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "The document's tag, which `rev` belongs to (docs/api.md#a-documents-tag)." },
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's revision." },
         "dirty": { "description": "The document differs from the saved one.", "type": "boolean" },
         "canUndo": { "type": "boolean" },
@@ -959,11 +982,12 @@
     "helloMessage": {
       "description": "The engine's first message on /ws, once the connection is authenticated.",
       "type": "object",
-      "required": ["type", "protocol"],
+      "required": ["type", "protocol", "instance"],
       "additionalProperties": false,
       "properties": {
         "type": { "const": "hello" },
-        "protocol": { "description": "The engine API's version, as GET /api/session gives it.", "type": "integer", "minimum": 1 }
+        "protocol": { "description": "The engine API's version, as GET /api/session gives it.", "type": "integer", "minimum": 1 },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine, as GET /api/session gives it: another than the client saw before means the engine restarted." }
       }
     },
     "profilesMessage": {

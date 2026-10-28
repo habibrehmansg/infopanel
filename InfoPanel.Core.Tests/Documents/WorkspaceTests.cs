@@ -101,7 +101,7 @@ public sealed class WorkspaceTests : IDisposable
         var entry = Assert.Single(workspace.List());
         Assert.Equal((ExampleId, "ok", "Wide bar", 1920, 480, 1L, false), (entry.Id, entry.Status, entry.Name, entry.Width, entry.Height, entry.Rev, entry.Dirty));
 
-        Assert.True(workspace.Delete(ExampleId));
+        Assert.True(workspace.DeleteWithItsTag(ExampleId));
         workspace.Dispose();
 
         Assert.Empty(StartWorkspace().List());
@@ -196,7 +196,7 @@ public sealed class WorkspaceTests : IDisposable
         Assert.True(exported!.Stored);
         Assert.Equal(Encoding.UTF8.GetBytes(future), ReadAll(exported));
         Assert.Equal(future, File.ReadAllText(Paths.DocumentFile(A)));
-        Assert.True(workspace.Delete(A));
+        Assert.True(workspace.DeleteWithItsTag(A));
     }
 
     [Fact]
@@ -211,7 +211,7 @@ public sealed class WorkspaceTests : IDisposable
             // The unsupported profile is found: another request deletes it and creates a profile under its id.
             replaced = Alongside(workspace, () =>
             {
-                Assert.True(workspace.Delete(id));
+                Assert.True(workspace.DeleteWithItsTag(id));
                 return workspace.Create(CreateBody(id, "Replacement"));
             });
         };
@@ -396,7 +396,7 @@ public sealed class WorkspaceTests : IDisposable
     {
         var workspace = With((A, DocJson(A, Scene("a"))));
         var source = workspace.Open(A)!;
-        source.Ok(Commit(source.Rev, "move", null, Place("a", 40, 40)));
+        source.Ok(Commit(source, "move", null, Place("a", 40, 40)));
 
         var copy = workspace.Duplicate(A, Bytes(new JsonObject { ["id"] = B }));
         Assert.Equal(201, copy.Status);
@@ -417,12 +417,61 @@ public sealed class WorkspaceTests : IDisposable
         var versions = new List<long>();
         workspace.ProfilesChanged += (_, e) => versions.Add(e.Version);
 
-        Assert.True(workspace.Delete(A));
+        Assert.True(workspace.DeleteWithItsTag(A));
         Assert.False(workspace.IsOpen(doc));
         Assert.Throws<ObjectDisposedException>(() => doc.Save());
-        Assert.False(workspace.Delete(A));
+        Assert.False(workspace.DeleteWithItsTag(A));
         Assert.False(workspace.Find(A).Found);
         Assert.Equal([1L], versions);
+    }
+
+    [Fact]
+    public void EveryProfile_HasATagOfItsOwn_KeptWhileItLives_AndNewWhenItsIdIsCreatedAgainOrReopened()
+    {
+        var workspace = With((A, DocJson(A, Scene("a"))));
+        var tag = workspace.Entry(A)!.Instance;
+        Assert.Equal(tag, workspace.Open(A)!.Instance);
+        Assert.NotEqual(workspace.Instance, tag);
+        var created = workspace.Create(CreateBody(B, "B")).Entry!.Instance;
+        Assert.Equal(created, workspace.Open(B)!.Instance);
+        Assert.NotEqual(tag, created);
+
+        // Another tag deletes nothing: a conflict of the whole request, at the document's revision.
+        var stale = workspace.Delete(A, created);
+        Assert.False(stale.Deleted);
+        Assert.Equal((1L, "instance"), (stale.Conflict!.Rev, Assert.Single(stale.Conflict.Conflicts).Reason));
+        Assert.True(workspace.IsOpen(workspace.Open(A)!));
+
+        Assert.True(workspace.Delete(A, tag).Deleted);
+        Assert.Equal(201, workspace.Create(CreateBody(A, "Again")).Status);
+        var again = workspace.Entry(A)!.Instance;
+        Assert.NotEqual(tag, again);
+        // A commit built on the profile before it: refused for its tag.
+        var retry = JsonNode.Parse(Commit(1, "after-recreate", null, Place("a", 1, 1)).GetRawText())!.AsObject();
+        retry["instance"] = tag;
+        Assert.Equal("instance", Assert.Single(workspace.Open(A)!.Commit(Element(retry)).Conflict!.Conflicts).Reason);
+        Assert.False(workspace.Delete(A, tag).Deleted);
+
+        // The next run opens every document again, under a new tag.
+        workspace.Dispose();
+        Assert.NotEqual(again, StartWorkspace().Entry(A)!.Instance);
+    }
+
+    [Fact]
+    public void AProfileThatCantBeOpened_HasATag_AndOnlyItDeletesIt()
+    {
+        var workspace = With((A, """{"format":"infopanel.document/2","id":"0a000000-0000-4000-8000-000000000000"}"""));
+        var entry = workspace.Entry(A)!;
+        Assert.Equal("unsupported", entry.Status);
+        Assert.Equal(entry.Instance, workspace.List().Single().Instance);
+
+        var stale = workspace.Delete(A, entry.Instance + "0");
+        Assert.Equal(((long?)null, "instance"), (stale.Conflict!.Rev, Assert.Single(stale.Conflict.Conflicts).Reason));
+        Assert.True(workspace.Find(A).Found);
+
+        Assert.True(workspace.Delete(A, entry.Instance).Deleted);
+        Assert.False(workspace.Find(A).Found);
+        Assert.Equal(DeleteOutcome.NotFound, workspace.Delete(A, entry.Instance));
     }
 
     [Fact]
@@ -500,7 +549,7 @@ public sealed class WorkspaceTests : IDisposable
         // The request got the published document, so its edit is the profile's.
         var doc = found!.Result!;
         Assert.Same(workspace.Open(A), doc);
-        doc.Ok(Commit(doc.Rev, "rename", null, Profile(new JsonObject { ["name"] = "Edited" })));
+        doc.Ok(Commit(doc, "rename", null, Profile(new JsonObject { ["name"] = "Edited" })));
         Assert.Equal(("Edited", 2L, true), (workspace.Entry(A)!.Name, workspace.Entry(A)!.Rev, workspace.Entry(A)!.Dirty));
     }
 
@@ -509,7 +558,7 @@ public sealed class WorkspaceTests : IDisposable
     {
         var workspace = With((A, DocJson(A, Scene("a"))));
         var old = workspace.Open(A)!;
-        old.Ok(Commit(old.Rev, "rename", null, Profile(new JsonObject { ["name"] = "Unsaved" })));
+        old.Ok(Commit(old, "rename", null, Profile(new JsonObject { ["name"] = "Unsaved" })));
 
         Task<CreateOutcome>? created = null;
         Exception? saved = null;
@@ -522,7 +571,7 @@ public sealed class WorkspaceTests : IDisposable
             saved = Record.Exception(() => old.Save());
         };
 
-        Assert.True(workspace.Delete(A));
+        Assert.True(workspace.DeleteWithItsTag(A));
         Assert.Equal(201, created!.Result.Status);
         Assert.IsType<KeyNotFoundException>(saved);
 
@@ -553,13 +602,13 @@ public sealed class WorkspaceTests : IDisposable
             if (step == StorageStep.MoveFolder) renamed = true;
             return renamed && step == StorageStep.SyncFolder && path == Paths.ProfilesDirectory;
         };
-        Assert.Throws<IOException>(() => workspace.Delete(A));
+        Assert.Throws<IOException>(() => workspace.DeleteWithItsTag(A));
         faults.Fail = null;
 
         Assert.False(workspace.Documents.Contains(A));
         Assert.False(workspace.Find(A).Found);
         Assert.False(workspace.IsOpen(doc));
-        Assert.Throws<ObjectDisposedException>(() => doc.Commit(Commit(doc.Rev, "ghost", null, Profile(new JsonObject { ["name"] = "Ghost" }))));
+        Assert.Throws<ObjectDisposedException>(() => doc.Commit(Commit(doc, "ghost", null, Profile(new JsonObject { ["name"] = "Ghost" }))));
         Assert.Equal([2L], versions);
         Assert.Empty(workspace.List());
     }
@@ -616,7 +665,7 @@ public sealed class WorkspaceTests : IDisposable
 
         // The same origin through a commit, then saved.
         var doc = workspace.Open(A)!;
-        var insert = JsonNode.Parse(Commit(doc.Rev, "insert", null, Insert(Scene("b", 5, 5, extra: new JsonObject { ["origin"] = origin.DeepClone() }))).GetRawText())!;
+        var insert = JsonNode.Parse(Commit(doc, "insert", null, Insert(Scene("b", 5, 5, extra: new JsonObject { ["origin"] = origin.DeepClone() }))).GetRawText())!;
         var outcome = doc.Commit(Send(insert));
         Assert.True(outcome.Result is not null, Describe(outcome));
         doc.Save();
@@ -653,7 +702,7 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Equal(Encoding.UTF8.GetBytes(earlier), File.ReadAllBytes(Paths.DocumentFile(A)));
 
         var doc = workspace.Open(A)!;
-        doc.Ok(Commit(doc.Rev, "move", null, Place("a", 3, 4)));
+        doc.Ok(Commit(doc, "move", null, Place("a", 3, 4)));
         doc.Save();
         var stored = File.ReadAllBytes(Paths.DocumentFile(A));
         Assert.Equal(CanonicalOf(stored), Encoding.UTF8.GetString(stored));

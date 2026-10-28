@@ -1,6 +1,7 @@
 {
   "id": "9b0c5e2a-41f7-4d3b-8c6e-2a7f1d9e0b43",
   "status": "unsupported",
+  "instance": "1d7b3e95c0a24f68b2e1a7c94f0d3b56",
   "rev": 1,
   "problem": {"path": "/format", "code": "unsupported.format", "message": "An unopened document has no revision."}
 }

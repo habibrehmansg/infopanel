@@ -130,8 +130,9 @@ internal sealed class LiveEngine : IDisposable
         return client.PostAsync(path, content, ct);
     }
 
-    public static async Task<string> Instance(HttpClient client, CancellationToken ct) =>
-        (await client.GetFromJsonAsync<JsonElement>("/api/session", ct)).GetProperty("instance").GetString()!;
+    /// <summary>The tag of the profile's document (<c>GET /api/profiles/{id}</c>'s <c>instance</c>), which its changes name.</summary>
+    public static async Task<string> Tag(HttpClient client, string id, CancellationToken ct) =>
+        (await client.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", ct)).GetProperty("instance").GetString()!;
 
     /// <summary>A commit's bytes: <paramref name="ops"/> based on <paramref name="baseRev"/>, with an optional coalescing key.</summary>
     public static byte[] Commit(string instance, long baseRev, string? coalesceKey, params JsonObject[] ops)

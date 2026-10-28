@@ -193,7 +193,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         var window = await RequireWindow(created);
         Assert.Equal(Rect(0, 0, 50, 25), window.Frame);
 
-        Workspace.Delete(created);
+        Workspace.DeleteWithItsTag(created);
         await _platform.IdleAsync();
         Assert.True(window.Disposed);
         Assert.Null(await WindowOf(created));

@@ -268,7 +268,8 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
 
         using var created = await client.PostAsJsonAsync("/api/profiles", new { id, name = "From a script", width = 100, height = 50 }, Ct);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        using var deleted = await client.DeleteAsync($"/api/profiles/{id}", Ct);
+        var tag = (await created.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("instance").GetString();
+        using var deleted = await client.DeleteAsync($"/api/profiles/{id}?instance={tag}", Ct);
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
     }
 
