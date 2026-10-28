@@ -51,17 +51,35 @@ internal interface IStorageFaults
 
     /// <summary>An <c>errno</c> for flushing <paramref name="folder"/> to report instead of calling <c>fsync</c>; 0 calls it.</summary>
     int FolderSyncError(string folder) => 0;
+
+    /// <summary>
+    /// macOS: called once per folder flush, which is a full flush first; an <c>errno</c> for <c>F_FULLFSYNC</c> on
+    /// <paramref name="folder"/> to report instead of calling it; 0 calls it.
+    /// </summary>
+    int FullSyncError(string folder) => 0;
 }
 
 /// <summary>
 /// Crash-safe file replacement. The content goes to a uniquely named <c>{path}.{32 hex}.tmp</c> in the target's folder,
 /// is flushed to disk, and is renamed over the target (<see cref="File.Move(string, string, bool)"/>: <c>rename</c> on
 /// Unix, <c>MoveFileEx</c> with replace on Windows), so a reader sees the old file or the new one, never a mix. On Unix
-/// the folder is then flushed too (<c>fsync</c> on the folder), so the rename itself survives a power loss, and every
-/// folder it creates is flushed into its parent; a flush that fails is an error, except on a file system that can't
-/// flush folders at all (<c>EINVAL</c>, <c>ENOTSUP</c>), which is logged once per process. On Windows folders are not
-/// flushed, so a power loss right after a write can bring back the previous version, but never a partial one. A temp
-/// file left by a crash is never read; the stores remove them when they open.
+/// the folder is then flushed too, so the rename itself survives a power loss, and every folder it creates is flushed
+/// into its parent; a flush that fails is an error, except on a file system that can't flush folders at all
+/// (<c>EINVAL</c>, <c>ENOTSUP</c>), which is logged once per process.
+/// <para>
+/// What survives, by platform. After a crash of the engine, at any step, each file is its previous version or its new
+/// one, never a mix, everywhere. After a power loss, on a drive that honours flush requests:
+/// <list type="bullet">
+/// <item><b>macOS</b>: once a write has returned it survives. The file and every folder are flushed with
+/// <c>F_FULLFSYNC</c>, which also empties the drive's own cache (.NET's file flush does the same); a file system that
+/// can't do that gets a plain <c>fsync</c>, logged once per process, and then has the Windows guarantee below.</item>
+/// <item><b>Linux</b>: once a write has returned it survives (<c>fsync</c> on the file and the folder, a full flush
+/// where write barriers are on, the default on ext4 and xfs).</item>
+/// <item><b>Windows</b>: folders are not flushed, so a power loss right after a write can bring back the file's previous
+/// version, or lose a file the write created, but never leaves a partial one.</item>
+/// </list>
+/// A temp file left by a crash is never read; the stores remove them when they open.
+/// </para>
 /// </summary>
 public static class AtomicFile
 {
@@ -79,8 +97,15 @@ public static class AtomicFile
     /// <summary>Set by the first folder whose file system can't flush folders, which is logged; the later ones aren't.</summary>
     private static int _folderSyncWarned;
 
-    /// <summary>Lets a test see the warning again.</summary>
-    internal static void ResetFolderSyncWarning() => Volatile.Write(ref _folderSyncWarned, 0);
+    /// <summary>Set by the first folder whose file system can't take a full flush (macOS), which is logged; the later ones aren't.</summary>
+    private static int _fullSyncWarned;
+
+    /// <summary>Lets a test see the warnings again.</summary>
+    internal static void ResetFolderSyncWarning()
+    {
+        Volatile.Write(ref _folderSyncWarned, 0);
+        Volatile.Write(ref _fullSyncWarned, 0);
+    }
 
     /// <summary>Replaces <paramref name="path"/> with <paramref name="content"/>, creating its folder when missing.</summary>
     /// <param name="root">As for <see cref="CreateFolder(string, string?)"/>.</param>
@@ -226,10 +251,12 @@ public static class AtomicFile
     }
 
     /// <summary>
-    /// Flushes <paramref name="folder"/>'s entries (a rename, a new or removed child) to disk with <c>fsync</c>, on Unix
-    /// (plain <c>fsync</c>, as SQLite does by default: on macOS that reaches the drive but not its own cache). Does
-    /// nothing on Windows, where folders can't be flushed this way. A file system that can't flush folders (<c>fsync</c>
-    /// fails with <c>EINVAL</c> or <c>ENOTSUP</c>: some network and FUSE mounts) is logged once per process, not thrown.
+    /// Flushes <paramref name="folder"/>'s entries (a rename, a new or removed child) to disk, on Unix. On macOS it is a
+    /// full flush, <c>fcntl(F_FULLFSYNC)</c>, which also empties the drive's own cache; when that fails (some network and
+    /// FUSE mounts can't do it) the flush falls back to <c>fsync</c>, as .NET's file flush and SQLite do, and the first
+    /// such folder is logged once per process. Elsewhere it is <c>fsync</c>. Does nothing on Windows, where folders can't
+    /// be flushed this way. A file system that can't flush folders (<c>fsync</c> fails with <c>EINVAL</c> or
+    /// <c>ENOTSUP</c>) is logged once per process, not thrown.
     /// </summary>
     /// <exception cref="IOException">The folder could not be opened or flushed.</exception>
     public static void SyncFolder(string folder) => SyncFolder(folder, faults: null);
@@ -263,7 +290,7 @@ public static class AtomicFile
         try
         {
             errno = faults?.FolderSyncError(folder) ?? 0;
-            if (errno == 0)
+            if (errno == 0 && !(OperatingSystem.IsMacOS() && FullSync(folder, fd, faults)))
             {
                 int result;
                 do
@@ -290,8 +317,39 @@ public static class AtomicFile
         }
     }
 
+    /// <summary>
+    /// macOS: <c>fcntl(F_FULLFSYNC)</c> on the open folder, retried on <c>EINTR</c>. Whether it succeeded; when it didn't,
+    /// the caller falls back to <c>fsync</c>, and the first such folder is logged once per process.
+    /// </summary>
+    private static bool FullSync(string folder, int fd, IStorageFaults? faults)
+    {
+        var errno = faults?.FullSyncError(folder) ?? 0;
+        if (errno == 0)
+        {
+            int result;
+            do
+            {
+                result = Posix.fcntl(fd, Posix.F_FULLFSYNC);
+                errno = result == -1 ? Marshal.GetLastPInvokeError() : 0;
+            }
+            while (result == -1 && errno == Posix.EINTR);
+        }
+
+        if (errno == 0)
+            return true;
+        if (Interlocked.Exchange(ref _fullSyncWarned, 1) == 0)
+        {
+            Logger.Warning("A full flush (F_FULLFSYNC) of {Folder} failed ({Error}, errno {Errno}); folders there get a plain fsync, which a power loss can undo",
+                folder, Marshal.GetPInvokeErrorMessage(errno), errno);
+        }
+        return false;
+    }
+
     private static class Posix
     {
+        /// <summary><c>F_FULLFSYNC</c>, 51 on macOS.</summary>
+        public const int F_FULLFSYNC = 51;
+
         /// <summary><c>O_RDONLY</c>, 0 on macOS and Linux.</summary>
         public const int O_RDONLY = 0;
 
@@ -315,6 +373,10 @@ public static class AtomicFile
 
         [DllImport("libc", SetLastError = true)]
         public static extern int fsync(int fd);
+
+        /// <summary><c>fcntl</c> for a command that takes no argument (the call is variadic; none is passed).</summary>
+        [DllImport("libc", SetLastError = true)]
+        public static extern int fcntl(int fd, int cmd);
 
         [DllImport("libc")]
         public static extern int close(int fd);

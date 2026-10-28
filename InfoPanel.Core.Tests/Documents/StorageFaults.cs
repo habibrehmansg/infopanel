@@ -77,7 +77,8 @@ internal sealed class StepFaults(int failAt, bool crash) : IStorageFaults
 
 /// <summary>
 /// Fails every step <see cref="Fail"/> matches with an <see cref="IOException"/>, and has every folder flush report
-/// <see cref="FolderSyncErrno"/> when it is set; records every step, the failed ones included.
+/// <see cref="FolderSyncErrno"/> when it is set, and every full flush (macOS) <see cref="FullSyncErrno"/>; records every
+/// step, the failed ones included, and every folder a full flush was asked for.
 /// </summary>
 internal sealed class MatchFaults : IStorageFaults
 {
@@ -95,6 +96,18 @@ internal sealed class MatchFaults : IStorageFaults
     }
 
     public int FolderSyncError(string folder) => FolderSyncErrno;
+
+    public int FullSyncErrno { get; set; }
+
+    /// <summary>The folders a full flush (<c>F_FULLFSYNC</c>, macOS) was asked for, in order.</summary>
+    public List<string> FullSyncs { get; } = [];
+
+    public int FullSyncError(string folder)
+    {
+        lock (FullSyncs)
+            FullSyncs.Add(folder);
+        return FullSyncErrno;
+    }
 }
 
 /// <summary>A document store and a blob store on one data folder.</summary>
