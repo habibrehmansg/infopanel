@@ -128,7 +128,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         // about maxFps. Sent without a subscription and for an absent profile, so no frames follow either way: a value the
         // engine took would draw "No profile" instead.
         await client.SendAsync(new { type = "unsubscribe" }, Ct);
-        foreach (var fps in new[] { "0.99999999999999999", "2147483647.0000001", "2147483648", "2.5" })
+        foreach (var fps in new[] { "0.99999999999999999", "1.00000000000000000000000000001", "2147483647.0000001", "2147483648", "2.5" })
         {
             await client.SendTextAsync($$"""{"type":"subscribe","profileId":"00000000-0000-4000-8000-0000000000aa","maxFps":{{fps}}}""", Ct);
             await client.ReceiveTextAsync("error", Ct, e => e.GetProperty("message").GetString()!.Contains("maxFps", StringComparison.Ordinal));
@@ -155,6 +155,11 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         await client.ReceiveFrameAsync(Ct, h => h.Scale == largest);
         // 1e-100 is a frameRequestScale: JSON Schema compares numbers by value, and so does the client's clientMessage check.
         await client.SendTextAsync("""{"type":"view","scale":1e-100}""", Ct);
+        await client.ReceiveFrameAsync(Ct, h => h.Scale == smallest);
+        // And past a double's range either way, as positive numbers.
+        await client.SendTextAsync("""{"type":"view","scale":1e400}""", Ct);
+        await client.ReceiveFrameAsync(Ct, h => h.Scale == largest);
+        await client.SendTextAsync("""{"type":"view","scale":1e-400}""", Ct);
         await client.ReceiveFrameAsync(Ct, h => h.Scale == smallest);
         Assert.DoesNotContain("error", client.ReceivedTypes);
     }

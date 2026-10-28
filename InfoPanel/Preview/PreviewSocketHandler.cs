@@ -3,6 +3,7 @@ using InfoPanel.Hosting;
 using InfoPanel.Output;
 using InfoPanel.Security;
 using InfoPanel.Spec;
+using InfoPanel.Spec.Schema;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -527,10 +528,10 @@ internal sealed class PreviewSession
 
     /// <summary>
     /// Reads <c>scale</c> (a positive number) and <c>maxFps</c> (a whole number from 1 to 2^31 - 1), keeping
-    /// <paramref name="current"/>'s for absent ones. Both are read in the schema's numeric domain, as the spec's
-    /// validator decides them: <c>maxFps</c> exactly as a decimal (0.99999999999999999 isn't whole, though a double
-    /// rounds it to 1), and any positive <c>scale</c> a double holds, which docs/api.md#frame-size maps into 0.1–4. Numbers
-    /// beyond double range (1e400, 1e-400) are refused.
+    /// <paramref name="current"/>'s for absent ones. Both are decided by their exact value, as the spec's validator
+    /// decides them (<see cref="JsonNumber"/>): 0.99999999999999999 and 1.00000000000000000000000000001 aren't whole,
+    /// though a double or a decimal rounds them to 1, and every positive <c>scale</c>, 1e-400 and 1e400 too, is one
+    /// docs/api.md#frame-size maps into 0.1–4.
     /// </summary>
     private bool TryReadRequest(JsonElement message, FrameRequest current, out FrameRequest request)
     {
@@ -540,28 +541,32 @@ internal sealed class PreviewSession
 
         if (message.TryGetProperty("scale", out var scaleElement))
         {
-            if (scaleElement.ValueKind != JsonValueKind.Number || !scaleElement.TryGetDouble(out var requested) || !double.IsFinite(requested) || requested <= 0)
+            if (scaleElement.ValueKind != JsonValueKind.Number || JsonNumber.Compare(scaleElement, 0) <= 0)
             {
                 SendError("\"scale\" must be a positive number.");
                 return false;
             }
 
             // Every scale below 0.125 draws at 0.1 and every one above 3.875 at 4 (FrameScale.Normalize), so clamping first
-            // changes nothing, and keeps a tiny scale from rounding to a float 0, which Normalize would read as 1.
+            // changes nothing, and keeps a tiny scale from rounding to a float 0, which Normalize would read as 1. One past
+            // a double's range is read as the largest or the smallest.
+            var requested = scaleElement.TryGetDouble(out var value) && double.IsFinite(value) ? value
+                : JsonNumber.Compare(scaleElement, 1) > 0 ? double.MaxValue : 0;
             scale = (float)Math.Clamp(requested, 0.01, 16);
         }
 
         if (message.TryGetProperty("maxFps", out var fpsElement))
         {
             // A whole number in any spelling JSON Schema's integer allows (30, 30.0, 3e1), decided exactly as the spec's
-            // validator decides it; a number a decimal can't hold is over the maximum anyway.
-            if (fpsElement.ValueKind != JsonValueKind.Number || !fpsElement.TryGetDecimal(out var fps) || fps != decimal.Truncate(fps) || fps < 1 || fps > int.MaxValue)
+            // validator decides it. Within the bounds, a double holds it exactly.
+            if (fpsElement.ValueKind != JsonValueKind.Number || !JsonNumber.IsInteger(fpsElement)
+                || JsonNumber.Compare(fpsElement, 1) < 0 || JsonNumber.Compare(fpsElement, int.MaxValue) > 0)
             {
                 SendError("\"maxFps\" must be a whole number from 1 to 2147483647.");
                 return false;
             }
 
-            maxFps = (int)fps;
+            maxFps = (int)fpsElement.GetDouble();
         }
 
         request = current with { Scale = scale, MaxFps = maxFps };
