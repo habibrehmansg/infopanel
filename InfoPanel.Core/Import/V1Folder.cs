@@ -65,16 +65,22 @@ public sealed class V1Folder
     /// Why a 1.x folder at <paramref name="v1Root"/> can't be used with the data folder <paramref name="dataRoot"/>, or
     /// null: the data folder must not be the 1.x folder, contain it, or be inside its <c>profiles</c> or <c>assets</c>
     /// folder. A data folder elsewhere inside the 1.x folder is allowed: the default layout puts it in <c>InfoPanel/v2</c>.
+    /// Checked on the paths as given and on their real paths (links resolved, components that don't exist yet kept), so
+    /// a link can't alias one folder into the other.
     /// </summary>
     public static string? FindOverlap(string v1Root, string dataRoot)
     {
         var v1 = Path.GetFullPath(v1Root);
         var data = Path.GetFullPath(dataRoot);
-        return v1.IsSubdirectoryOf(data)
-            || data.IsSubdirectoryOf(Path.Combine(v1, "profiles"))
-            || data.IsSubdirectoryOf(Path.Combine(v1, "assets"))
-            ? $"The 2.0 data folder {data} must not be the 1.x folder {v1}, contain it, or be inside its profiles or assets folder."
+        return Overlaps(v1, data) || Overlaps(PathExtensions.ResolveRealPath(v1), PathExtensions.ResolveRealPath(data))
+            ? $"The 2.0 data folder {data} must not be the 1.x folder {v1}, contain it, or be inside its profiles or assets folder, " +
+              "on the paths as given or with links resolved."
             : null;
+
+        static bool Overlaps(string v1, string data) =>
+            v1.IsSubdirectoryOf(data)
+            || data.IsSubdirectoryOf(Path.Combine(v1, "profiles"))
+            || data.IsSubdirectoryOf(Path.Combine(v1, "assets"));
     }
 
     /// <summary>Whether the folder has 1.x data: <c>profiles.xml</c> or <c>settings.xml</c>.</summary>

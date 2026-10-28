@@ -188,6 +188,34 @@ public sealed class V1FolderTests : IDisposable
         Assert.NotNull(V1Folder.FindOverlap(v1, Path.Combine(v1, "assets")));
     }
 
+    [Fact]
+    public void Overlap_IsCheckedOnRealPathsToo()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");
+        var v1 = _kit.Temp.Combine("InfoPanel");
+        Directory.CreateDirectory(Path.Combine(v1, "assets"));
+
+        // A data folder that is a link into the 1.x assets folder.
+        var intoAssets = _kit.Temp.Combine("data-link");
+        Directory.CreateSymbolicLink(intoAssets, Path.Combine(v1, "assets"));
+
+        // A 1.x folder that is a link to a folder inside the data folder.
+        var data = _kit.Temp.Combine("data");
+        Directory.CreateDirectory(Path.Combine(data, "inner"));
+        var v1Link = _kit.Temp.Combine("v1-link");
+        Directory.CreateSymbolicLink(v1Link, Path.Combine(data, "inner"));
+
+        // The default layout with the 1.x folder itself a link (a relocated AppData folder) stays allowed.
+        var relocated = _kit.Temp.Combine("InfoPanel-relocated");
+        Directory.CreateSymbolicLink(relocated, v1);
+
+        // Refused: the link into assets (and a folder under it that doesn't exist yet), the linked 1.x folder; allowed: the default layout.
+        Assert.Equal(
+            (true, true, true, false),
+            (V1Folder.FindOverlap(v1, intoAssets) is not null, V1Folder.FindOverlap(v1, Path.Combine(intoAssets, "not-yet")) is not null,
+                V1Folder.FindOverlap(v1Link, data) is not null, V1Folder.FindOverlap(relocated, Path.Combine(relocated, "v2")) is not null));
+    }
+
     // ---- settings -----------------------------------------------------------------------------------------------
 
     [Fact]

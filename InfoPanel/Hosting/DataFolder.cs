@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using InfoPanel.Extensions;
 
 namespace InfoPanel.Hosting;
 
@@ -40,58 +41,10 @@ public static partial class DataFolder
 
     /// <summary>
     /// The path with every symbolic link in it (the folder itself and each ancestor) replaced by its final target,
-    /// as <c>realpath</c> does; components that don't exist yet are kept as they are.
+    /// as <c>realpath</c> does; components that don't exist yet are kept as they are (<see cref="PathExtensions.ResolveRealPath"/>).
     /// </summary>
     /// <exception cref="IOException">The links loop.</exception>
-    public static string ResolveRealPath(string path)
-    {
-        var full = Path.GetFullPath(path);
-        for (var hops = 0; hops < 64; hops++)
-        {
-            var next = ResolveFirstLink(full);
-            if (next == null)
-                return Path.TrimEndingDirectorySeparator(full) is { Length: > 0 } trimmed ? trimmed : full;
-            full = next;
-        }
-
-        throw new IOException($"Too many levels of symbolic links in '{path}'.");
-    }
-
-    /// <summary>The path with its first link component (from the root down) replaced by the link's target, or null when none is a link.</summary>
-    private static string? ResolveFirstLink(string full)
-    {
-        var root = Path.GetPathRoot(full) ?? "";
-        var parts = full[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
-        var current = root;
-        for (var i = 0; i < parts.Length; i++)
-        {
-            current = Path.Combine(current, parts[i]);
-            FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
-            var target = LinkTargetOf(info);
-            if (target == null && !info.Exists)
-                return null; // the rest doesn't exist yet
-            if (target != null)
-            {
-                // A relative target is relative to the folder that holds the link.
-                var resolved = Path.GetFullPath(target, Path.GetDirectoryName(current) ?? root);
-                return Path.GetFullPath(Path.Combine([resolved, .. parts[(i + 1)..]]));
-            }
-        }
-
-        return null;
-    }
-
-    private static string? LinkTargetOf(FileSystemInfo info)
-    {
-        try
-        {
-            return info.LinkTarget;
-        }
-        catch (IOException)
-        {
-            return null; // gone, or not readable as a link
-        }
-    }
+    public static string ResolveRealPath(string path) => PathExtensions.ResolveRealPath(path);
 
     /// <summary>
     /// Whether <c>--fresh</c> may wipe <paramref name="root"/>: null when it may, else why not. Checked on the real
@@ -164,7 +117,7 @@ public static partial class DataFolder
 
     private static void DeleteWithoutFollowing(FileSystemInfo entry)
     {
-        if (LinkTargetOf(entry) != null)
+        if (PathExtensions.LinkTargetOf(entry) != null)
         {
             // The link itself: unlink on Unix; a Windows directory link or junction needs RemoveDirectory.
             if (OperatingSystem.IsWindows() && entry.Attributes.HasFlag(FileAttributes.Directory))
