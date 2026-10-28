@@ -98,6 +98,17 @@ public class SafeXmlTests
     }
 
     [Fact]
+    public void Stream_IsReadUpToItsByteCap()
+    {
+        // A shallow document with few elements is bounded only by its bytes.
+        var xml = Encoding.UTF8.GetBytes("<Profile><Name>" + new string('n', 1000) + "</Name></Profile>");
+
+        Assert.Equal("Profile", SafeXml.Load(new MemoryStream(xml), maxBytes: xml.Length).Root!.Name.LocalName);
+        var error = Assert.Throws<XmlRefusedException>(() => SafeXml.Load(new MemoryStream(xml), maxBytes: xml.Length - 1));
+        Assert.Contains($"larger than {xml.Length - 1} bytes", error.Message);
+    }
+
+    [Fact]
     public void ProfileSerializer_ReadsThroughTheGuards()
     {
         // The step-1 readers (files and snapshots) refuse what the import refuses.

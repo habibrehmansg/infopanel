@@ -29,7 +29,7 @@ public sealed class XmlRefusedException(string message, int? line = null, Except
 /// (no resolver, so no external file or URL is ever read); 1.x never wrote a DTD. A streaming pre-pass counts elements
 /// and depth before the <see cref="XDocument"/> is built, so every recursive walk after it (the serializer, the item
 /// tree, the item JSON) is bounded by <see cref="XmlLimits.MaxDepth"/>. Byte limits are the callers': they read at most
-/// their limit before handing the bytes here.
+/// their limit before handing the bytes here; a stream is read up to a cap of its own.
 /// </summary>
 public static class SafeXml
 {
@@ -44,14 +44,7 @@ public static class SafeXml
 
     /// <summary>Loads <paramref name="bytes"/> (any encoding XML declares) with line information and whitespace kept.</summary>
     /// <exception cref="XmlRefusedException">A DTD, malformed XML, or over <paramref name="limits"/>.</exception>
-    public static XDocument Load(byte[] bytes, XmlLimits? limits = null)
-    {
-        limits ??= XmlLimits.Default;
-        using (var stream = new MemoryStream(bytes, writable: false))
-            PrePass(stream, limits);
-        using (var stream = new MemoryStream(bytes, writable: false))
-            return Build(stream);
-    }
+    public static XDocument Load(byte[] bytes, XmlLimits? limits = null) => Load(bytes, bytes.Length, limits ?? XmlLimits.Default);
 
     /// <inheritdoc cref="Load(byte[], XmlLimits)"/>
     public static XDocument Load(string text, XmlLimits? limits = null)
@@ -63,12 +56,33 @@ public static class SafeXml
             return Build(reader);
     }
 
-    /// <summary>Reads <paramref name="stream"/> to its end and loads it (<see cref="Load(byte[], XmlLimits)"/>).</summary>
-    public static XDocument Load(Stream stream, XmlLimits? limits = null)
+    /// <summary>
+    /// Reads <paramref name="stream"/> to its end, at most <paramref name="maxBytes"/> (by default
+    /// <see cref="ImportLimits.ItemsXmlBytes"/>, the largest 1.x XML limit), in one bounded copy, and loads it
+    /// (<see cref="Load(byte[], XmlLimits)"/>).
+    /// </summary>
+    /// <exception cref="XmlRefusedException">Over <paramref name="maxBytes"/>, a DTD, malformed XML, or over <paramref name="limits"/>.</exception>
+    public static XDocument Load(Stream stream, XmlLimits? limits = null, int? maxBytes = null)
     {
+        var cap = maxBytes ?? ImportLimits.Default.ItemsXmlBytes;
         using var copy = new MemoryStream();
-        stream.CopyTo(copy);
-        return Load(copy.ToArray(), limits);
+        var chunk = new byte[81920];
+        int read;
+        while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+        {
+            if (copy.Length + read > cap)
+                throw new XmlRefusedException($"The XML is larger than {cap} bytes.");
+            copy.Write(chunk, 0, read);
+        }
+        return Load(copy.GetBuffer(), (int)copy.Length, limits ?? XmlLimits.Default);
+    }
+
+    private static XDocument Load(byte[] buffer, int count, XmlLimits limits)
+    {
+        using (var stream = new MemoryStream(buffer, 0, count, writable: false))
+            PrePass(stream, limits);
+        using (var stream = new MemoryStream(buffer, 0, count, writable: false))
+            return Build(stream);
     }
 
     private static void PrePass(Stream stream, XmlLimits limits)
