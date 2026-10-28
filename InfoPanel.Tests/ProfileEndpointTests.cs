@@ -301,11 +301,11 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     }
 
     [Fact]
-    public async Task AProfileThatCantBeOpened_IsListedExportedAndDeletable_AndEverythingElseIs409()
+    public async Task AProfileThatCantBeOpened_IsListedAndDeletable_AndEverythingElseIs409()
     {
         var instance = await Tag(SeededEngineFactory.NotJson);
         using var api = Api();
-        foreach (var path in new[] { "", "/thumbnail" })
+        foreach (var path in new[] { "", "/thumbnail", "/document" })
         {
             var problem = await Problem(await api.GetAsync($"/api/profiles/{SeededEngineFactory.NotJson}{path}", Ct), HttpStatusCode.Conflict, "profileStatusProblem");
             Assert.Equal(("unreadable", "json"), (problem.GetProperty("code").GetString(), problem.GetProperty("problem").GetProperty("code").GetString()));
@@ -314,11 +314,10 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         await Problem(await Post($"/api/profiles/{SeededEngineFactory.NotJson}/undo", new JsonObject { ["instance"] = instance, ["baseRev"] = 1 }), HttpStatusCode.Conflict, "profileStatusProblem");
         await Problem(await Post($"/api/profiles/{SeededEngineFactory.NotJson}/save", null), HttpStatusCode.Conflict, "profileStatusProblem");
 
-        // Exported byte for byte, as stored.
-        using var exported = await api.GetAsync($"/api/profiles/{SeededEngineFactory.Unsupported}/document", Ct);
-        Assert.Equal(HttpStatusCode.OK, exported.StatusCode);
-        Assert.Equal("application/octet-stream", exported.Content.Headers.ContentType?.MediaType);
-        Assert.Equal(Encoding.UTF8.GetBytes(SeededEngineFactory.UnsupportedText), await exported.Content.ReadAsByteArrayAsync(Ct));
+        // Not exported: an export is a document this engine opened.
+        var unsupported = await Problem(await api.GetAsync($"/api/profiles/{SeededEngineFactory.Unsupported}/document", Ct), HttpStatusCode.Conflict, "profileStatusProblem");
+        Assert.Equal(("unsupported", "unsupported.format", "/format"),
+            (unsupported.GetProperty("code").GetString(), unsupported.GetProperty("problem").GetProperty("code").GetString(), unsupported.GetProperty("problem").GetProperty("path").GetString()));
         if (!OperatingSystem.IsWindows())
         {
             var io = await Problem(await api.GetAsync($"/api/profiles/{SeededEngineFactory.NoAccess}/document", Ct), HttpStatusCode.Conflict, "profileStatusProblem");

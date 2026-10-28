@@ -90,16 +90,7 @@ public sealed class ProfileArchiveTests : IDisposable
         return copy.ToArray();
     }
 
-    private static byte[] ExportBytes(Workspace workspace, string id)
-    {
-        var (document, _) = workspace.Export(id);
-        using (document)
-        {
-            using var copy = new MemoryStream();
-            document!.Content.CopyTo(copy);
-            return copy.ToArray();
-        }
-    }
+    private static byte[] ExportBytes(Workspace workspace, string id) => workspace.Export(id).Document!;
 
     private static List<string> Names(byte[] zip)
     {
@@ -387,38 +378,69 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.Empty(Open(zip, target).Missing);
     }
 
+    /// <summary>
+    /// A profile this engine can't open is not exported: its status problem (409), as every other request on it. Its
+    /// document in an archive is refused on import with the code a create gives it.
+    /// </summary>
     [Fact]
-    public void Export_AnUnsupportedProfile_IsItsStoredBytes()
+    public void Export_AnUnsupportedProfile_IsNotExported_AndItsDocumentIsRefusedOnImport()
     {
         var workspace = NewWorkspace("source");
         var paths = workspace.Documents.Paths;
-        var stored = Encoding.UTF8.GetBytes(new JsonObject
+        var future = new JsonObject
         {
             ["format"] = "infopanel.document/2",
             ["id"] = Id,
             ["profile"] = new JsonObject { ["name"] = "Future", ["width"] = 10, ["height"] = 10 },
             ["items"] = new JsonArray(),
             ["next"] = new JsonObject { ["asset"] = BlobStore.IdOf(Png) },
-        }.ToJsonString());
+        };
         Directory.CreateDirectory(paths.ProfileFolder(Id));
-        File.WriteAllBytes(paths.DocumentFile(Id), stored);
+        File.WriteAllText(paths.DocumentFile(Id), future.ToJsonString());
         File.WriteAllText(paths.ProfileOrderFile, $$"""{"order":["{{Id}}"]}""");
         workspace.PutBlob(Png);
         // The store lists what is on disk when it is opened again.
         workspace = NewWorkspace("source");
         Assert.Equal("unsupported", workspace.Entry(Id)!.Status);
+        FileStream? file = null;
 
-        var (archive, _) = ProfileArchive.Export(workspace, Id, Now);
-        byte[] zip;
-        using (archive)
-            zip = Bytes(archive!);
+        var (archive, problem) = ProfileArchive.Export(workspace, Id, Now, ImportLimits.Default, () => file = TempFile.Create());
 
-        Assert.Equal(stored, Entry(zip, "document.json"));
-        Assert.Contains("blobs/" + Hex(Png), Names(zip));
-        Assert.Equal("Future-1793188800.infopanel2", archive!.FileName);
-        // An unsupported document is refused on import, as a create would refuse it.
-        var refusal = Assert.Throws<ImportRefusal>(() => Open(zip, NewWorkspace("target")));
-        Assert.StartsWith("/document", refusal.Errors[0].Path);
+        Assert.Null(archive);
+        Assert.Null(file);
+        Assert.Equal((409, "unsupported", "unsupported.format", "/format"), (problem!.Status, problem.Code, problem.Problem.Code, problem.Problem.Path));
+        var refusal = Assert.Throws<ImportRefusal>(() => Open(WithDocument(future, ("blobs/" + Hex(Png), Png)), NewWorkspace("target")));
+        Assert.Equal([("unsupported.format", "/document/format")], refusal.Errors.Select(e => (e.Code, e.Path)));
+    }
+
+    /// <summary>
+    /// A stored document over <c>documentBytes</c> (unreadable) is not exported: today's archive of it held the document
+    /// and none of its blobs, which its import refuses anyway.
+    /// </summary>
+    [Fact]
+    public void Export_AStoredDocumentOverDocumentBytes_IsNotExported()
+    {
+        var limits = SpecLimits.Default with { DocumentBytes = 2_000 };
+        var workspace = NewWorkspace("over", limits);
+        var paths = workspace.Documents.Paths;
+        var document = Document();
+        document["items"]![0]!["source"]!["data"] = new JsonObject { ["text"] = new string('x', 2_000) };
+        var stored = Encoding.UTF8.GetBytes(document.ToJsonString());
+        Assert.True(stored.Length > limits.DocumentBytes);
+        Directory.CreateDirectory(paths.ProfileFolder(Id));
+        File.WriteAllBytes(paths.DocumentFile(Id), stored);
+        File.WriteAllText(paths.ProfileOrderFile, $$"""{"order":["{{Id}}"]}""");
+        foreach (var blob in new[] { Png, Gif, Template })
+            workspace.PutBlob(blob);
+        workspace = NewWorkspace("over", limits);
+        Assert.Equal(("unreadable", "limit.documentBytes"), (workspace.Entry(Id)!.Status, workspace.Entry(Id)!.Problem!.Code));
+        FileStream? file = null;
+
+        var (archive, problem) = ProfileArchive.Export(workspace, Id, Now, ImportLimits.Default, () => file = TempFile.Create());
+
+        Assert.Null(archive);
+        Assert.Null(file);
+        Assert.Equal((409, "unreadable", "limit.documentBytes"), (problem!.Status, problem.Code, problem.Problem.Code));
     }
 
     [Fact]

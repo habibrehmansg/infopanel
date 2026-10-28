@@ -63,15 +63,6 @@ public sealed class WorkspaceTests : IDisposable
 
     private static byte[] Bytes(JsonNode node) => Encoding.UTF8.GetBytes(node.ToJsonString());
 
-    private static byte[] ReadAll(ExportedDocument exported)
-    {
-        using (exported)
-        using (var copy = new MemoryStream())
-        {
-            exported.Content.CopyTo(copy);
-            return copy.ToArray();
-        }
-    }
 
     [Fact]
     public void Example_documents_are_valid()
@@ -186,21 +177,21 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [Fact]
-    public void AnUnsupportedProfile_IsExportedByteForByte_AndNeverRewritten()
+    public void AnUnsupportedProfile_IsNotExported_AndNeverRewritten()
     {
         var future = "{ \"format\": \"infopanel.document/2\" ,\n \"id\":\"0a000000-0000-4000-8000-000000000000\", \"x\": [1.50] }";
         var workspace = With((A, future));
 
+        // Not exported: its status problem (409), as every other request on a profile the engine can't open.
         var (exported, problem) = workspace.Export(A);
-        Assert.Null(problem);
-        Assert.True(exported!.Stored);
-        Assert.Equal(Encoding.UTF8.GetBytes(future), ReadAll(exported));
+        Assert.Null(exported);
+        Assert.Equal((409, "unsupported", "unsupported.format", "/format"), (problem!.Status, problem.Code, problem.Problem.Code, problem.Problem.Path));
         Assert.Equal(future, File.ReadAllText(Paths.DocumentFile(A)));
         Assert.True(workspace.DeleteWithItsTag(A));
     }
 
     [Fact]
-    public void AnExport_StreamsTheFileOfTheProfileItFound_WhenItIsDeletedAndCreatedAgainMeanwhile()
+    public void AnExport_AnswersTheStatusOfTheProfileItFound_WhenItIsDeletedAndCreatedAgainMeanwhile()
     {
         var future = """{"format":"infopanel.document/2","id":"0a000000-0000-4000-8000-000000000000"}""";
         var workspace = With((A, future));
@@ -217,9 +208,8 @@ public sealed class WorkspaceTests : IDisposable
         };
 
         var (exported, problem) = workspace.Export(A);
-        Assert.Null(problem);
-        Assert.True(exported!.Stored);
-        Assert.Equal(Encoding.UTF8.GetBytes(future), ReadAll(exported));
+        Assert.Null(exported);
+        Assert.Equal(("unsupported", "unsupported.format"), (problem!.Code, problem.Problem.Code));
         Assert.Equal(201, replaced!.Result.Status);
         Assert.Equal("Replacement", workspace.Open(A)!.Current.Document.Profile.Name);
     }
@@ -235,7 +225,7 @@ public sealed class WorkspaceTests : IDisposable
 
         // The bad scene is kept as the same JSON value, exported in the canonical form the store writes (members sorted).
         var (exported, _) = workspace.Export(A);
-        Assert.Equal(Canonical(InvalidScene()), JsonNode.Parse(ReadAll(exported!))!["items"]![1]!["scene"]!.ToJsonString());
+        Assert.Equal(Canonical(InvalidScene()), JsonNode.Parse(exported!)!["items"]![1]!["scene"]!.ToJsonString());
     }
 
     [Fact]
@@ -762,7 +752,7 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [Fact]
-    public void AProfileOverDocumentBytesOnDisk_IsExportedAsStored_WithoutBeingRead()
+    public void AProfileOverDocumentBytesOnDisk_IsNotExported()
     {
         var limits = SpecLimits.Default with { DocumentBytes = 1_000 };
         Directory.CreateDirectory(Paths.ProfileFolder(A));
@@ -774,9 +764,9 @@ public sealed class WorkspaceTests : IDisposable
 
         Assert.Equal(("unreadable", "limit.documentBytes"), (workspace.Entry(A)!.Status, workspace.Entry(A)!.Problem!.Code));
         var (exported, problem) = workspace.Export(A);
-        Assert.Null(problem);
-        Assert.True(exported!.Stored);
-        Assert.Equal(Encoding.UTF8.GetBytes(stored), ReadAll(exported));
+        Assert.Null(exported);
+        Assert.Equal((409, "unreadable", "limit.documentBytes"), (problem!.Status, problem.Code, problem.Problem.Code));
+        Assert.Equal(stored, File.ReadAllText(Paths.DocumentFile(A)));
     }
 
     [Fact]

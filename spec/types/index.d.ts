@@ -34,7 +34,7 @@ export interface Session {
  */
 export type InstanceId = string;
 
-/** One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). Every entry has the document's tag, `instance`, which its DELETE names. An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open. */
+/** One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). Every entry has the document's tag, `instance`, which its DELETE names. An unsupported or unreadable profile is listed and deleted, never opened and never exported (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open. */
 export type ProfileEntry = ProfileEntryOk | ProfileEntryUnsupported | ProfileEntryUnreadable;
 
 /** A profile whose document the engine opens. A document with invalid or unsupported scenes is ok: those items are placeholders (docs/unsupported.md). */
@@ -89,7 +89,7 @@ export interface ProfileEntryUnreadable {
   problem: ValidationError;
 }
 
-/** 409 application/problem+json: the profile's document can't be opened (its status is unsupported or unreadable), so it can't be read, changed, saved or drawn. It can still be listed, deleted and exported as stored. */
+/** 409 application/problem+json: the profile's document can't be opened (its status is unsupported or unreadable), so it can't be read, changed, saved, drawn or exported. It can still be listed and deleted. */
 export interface ProfileStatusProblem {
   type?: string;
   title?: string;
@@ -2327,13 +2327,13 @@ export interface ApiOperations {
     query: { [key: string]: never };
     request: never;
     responses: {
-      /** An ok profile's current document without its rev members, scenes and opaque members as stored (application/json); an unsupported or unreadable profile's stored file, byte for byte (application/octet-stream). */
-      200: ImportDocument | "application/octet-stream";
+      /** The profile's current document without its rev members, scenes and opaque members as stored. */
+      200: ImportDocument;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
       /** No such profile, blob or token. */
       404: Problem;
-      /** The profile's file can't be read at all. */
+      /** The profile can't be opened (profileStatusProblem): it isn't exported. */
       409: ProfileStatusProblem;
     };
   };

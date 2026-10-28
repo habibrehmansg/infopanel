@@ -80,7 +80,7 @@ public static class ProfileEndpoints
                 return ProfileNotFound(id);
 
             context.Response.Headers.CacheControl = "no-store";
-            return Results.Stream(document.Content, document.Stored ? "application/octet-stream" : "application/json");
+            return Results.Bytes(document, "application/json");
         }).RequireScope(ApiScope.Read);
 
         api.MapGet("/{id}/thumbnail", (string id, int? w, Workspace workspace, RenderService render, HttpContext context) =>

@@ -29,7 +29,7 @@
     },
 
     "profileEntry": {
-      "description": "One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). Every entry has the document's tag, `instance`, which its DELETE names. An unsupported or unreadable profile is listed, deleted and exported as stored, never opened (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open.",
+      "description": "One profile in GET /api/profiles, an array of these in display order, and the 201 answer to creating or duplicating one. `status` says whether the engine can open the profile's document, and which members come with it: ok (name, width, height, rev and dirty), unsupported (it needs a format major version or document capability this engine lacks: a problem, and the name when the document has one) or unreadable (the stored document can't be read, isn't JSON, or breaks the document schema or a document limit outside its scenes: a problem only). Every entry has the document's tag, `instance`, which its DELETE names. An unsupported or unreadable profile is listed and deleted, never opened and never exported (docs/unsupported.md). A client treats a status it doesn't know as a profile it can't open.",
       "oneOf": [
         { "$ref": "#/$defs/profileEntryOk" },
         { "$ref": "#/$defs/profileEntryUnsupported" },
@@ -89,7 +89,7 @@
       }
     },
     "profileStatusProblem": {
-      "description": "409 application/problem+json: the profile's document can't be opened (its status is unsupported or unreadable), so it can't be read, changed, saved or drawn. It can still be listed, deleted and exported as stored.",
+      "description": "409 application/problem+json: the profile's document can't be opened (its status is unsupported or unreadable), so it can't be read, changed, saved, drawn or exported. It can still be listed and deleted.",
       "type": "object",
       "required": ["status", "code", "problem"],
       "additionalProperties": false,

@@ -27,7 +27,7 @@ public sealed record ExportedArchive(FileStream Content, string FileName, IReadO
 /// directories, nothing else; entries stored or deflated.
 /// <list type="bullet">
 /// <item><b>Export</b> (<see cref="Export(Workspace, string, DateTimeOffset, ImportLimits?)"/>) writes the document as the JSON export gives it (the current generation;
-/// the stored bytes of a profile that can't be opened) and every blob it refers to that is stored and whose bytes hash to
+/// a profile the engine can't open is not exported) and every blob it refers to that is stored and whose bytes hash to
 /// its name, in id order, into a temporary file before anything is sent. The no-image id and missing or corrupt blobs
 /// are left out.</item>
 /// <item><b>Import</b> (<see cref="Open"/>) is strict, and only unpacks: exact names, the document checked as a create
@@ -62,10 +62,10 @@ public static partial class ProfileArchive
 
     /// <summary>
     /// The archive of profile <paramref name="id"/>, built in a temporary file: null and no problem when there is no such
-    /// profile; the problem (409) when its file can't be read at all. An archive its own import would refuse under
+    /// profile; its status problem (409), and no file, when it isn't <c>ok</c>. An archive its own import would refuse under
     /// <paramref name="limits"/> isn't exported: more entries than <see cref="ImportLimits.Entries"/>
     /// (<c>archive.entries</c>; the document is one, with or without blobs), more bytes read than
-    /// <see cref="ImportLimits.ExpandedBytes"/> (the document's own bytes count, checked while it is copied), or a file over
+    /// <see cref="ImportLimits.ExpandedBytes"/> (the document's own bytes count), or a file over
     /// <see cref="ImportLimits.ArchiveBytes"/> (both <c>archive.expanded</c>); the temporary file is gone.
     /// </summary>
     /// <exception cref="ImportRefusal">The archive couldn't be imported back.</exception>
@@ -83,18 +83,17 @@ public static partial class ProfileArchive
         var file = createFile();
         try
         {
-            string? name;
             var written = new List<string>();
-            using (document)
             using (var zip = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: true))
             {
                 // What its own import counts: the entries, and every byte it reads (the document, then each blob).
                 if (limits.Entries < 1)
                     throw TooManyEntries(limits);
-                var scanned = WriteDocument(zip, document.Content, workspace.Limits.DocumentBytes, limits.ExpandedBytes, now, out var expanded);
-                name = scanned is null ? null : NameOf(scanned);
-                var references = scanned is null ? [] : References(scanned);
-                foreach (var blob in references.Where(r => r != NoImage).Order(StringComparer.Ordinal))
+                long expanded = document.Length;
+                if (expanded > limits.ExpandedBytes)
+                    throw TooManyBytes(limits.ExpandedBytes);
+                WriteEntry(zip, DocumentEntry, document, now);
+                foreach (var blob in References(document).Where(r => r != NoImage).Order(StringComparer.Ordinal))
                 {
                     // Hashed here, not taken on the store's remembered verdict: these are the bytes the archive carries.
                     if (workspace.Blobs.ReadHashed(blob) is not { } bytes)
@@ -104,10 +103,7 @@ public static partial class ProfileArchive
                     expanded += bytes.Length;
                     if (expanded > limits.ExpandedBytes)
                         throw TooManyBytes(limits.ExpandedBytes);
-                    var entry = zip.CreateEntry(BlobsFolder + blob[BlobStore.IdPrefix.Length..], CompressionLevel.Optimal);
-                    entry.LastWriteTime = now;
-                    using (var stream = entry.Open())
-                        stream.Write(bytes);
+                    WriteEntry(zip, BlobsFolder + blob[BlobStore.IdPrefix.Length..], bytes, now);
                     written.Add(blob);
                 }
             }
@@ -115,7 +111,7 @@ public static partial class ProfileArchive
             if (file.Length > limits.ArchiveBytes)
                 throw new ImportRefusal("archive.expanded", $"The archive is {file.Length} bytes; an import accepts at most {limits.ArchiveBytes}.");
             file.Position = 0;
-            return (new ExportedArchive(file, FileNameFor(name ?? "profile", now), written), null);
+            return (new ExportedArchive(file, FileNameFor(NameOf(document) ?? "profile", now), written), null);
         }
         catch
         {
@@ -130,36 +126,12 @@ public static partial class ProfileArchive
     private static ImportRefusal TooManyBytes(long maxExpanded) =>
         new("archive.expanded", $"The archive would hold more than {maxExpanded} bytes, which an import refuses.");
 
-    /// <summary>
-    /// Copies the document into its entry, keeping its bytes for the reference scan when they are at most
-    /// <paramref name="maxBytes"/> (a larger stored document can't be imported anyway); null otherwise. Refuses
-    /// (<c>archive.expanded</c>) as soon as more than <paramref name="maxExpanded"/> bytes are copied, as its import would.
-    /// </summary>
-    /// <exception cref="ImportRefusal">The document is over <paramref name="maxExpanded"/>.</exception>
-    private static byte[]? WriteDocument(ZipArchive zip, Stream content, int maxBytes, long maxExpanded, DateTimeOffset now, out long length)
+    private static void WriteEntry(ZipArchive zip, string name, byte[] bytes, DateTimeOffset now)
     {
-        length = 0;
-        var entry = zip.CreateEntry(DocumentEntry, CompressionLevel.Optimal);
+        var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
         entry.LastWriteTime = now;
-        using var output = entry.Open();
-        using var kept = new MemoryStream();
-        var chunk = new byte[81920];
-        int read;
-        var keeping = true;
-        while ((read = content.Read(chunk, 0, chunk.Length)) > 0)
-        {
-            length += read;
-            if (length > maxExpanded)
-                throw TooManyBytes(maxExpanded);
-            output.Write(chunk, 0, read);
-            if (!keeping)
-                continue;
-            if (kept.Length + read > maxBytes)
-                keeping = false;
-            else
-                kept.Write(chunk, 0, read);
-        }
-        return keeping ? kept.ToArray() : null;
+        using var stream = entry.Open();
+        stream.Write(bytes);
     }
 
     /// <summary>Every <c>sha256:</c> id in a document's text, as the blob sweep finds them (malformed JSON: its plain text).</summary>

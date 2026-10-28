@@ -25,7 +25,7 @@ Clients follow the same rule: a client that copies, pastes, exports or imports a
 
 ## Document-level
 
-A document whose format major version or document `requires` the engine doesn't support is **not opened for editing**. It is listed with the reason (`status: "unsupported"` and a `problem` in the profile list, [API](api.md#profiles)); it can be deleted, and exported as stored, byte for byte. A document that is invalid as a whole (not JSON, or its structure breaks the schema outside its scenes) is refused when it is imported (422 to a create, [API](api.md#creating-and-duplicating)), and a stored one that has become unreadable is reported (`status: "unreadable"`) and left alone: the engine never overwrites a file it couldn't read.
+A document whose format major version or document `requires` the engine doesn't support is **not opened for editing**. It is listed with the reason (`status: "unsupported"` and a `problem` in the profile list, [API](api.md#profiles)) and can be deleted; it is not exported, and importing it is refused with its `unsupported.*` code (422 to a create, [API](api.md#creating-and-duplicating)). A document that is invalid as a whole (not JSON, or its structure breaks the schema outside its scenes) is refused when it is imported (422 to a create, [API](api.md#creating-and-duplicating)), and a stored one that has become unreadable is reported (`status: "unreadable"`) and left alone: the engine never overwrites a file it couldn't read.
 
 ## Writers versus readers
 

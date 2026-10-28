@@ -113,7 +113,7 @@ The engine listens on the loopback interface only, and answers a request whose `
 | `unsupported` | The document needs a format major version (`unsupported.format`, at `/format`) or a document capability (`unsupported.capability`, at `/requires/i`) this engine lacks. | `problem`; `name` when the document's `profile.name` is a string of 1–256 characters |
 | `unreadable` | The stored file can't be read (`io`), isn't JSON (`json`), or breaks the document schema or a document limit outside its scenes (the document check's code and path, [validation](validation.md)). | `problem` |
 
-`problem` is the first problem found, `{ path, code, message }`, with a JSON pointer into the stored document. A profile that isn't `ok` is never opened, changed or rewritten: it is listed, and it can be deleted and exported as stored ([unsupported content](unsupported.md#document-level)). Every other request on its document answers 409 `profileStatusProblem`, whose `code` is the status and whose `problem` is the entry's. A client treats a status it doesn't know as a profile it can't open.
+`problem` is the first problem found, `{ path, code, message }`, with a JSON pointer into the stored document. A profile that isn't `ok` is never opened, changed, exported or rewritten: it is listed, and it can be deleted ([unsupported content](unsupported.md#document-level)). Every other request on its document answers 409 `profileStatusProblem`, whose `code` is the status and whose `problem` is the entry's. A client treats a status it doesn't know as a profile it can't open.
 
 ### A document's tag
 
@@ -146,10 +146,7 @@ A client that lost the answer and deletes again gets 404 for the profile it dele
 
 ### Exporting
 
-`GET /api/profiles/{id}/document` answers the profile's document, for a client to keep or to create a profile from elsewhere:
-
-- for an `ok` profile, the current document (its latest revision, saved or not) as `application/json`: `infopanel.document/1` without its `rev` members, every scene and every other opaque member (`source` data, `origin`, `editor`) exactly as stored;
-- for an `unsupported` or `unreadable` profile, the stored file byte for byte, as `application/octet-stream`. A profile whose file can't be read at all (`io`) answers 409 `profileStatusProblem`.
+`GET /api/profiles/{id}/document` answers the profile's current document (its latest revision, saved or not), for a client to keep or to create a profile from elsewhere, as `application/json`: `infopanel.document/1` without its `rev` members, every scene and every other opaque member (`source` data, `origin`, `editor`) exactly as stored. An engine exports only a document it opened, so a create accepts what it exports. A profile that isn't `ok` (`unsupported` or `unreadable`) is not exported: 409 `profileStatusProblem`, as for every other request on its document.
 
 ### Thumbnails
 

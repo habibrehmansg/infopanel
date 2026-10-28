@@ -217,16 +217,15 @@
         "security": [{"bearer": ["read"]}],
         "responses": {
           "200": {
-            "description": "An ok profile's current document without its rev members, scenes and opaque members as stored (application/json); an unsupported or unreadable profile's stored file, byte for byte (application/octet-stream).",
+            "description": "The profile's current document without its rev members, scenes and opaque members as stored.",
             "content": {
-              "application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/importDocument"}},
-              "application/octet-stream": {}
+              "application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/importDocument"}}
             }
           },
           "401": {"$ref": "#/components/responses/unauthorized"},
           "404": {"$ref": "#/components/responses/notFound"},
           "409": {
-            "description": "The profile's file can't be read at all.",
+            "description": "The profile can't be opened (profileStatusProblem): it isn't exported.",
             "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/profileStatusProblem"}}}
           }
         }

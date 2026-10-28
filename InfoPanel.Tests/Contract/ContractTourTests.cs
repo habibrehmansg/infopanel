@@ -29,11 +29,7 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
     /// the tour sees fails as stale. Keep it short: a status a request can cause belongs in the tour.
     /// </summary>
     internal static readonly IReadOnlyList<(string Operation, int Status, string Reason, bool Applies)> Allowlist =
-    [
-        ("GET /api/profiles/{id}/document", 409,
-            "Only a stored file the engine can't read at all answers 409; the seeded one is made unreadable with Unix file permissions.",
-            OperatingSystem.IsWindows()),
-    ];
+    [];
 
     private const string AbsentProfile = "00000000-0000-4000-8000-0000000000aa";
     private const string AbsentBlob = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
@@ -128,7 +124,7 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", $"/api/profiles/{AbsentProfile}", 404);
         await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}", 409);
         await Send(session, "GET", $"/api/profiles/{id}/document", 200);
-        await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}/document", 200);
+        await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}/document", 409);
         if (!OperatingSystem.IsWindows())
             await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.NoAccess}/document", 409);
         await Send(session, "GET", $"/api/profiles/{AbsentProfile}/document", 404);
@@ -223,9 +219,8 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
 
         Assert.Equal(Allowlist.Count, Allowlist.Select(a => (a.Operation, a.Status)).Distinct().Count());
 
-        // The allowlist may only shrink: raising a ceiling changes one of these lines, which the gate lists for a reason.
-        Assert.True(Allowlist.Count <= 1, "The allowlist may only shrink: drive the new response in the tour instead.");
-        Assert.True(Allowlist.Count(a => a.Applies) <= (OperatingSystem.IsWindows() ? 1 : 0), "The allowlist may only shrink: drive the new response in the tour instead.");
+        // The allowlist may only shrink, and it is empty: a new entry fails here, so drive the response in the tour instead.
+        Assert.True(Allowlist.Count == 0, "The allowlist is empty and may only shrink: drive the new response in the tour instead.");
     }
 
     private static byte[] History(string instance, long baseRev) =>

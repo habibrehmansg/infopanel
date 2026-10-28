@@ -84,15 +84,6 @@ public sealed record DeleteOutcome(bool Found, ConflictProblem? Conflict)
     public bool Deleted => Found && Conflict is null;
 }
 
-/// <summary>
-/// An exported document: the current document as JSON (<see cref="Stored"/> false) or the stored file as it is, read
-/// from disk whatever its size. The caller disposes <see cref="Content"/>.
-/// </summary>
-public sealed record ExportedDocument(Stream Content, bool Stored) : IDisposable
-{
-    public void Dispose() => Content.Dispose();
-}
-
 /// <summary>A stored blob and what the engine found in it (<c>POST /api/blobs</c>); <see cref="Created"/> when it was new.</summary>
 public sealed record StoredBlob(BlobInfo Info, bool Created);
 
@@ -314,16 +305,14 @@ public sealed class Workspace : IDisposable
     }
 
     /// <summary>
-    /// The document to export (spec/docs/api.md, "Exporting"): the current document without its <c>rev</c> members, or
-    /// for a profile that can't be opened the stored file as it is, never parsed and whatever its size (one over
-    /// <c>documentBytes</c> included). Null when there is no such profile; a <see cref="ProfileStatusProblem"/> when its
-    /// file can't be read at all.
+    /// The document to export (spec/docs/api.md, "Exporting"): the current document without its <c>rev</c> members, in
+    /// the canonical form it is stored in (<see cref="Serialize"/>). Null when there is no such profile; the profile's
+    /// <see cref="ProfileStatusProblem"/> (409) when it isn't <c>ok</c>: a profile this engine can't open is never exported.
     /// </summary>
-    public (ExportedDocument? Document, ProfileStatusProblem? Problem) Export(string id)
+    public (byte[]? Document, ProfileStatusProblem? Problem) Export(string id)
     {
         ProfileDocument? doc;
-        // The profile is found and its stored file opened in one step, so a profile deleted and created again meanwhile
-        // can't have its file exported under the status of the one found; the file is streamed after the lock.
+        // The profile is found in one step, so a profile deleted and created again meanwhile is answered as the one found.
         using (EnterLock())
         {
             var found = Find(id);
@@ -332,27 +321,9 @@ public sealed class Workspace : IDisposable
             ExportFound?.Invoke(id);
             doc = found.Document;
             if (doc is null)
-                return found.Problem!.Problem.Code == "io" ? (null, found.Problem) : OpenStored(id, found.Problem);
+                return (null, found.Problem);
         }
-        return (new ExportedDocument(new MemoryStream(Serialize(doc.Current), writable: false), false), null);
-    }
-
-    /// <summary>The stored file of a profile that can't be opened, as it is. Under the lock.</summary>
-    private (ExportedDocument? Document, ProfileStatusProblem? Problem) OpenStored(string id, ProfileStatusProblem problem)
-    {
-        try
-        {
-            return (new ExportedDocument(Documents.OpenRead(id), true), null);
-        }
-        catch (KeyNotFoundException)
-        {
-            return (null, null);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Logger.Warning(ex, "Could not read the stored document of profile {ProfileId} to export it", id);
-            return (null, problem with { Code = "unreadable", Problem = new ValidationErrorBody { Path = "", Code = "io", Message = ex.Message } });
-        }
+        return (Serialize(doc.Current), null);
     }
 
     private Slot? GetSlot(string id)
