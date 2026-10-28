@@ -54,9 +54,12 @@ public static class ReadEndpoints
             var values = new List<SensorValue>();
             foreach (var sensor in hub.GetSensors())
             {
-                if (!hub.TryRead(sensor.Key, out var reading))
+                // The status, type and reading from one call into the source: a poll between two calls could pair a stale value with live.
+                var state = hub.ReadState(sensor.Key);
+                if (!state.HasReading)
                     continue;
 
+                var reading = state.Reading;
                 var text = reading.ValueTable != null || reading.ValueText != null ? reading.ValueText ?? "" : null;
                 IReadOnlyList<double>? samples = null;
                 if (count > 0 && text == null)
@@ -65,8 +68,7 @@ public static class ReadEndpoints
                     samples = all.Skip(Math.Max(0, all.Count - count)).ToList();
                 }
 
-                // A reading that aged out between the read and this check is reported as stale, the state it was read in.
-                var status = hub.GetStatus(sensor.Key) is SensorStatus.Live ? SensorStatus.Live : SensorStatus.Stale;
+                var status = state.Status is SensorStatus.Live ? SensorStatus.Live : SensorStatus.Stale;
                 values.Add(new SensorValue
                 {
                     Key = sensor.Key.ToString(),

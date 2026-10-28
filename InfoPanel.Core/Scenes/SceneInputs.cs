@@ -61,37 +61,61 @@ public sealed class NoSceneInputs : ISceneInputSource
     public IReadOnlyList<double> History(string key) => [];
 }
 
-/// <summary>The engine's sensors (<see cref="ISensorReader"/>, <see cref="ISensorHistory"/>) as scene inputs. Keys are <see cref="SensorKey"/> strings.</summary>
+/// <summary>
+/// The engine's sensors (<see cref="ISensorReader"/>, <see cref="ISensorHistory"/>) as scene inputs. Keys are
+/// <see cref="SensorKey"/> strings. A sensor of another type than the input is <c>unavailable</c>, whatever its status;
+/// otherwise its status maps to the input's as spec/docs/bindings.md states: <c>live</c> and <c>simulated</c> read
+/// <c>live</c>, <c>stale</c> <c>stale</c>, <c>denied</c> <c>denied</c>, <c>unavailable</c> and <c>missing</c>
+/// <c>unavailable</c>. An <see cref="ISensorStatusReader"/> gives the status, type and reading from one snapshot
+/// (<see cref="ISensorStatusReader.ReadState"/>); another reader is <c>live</c> with a reading and <c>unavailable</c>
+/// without.
+/// </summary>
 public sealed class SensorSceneInputs(ISensorReader sensors, ISensorHistory history) : ISceneInputSource
 {
+    private static readonly SceneReading Denied = new() { Status = SceneInputStatus.Denied };
+
+    private readonly ISensorStatusReader? _statuses = sensors as ISensorStatusReader;
+
     public SceneReading Read(string key, string inputType)
     {
-        if (!SensorKey.TryParse(key, out var parsed) || !sensors.TryRead(parsed, out var reading)) return SceneReading.Unavailable;
-        switch (inputType)
+        if (!SensorKey.TryParse(key, out var parsed)) return SceneReading.Unavailable;
+        var state = _statuses?.ReadState(parsed)
+            ?? (sensors.TryRead(parsed, out var plain)
+                ? new SensorState(SensorStatus.Live, SensorState.TypeOf(plain), plain)
+                : SensorState.Without(SensorStatus.Unavailable));
+        // The type first: a sensor of another type is unavailable whatever its status (spec/docs/bindings.md).
+        SensorKind? expected = inputType switch
         {
-            case "number":
-                if (reading.ValueTable is not null || reading.ValueText is not null) return SceneReading.Unavailable;
-                return new SceneReading
-                {
-                    Status = SceneInputStatus.Live,
-                    Now = SceneMath.Finite(reading.ValueNow),
-                    Min = SceneMath.Finite(reading.ValueMin),
-                    Max = SceneMath.Finite(reading.ValueMax),
-                    Avg = SceneMath.Finite(reading.ValueAvg),
-                    Unit = reading.Unit ?? "",
-                };
-            case "text":
-                // Only a text sensor feeds a text input; a numeric or table sensor is of another type (spec/docs/bindings.md).
-                return reading.ValueText is { } text && reading.ValueTable is null
-                    ? new SceneReading { Status = SceneInputStatus.Live, Text = text }
-                    : SceneReading.Unavailable;
-            case "table":
-                return reading.ValueTable is { } table
-                    ? new SceneReading { Status = SceneInputStatus.Live, Text = reading.ValueText ?? "", Table = FromDataTable(table) }
-                    : SceneReading.Unavailable;
-            default:
-                return SceneReading.Unavailable;
-        }
+            "number" => SensorKind.Number,
+            "text" => SensorKind.Text,
+            "table" => SensorKind.Table,
+            _ => null,
+        };
+        if (state.Type != expected) return SceneReading.Unavailable;
+        var status = state.Status switch
+        {
+            SensorStatus.Live or SensorStatus.Simulated => SceneInputStatus.Live,
+            SensorStatus.Stale => SceneInputStatus.Stale,
+            SensorStatus.PermissionDenied => SceneInputStatus.Denied,
+            _ => SceneInputStatus.Unavailable,
+        };
+        if (status is SceneInputStatus.Denied) return Denied;
+        if (status is not (SceneInputStatus.Live or SceneInputStatus.Stale) || !state.HasReading) return SceneReading.Unavailable;
+        var reading = state.Reading;
+        return state.Type switch
+        {
+            SensorKind.Number => new SceneReading
+            {
+                Status = status,
+                Now = SceneMath.Finite(reading.ValueNow),
+                Min = SceneMath.Finite(reading.ValueMin),
+                Max = SceneMath.Finite(reading.ValueMax),
+                Avg = SceneMath.Finite(reading.ValueAvg),
+                Unit = reading.Unit ?? "",
+            },
+            SensorKind.Text => new SceneReading { Status = status, Text = reading.ValueText ?? "" },
+            _ => new SceneReading { Status = status, Text = reading.ValueText ?? "", Table = FromDataTable(reading.ValueTable!) },
+        };
     }
 
     public IReadOnlyList<double> History(string key) =>

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using InfoPanel.Models;
 
 namespace InfoPanel.Sensors;
 
@@ -36,9 +37,55 @@ public enum SensorStatus
     [JsonStringEnumMemberName("unavailable")]
     Unavailable,
 
-    /// <summary>The operating system refused the source access to the sensor (it needs root or extra privileges).</summary>
-    [JsonStringEnumMemberName("permission-denied")]
+    /// <summary>
+    /// The operating system refused the source access to the sensor (it needs root or extra privileges). Spelt
+    /// <c>denied</c>, as a scene input's status is (spec/docs/bindings.md).
+    /// </summary>
+    [JsonStringEnumMemberName("denied")]
     PermissionDenied,
+}
+
+/// <summary>The type of value a sensor reads, as a scene input's type names it (spec/docs/bindings.md).</summary>
+public enum SensorKind
+{
+    Number,
+    Text,
+    Table,
+}
+
+/// <summary>
+/// One key's status, the type of value it reads and its reading, taken from one snapshot of its source, so the
+/// reading is the one the status describes. <see cref="Type"/> is known without a reading (a refused sensor has one);
+/// <see cref="Reading"/> is set exactly when <see cref="HasReading"/>.
+/// </summary>
+public readonly record struct SensorState(SensorStatus Status, SensorKind Type, SensorReading Reading)
+{
+    public bool HasReading => Status is SensorStatus.Live or SensorStatus.Stale or SensorStatus.Simulated;
+
+    /// <summary>A key with no reading.</summary>
+    public static SensorState Without(SensorStatus status, SensorKind type = SensorKind.Number) => new(status, type, default);
+
+    /// <summary>The type of value <paramref name="reading"/> holds: a table, else text, else a number.</summary>
+    public static SensorKind TypeOf(in SensorReading reading) =>
+        reading.ValueTable is not null ? SensorKind.Table
+        : reading.ValueText is not null ? SensorKind.Text
+        : SensorKind.Number;
+}
+
+/// <summary>
+/// A reader that also knows each key's <see cref="SensorStatus"/> (<see cref="SensorHub"/>), so a scene input can tell
+/// <c>stale</c> and <c>denied</c> apart (<see cref="InfoPanel.Scenes.SensorSceneInputs"/>).
+/// </summary>
+public interface ISensorStatusReader : ISensorReader
+{
+    /// <summary>The key's status now, as <c>/api/sensors</c> reports it.</summary>
+    SensorStatus GetStatus(SensorKey key);
+
+    /// <summary>
+    /// The key's status, type and reading from one snapshot (<see cref="SensorState"/>): what <see cref="GetStatus"/>
+    /// and <see cref="ISensorReader.TryRead"/> answer, without a concurrent update landing between the two.
+    /// </summary>
+    SensorState ReadState(SensorKey key);
 }
 
 /// <summary>
@@ -55,4 +102,11 @@ public interface ISensorStatusSource
     /// or <see cref="SensorStatus.PermissionDenied"/>.
     /// </summary>
     SensorStatus GetStatus(SensorKey key);
+
+    /// <summary>
+    /// The key's status, as <see cref="GetStatus"/>, with its reading when that is live or stale, and the type of value
+    /// the sensor reads (from the source's own list, so known while access is refused), taken under the lock that
+    /// publishes readings: a sample published concurrently is either wholly in it or not at all.
+    /// </summary>
+    SensorState ReadState(SensorKey key);
 }

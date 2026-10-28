@@ -52,6 +52,7 @@
   "api/profilesMessage/invalid/version-zero.json": {"code": "schema", "path": "/version"},
   "api/scopeProblem/invalid/unknown-scope.json": {"code": "schema", "path": "/scope"},
   "api/sensorEntry/invalid/empty-key.json": {"code": "schema", "path": "/key"},
+  "api/sensorEntry/invalid/permission-denied.json": {"code": "schema", "path": "/status"},
   "api/sensorEntry/invalid/unknown-status.json": {"code": "schema", "path": "/status"},
   "api/sensorValue/invalid/history-of-text.json": {"code": "schema", "path": "/history/0"},
   "api/sensorValue/invalid/unavailable.json": {"code": "schema", "path": "/status"},

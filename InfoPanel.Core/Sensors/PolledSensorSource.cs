@@ -104,29 +104,26 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
 
     public bool TryRead(SensorKey key, out SensorReading reading)
     {
-        lock (_lock)
-        {
-            if (_index.TryGetValue(key, out var i))
-            {
-                ref var slot = ref _slots[i];
-                var status = StatusOf(in slot, _time.GetTimestamp());
-                if (status is SensorStatus.Live or SensorStatus.Stale)
-                {
-                    reading = new SensorReading(slot.Min, slot.Max, slot.Avg, slot.Now, _units[i]);
-                    return true;
-                }
-            }
-        }
-
-        reading = default;
-        return false;
+        var state = ReadState(key);
+        reading = state.Reading;
+        return state.HasReading;
     }
 
-    public SensorStatus GetStatus(SensorKey key)
+    public SensorStatus GetStatus(SensorKey key) => ReadState(key).Status;
+
+    /// <summary>Every sensor a sampler reads is a number, so a refused one is too.</summary>
+    public SensorState ReadState(SensorKey key)
     {
         lock (_lock)
         {
-            return _index.TryGetValue(key, out var i) ? StatusOf(in _slots[i], _time.GetTimestamp()) : SensorStatus.Unavailable;
+            if (!_index.TryGetValue(key, out var i))
+                return SensorState.Without(SensorStatus.Unavailable);
+
+            ref var slot = ref _slots[i];
+            var status = StatusOf(in slot, _time.GetTimestamp());
+            return status is SensorStatus.Live or SensorStatus.Stale
+                ? new SensorState(status, SensorKind.Number, new SensorReading(slot.Min, slot.Max, slot.Avg, slot.Now, _units[i]))
+                : SensorState.Without(status);
         }
     }
 

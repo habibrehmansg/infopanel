@@ -13,7 +13,7 @@ namespace InfoPanel.Sensors.MacOS;
 /// exactly 40 °C on an M4 Max at idle), so only values in 10–125 °C other than exactly 40 count; a round with none
 /// fails the sensor (stale, then unavailable while the cluster stays gated). Fans: <c>FNum</c>, then <c>F{n}Ac</c>
 /// (actual RPM); battery: <c>TB0T</c>. Polled every other second (about 160 SMC calls). An SMC open the OS refuses lists the CPU and GPU
-/// temperatures as permission-denied.
+/// temperatures as denied.
 /// </summary>
 [SupportedOSPlatform("macos")]
 internal sealed class SmcReader(MacHostInfo host) : MacReader

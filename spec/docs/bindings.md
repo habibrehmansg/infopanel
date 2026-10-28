@@ -38,6 +38,8 @@ A binding whose name the scene doesn't declare is kept and ignored, so an item c
 | `unavailable` | No reading: unknown key, the source isn't running, or the sensor is of another type than the input | false |
 | `denied` | The operating system refused the engine access to the sensor | false |
 
+An input bound to a sensor reads the sensor's status in the sensor list ([API](api.md#fonts-and-sensors)) as follows: `live` and `simulated` as `live`, `stale` as `stale`, `denied` as `denied`, and `unavailable` and `missing` as `unavailable`. A sensor of another type than the input is `unavailable`, whatever its status. A `stale` input keeps the sensor's last reading.
+
 An input without a reading reads 0 (numbers), "" (text) and an empty table; a scene shows something else by testing `available` or `status`.
 
 ## History

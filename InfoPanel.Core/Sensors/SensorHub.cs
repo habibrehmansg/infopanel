@@ -27,7 +27,7 @@ public sealed class SensorHubOptions
 /// <see cref="SensorHubOptions.SimulateUnknown"/> is set. <see cref="Tick"/> (every
 /// <see cref="TickInterval"/>) steps the simulated walks.
 /// </summary>
-public sealed class SensorHub : ISensorReader
+public sealed class SensorHub : ISensorStatusReader
 {
     public static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
@@ -69,6 +69,17 @@ public sealed class SensorHub : ISensorReader
         if (FindSource(key) is { } source)
             return source.TryRead(key, out reading);
 
+        return TrySimulate(key, out reading);
+    }
+
+    /// <summary>
+    /// The simulated value of a key no source handled, made or read under the hub's lock. Callers have already looked
+    /// the key up once; this never routes it again, so a source that has since started handling the key cannot have
+    /// its reading wrapped as a simulated one.
+    /// </summary>
+    private bool TrySimulate(SensorKey key, out SensorReading reading)
+    {
+        reading = default;
         if (!_options.SimulateUnknown)
             return false;
 
@@ -123,6 +134,44 @@ public sealed class SensorHub : ISensorReader
                 ? SensorStatus.Simulated
                 : SensorStatus.Unavailable;
         }
+    }
+
+    /// <summary>
+    /// The key's status, type and reading from one snapshot of the source that answers for it: an
+    /// <see cref="ISensorStatusSource"/>'s <see cref="ISensorStatusSource.ReadState"/> (its statuses narrowed as
+    /// <see cref="GetStatus"/> does), another source's <see cref="ISensorReader.TryRead"/> (<c>live</c> with a reading,
+    /// else <c>unavailable</c>), or the simulated walk, as <see cref="TryRead"/> starts it. With a reading, the type is
+    /// the reading's.
+    /// </summary>
+    public SensorState ReadState(SensorKey key)
+    {
+        if (!IsWellFormed(key))
+            return SensorState.Without(SensorStatus.Missing);
+
+        if (FindSource(key) is { } source)
+        {
+            if (source is ISensorStatusSource statusSource)
+            {
+                var state = statusSource.ReadState(key);
+                return state.Status switch
+                {
+                    SensorStatus.Live or SensorStatus.Stale => state with { Type = SensorState.TypeOf(state.Reading) },
+                    SensorStatus.PermissionDenied => SensorState.Without(SensorStatus.PermissionDenied, state.Type),
+                    _ => SensorState.Without(SensorStatus.Unavailable, state.Type),
+                };
+            }
+
+            return source.TryRead(key, out var reading)
+                ? new SensorState(SensorStatus.Live, SensorState.TypeOf(reading), reading)
+                : SensorState.Without(SensorStatus.Unavailable);
+        }
+
+        if (!_options.SimulateUnknown)
+            return SensorState.Without(SensorStatus.Unavailable);
+
+        return TrySimulate(key, out var simulated)
+            ? new SensorState(SensorStatus.Simulated, SensorKind.Number, simulated)
+            : SensorState.Without(SensorStatus.Unavailable);
     }
 
     /// <summary>Recent values from the source that handles <paramref name="key"/>, when it keeps any.</summary>

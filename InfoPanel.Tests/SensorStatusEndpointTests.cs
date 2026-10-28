@@ -44,6 +44,50 @@ public sealed class SensorStatusEndpointTests : IDisposable
             return GetStatus(key) is SensorStatus.Live or SensorStatus.Stale;
         }
 
+        public SensorState ReadState(SensorKey key) =>
+            TryRead(key, out var reading) ? new SensorState(GetStatus(key), SensorKind.Number, reading) : SensorState.Without(GetStatus(key));
+
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// One sensor that is stale with 10 W until the first call into the source, then live with 20 W: a poll landing
+    /// between two calls. A caller that reads the value and the status in separate calls pairs 10 with live.
+    /// </summary>
+    private sealed class PollingSource : ISensorSource, ISensorStatusSource
+    {
+        private static readonly SensorKey Key = SensorKey.Plugin("/test.poll/a");
+        private int _calls;
+
+        public string Id => "test.poll";
+
+        public bool Handles(SensorKey key) => key == Key;
+
+        public IReadOnlyList<SensorInfo> GetSensors() => [new SensorInfo(Key, Id, "Poll", "a", "W")];
+
+        private SensorState Current() =>
+            _calls == 0
+                ? new SensorState(SensorStatus.Stale, SensorKind.Number, new SensorReading(10, 10, 10, 10, "W"))
+                : new SensorState(SensorStatus.Live, SensorKind.Number, new SensorReading(20, 20, 20, 20, "W"));
+
+        public SensorState ReadState(SensorKey key)
+        {
+            var state = Current();
+            _calls++;
+            return state;
+        }
+
+        public bool TryRead(SensorKey key, out SensorReading reading)
+        {
+            var state = ReadState(key);
+            reading = state.Reading;
+            return state.HasReading;
+        }
+
+        public SensorStatus GetStatus(SensorKey key) => ReadState(key).Status;
+
         public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
 
         public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
@@ -89,8 +133,19 @@ public sealed class SensorStatusEndpointTests : IDisposable
             ["live"] = "live",
             ["stale"] = "stale",
             ["unavailable"] = "unavailable",
-            ["denied"] = "permission-denied",
+            ["denied"] = "denied",
         }, sensors);
+    }
+
+    [Fact]
+    public void Scenes_SeeTheStatuses_AsBindingsMapThem()
+    {
+        var inputs = _factory.Services.GetRequiredService<InfoPanel.Scenes.SceneRuntimeOptions>().Inputs;
+
+        Assert.Equal(InfoPanel.Scenes.SceneInputStatus.Live, inputs.Read("plugin:/test.status/live", "number").Status);
+        Assert.Equal(InfoPanel.Scenes.SceneInputStatus.Stale, inputs.Read("plugin:/test.status/stale", "number").Status);
+        Assert.Equal(InfoPanel.Scenes.SceneInputStatus.Unavailable, inputs.Read("plugin:/test.status/unavailable", "number").Status);
+        Assert.Equal(InfoPanel.Scenes.SceneInputStatus.Denied, inputs.Read("plugin:/test.status/denied", "number").Status);
     }
 
     [Fact]
@@ -104,5 +159,21 @@ public sealed class SensorStatusEndpointTests : IDisposable
             ["plugin:/test.status/live"] = "live",
             ["plugin:/test.status/stale"] = "stale",
         }, values);
+    }
+
+    [Fact]
+    public async Task Values_ReadAValueAndItsStatusInOneCall_SoAPollBetweenThemCannotMixThem()
+    {
+        using var factory = _base.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => services.AddSingleton<ISensorSource>(new PollingSource())));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+
+        var json = await client.GetFromJsonAsync<JsonElement>("/api/sensors/values", Ct);
+        var value = json.EnumerateArray().Single(v => v.GetProperty("key").GetString() == "plugin:/test.poll/a");
+
+        // The state the one call returned: the stale 10, not the live status the poll made after it.
+        Assert.Equal(10, value.GetProperty("now").GetDouble());
+        Assert.Equal("stale", value.GetProperty("status").GetString());
     }
 }

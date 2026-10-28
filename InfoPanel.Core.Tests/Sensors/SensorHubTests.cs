@@ -46,6 +46,47 @@ public class SensorHubTests
             return Status is SensorStatus.Live or SensorStatus.Stale;
         }
 
+        public SensorState ReadState(SensorKey key) =>
+            TryRead(key, out var reading) ? new SensorState(Status, SensorKind.Number, reading) : SensorState.Without(Status);
+
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A status source that does not handle the key on its first lookup and handles it on every later one (a plugin
+    /// whose discovery finishes between two lookups), counting its lookups and reads.
+    /// </summary>
+    private sealed class LateSource : ISensorSource, ISensorStatusSource
+    {
+        private int _lookups;
+
+        public int Lookups => Volatile.Read(ref _lookups);
+
+        public int Reads;
+
+        public string Id => "late";
+
+        public bool Handles(SensorKey key) => Interlocked.Increment(ref _lookups) > 1;
+
+        public IReadOnlyList<SensorInfo> GetSensors() => [];
+
+        public SensorStatus GetStatus(SensorKey key) => SensorStatus.Stale;
+
+        public bool TryRead(SensorKey key, out SensorReading reading)
+        {
+            Interlocked.Increment(ref Reads);
+            reading = new SensorReading(777, 777, 777, 777, "late");
+            return true;
+        }
+
+        public SensorState ReadState(SensorKey key)
+        {
+            Interlocked.Increment(ref Reads);
+            return new SensorState(SensorStatus.Stale, SensorKind.Number, new SensorReading(777, 777, 777, 777, "late"));
+        }
+
         public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
 
         public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
@@ -131,7 +172,7 @@ public class SensorHubTests
     public void Statuses_SerializeAsTheApiStrings()
     {
         Assert.Equal(
-            "[\"live\",\"simulated\",\"missing\",\"stale\",\"unavailable\",\"permission-denied\"]",
+            "[\"live\",\"simulated\",\"missing\",\"stale\",\"unavailable\",\"denied\"]",
             System.Text.Json.JsonSerializer.Serialize(Enum.GetValues<SensorStatus>()));
     }
 
@@ -212,6 +253,26 @@ public class SensorHubTests
         Assert.False(hub.TryRead(SensorKey.Plugin("/c"), out _));
         Assert.Equal(SensorStatus.Unavailable, hub.GetStatus(SensorKey.Plugin("/c")));
         Assert.Equal(SensorStatus.Simulated, hub.GetStatus(SensorKey.Plugin("/a")));
+    }
+
+    [Fact]
+    public void ReadState_OfAKeyNoSourceHandled_IsSimulatedEvenIfASourceTakesItBeforeTheFallback()
+    {
+        var late = new LateSource();
+        var hub = new SensorHub([late], Simulating);
+
+        var state = hub.ReadState(SensorKey.Plugin("/late/1"));
+
+        // One lookup decided the key was nobody's: the simulated value is made directly, never routed again to the
+        // source that has started handling the key (whose stale reading would have come back as a live simulated one).
+        Assert.Equal(1, late.Lookups);
+        Assert.Equal(0, late.Reads);
+        Assert.Equal(SensorStatus.Simulated, state.Status);
+        Assert.Equal(SensorKind.Number, state.Type);
+        Assert.True(state.HasReading);
+        Assert.InRange(state.Reading.ValueNow, 0, 100);
+        Assert.Null(state.Reading.ValueText);
+        Assert.Equal(string.Empty, state.Reading.Unit);
     }
 
     [Fact]

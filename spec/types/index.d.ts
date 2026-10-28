@@ -738,8 +738,8 @@ export interface SensorEntry {
   name: string;
   /** The unit of its values, for people ("°C", "%"); empty when it has none. */
   unit: string;
-  /** `live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `permission-denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed). A client treats a status it doesn't know as no reading. */
-  status: "live" | "stale" | "unavailable" | "permission-denied" | "simulated" | "missing";
+  /** `live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed). A scene input bound to the sensor reads it as docs/bindings.md#status maps it. A client treats a status it doesn't know as no reading. */
+  status: "live" | "stale" | "unavailable" | "denied" | "simulated" | "missing";
 }
 
 /** One reading in GET /api/sensors/values, an array of these: every listed sensor (sensorEntry) that has a reading now, in list order. A sensor without one is left out. */

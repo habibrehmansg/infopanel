@@ -11,7 +11,7 @@ The 2.0 targets are the seams in `InfoPanel.Core` (`ISensorSource`, `IImageSourc
 | HWHash (HWiNFO shared memory) | `ISensorSource` | `InfoPanel/HWHash/HWHash.cs` |
 | LibreMonitor | `ISensorSource` | `InfoPanel/Monitors/LibreMonitor.cs` |
 | PluginMonitor + proxies | `ISensorSource`, plus `IImageSource` for `plugin-image://` | `InfoPanel/Monitors/PluginMonitor.cs`, `InfoPanel/Monitors/PluginHostConnection.cs`, `InfoPanel/Monitors/PluginProcessManager.cs`, `InfoPanel/Monitors/PluginProxies/*.cs` |
-| SensorReader (static reads, missing reading → null) | `ISensorReader` / sensor hub (M4); stale, unavailable and permission-denied are distinct statuses (done, `SensorStatus`); Windows sources build on `PolledSensorSource` | `InfoPanel/Models/SensorReader.cs` |
+| SensorReader (static reads, missing reading → null) | `ISensorReader` / sensor hub (M4); stale, unavailable and denied are distinct statuses (done, `SensorStatus`); Windows sources build on `PolledSensorSource` | `InfoPanel/Models/SensorReader.cs` |
 | GraphDraw's lazy history queues (sampled at `TargetGraphUpdateRate`) | `ISensorHistory` service (M4) | `InfoPanel/Drawing/GraphDraw.cs` |
 | HWiNFO smart import (remap sensors by name) | `ISensorSource.TryResolveByName`, later | `InfoPanel/Models/SharedModel.cs` (~l.900, "Smart imported") |
 
