@@ -97,7 +97,7 @@ An item without a `source` has a scene that stands alone: a client that edits it
 
 The document has one revision counter, `rev`. It goes up with every change: each commit that changes the document, and each undo, redo and revert that takes a step ([commits](commit.md#what-a-change-stamps)). An item's `rev` (and the profile's) is the document revision at which it last changed, so after a commit every item it changed has the same new `rev`. The engine also tracks, per item, the revision at which each field group last changed (placement, design, bindings, name, visible, locked, position in the tree, and for a group its children: an item added to it or taken out of it); a commit's `baseRev` is checked against those ([commits](commit.md)).
 
-Revisions belong to one lifetime of the document in the engine, named by its tag (`instance`, [API](api.md#a-documents-tag)), which is new every time the engine creates or opens the document: after a restart, or once the profile is deleted and created again under the same id, revisions read before mean nothing, and a commit that names an earlier tag is refused. Unsaved changes do not survive the engine stopping; the saved document does.
+Revisions belong to one lifetime of the document in the engine, named by its tag (`instance`, [API](api.md#a-documents-tag)), which is new every time the engine creates or opens the document: after a restart, or once the profile is deleted and created again under the same id, revisions read before mean nothing, and a commit that names an earlier tag is refused. Unsaved changes do not survive the engine stopping; the saved document does. After a power loss each stored file is its previous version or its new one, never a mix of the two.
 
 ## Content identity
 

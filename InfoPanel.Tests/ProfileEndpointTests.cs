@@ -435,10 +435,12 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     [InlineData("redo", false)]
     [InlineData("revert", false)]
     [InlineData("duplicate", false)]
+    [InlineData("save", false)]
     [InlineData("undo", true)]
     [InlineData("redo", true)]
     [InlineData("revert", true)]
     [InlineData("duplicate", true)]
+    [InlineData("save", true)]
     public async Task ABodyOverRequestBytes_Is422LimitRequestBytes(string request, bool withoutLength)
     {
         var id = await NewProfile(Scene("a"));
@@ -492,6 +494,55 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         var saved = await Body(save);
         Assert.Equal((6, false), (saved.GetProperty("rev").GetInt64(), saved.GetProperty("dirty").GetBoolean()));
         Assert.Equal(70, JsonNode.Parse(File.ReadAllText(Path.Combine(factory.DataDir, "profiles", id, "document.json")))!["items"]![0]!["placement"]!["x"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public async Task ASave_NamingItsDocumentAndRevision_SavesThatVersionOrNothing()
+    {
+        var id = await NewProfile(Scene("a"));
+        var instance = await Tag(id);
+        var save = $"/api/profiles/{id}/save";
+        var file = Path.Combine(factory.DataDir, "profiles", id, "document.json");
+        JsonObject History(long baseRev, string? at = null) => new() { ["instance"] = at ?? instance, ["baseRev"] = baseRev };
+        double SavedX() => JsonNode.Parse(File.ReadAllText(file))!["items"]![0]!["placement"]!["x"]!.GetValue<double>();
+        static (string?, string?) Error(JsonElement problem) =>
+            (problem.GetProperty("errors")[0].GetProperty("code").GetString(), problem.GetProperty("errors")[0].GetProperty("path").GetString());
+
+        using (var moved = await Post($"/api/profiles/{id}/commit", CommitBody(instance, 1, Place("a", 50, 0))))
+            Assert.Equal(2, (await Body(moved)).GetProperty("rev").GetInt64());
+        var stored = File.ReadAllBytes(file);
+
+        // A stale revision, another document's tag, a revision the document hasn't reached, a body that isn't JSON or
+        // isn't a history request: refused, and nothing is saved.
+        var stale = await Problem(await Post(save, History(1)), HttpStatusCode.Conflict, "conflictProblem");
+        Assert.Equal(2, stale.GetProperty("rev").GetInt64());
+        var changed = Assert.Single(stale.GetProperty("conflicts").EnumerateArray());
+        Assert.Equal(("a", "changed", 2L), (changed.GetProperty("id").GetString(), changed.GetProperty("reason").GetString(), changed.GetProperty("rev").GetInt64()));
+        Assert.Equal("instance", (await Problem(await Post(save, History(2, new string('0', 32))), HttpStatusCode.Conflict, "conflictProblem"))
+            .GetProperty("conflicts")[0].GetProperty("reason").GetString());
+        Assert.Equal(("baseRev.future", "/baseRev"), Error(await Problem(await Post(save, History(3)), HttpStatusCode.UnprocessableEntity, "invalidProblem")));
+        Assert.Equal(("json", ""), Error(await Problem(await PostBytes(save, "nope"u8.ToArray()), HttpStatusCode.UnprocessableEntity, "invalidProblem")));
+        Assert.Equal(("schema", ""), Error(await Problem(await Post(save, new JsonObject { ["instance"] = instance }), HttpStatusCode.UnprocessableEntity, "invalidProblem")));
+        Assert.Equal(stored, File.ReadAllBytes(file));
+        Assert.True((await Get($"/api/profiles/{id}")).GetProperty("dirty").GetBoolean());
+
+        // At its revision it saves; sent again after a lost answer, it saves again.
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var response = await Post(save, History(2));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var saved = await Body(response);
+            Assert.True(Valid(saved, "commitResult"));
+            Assert.Equal((2, false), (saved.GetProperty("rev").GetInt64(), saved.GetProperty("dirty").GetBoolean()));
+            Assert.Equal(50, SavedX());
+        }
+
+        // Once the document has changed, the same save is refused and the saved version stays.
+        using (var dirty = await Post($"/api/profiles/{id}/commit", CommitBody(instance, 2, Place("a", 70, 0))))
+            Assert.Equal(3, (await Body(dirty)).GetProperty("rev").GetInt64());
+        await Problem(await Post(save, History(2)), HttpStatusCode.Conflict, "conflictProblem");
+        Assert.Equal(50, SavedX());
+        Assert.True((await Get($"/api/profiles/{id}")).GetProperty("dirty").GetBoolean());
     }
 
     [Fact]

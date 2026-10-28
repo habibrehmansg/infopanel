@@ -134,7 +134,7 @@ POST /api/profiles/{id}/revert
 POST /api/profiles/{id}/save
 ```
 
-Undo, redo and revert take a body (`historyRequest`) with the state the client's request is based on, both members required:
+Undo, redo and revert take a body (`historyRequest`) with the state the client's request is based on, both members required; Save may take the same body (below):
 
 ```jsonc
 { "instance": "7c2f9a41d0e34b8f9e6a5b3c1d2e4f60", "baseRev": 43 }
@@ -146,15 +146,17 @@ The engine checks, in order, and stops at the first that fails; nothing is done 
 2. `instance`: when it isn't the document's tag, 409 `conflictProblem` with one conflict, `{ "reason": "instance" }`.
 3. `baseRev` newer than the document: when it is greater than the document's `rev`, 422 `invalidProblem` with one error, `baseRev.future` at `/baseRev`, as for a commit ([above](#baserev-conflicts)).
 4. `baseRev` older than the document: when the document's `rev` isn't `baseRev`, 409 `conflictProblem` with a `changed` conflict, without `op`, for each item (its `id`, current `rev` and the `fields` that changed) and for the profile (no `id`) with a field group whose last change is after `baseRev`, as a commit's conflicts list them (`examples/api/conflictProblem/undo-changed.json`). Items removed since aren't listed, and an undo, redo or revert step may change no field group, so the list can be empty.
-5. Otherwise the request acts, ending any merge ([coalescing](#coalescing-and-history)), and answers **200** with a `commitResult`, as a commit does.
+5. Otherwise the request acts and answers **200** with a `commitResult`, as a commit does. An undo, redo or revert ends any merge ([coalescing](#coalescing-and-history)); a save saves the document at `baseRev` (below).
 
-They have no `opId`: a client that gets a 409, or loses the answer, reads the state (`GET /api/profiles/{id}`, or the next `doc` event, [API](api.md#change-events)) and decides again. A retry of one that was done finds the document at a newer revision and is refused, so a retry never undoes, redoes or reverts twice.
+They have no `opId`: a client that gets a 409, or loses the answer, reads the state (`GET /api/profiles/{id}`, or the next `doc` event, [API](api.md#change-events)) and decides again. A retry of an undo, redo or revert that was done finds the document at a newer revision and is refused, so a retry never undoes, redoes or reverts twice.
 
-Save takes no body and isn't guarded. It changes neither content nor revision, only which version is the saved one, and the version it saves is the current one, which every client shares: there is no stale state it could act on, and saving again saves the same document. A client that loses the answer to a save saves again.
+**Save writes the document as it is when the save starts** and makes that version the saved one. It changes neither content nor revision. Commits, undo, redo and revert from any client go on while it writes and aren't part of what it saves. Without a body (no bytes at all) Save isn't guarded: it saves the version every client shares, so there is no stale state it could act on, and a client that loses the answer saves again.
+
+With a `historyRequest` body, Save is checked as undo is (checks 1 to 4 above), at the moment it takes the version to write, and saves only the document with that tag at `baseRev`: a client saves exactly the version it last read, or nothing. A save sent before the client learns that the profile was deleted and created again, or that the engine restarted, is refused (`instance`) instead of saving another document; one sent after another client's change is refused (`changed`, `examples/api/conflictProblem/save-changed.json`) instead of saving that change. A client that loses the answer sends the same body again: while the document is still at `baseRev` it saves again, and once the document has changed the client reads the state and decides again.
 
 - **Undo** restores the document as it was before the last recorded step, whichever client made it: a document has one history, shared by every client. **Redo** applies the last undone step again; a commit that changes the document clears what could be redone. **Revert** restores the saved document, as one new step that can itself be undone; like a commit's step, it clears what could be redone. A revert of a document that isn't dirty takes no step and leaves it.
 - Each of the three, when it takes a step, is a new revision, even when the content comes out equal: `rev` goes up; `items` has every item with a field group that differs from the version it replaced, or that it brought back, with the new `rev`; `removed` the items it took out (children included); `profileRev` is set when a profile field differs ([what a change stamps](#what-a-change-stamps)). Those field groups get the new `rev` as their last-change revision, so a later op whose `baseRev` is older conflicts with them ([above](#baserev-conflicts)).
-- **Save** makes the current document the saved one. It changes neither content nor revision: `rev` is unchanged, `items` empty, `dirty` false.
+- **Save** answers with the state once the write is done: `rev` is the current revision, `items` is empty, and `dirty` says whether the current document differs from the version just saved. `dirty` is `true` when the document changed during the save, so a client shows the `dirty` it is given.
 - An undo with nothing to undo, a redo with nothing to redo, and a revert of a document that isn't dirty change nothing: they answer with the unchanged `rev` and empty `items`, and record nothing.
 - `replayed` and `warnings` are never set.
 

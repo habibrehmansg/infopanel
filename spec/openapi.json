@@ -402,18 +402,36 @@
       "parameters": [{"$ref": "#/components/parameters/profileId"}],
       "post": {
         "operationId": "save",
-        "summary": "Saves the current document.",
+        "summary": "Saves the document as it is when the save starts.",
         "description": "docs/commit.md#undo-redo-revert-and-save.",
         "security": [{"bearer": ["edit"]}],
+        "requestBody": {
+          "description": "Optional: the document's tag and the revision to save. Without a body the save isn't guarded.",
+          "required": false,
+          "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/historyRequest"}}}
+        },
         "responses": {
           "200": {
-            "description": "The document's state after saving.",
+            "description": "The document's state once the write is done.",
             "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/commitResult"}}}
           },
           "401": {"$ref": "#/components/responses/unauthorized"},
           "403": {"$ref": "#/components/responses/forbidden"},
           "404": {"$ref": "#/components/responses/notFound"},
-          "409": {"$ref": "#/components/responses/profileStatus"}
+          "409": {
+            "description": "The profile can't be opened (profileStatusProblem), or the body names another document's tag or the document changed since baseRev (conflictProblem); nothing was saved.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "urn:infopanel:api:1#/$defs/profileStatusProblem"},
+                    {"$ref": "urn:infopanel:api:1#/$defs/conflictProblem"}
+                  ]
+                }
+              }
+            }
+          },
+          "422": {"$ref": "#/components/responses/invalid"}
         }
       }
     },

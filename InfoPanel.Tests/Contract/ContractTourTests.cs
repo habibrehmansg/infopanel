@@ -151,6 +151,9 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         }
 
         await Send(session, "POST", $"/api/profiles/{id}/save", 200);
+        await Send(session, "POST", $"/api/profiles/{id}/save", 200, JsonBytes(History(instance, await Rev())));
+        await Send(session, "POST", $"/api/profiles/{id}/save", 409, JsonBytes(History("another-instance", await Rev())));
+        await Send(session, "POST", $"/api/profiles/{id}/save", 422, Body("{}"));
         await Send(session, "POST", $"/api/profiles/{AbsentProfile}/save", 404);
         await Send(session, "POST", $"/api/profiles/{SeededEngineFactory.Unsupported}/save", 409);
 

@@ -110,8 +110,23 @@ public static class ProfileEndpoints
         MapHistory(api, "redo", (doc, body) => doc.Redo(body));
         MapHistory(api, "revert", (doc, body) => doc.Revert(body));
 
-        api.MapPost("/{id}/save", (string id, Workspace workspace) =>
-            WithDocument(workspace, id, doc => Acting(id, () => Json(doc.Save())))).RequireScope(ApiScope.Edit);
+        // Without a body (no bytes) unguarded; with one, a historyRequest checked as undo checks it (spec/docs/commit.md).
+        api.MapPost("/{id}/save", async (string id, HttpRequest request, Workspace workspace, CancellationToken ct) =>
+        {
+            var found = workspace.Find(id);
+            if (Refused(id, found) is { } refused)
+                return refused;
+
+            var (body, over) = await ReadBodyAsync(request, workspace.Limits.RequestBytes, ct);
+            if (over)
+                return OverRequestBytes(workspace);
+            if (body.Length == 0)
+                return Acting(id, () => Json(found.Document!.Save()));
+            using var json = ParseJson(body);
+            if (json == null)
+                return Invalid("", "json", "The body isn't JSON.");
+            return Acting(id, () => Outcome(found.Document!.Save(json.RootElement)));
+        }).RequireScope(ApiScope.Edit);
     }
 
     /// <summary>

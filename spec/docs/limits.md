@@ -90,7 +90,7 @@ Every request body is held to a size as received, whitespace around the JSON val
 
 | Limit | Value | The body of |
 |---|---|---|
-| `requestBytes` | 64 KiB | An undo, redo, revert or duplicate (a few members; [API](api.md)) |
+| `requestBytes` | 64 KiB | An undo, redo, revert, save or duplicate (a few members; [API](api.md)) |
 | `tokenRequestBytes` | 4 KiB | A token create (a name and its scopes) |
 
 A commit's body is held to `commitBytes` ([commit limits](#commit-limits)), a create's is read up to `documentBytes` plus 64 KiB and its document then held to `documentBytes` ([sizes](#sizes)), and a blob's bytes to `mediaBytes` (413, nothing stored). Every body is nested at most `jsonDepth` deep. A body is read only as far as its limit plus one byte, whether or not it states its length.

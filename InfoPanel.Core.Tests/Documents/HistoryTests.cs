@@ -451,6 +451,87 @@ public sealed class HistoryTests
     }
 
     [Fact]
+    public void Save_saves_the_version_current_when_it_starts_and_answers_with_the_state_once_written()
+    {
+        var store = new MemoryPersistence();
+        using var doc = Sample(Options(persistence: store));
+        doc.Ok(Commit(Place("a", 30, 30)));
+
+        // Another client commits while the save writes: revision 2 is saved, and the answer says the document has
+        // changed since (revision 3, dirty).
+        store.Before = _ => doc.Ok(Commit(Place("b", 1, 1)));
+        var result = doc.Save();
+        Assert.Equal(2, Assert.Single(store.Saved).Rev);
+        Assert.Equal(2, doc.Saved.Rev);
+        Assert.Equal((3L, true, true, false), (result.Rev, result.Dirty, result.CanUndo, result.CanRedo));
+        Assert.Empty(result.Items);
+        Assert.Null(result.Removed);
+        Assert.Null(result.ProfileRev);
+    }
+
+    [Fact]
+    public void A_save_naming_its_document_and_revision_saves_that_version_or_nothing()
+    {
+        var store = new MemoryPersistence();
+        using var doc = Sample(Options(persistence: store));
+        doc.Ok(Commit(Place("a", 30, 30)));
+        doc.Ok(Commit(Design("c", Rect("#00ff00")), Profile(new JsonObject { ["background"] = "#111111" })));
+        Assert.Equal(3, doc.Rev);
+        var events = new List<DocumentChange>();
+        doc.Changed += (_, e) => events.Add(e.Change);
+
+        // Another document's tag: one conflict for the whole request, whatever the revision.
+        foreach (var rev in new long[] { 3, 9 })
+        {
+            var other = doc.Save(new HistoryRequest { Instance = "an-older-run", BaseRev = rev }).Conflict!;
+            var c = Assert.Single(other.Conflicts);
+            Assert.Equal(("instance", (string?)null, (int?)null), (c.Reason, c.Id, c.Op));
+            Assert.Equal((409, 3L), (other.Status, other.Rev));
+        }
+
+        // A revision the document hasn't reached.
+        var future = doc.Save(new HistoryRequest { Instance = Instance, BaseRev = 4 }).Invalid!;
+        var error = Assert.Single(future.Errors);
+        Assert.Equal(("/baseRev", "baseRev.future"), (error.Path, error.Code));
+
+        // A stale revision: what changed after it, as an undo lists it.
+        var stale = doc.Save(new HistoryRequest { Instance = Instance, BaseRev = 2 }).Conflict!;
+        Assert.Equal(3, stale.Rev);
+        Assert.Equal("c:changed:3:design :changed:3:background",
+            string.Join(" ", stale.Conflicts.Select(x => $"{x.Id}:{x.Reason}:{x.Rev}:{string.Join(",", x.Fields!)}")));
+
+        // A body that isn't a history request.
+        var invalid = Assert.Single(doc.Save(Element(new JsonObject { ["instance"] = Instance })).Invalid!.Errors);
+        Assert.Equal(("schema", ""), (invalid.Code, invalid.Path));
+
+        // Refused: nothing written, nothing saved, no event.
+        Assert.Empty(store.Saved);
+        Assert.Equal(1, doc.Saved.Rev);
+        Assert.True(doc.Dirty);
+        Assert.Empty(events);
+
+        // At its revision: that version is saved, even when another client commits while it writes.
+        store.Before = _ => doc.Ok(Commit(Place("b", 1, 1)));
+        var saved = doc.Save(Here(doc)).Result!;
+        store.Before = null;
+        Assert.Equal(3, Assert.Single(store.Saved).Rev);
+        Assert.Equal(3, doc.Saved.Rev);
+        Assert.Equal((4L, true), (saved.Rev, saved.Dirty));
+        Assert.Empty(saved.Items);
+
+        // A retry of a save whose answer was lost: saved again while the document is still at its revision, refused
+        // once it has changed.
+        var at = Here(doc);
+        Assert.False(doc.Save(at).Result!.Dirty);
+        Assert.False(doc.Save(at).Result!.Dirty);
+        Assert.Equal([3L, 4L, 4L], store.Saved.Select(g => g.Rev));
+        doc.Ok(Commit(Place("a", 40, 40)));
+        Assert.Equal("a:changed:5:placement", string.Join(" ", doc.Save(at).Conflict!.Conflicts.Select(x => $"{x.Id}:{x.Reason}:{x.Rev}:{string.Join(",", x.Fields!)}")));
+        Assert.Equal(3, store.Saved.Count);
+        Assert.Equal([DocumentChange.Commit, DocumentChange.Saved, DocumentChange.Saved, DocumentChange.Saved, DocumentChange.Commit], events);
+    }
+
+    [Fact]
     public void A_disposed_document_never_saves_and_disposal_waits_for_a_save_under_way()
     {
         var store = new MemoryPersistence();

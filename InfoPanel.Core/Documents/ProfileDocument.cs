@@ -375,11 +375,28 @@ public sealed class ProfileDocument : IDisposable
     public CommitOutcome Revert(HistoryRequest request) => Revert(SpecJson.Write(request));
 
     /// <summary>
-    /// Hands the current generation to the persistence seam and makes it the saved one. Always writes, even when clean.
-    /// The write runs outside the document's lock (commits go on meanwhile); saves are serialised, and with disposal
-    /// too: a disposed document never saves.
+    /// Saves the document as it is when the save starts (spec/docs/commit.md, "Undo, redo, revert and save"), unguarded:
+    /// hands the current generation to the persistence seam and makes it the saved one. Always writes, even when clean.
+    /// The write runs outside the document's lock (commits go on meanwhile, and aren't part of what it saves); saves
+    /// are serialised, and with disposal too: a disposed document never saves. The answer is the state once the write
+    /// is done: the current revision, and dirty when the document changed during the write.
     /// </summary>
-    public CommitResult Save()
+    public CommitResult Save() => SaveCore(null).Result!;
+
+    /// <summary>
+    /// A save that names the document's tag and the revision it saves (<paramref name="body"/>, <c>historyRequest</c>):
+    /// checked as an undo is (the body, 422; the <c>instance</c>, 409; a <c>baseRev</c> newer than the document, 422
+    /// <c>baseRev.future</c>; the revision, 409 listing what changed after it), under the document's lock at the moment
+    /// the generation to save is taken, so it saves exactly <c>baseRev</c> of this tag, or nothing. It then saves as
+    /// <see cref="Save()"/> does.
+    /// </summary>
+    public CommitOutcome Save(JsonElement body)
+    {
+        var request = ReadHistoryRequest(body, out var errors);
+        return request is null ? Invalid(errors, "Invalid request") : SaveCore(request);
+    }
+
+    private CommitOutcome SaveCore(HistoryRequest? guard)
     {
         var persistence = _options.Persistence ?? throw new InvalidOperationException("This document has nowhere to save to.");
         CommitResult result;
@@ -390,6 +407,14 @@ public sealed class ProfileDocument : IDisposable
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 generation = _current;
+                if (guard is not null)
+                {
+                    if (guard.Instance != _options.Instance) return InstanceConflict(generation.Rev);
+                    if (guard.BaseRev > generation.Rev)
+                        return Invalid([CommitApplier.FutureBaseRev("/baseRev", guard.BaseRev, generation.Rev)], "Invalid request");
+                    if (generation.Rev != guard.BaseRev)
+                        return Conflict(generation.Rev, ChangedAfter(generation, guard.BaseRev), $"The document changed after revision {guard.BaseRev}.");
+                }
             }
             persistence.Save(generation);
             lock (_lock)
@@ -400,8 +425,11 @@ public sealed class ProfileDocument : IDisposable
             }
         }
         Raise(generation, DocumentChange.Saved);
-        return result;
+        return new CommitOutcome { Result = result };
     }
+
+    /// <summary>A guarded save built in code: serialized and checked as <see cref="Save(JsonElement)"/>.</summary>
+    public CommitOutcome Save(HistoryRequest request) => Save(SpecJson.Write(request));
 
     /// <summary>
     /// Releases the undo history from the process budget. The document can't change or save afterwards; a save under

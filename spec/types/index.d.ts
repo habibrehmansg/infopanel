@@ -209,7 +209,7 @@ export interface ExistsProblem {
 
 /** GET /api/profiles/{id}: the profile's current document, with its revision members (the `rev` of the document, the profile and every item), and its state. */
 export interface DocumentResponse {
-  /** The document's tag (docs/api.md#a-documents-tag), which these revisions belong to: what its commits, undo, redo, revert and DELETE name. Not the session's instance. */
+  /** The document's tag (docs/api.md#a-documents-tag), which these revisions belong to: what its commits, undo, redo, revert and DELETE name, and a save may. Not the session's instance. */
   instance: InstanceId;
   /** The document's revision: the same as `document.rev`. */
   rev: Revision;
@@ -457,7 +457,7 @@ export interface ProfileOp {
   };
 }
 
-/** The body of POST /api/profiles/{id}/undo, /redo and /revert: the state the client's request is based on. Another document's tag: 409 conflictProblem (reason "instance"); a `baseRev` greater than the document's `rev`: 422 invalidProblem (baseRev.future); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason "changed"); nothing is done in each case (docs/commit.md). */
+/** The body of POST /api/profiles/{id}/undo, /redo and /revert, and optionally of /save: the state the client's request is based on. Another document's tag: 409 conflictProblem (reason "instance"); a `baseRev` greater than the document's `rev`: 422 invalidProblem (baseRev.future); a document whose `rev` isn't `baseRev`: 409 conflictProblem (reason "changed"); nothing is done in each case (docs/commit.md). */
 export interface HistoryRequest {
   /** The tag of the document the client's revision came from (its documentResponse, profile entry or doc event). */
   instance: InstanceId;
@@ -494,7 +494,7 @@ export interface CommitWarning {
   message?: string;
 }
 
-/** 409 application/problem+json to a commit, undo, redo or revert: nothing was applied. The client refetches, rebuilds its change on the current state and sends it again (a commit with a new opId). A DELETE's 409 is deleteConflictProblem. */
+/** 409 application/problem+json to a commit, undo, redo, revert or save: nothing was applied or saved. The client refetches, rebuilds its change on the current state and sends it again (a commit with a new opId). A DELETE's 409 is deleteConflictProblem. */
 export interface ConflictProblem {
   type?: string;
   title?: string;
@@ -503,7 +503,7 @@ export interface ConflictProblem {
   code: "conflict";
   /** The document's current revision. */
   rev: Revision;
-  /** A commit's: every conflict found, at least one. An undo's, redo's or revert's: one `instance` conflict, or one `changed` conflict for each item (and for the profile) with a field group changed after its baseRev. That list can be empty: items removed since are not listed, and an undo, redo or revert step may change no field group. */
+  /** A commit's: every conflict found, at least one. An undo's, redo's, revert's or save's: one `instance` conflict, or one `changed` conflict for each item (and for the profile) with a field group changed after its baseRev. That list can be empty: items removed since are not listed, and an undo, redo or revert step may change no field group. */
   conflicts: Conflict[];
 }
 
@@ -521,10 +521,10 @@ export interface DeleteConflictProblem {
 }
 
 export interface Conflict {
-  /** The op that conflicts. Absent when the conflict is the whole request's: reason instance, and every conflict of an undo, redo or revert. */
+  /** The op that conflicts. Absent when the conflict is the whole request's: reason instance, and every conflict of an undo, redo, revert or save. */
   op?: OpIndex;
   id?: ItemId;
-  /** changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo or revert, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the request names another tag than the document's (the engine restarted, or the profile was deleted and created again, since the client read it). A client treats a reason it doesn't know as it treats every conflict: it refetches and rebuilds its change. */
+  /** changed: a field group the op writes last changed at a revision greater than the op's baseRev (see `fields`; for `remove`, any field group of the item or of anything in it, each listed with its own `id`); for an undo, redo, revert or save, a field group that changed after its baseRev. missing: the item or parent doesn't exist at that point of the commit. instance: the request names another tag than the document's (the engine restarted, or the profile was deleted and created again, since the client read it). A client treats a reason it doesn't know as it treats every conflict: it refetches and rebuilds its change. */
   reason: "changed" | "missing" | "instance";
   /** The item's (or profile's) current rev. */
   rev?: Revision;
@@ -543,7 +543,7 @@ export interface ExpiredProblem {
   rev: Revision;
 }
 
-/** 422 application/problem+json: the request body (a commit, a create, duplicate, undo, redo or revert body, or a document) breaks the format, a rule or a limit; nothing was applied. */
+/** 422 application/problem+json: the request body (a commit, a create, duplicate, undo, redo, revert or save body, or a document) breaks the format, a rule or a limit; nothing was applied. */
 export interface InvalidProblem {
   type?: string;
   title?: string;
@@ -2489,7 +2489,7 @@ export interface ApiOperations {
     };
   };
   /**
-   * save: Saves the current document.
+   * save: Saves the document as it is when the save starts.
    *
    * docs/commit.md#undo-redo-revert-and-save.
    */
@@ -2499,9 +2499,10 @@ export interface ApiOperations {
       id: string;
     };
     query: { [key: string]: never };
-    request: never;
+    /** Optional: the document's tag and the revision to save. Without a body the save isn't guarded. */
+    request?: HistoryRequest;
     responses: {
-      /** The document's state after saving. */
+      /** The document's state once the write is done. */
       200: CommitResult;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
@@ -2509,8 +2510,10 @@ export interface ApiOperations {
       403: ScopeProblem;
       /** No such profile, blob or token. */
       404: Problem;
-      /** The profile's document can't be opened: its status is unsupported or unreadable. */
-      409: ProfileStatusProblem;
+      /** The profile can't be opened (profileStatusProblem), or the body names another document's tag or the document changed since baseRev (conflictProblem); nothing was saved. */
+      409: ProfileStatusProblem | ConflictProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
     };
   };
   /**
