@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -103,10 +104,10 @@ internal sealed class PreviewClient : IAsyncDisposable
     /// <summary>Skips messages until a text message of <paramref name="type"/> that matches <paramref name="match"/>.</summary>
     public async Task<JsonElement> ReceiveTextAsync(string type, CancellationToken ct, Func<JsonElement, bool>? match = null, TimeSpan? timeout = null)
     {
-        var deadline = DateTime.UtcNow + (timeout ?? DefaultTimeout);
+        var clock = Stopwatch.StartNew();
         while (true)
         {
-            var message = await ReceiveAsync(ct, Remaining(deadline));
+            var message = await ReceiveAsync(ct, Remaining(timeout ?? DefaultTimeout, clock));
             Assert.Null(message.CloseStatus);
             if (message.Json is { } json && json.GetProperty("type").GetString() == type && (match == null || match(json)))
                 return json;
@@ -116,19 +117,20 @@ internal sealed class PreviewClient : IAsyncDisposable
     /// <summary>Skips messages until a frame that matches <paramref name="match"/>.</summary>
     public async Task<(FrameHeader Header, ReadOnlyMemory<byte> Png)> ReceiveFrameAsync(CancellationToken ct, Func<FrameHeader, bool>? match = null, TimeSpan? timeout = null)
     {
-        var deadline = DateTime.UtcNow + (timeout ?? DefaultTimeout);
+        var clock = Stopwatch.StartNew();
         while (true)
         {
-            var message = await ReceiveAsync(ct, Remaining(deadline));
+            var message = await ReceiveAsync(ct, Remaining(timeout ?? DefaultTimeout, clock));
             Assert.Null(message.CloseStatus);
             if (message.Frame is { } header && (match == null || match(header)))
                 return (header, message.Payload);
         }
     }
 
-    private static TimeSpan Remaining(DateTime deadline)
+    /// <summary>What is left of <paramref name="limit"/> on <paramref name="clock"/> (elapsed time, which a change of the system clock doesn't move).</summary>
+    private static TimeSpan Remaining(TimeSpan limit, Stopwatch clock)
     {
-        var left = deadline - DateTime.UtcNow;
+        var left = limit - clock.Elapsed;
         return left > TimeSpan.Zero ? left : TimeSpan.FromMilliseconds(1);
     }
 
@@ -140,8 +142,8 @@ internal sealed class PreviewClient : IAsyncDisposable
         {
             try
             {
-                var deadline = DateTime.UtcNow + DefaultTimeout;
-                while (_unanswered.Count > 0 && DateTime.UtcNow < deadline && (await ReceiveAsync(CancellationToken.None, Remaining(deadline))).CloseStatus is null)
+                var clock = Stopwatch.StartNew();
+                while (_unanswered.Count > 0 && clock.Elapsed < DefaultTimeout && (await ReceiveAsync(CancellationToken.None, Remaining(DefaultTimeout, clock))).CloseStatus is null)
                 {
                 }
             }

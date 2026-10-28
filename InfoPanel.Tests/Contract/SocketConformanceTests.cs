@@ -181,7 +181,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
     /// </summary>
     private static async Task Checked(Func<bool> done)
     {
-        for (var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5); !done() && DateTime.UtcNow < deadline;)
+        for (var clock = System.Diagnostics.Stopwatch.StartNew(); !done() && clock.Elapsed < TimeSpan.FromSeconds(5);)
             await Task.Delay(10, Ct);
     }
 
