@@ -55,10 +55,14 @@ public sealed class Generation
     /// <see cref="Load(JsonElement, long, SpecLimits?, EngineSupport?)"/>, reusing <paramref name="known"/> scenes by their
     /// JSON text; a null <paramref name="rev"/> takes the document's own <c>rev</c> (0 without one).
     /// </summary>
-    internal static GenerationLoad Load(JsonElement document, long? rev, SpecLimits limits, EngineSupport support, SceneChecker? known)
+    internal static GenerationLoad Load(JsonElement document, long? rev, SpecLimits limits, EngineSupport support, SceneChecker? known,
+        bool jsonChecked = false)
     {
         var scenes = new SceneChecker(limits, support, known);
-        var check = DocumentValidator.Check(document, limits, support, scenes.Check);
+        // jsonChecked: the caller ran the JSON-level pass on the document as received, before replacing anything of it.
+        var check = jsonChecked
+            ? DocumentValidator.CheckRead(document, limits, support, scenes.Check)
+            : DocumentValidator.Check(document, limits, support, scenes.Check);
         // Every scene was looked up by the check: the earlier load's scenes are no longer needed, and keeping them would
         // keep every load before it alive too.
         scenes.Forget();
@@ -494,7 +498,8 @@ internal sealed class SceneChecker(SpecLimits limits, EngineSupport support, Sce
             _facts[text] = facts;
             return facts;
         }
-        facts = SceneFacts.Create(scene, SceneValidator.Check(scene, limits, support), limits, GenerationContent.SizeOf(scene));
+        // Every scene checked here is inside a document or commit that passed the JSON-level pass as received.
+        facts = SceneFacts.Create(scene, SceneValidator.CheckRead(scene, limits, support), limits, GenerationContent.SizeOf(scene));
         _facts[text] = facts;
         return facts;
     }

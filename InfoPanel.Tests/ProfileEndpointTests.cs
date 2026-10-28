@@ -171,6 +171,15 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     }
 
     [Fact]
+    public async Task Create_WithAnIdEndingInANewline_Is422()
+    {
+        // A pattern's $ matched before a final newline, so the id reached the store, which refused it: a 500.
+        using var response = await PostBytes("/api/profiles", System.Text.Encoding.UTF8.GetBytes($$"""{"id": "{{NewId()}}\n", "name": "x", "width": 1, "height": 1}"""));
+        var error = (await Problem(response, HttpStatusCode.UnprocessableEntity, "invalidProblem")).GetProperty("errors")[0];
+        Assert.Equal(("schema", "/id"), (error.GetProperty("code").GetString(), error.GetProperty("path").GetString()));
+    }
+
+    [Fact]
     public async Task Create_FromADocument_IsTolerant_AndRefusesWhatTheEngineWouldntOpen()
     {
         // A scene that breaks a rule is kept as it was sent and drawn as a placeholder; the document's id and revs are replaced.

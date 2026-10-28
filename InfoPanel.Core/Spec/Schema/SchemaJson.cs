@@ -178,3 +178,59 @@ public static class JsonNumber
     /// <summary>Whether <paramref name="v"/> (a JSON number) is a whole number as a double, in any spelling.</summary>
     public static bool IsInteger(JsonElement v) => TryReadInteger(v, out _);
 }
+
+/// <summary>
+/// JSON strings as the formats read them (spec/docs/validation.md#json): Unicode text, a sequence of scalar values. A lone
+/// surrogate escape (<c>"\ud800"</c>) or bytes that aren't UTF-8 are not.
+/// </summary>
+public static class JsonText
+{
+    /// <summary>
+    /// Whether the raw text of a JSON string or member name (as received, escapes undecoded, with or without its quotes)
+    /// is Unicode text: well-formed UTF-8, and every <c>\u</c> escape of a surrogate one half of a pair.
+    /// </summary>
+    public static bool IsScalarText(ReadOnlySpan<byte> raw)
+    {
+        if (!System.Text.Unicode.Utf8.IsValid(raw)) return false;
+        var i = raw.IndexOf((byte)'\\');
+        if (i < 0) return true;
+        for (; i < raw.Length; i++)
+        {
+            if (raw[i] != (byte)'\\') continue;
+            i++; // the escaped character: a quote, a backslash, ... or u and four hex digits
+            if (i >= raw.Length || raw[i] != (byte)'u') continue;
+            var unit = Hex4(raw, i + 1);
+            i += 4;
+            if (unit is >= 0xDC00 and <= 0xDFFF) return false;
+            if (unit is >= 0xD800 and <= 0xDBFF)
+            {
+                if (i + 6 >= raw.Length) return false;
+                if (raw[i + 1] != (byte)'\\' || raw[i + 2] != (byte)'u' || Hex4(raw, i + 3) is < 0xDC00 or > 0xDFFF) return false;
+                i += 6;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// The UTF-16 unit of four hex digits at <paramref name="at"/>; -1 when they aren't there (the parser has already
+    /// refused a malformed escape, so this only guards the bounds).
+    /// </summary>
+    private static int Hex4(ReadOnlySpan<byte> raw, int at)
+    {
+        if (at + 4 > raw.Length) return -1;
+        var unit = 0;
+        for (var k = at; k < at + 4; k++)
+        {
+            var c = raw[k];
+            var d = c is >= (byte)'0' and <= (byte)'9' ? c - '0' : c is >= (byte)'a' and <= (byte)'f' ? c - 'a' + 10 : c is >= (byte)'A' and <= (byte)'F' ? c - 'A' + 10 : -1;
+            if (d < 0) return -1;
+            unit = unit * 16 + d;
+        }
+        return unit;
+    }
+
+    /// <summary>The string's value; null when it isn't Unicode text (<see cref="IsScalarText"/>), where <c>GetString</c> throws.</summary>
+    public static string? TryGetString(JsonElement v) =>
+        v.ValueKind == JsonValueKind.String && IsScalarText(System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(v)) ? v.GetString() : null;
+}

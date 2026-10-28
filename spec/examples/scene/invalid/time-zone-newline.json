@@ -1,0 +1,1 @@
+{"format": "infopanel.scene/1", "nodes": [{"kind": "rect", "w": {"op": "time", "field": "hour", "zone": "Europe/Berlin\n"}, "h": 10, "fill": "#ff0000"}]}

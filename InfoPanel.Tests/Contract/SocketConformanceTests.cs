@@ -302,8 +302,8 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
 
     [Theory]
     [InlineData("""{"type":"welcome"}""", "welcome")]
-    // JSON reads the lone surrogate, but decoding the string for the check throws: that fails the disposal too.
-    [InlineData("""{"type":"\uD800"}""", "check of a message")]
+    // A lone surrogate isn't Unicode text: the check refuses it (json) before reading the type, which fails the disposal too.
+    [InlineData("""{"type":"\uD800"}""", "outside the spec")]
     public async Task ALiveSocket_FailsItsDisposal_OnAMessageOutsideTheSpec_AfterTheLastWait(string outside, string reported)
     {
         // A peer on real Kestrel that answers the subscribe with a hello, then sends a message no serverMessage allows.

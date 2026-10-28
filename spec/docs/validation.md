@@ -4,24 +4,40 @@ Every reader checks content in the same order, and reports problems as `{ path, 
 
 ## Order
 
-**Scene** (on its own, or inside a document or commit):
+Every reader checks what it receives in this order: first the request's size caps on the bytes received (a commit's `limit.commitBytes`, a stored document's `limit.documentBytes` before it is read); then the [JSON-level pass](#json), once, on the content exactly as received, before any member is read for its meaning, taken out or replaced; then the format and its major version; then the size, counts, schema and rules below. Content the JSON-level pass refuses gets its errors and nothing else.
 
-1. It is an object whose `format` is a scene format; a major version other than 1 is `unsupported.format`.
-2. Every capability in `requires` is supported, or `unsupported.capability`.
-3. Its size (`limit.sceneBytes`).
-4. Its collection counts, on the raw JSON: `limit.inputs`, `limit.values`, `limit.stateCells`, `limit.nodes` (nodes at every depth).
-5. Its nesting (`limit.jsonDepth`), its numbers (`json`, [below](#numbers)), then the schema (`schema`).
-6. The rules and limits below.
+**Scene** (on its own, or inside a document or commit, whose JSON-level pass covers it):
 
-**Document**: it is UTF-8 JSON (`json`); the same first two steps for the document format; its size; its item count, groups' children included (`limit.items`); its nesting (`limit.jsonDepth`); its numbers (`json`); the schema with each scene checked only for being an object with a string `format`; ids, nesting and sizes; then each scene on its own (a bad scene makes a placeholder, not a bad document); then the aggregate budgets, in document order.
+1. The [JSON-level pass](#json): its nesting (`limit.jsonDepth`), its numbers, member names and strings (`json`, `schema`).
+2. It is an object whose `format` is a scene format; a major version other than 1 is `unsupported.format`.
+3. Every capability in `requires` is supported, or `unsupported.capability`.
+4. Its size (`limit.sceneBytes`).
+5. Its collection counts, on the raw JSON: `limit.inputs`, `limit.values`, `limit.stateCells`, `limit.nodes` (nodes at every depth).
+6. The schema (`schema`).
+7. The rules and limits below.
 
-**Commit**: its size; the op count (`limit.ops`) and each inserted item's count with its children (`limit.items`); its nesting (`limit.jsonDepth`); its numbers (`json`); the schema (scenes as for documents); each new scene and inserted item on its own (unsupported: a warning; invalid: an error); then, when it is applied, the checks in [commits](commit.md).
+**Document**: it is UTF-8 JSON (`json`); the JSON-level pass; the same format steps for the document format; its size; its item count, groups' children included (`limit.items`); the schema with each scene checked only for being an object with a string `format`; ids, nesting and sizes; then each scene on its own (a bad scene makes a placeholder, not a bad document); then the aggregate budgets, in document order. A stored document is read before its folder's id replaces its own, and a create's or import's document before the request's id does.
 
-Content nested deeper than `jsonDepth` ([limits](limits.md#nesting-limit)) gets the one error `limit.jsonDepth` at `""` (the root of what was checked), and no schema errors. Content with a number that rounds to ±∞ gets a `json` error at each such number, and no schema errors.
+**Commit**: its size (`limit.commitBytes`); the JSON-level pass; the op count (`limit.ops`) and each inserted item's count with its children (`limit.items`); the schema (scenes as for documents); each new scene and inserted item on its own (unsupported: a warning; invalid: an error); then, when it is applied, the checks in [commits](commit.md).
+
+A request body is read the same way: the JSON-level pass on the whole body, then its schema. A create's `{id, document}` body is read as a whole, every repeated member included, with each member's nesting counted from that member (a `document` nested too deeply is `limit.jsonDepth` at `/document`).
 
 **Media asset**: its size (an SVG's `limit.svgBytes` too, before it is read); its header and container structure, without decoding (an SVG is read as a stream, held to the [SVG profile](svg.md), and reading stops past `limit.svgElements`; then its expanded size, references included, is held to `limit.svgElements`, and an accepted SVG is rebuilt into the canonical document that is the only form decoded); its dimensions, frames and duration ([limits](limits.md)).
 
 A check reports at most 100 errors; when there are more than 100 (101 included), a last error with code `more` (path `""`) says how many were not listed. There is never more than one `more` error.
+
+## JSON
+
+The JSON-level pass reads content as these formats read JSON ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259) in UTF-8, as restricted by I-JSON, [RFC 7493](https://www.rfc-editor.org/rfc/rfc7493)), in this order:
+
+1. **Nesting**: content nested deeper than `jsonDepth` ([limits](limits.md#nesting-limit)) gets the one error `limit.jsonDepth` at `""` (the root of what was checked), and is checked no further.
+2. **Numbers**: a number whose text rounds to ±∞ is `json` at that number ([numbers](#numbers)).
+3. **Member names**: an object that repeats a member name is `schema` at that object, once per repeated name. This holds at every depth, opaque members included (an `origin`, editor data, a source's `data`, a scene of a newer format), and every occurrence counts: a repeated member is never resolved by keeping one of them.
+4. **Unicode**: every string and member name is Unicode text, a sequence of scalar values. A lone surrogate escape (`"\ud800"`, a low surrogate escape not after a high one) or bytes that aren't UTF-8 are `json` at that string; in a member name, at its object (whose value is then not read). Strings are compared and stored as they are, never normalised.
+
+Errors of steps 2 to 4 are reported together, in the order of their paths; when there is any, nothing after the pass is checked (no format, size, count, schema or rule errors).
+
+A schema `pattern` is a regular expression as ECMA-262 reads it, as JSON Schema says: `$` matches only at the end of the string, so `"#ff0000\n"` is not a colour and `"…\n"` is not an id.
 
 ## Numbers
 
@@ -39,8 +55,8 @@ Where the engine keeps a value as it received it (the opaque members), a number 
 
 | Code | Meaning |
 |---|---|
-| `json` | Not JSON: a stored or imported document (or other body) that isn't well-formed UTF-8 JSON, or content with a number whose text rounds to ±∞ ([numbers](#numbers)), at that number. Content nested too deeply is `limit.jsonDepth`, not `json`. |
-| `schema` | The JSON doesn't match the schema (unknown or missing member, wrong type, value out of the schema's range or pattern). The message names the schema keyword; `complexity` when the content is too complex to check within the validator's work budget ([limits](limits.md#checking-hostile-content)). |
+| `json` | Not JSON as these formats read it ([JSON](#json)): a stored or imported document (or other body) that isn't well-formed UTF-8 JSON; a number whose text rounds to ±∞ ([numbers](#numbers)), at that number; a string that isn't Unicode text, at that string (a member name's at its object). Content nested too deeply is `limit.jsonDepth`, not `json`. |
+| `schema` | The JSON doesn't match the schema (unknown or missing member, wrong type, value out of the schema's range or pattern), or an object repeats a member name ([JSON](#json)), at that object. The message names the schema keyword; `complexity` when the content is too complex to check within the validator's work budget ([limits](limits.md#checking-hostile-content)). |
 | `unsupported.format` | A format major version this engine doesn't read. |
 | `unsupported.capability` | A capability in `requires` this engine lacks. |
 | `requires.missing` | The scene uses a capability it doesn't list in `requires`. |

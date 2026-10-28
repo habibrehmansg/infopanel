@@ -389,6 +389,13 @@ public sealed class Workspace : IDisposable
         using (json)
         {
             var root = json.RootElement;
+            // The JSON-level pass on the file as stored, before the folder's id replaces the document's own.
+            if (ValidationText.CheckJson(root, Limits.JsonDepth) is { } invalidJson)
+            {
+                var error = ValidationText.Cap(invalidJson)[0];
+                Logger.Warning("Profile {ProfileId} can't be opened ({Code} at {Path}: {Message})", id, error.Code, error.Path, error.Message);
+                return Unreadable(id, error.Path, error.Code, error.Message);
+            }
             JsonDocument? renamed = null;
             if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("id", out var ownId) && ownId.ValueKind == JsonValueKind.String
                 && ownId.GetString() != id)
@@ -401,7 +408,7 @@ public sealed class Workspace : IDisposable
 
             using (renamed)
             {
-                var load = Generation.Load(root, 1, Limits, Support);
+                var load = Generation.Load(root, 1, Limits, Support, null, jsonChecked: true);
                 if (load.Generation is { } generation)
                 {
                     if (load.Check.Items.Count > 0)
@@ -475,23 +482,26 @@ public sealed class Workspace : IDisposable
         using (json)
         {
             var root = json.RootElement;
+            // The JSON-level pass on the body as received, every repeated member included, before any member is taken
+            // out or replaced; the document's nesting is counted from it (limit.jsonDepth at /document).
+            var checkedJson = Spec.Schema.SchemaSet.CheckJsonMembers(root, Limits.JsonDepth);
+            if (!checkedJson.IsValid)
+                return Invalid(ValidationText.FromSchema(checkedJson).ToList());
             string id;
             JsonDocument document;
             if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("document", out var given))
             {
                 // The envelope is {id, document}: everything but the document is the shape of a duplicate's body.
                 using var envelope = Without(root, "document");
-                if (Check(envelope.RootElement, IdOnlySchema) is { } invalid)
+                if (Check(envelope.RootElement, IdOnlySchema, jsonChecked: true) is { } invalid)
                     return Invalid(invalid);
                 id = root.GetProperty("id").GetString()!;
-                // The document's own id is replaced by the request's, after its numbers are read as sent.
-                if (InfiniteNumbers(given) is { } infinite)
-                    return Invalid(infinite);
+                // The document's own id is replaced by the request's.
                 document = given.ValueKind == JsonValueKind.Object ? WithId(given, id) : JsonDocument.Parse(given.GetRawText(), SpecJson.DocumentOptions);
             }
             else
             {
-                if (Check(root, CreateEmptySchema) is { } invalid)
+                if (Check(root, CreateEmptySchema, jsonChecked: true) is { } invalid)
                     return Invalid(invalid);
                 var request = SpecJson.Read<CreateProfileRequest>(root);
                 id = request.Id;
@@ -506,7 +516,7 @@ public sealed class Workspace : IDisposable
 
             using (document)
             {
-                var load = Generation.Load(document.RootElement, 1, Limits, Support);
+                var load = Generation.Load(document.RootElement, 1, Limits, Support, null, jsonChecked: true);
                 if (load.Generation is not { } generation)
                     return Invalid(load.Check.Errors.Select(e => e.Under("/document")).ToList());
                 return Store(id, generation, "/document", source: null);
@@ -522,12 +532,13 @@ public sealed class Workspace : IDisposable
     public IReadOnlyList<SpecError> CheckImportDocument(JsonElement document)
     {
         const string AnyId = "00000000-0000-4000-8000-000000000000";
-        if (InfiniteNumbers(document) is { } infinite)
-            return ValidationText.Cap(infinite);
+        // The JSON-level pass on the document as received, before its id is replaced.
+        if (ValidationText.CheckJson(document, Limits.JsonDepth, "/document") is { } invalidJson)
+            return ValidationText.Cap(invalidJson);
         using var copy = document.ValueKind == JsonValueKind.Object
             ? WithId(document, AnyId)
             : JsonDocument.Parse(document.GetRawText(), SpecJson.DocumentOptions);
-        var load = Generation.Load(copy.RootElement, 1, Limits, Support);
+        var load = Generation.Load(copy.RootElement, 1, Limits, Support, null, jsonChecked: true);
         return load.Generation is null ? ValidationText.Cap(load.Check.Errors.Select(e => e.Under("/document")).ToList()) : [];
     }
 
@@ -722,20 +733,11 @@ public sealed class Workspace : IDisposable
         }
     }
 
-    private IReadOnlyList<SpecError>? Check(JsonElement body, string schema)
+    /// <summary>A body against its schema, after the JSON-level pass (<paramref name="jsonChecked"/>: the caller ran it on the whole body).</summary>
+    private IReadOnlyList<SpecError>? Check(JsonElement body, string schema, bool jsonChecked = false)
     {
-        var result = SpecSchemas.StructureOnly.Validate(body, schema, Limits.JsonDepth);
+        var result = jsonChecked ? SpecSchemas.StructureOnly.ValidateChecked(body, schema) : SpecSchemas.StructureOnly.Validate(body, schema, Limits.JsonDepth);
         return result.IsValid ? null : ValidationText.FromSchema(result).ToList();
-    }
-
-    /// <summary>
-    /// The numbers of a create's or an import's document as received, read before its <c>id</c> is replaced: a <c>json</c>
-    /// error under <c>/document</c> at each one whose text rounds to ±∞ (spec/docs/validation.md#numbers), or null.
-    /// </summary>
-    private List<SpecError>? InfiniteNumbers(JsonElement document)
-    {
-        var result = Spec.Schema.SchemaSet.CheckNumbers(document, Limits.JsonDepth);
-        return result.IsValid ? null : ValidationText.FromSchema(result, "/document").ToList();
     }
 
     /// <summary>An object with its root member <paramref name="name"/> left out (values copied as their raw text).</summary>

@@ -291,6 +291,106 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Equal(("json", path), (Assert.Single(check).Code, check[0].Path));
     }
 
+    private static JsonElement Raw(string json)
+    {
+        using var parsed = JsonDocument.Parse(json, SpecJson.DocumentOptions);
+        return parsed.RootElement.Clone();
+    }
+
+    /// <summary>The document's text with its first <c>"id":</c> (the root's) replaced.</summary>
+    private static string RootId(string json, string with)
+    {
+        var at = json.IndexOf("\"id\":", StringComparison.Ordinal);
+        return json[..at] + with + json[(at + 5)..];
+    }
+
+    private static string Show(IEnumerable<ValidationErrorBody> errors) => string.Join("; ", errors.Select(e => $"{e.Code} {e.Path}"));
+
+    private static string Show(IEnumerable<SpecError> errors) => string.Join("; ", errors.Select(e => $"{e.Code} {e.Path}"));
+
+    [Fact]
+    public void ACreatesIdWithATrailingNewline_IsASchemaError()
+    {
+        // .NET's $ matches before a final newline: the id passed the schema and failed in the store (a 500).
+        var workspace = With();
+        var empty = workspace.Create(Encoding.UTF8.GetBytes($$"""{"id": "{{A}}\n", "name": "x", "width": 1, "height": 1}"""));
+        Assert.Equal((422, "schema /id"), (empty.Status, Show(empty.Invalid!.Errors)));
+        var document = DocJson(B, Scene("a"));
+        var fromDocument = workspace.Create(Encoding.UTF8.GetBytes($$"""{"id": "{{A}}\n", "document": {{document}}}"""));
+        Assert.Equal((422, "schema /id"), (fromDocument.Status, Show(fromDocument.Invalid!.Errors)));
+        Assert.Empty(workspace.List());
+    }
+
+    [Fact]
+    public void ACreateWithRepeatedDocumentMembers_IsRefused_EveryOccurrenceRead()
+    {
+        // TryGetProperty takes the last one and removing "document" from the envelope dropped them all, unread.
+        var workspace = With();
+        var document = DocJson(B, Scene("a"));
+        var twice = workspace.Create(Encoding.UTF8.GetBytes($$"""{"id": "{{A}}", "document": {{document}}, "document": {{document}}}"""));
+        Assert.Equal((422, "schema "), (twice.Status, Show(twice.Invalid!.Errors)));
+        var infinite = workspace.Create(Encoding.UTF8.GetBytes($$"""{"id": "{{A}}", "document": 1e400, "document": {{document}}}"""));
+        Assert.Equal((422, "schema ; json /document"), (infinite.Status, Show(infinite.Invalid!.Errors)));
+        Assert.Empty(workspace.List());
+    }
+
+    [Fact]
+    public void RepeatedIds_AreRefused_BeforeTheIdIsReplaced()
+    {
+        // A document's id is replaced by the request's or the folder's, but only after the document is read as received:
+        // two "id" members are a repeated member (schema, at the document), not an ambiguity the replacement settles.
+        const string C = "0c000000-0000-4000-8000-000000000000";
+        var workspace = With(
+            (A, RootId(DocJson(B, Scene("a")), $"\"id\":\"{C}\",\"id\":")),
+            (C, RootId(DocJson(B, Scene("a")), "\"id\":1e400,\"id\":")));
+        var entries = workspace.List().ToDictionary(e => e.Id);
+        Assert.Equal(("unreadable", "schema", ""), (entries[A].Status, entries[A].Problem!.Code, entries[A].Problem!.Path));
+        Assert.Equal(("unreadable", "schema", ""), (entries[C].Status, entries[C].Problem!.Code, entries[C].Problem!.Path));
+
+        var document = RootId(DocJson(B, Scene("a")), $"\"id\":\"{C}\",\"id\":");
+        var created = workspace.Create(Encoding.UTF8.GetBytes($$"""{"id": "{{B}}", "document": {{document}}}"""));
+        Assert.Equal((422, "schema /document"), (created.Status, Show(created.Invalid!.Errors)));
+        Assert.Equal("schema /document", Show(workspace.CheckImportDocument(Raw(document))));
+        Assert.Null(workspace.Entry(B));
+    }
+
+    [Fact]
+    public void ADocumentTooDeepInTheIdItsCreateReplaces_IsRefused()
+    {
+        // The depth failure is kept, whatever is rewritten afterwards.
+        var workspace = With();
+        var deep = new string('[', 256) + "1e400" + new string(']', 256);
+        var document = DocJson(B, Scene("a")).Replace($"\"id\":\"{B}\"", $"\"id\":{deep}");
+        var created = workspace.Create(Encoding.UTF8.GetBytes($$"""{"id": "{{A}}", "document": {{document}}}"""));
+        Assert.Equal((422, "limit.jsonDepth /document"), (created.Status, Show(created.Invalid!.Errors)));
+        Assert.Equal("limit.jsonDepth /document", Show(workspace.CheckImportDocument(Raw(document))));
+        Assert.Empty(workspace.List());
+    }
+
+    [Fact]
+    public void LoneSurrogates_InACreateOrAStoredDocument_AreJson()
+    {
+        // GetString and a member's Name threw on them, outside every handler.
+        var workspace = With((A, DocJson(B, Scene("a")).Replace($"\"id\":\"{B}\"", "\"id\":\"\\ud800\"")));
+        var entry = Assert.Single(workspace.List());
+        Assert.Equal(("unreadable", "json", "/id"), (entry.Status, entry.Problem!.Code, entry.Problem!.Path));
+
+        var name = workspace.Create(Encoding.UTF8.GetBytes($$"""{"id": "{{B}}", "\udc00": 1, "name": "x", "width": 1, "height": 1}"""));
+        Assert.Equal((422, "json "), (name.Status, Show(name.Invalid!.Errors)));
+        var value = workspace.Create(Encoding.UTF8.GetBytes($$"""{"id": "{{B}}", "name": "x\ud800", "width": 1, "height": 1}"""));
+        Assert.Equal((422, "json /name"), (value.Status, Show(value.Invalid!.Errors)));
+    }
+
+    [Fact]
+    public void TheImportCheck_ReadsTheJsonBeforeTheFormat()
+    {
+        // The order of validation.md: the JSON-level pass, then the format and its major version.
+        var workspace = With();
+        Assert.Equal("json /document/x", Show(workspace.CheckImportDocument(Raw("""{"format": "infopanel.document/2", "x": 1e400}"""))));
+        var created = workspace.Create(Encoding.UTF8.GetBytes($$$"""{"id": "{{{A}}}", "document": {"format": "infopanel.document/2", "x": 1e400}}"""));
+        Assert.Equal("json /document/x", Show(created.Invalid!.Errors));
+    }
+
     [Fact]
     public void Duplicate_CopiesTheCurrentDocument_WithAFreshHistory()
     {

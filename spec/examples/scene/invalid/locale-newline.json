@@ -1,0 +1,1 @@
+{"format": "infopanel.scene/1", "nodes": [{"kind": "text", "text": {"op": "formatTime", "pattern": "HH:mm", "locale": "en-GB\n"}, "size": 12, "fill": "#ffffff"}]}

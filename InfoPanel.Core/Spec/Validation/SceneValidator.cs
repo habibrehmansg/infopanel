@@ -16,12 +16,25 @@ public sealed record SceneCost(int Nodes, int Work, int TextNodes, int EffectCos
 public sealed record SceneCheck(CheckStatus Status, Scene? Scene, IReadOnlyList<SpecError> Errors, SceneCost Cost);
 
 /// <summary>
-/// Checks a scene in the order every reader uses (spec/docs/validation.md): the format and <c>requires</c> (unsupported
-/// stops here), the size, the schema, then the rules and limits: references, types, evaluation contexts, counts and costs.
+/// Checks a scene in the order every reader uses (spec/docs/validation.md): the JSON-level pass, the format and
+/// <c>requires</c> (unsupported stops here), the size, the collection counts, the schema, then the rules and limits:
+/// references, types, evaluation contexts, counts and costs.
 /// </summary>
 public static class SceneValidator
 {
     public static SceneCheck Check(JsonElement scene, SpecLimits? limits = null, EngineSupport? support = null)
+    {
+        limits ??= SpecLimits.Default;
+        if (ValidationText.CheckJson(scene, limits.JsonDepth) is { } json)
+            return new SceneCheck(CheckStatus.Invalid, null, json, SceneCost.Zero);
+        return CheckRead(scene, limits, support);
+    }
+
+    /// <summary>
+    /// <see cref="Check"/> after the JSON-level pass, for a scene inside content that passed it (a document or a commit):
+    /// that pass runs once, on what was received, never again on a part of it.
+    /// </summary>
+    internal static SceneCheck CheckRead(JsonElement scene, SpecLimits? limits = null, EngineSupport? support = null)
     {
         limits ??= SpecLimits.Default;
         support ??= EngineSupport.Base;
@@ -37,7 +50,7 @@ public static class SceneValidator
         var counts = Counts(scene, limits);
         if (counts.Count > 0) return new SceneCheck(CheckStatus.Invalid, null, counts, SceneCost.Zero);
 
-        var schema = SpecSchemas.Strict.Validate(scene, SpecSchemas.Scene, limits.JsonDepth);
+        var schema = SpecSchemas.Strict.ValidateChecked(scene, SpecSchemas.Scene);
         if (!schema.IsValid) return new SceneCheck(CheckStatus.Invalid, null, ValidationText.FromSchema(schema).ToList(), SceneCost.Zero);
 
         Scene parsed;
@@ -105,7 +118,7 @@ public static class SceneValidator
         public Info With(Info other) => new(Type, State || other.State, Measure || other.Measure);
     }
 
-    private static readonly Regex ColorLiteral = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+    private static readonly Regex ColorLiteral = new("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     private static readonly HashSet<string> NumberOps =
     [

@@ -31,6 +31,19 @@ public static class DocumentValidator
     internal static DocumentCheck Check(JsonElement document, SpecLimits? limits, EngineSupport? support, Func<JsonElement, SceneCheck>? checkScene)
     {
         limits ??= SpecLimits.Default;
+        if (ValidationText.CheckJson(document, limits.JsonDepth) is { } json)
+            return new DocumentCheck(CheckStatus.Invalid, null, ValidationText.Cap(json), []);
+        return CheckRead(document, limits, support, checkScene);
+    }
+
+    /// <summary>
+    /// <see cref="Check(JsonElement, SpecLimits?, EngineSupport?, Func{JsonElement, SceneCheck}?)"/> after the JSON-level
+    /// pass, for a document that passed it as received, before anything of it was replaced (a create's or an import's
+    /// document before its id is, a stored one before its folder's id is given it).
+    /// </summary>
+    internal static DocumentCheck CheckRead(JsonElement document, SpecLimits? limits, EngineSupport? support, Func<JsonElement, SceneCheck>? checkScene)
+    {
+        limits ??= SpecLimits.Default;
         support ??= EngineSupport.Base;
 
         if (ValidationText.CheckFormat(document, "document", support.DocumentCapabilities) is { } pre)
@@ -44,7 +57,7 @@ public static class DocumentValidator
         if (document.TryGetProperty("items", out var rawItems) && CountItems(rawItems, limits.Items) is var count && count > limits.Items)
             return Invalid([Over("/items", "items", count, limits.Items)]);
 
-        var schema = SpecSchemas.StructureOnly.Validate(document, SpecSchemas.Document, limits.JsonDepth);
+        var schema = SpecSchemas.StructureOnly.ValidateChecked(document, SpecSchemas.Document);
         if (!schema.IsValid) return Invalid(ValidationText.FromSchema(schema).ToList());
 
         Document parsed;
@@ -149,7 +162,7 @@ public static class DocumentValidator
                     if ((scene.Bindings?.Count ?? 0) > limits.Bindings)
                         Errors.Add(Over(p + "/bindings", "bindings", scene.Bindings!.Count, limits.Bindings));
                     CheckSource(scene.Source, p + "/source", limits, Errors);
-                    var check = checkScene?.Invoke(scene.Scene) ?? SceneValidator.Check(scene.Scene, limits, support);
+                    var check = checkScene?.Invoke(scene.Scene) ?? SceneValidator.CheckRead(scene.Scene, limits, support);
                     if (check.Status == CheckStatus.Valid) Costs.Add((p, item.Id, check.Cost));
                     else Problems.Add(new ItemCheck(p, item.Id, check.Status == CheckStatus.Unsupported ? "unsupported" : "invalid",
                         check.Errors.Select(e => e.Under(p + "/scene")).ToList()));
@@ -184,9 +197,12 @@ public static class CommitValidator
         limits ??= SpecLimits.Default;
         support ??= EngineSupport.Base;
 
+        // The request's size cap first, then the JSON-level pass (spec/docs/validation.md).
         var bytes = ValidationText.Utf8Bytes(commit);
         if (bytes > limits.CommitBytes)
             return Fail(DocumentValidator.Over("", "commitBytes", bytes, limits.CommitBytes));
+        if (ValidationText.CheckJson(commit, limits.JsonDepth) is { } json)
+            return new CommitCheck(null, ValidationText.Cap(json), []);
 
         // The op count before the schema, so that no check below runs over more ops than the limit allows.
         if (commit.ValueKind == JsonValueKind.Object && commit.TryGetProperty("ops", out var rawOps)
@@ -207,7 +223,7 @@ public static class CommitValidator
             }
         }
 
-        var schema = SpecSchemas.StructureOnly.Validate(commit, SpecSchemas.CommitRequest, limits.JsonDepth);
+        var schema = SpecSchemas.StructureOnly.ValidateChecked(commit, SpecSchemas.CommitRequest);
         if (!schema.IsValid) return new CommitCheck(null, ValidationText.FromSchema(schema).ToList(), []);
 
         CommitRequest parsed;
@@ -260,7 +276,7 @@ public static class CommitValidator
 
         void Scene(JsonElement scene, string path, int op, string id)
         {
-            var check = checkScene?.Invoke(scene) ?? SceneValidator.Check(scene, limits, support);
+            var check = checkScene?.Invoke(scene) ?? SceneValidator.CheckRead(scene, limits, support);
             if (check.Status == CheckStatus.Unsupported)
                 warnings.Add(new CommitWarning { Op = op, Id = id, Code = "unsupported", Message = check.Errors[0].Message });
             else if (check.Status == CheckStatus.Invalid)

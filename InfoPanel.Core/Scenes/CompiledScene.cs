@@ -305,16 +305,8 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
         for (var i = 0; i < cellNames.Length; i++)
         {
             var def = cellDefs[cellNames[i]];
-            string key;
-            try
-            {
-                key = CanonicalJson.Write(SpecJson.Write(def));
-            }
-            catch (ArgumentException)
-            {
-                // A literal past the 64-bit range (1e400) reads as infinity, which JSON can't write back.
-                throw new SceneCompileException("schema", $"State cell '{cellNames[i]}' has a number literal outside the 64-bit range.");
-            }
+            // Every number literal is finite: the model reads none that rounds to ±∞ (SpecJson refuses it).
+            var key = CanonicalJson.Write(SpecJson.Write(def));
             cells[i] = new CCell(cellNames[i], key, _x.Compile(def.Init), _x.Compile(def.Next));
         }
 

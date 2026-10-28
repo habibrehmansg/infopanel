@@ -1,0 +1,1 @@
+{"format": "infopanel.scene/1", "requires": ["media.provider"], "nodes": [{"kind": "media", "w": 96, "h": 96, "source": {"provider": "now-playing\n", "ref": "x"}}]}

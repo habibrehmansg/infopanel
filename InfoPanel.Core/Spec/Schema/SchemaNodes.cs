@@ -122,7 +122,13 @@ internal sealed class LengthRule : Rule
     public override void Apply(JsonElement v, InstancePath path, Errs errs)
     {
         if (v.ValueKind != JsonValueKind.String) return;
-        var n = Json.CodePoints(v.GetString()!);
+        // The JSON-level pass refuses a string that isn't Unicode text before any schema runs; guarded all the same.
+        if (JsonText.TryGetString(v) is not { } text)
+        {
+            Fail(errs, path, "The string isn't Unicode text.");
+            return;
+        }
+        var n = Json.CodePoints(text);
         if (_isMin ? n < _limit : n > _limit)
             Fail(errs, path, $"String must be {(_isMin ? "at least" : "at most")} {_limit} characters long.");
     }
@@ -136,9 +142,14 @@ internal sealed class PatternRule : Rule
     public override void Apply(JsonElement v, InstancePath path, Errs errs)
     {
         if (v.ValueKind != JsonValueKind.String) return;
+        if (JsonText.TryGetString(v) is not { } text)
+        {
+            Fail(errs, path, "The string isn't Unicode text.");
+            return;
+        }
         try
         {
-            if (!_regex.IsMatch(v.GetString()!)) Fail(errs, path, $"String must match the pattern {_pattern}.");
+            if (!_regex.IsMatch(text)) Fail(errs, path, $"String must match the pattern {_pattern}.");
         }
         catch (RegexMatchTimeoutException)
         {

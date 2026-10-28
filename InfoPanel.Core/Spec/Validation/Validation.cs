@@ -34,27 +34,38 @@ public sealed record EngineSupport(IReadOnlySet<string> SceneCapabilities, IRead
 
 internal static class ValidationText
 {
-    internal static readonly Regex FormatString = new(@"^infopanel\.(scene|document)/([0-9]{1,4})$", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
-    internal static readonly Regex Capability = new(@"^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*)*$", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+    internal static readonly Regex FormatString = new(@"^infopanel\.(scene|document)/([0-9]{1,4})\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+    internal static readonly Regex Capability = new(@"^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*)*\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     internal static int Utf8Bytes(JsonElement e) => System.Text.Encoding.UTF8.GetByteCount(e.GetRawText());
 
     /// <summary>
-    /// A schema validation's errors as checks report them: <c>schema</c>, except the count of the rest (<c>more</c>), a
-    /// number that rounds to ±∞ (<c>json</c>), and a value nested too deeply, which is the one error
-    /// <c>limit.jsonDepth</c> at the root of what was checked.
+    /// A schema validation's or JSON-level pass's errors as checks report them: <c>schema</c> (a repeated member name
+    /// included), except the count of the rest (<c>more</c>), a number that rounds to ±∞ or a string that isn't Unicode
+    /// text (<c>json</c>), and a value nested too deeply, which is the one error <c>limit.jsonDepth</c> at the root of
+    /// what was checked.
     /// </summary>
     internal static IEnumerable<SpecError> FromSchema(SchemaValidationResult result, string prefix = "") =>
         result.Errors.Select(e => e.Keyword switch
         {
             "more" => new SpecError(prefix + e.InstancePath, "more", e.Message),
             "json" => new SpecError(prefix + e.InstancePath, "json", e.Message),
-            "depth" => new SpecError(prefix, "limit.jsonDepth", $"{e.Message.TrimEnd('.')} (jsonDepth)."),
+            "depth" => new SpecError(prefix + e.InstancePath, "limit.jsonDepth", $"{e.Message.TrimEnd('.')} (jsonDepth)."),
             _ => new SpecError(prefix + e.InstancePath, "schema", $"{e.Message} ({e.Keyword})"),
         });
 
     /// <summary>
-    /// The pre-check every reader does before the schema: a recognised format string of a major version this engine
+    /// The JSON-level pass (spec/docs/validation.md#json, <see cref="SchemaSet.CheckJson"/>) as a check reports it: null
+    /// when the content may be read further, else its errors (at most <see cref="MaxErrors"/> and a <c>more</c>).
+    /// </summary>
+    internal static IReadOnlyList<SpecError>? CheckJson(JsonElement e, int maxDepth, string prefix = "")
+    {
+        var result = SchemaSet.CheckJson(e, maxDepth);
+        return result.IsValid ? null : FromSchema(result, prefix).ToList();
+    }
+
+    /// <summary>
+    /// The pre-check every reader does after the JSON-level pass and before the schema: a recognised format string of a major version this engine
     /// reads, and only capabilities it has. Null when the value may be validated further.
     /// </summary>
     internal static (CheckStatus Status, SpecError Error)? CheckFormat(JsonElement e, string kind, IReadOnlySet<string> capabilities)

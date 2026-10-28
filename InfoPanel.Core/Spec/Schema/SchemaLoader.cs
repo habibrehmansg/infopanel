@@ -175,7 +175,7 @@ internal sealed class SchemaLoader
                 Expect(JsonValueKind.String, "a string");
                 var pattern = v.GetString()!;
                 // Linear-time matching whatever the pattern: no backtracking (and so no backreferences or lookarounds).
-                try { rules.Add(new PatternRule(sp, pattern, new Regex(pattern, RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromSeconds(1)))); }
+                try { rules.Add(new PatternRule(sp, pattern, new Regex(AnchorAtEnd(pattern), RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromSeconds(1)))); }
                 catch (Exception ex) when (ex is ArgumentException or NotSupportedException) { throw Bad("Invalid regular expression: " + ex.Message); }
                 break;
             case "minItems" or "maxItems":
@@ -239,5 +239,33 @@ internal sealed class SchemaLoader
             foreach (var c in n.SameInstance) Visit(c);
             state[n] = true;
         }
+    }
+
+    /// <summary>
+    /// A schema pattern for .NET with ECMA-262's end anchor: <c>$</c> outside a character class and not escaped means the
+    /// end of the string there, as <c>\z</c> does in .NET (whose <c>$</c> also matches before a final newline).
+    /// </summary>
+    internal static string AnchorAtEnd(string pattern)
+    {
+        var result = new System.Text.StringBuilder(pattern.Length + 4);
+        var inClass = false;
+        for (var i = 0; i < pattern.Length; i++)
+        {
+            var c = pattern[i];
+            if (c == '\\' && i + 1 < pattern.Length)
+            {
+                result.Append(c).Append(pattern[++i]);
+                continue;
+            }
+            if (inClass) inClass = c != ']';
+            else if (c == '[') inClass = true;
+            else if (c == '$')
+            {
+                result.Append("\\z");
+                continue;
+            }
+            result.Append(c);
+        }
+        return result.ToString();
     }
 }
