@@ -50,7 +50,7 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// </summary>
 public static class PreviewSocketHandler
 {
-    public const int MaxClientMessageBytes = 4096;
+    public static readonly int MaxClientMessageBytes = SpecLimits.Default.SocketMessageBytes;
 
     /// <summary>The close status for a failed first-message authentication.</summary>
     public const WebSocketCloseStatus AuthFailedStatus = WebSocketCloseStatus.PolicyViolation;
@@ -487,7 +487,7 @@ internal sealed class PreviewSession
         }
     }
 
-    private const int MaxClientMessageBytesPlusOne = PreviewSocketHandler.MaxClientMessageBytes + 1;
+    private static readonly int MaxClientMessageBytesPlusOne = PreviewSocketHandler.MaxClientMessageBytes + 1;
 
     /// <summary>After we have sent a close frame: read and ignore until the client's close arrives (or the timeout aborts).</summary>
     private async Task DrainUntilCloseAsync(CancellationToken ct)

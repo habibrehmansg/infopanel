@@ -46,8 +46,9 @@ internal static class ApiResults
     public static IResult ProfileNotFound(string id) => Security.Problems.NotFound($"No profile '{id}'.");
 
     /// <summary>
-    /// The request's body, read up to <paramref name="maxBytes"/>; null when it is longer (<paramref name="maxBytes"/> + 1
-    /// bytes are read at most, so the length check of what reads it next sees it is over).
+    /// The request's body, read up to <paramref name="maxBytes"/>, with or without a <c>Content-Length</c>; over it when
+    /// longer, and then empty. At most <paramref name="maxBytes"/> + 1 bytes are read (none when the declared length is
+    /// over), and none of a body over the limit is kept.
     /// </summary>
     public static async Task<(byte[] Bytes, bool Over)> ReadBodyAsync(HttpRequest request, long maxBytes, CancellationToken ct)
     {
@@ -55,15 +56,17 @@ internal static class ApiResults
             return ([], true);
 
         using var buffer = new MemoryStream();
-        var chunk = new byte[81920];
+        var chunk = new byte[(int)Math.Min(81920, maxBytes + 1)];
         while (true)
         {
-            var read = await request.Body.ReadAsync(chunk, ct);
+            // Never more than the allowance left plus one byte: the extra byte is what tells a body is over.
+            var room = (int)Math.Min(chunk.Length, maxBytes + 1 - buffer.Length);
+            var read = await request.Body.ReadAsync(chunk.AsMemory(0, room), ct);
             if (read == 0)
                 break;
+            if (buffer.Length + read > maxBytes)
+                return ([], true);
             buffer.Write(chunk, 0, read);
-            if (buffer.Length > maxBytes)
-                return (buffer.ToArray(), true);
         }
 
         return (buffer.ToArray(), false);

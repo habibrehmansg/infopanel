@@ -70,6 +70,10 @@ A group's placement moves and rotates all its children as one. Its children's pl
 
 which keeps the pivot's world position and the item's world rotation. Grouping a selection is one commit: insert a group with the placement the client chooses (for example the selection's top-left), then move each item into it with its converted placement (`examples/commit/valid/group-selection.json`).
 
+## Coordinate range
+
+An engine draws in 32-bit precision ([scene](scene.md#drawing-model)), so every number a scene draws with (a coordinate, size, radius, transform value, path or polyline number, stroke width, dash length or effect offset) is clamped to ±10⁹ on its own before drawing, and bounds are measured from the clamped values. A rectangle at x = −1.5 × 10⁹ that is 3 × 10⁹ wide is drawn from −10⁹ and 10⁹ wide, so it ends at 0. Content meant to be seen stays far inside the range: canvases are at most 16,384 pixels a side.
+
 ## Clipping
 
 - Nothing an item draws is clipped to its layout box unless the scene clips it (a group's `clip`, a `series` box, a text node's overflow).

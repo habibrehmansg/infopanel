@@ -36,6 +36,8 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 
 A request on a profile is checked in this order, and the first failure answers: the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
 
+A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's or duplicate's to `requestBytes` (64 KiB), a token create's to `tokenRequestBytes` (4 KiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `mediaBytes` (413).
+
 ## Errors
 
 Every error under `/api` is `application/problem+json`: the definition the request names in `openapi.json` for its status, or else `problem`, the HTTP layer's error (`title`, `status`, and `type`, `detail` and `traceId` when given). Its codes and paths are part of the API, and its `title` and `detail` text for people ([versioning](versioning.md#error-codes-and-paths)). Besides what the table lists, a request answers:
@@ -176,7 +178,7 @@ The engine closes a socket only with these statuses and reasons, a fixed list ([
 | 1008 | `auth rejected` | The `auth` message's token isn't valid |
 | 1008 | `auth expected` | The first message isn't an `auth` message, with no members but `type` and `token` (or isn't text, is over 4,096 bytes, or isn't JSON as the formats read it, [below](#messages)) |
 | 1008 | `token revoked` | The integration token the socket was opened with was revoked; every other socket stays open |
-| 1009 | `Messages are at most 4096 bytes.` | A client message over 4,096 bytes in UTF-8 |
+| 1009 | `Messages are at most 4096 bytes.` | A client message over 4,096 bytes in UTF-8, on an authenticated socket (a first message over the cap on a socket still awaiting `auth` is 1008 `auth expected`) |
 | 1001 | `The engine is stopping.` | The engine stops |
 | 1000 | | The client closed the socket |
 
@@ -184,7 +186,7 @@ After an `auth` failure, the engine waits at most 2 seconds for the client's clo
 
 ### Messages
 
-A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`clientMessage`):
+A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`socketMessageBytes`, [limits](limits.md#socket-limits); `clientMessage`):
 
 - `subscribe` (`subscribeMessage`): `profileId`, and optionally `scale` (frame pixels per profile pixel, 1 when absent, [frame size](#frame-size)) and `maxFps` (30 when absent; the engine draws at most 60). A subscription the engine starts ends any earlier one, and is answered with a `doc` message, then frames; one it can't start is answered with an `error` and leaves the earlier one as it was.
 - `view` (`viewMessage`): a new `scale` or `maxFps` for the current subscription; a member left out keeps its value.

@@ -16,12 +16,6 @@ namespace InfoPanel.Api;
 /// </summary>
 public static class ProfileEndpoints
 {
-    /// <summary>The largest body of an undo, redo, revert or duplicate: a few members.</summary>
-    private const int SmallBodyBytes = 64 * 1024;
-
-    /// <summary>A create's envelope around its document: <c>{"id": …, "document": …}</c>, with room to spare.</summary>
-    private const int CreateEnvelopeBytes = 64 * 1024;
-
     public static void MapProfileEndpoints(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api/profiles");
@@ -30,7 +24,8 @@ public static class ProfileEndpoints
 
         api.MapPost("", async (HttpRequest request, Workspace workspace, CancellationToken ct) =>
         {
-            var (body, over) = await ReadBodyAsync(request, workspace.Limits.DocumentBytes + CreateEnvelopeBytes, ct);
+            // Read as a stored document is, up to documentBytes plus the read allowance: room for the envelope around it.
+            var (body, over) = await ReadBodyAsync(request, DocumentStore.ReadCap(workspace.Limits), ct);
             if (over)
                 return Invalid("/document", "limit.documentBytes", $"The document is over the {workspace.Limits.DocumentBytes}-byte limit.");
             return Created(workspace.Create(body));
@@ -42,9 +37,9 @@ public static class ProfileEndpoints
             if (Refused(id, found) is { } refused)
                 return refused;
 
-            var (body, over) = await ReadBodyAsync(request, SmallBodyBytes, ct);
+            var (body, over) = await ReadBodyAsync(request, workspace.Limits.RequestBytes, ct);
             if (over)
-                return Invalid("", "schema", "A duplicate's body is {\"id\"}.");
+                return OverRequestBytes(workspace);
             var outcome = workspace.Duplicate(found.Document!, body);
             return outcome.NotFound ? ProfileNotFound(id) : Created(outcome);
         }).RequireScope(ApiScope.Edit);
@@ -93,11 +88,11 @@ public static class ProfileEndpoints
             if (Refused(id, found) is { } refused)
                 return refused;
 
-            // The exact bytes: the opId digest covers every byte, and the size is the document's to check. A body
-            // refused from its Content-Length alone isn't read, so it is answered here, as the document would.
+            // The exact bytes: the opId digest covers every byte. A body over commitBytes, from its Content-Length or
+            // as read, isn't kept: it is answered here, as the document would answer it.
             var (body, over) = await ReadBodyAsync(request, workspace.Limits.CommitBytes, ct);
-            if (over && body.Length == 0)
-                return Invalid("", "limit.commitBytes", $"{request.ContentLength} is over the limit of {workspace.Limits.CommitBytes} (commitBytes).");
+            if (over)
+                return Invalid("", "limit.commitBytes", $"The body is over the limit of {workspace.Limits.CommitBytes} bytes (commitBytes).");
             return Acting(id, () => Outcome(found.Document!.Commit(body)));
         }).WithOwnBodyLimit().RequireScope(ApiScope.Edit);
 
@@ -117,12 +112,18 @@ public static class ProfileEndpoints
             if (Refused(id, found) is { } refused)
                 return refused;
 
-            var (body, over) = await ReadBodyAsync(request, SmallBodyBytes, ct);
-            using var json = over ? null : ParseJson(body);
+            var (body, over) = await ReadBodyAsync(request, workspace.Limits.RequestBytes, ct);
+            if (over)
+                return OverRequestBytes(workspace);
+            using var json = ParseJson(body);
             if (json == null)
-                return Invalid("", over ? "schema" : "json", over ? "The body is {\"instance\", \"baseRev\"}." : "The body isn't JSON.");
+                return Invalid("", "json", "The body isn't JSON.");
             return Acting(id, () => Outcome(act(found.Document!, json.RootElement)));
         }).RequireScope(ApiScope.Edit);
+
+    /// <summary>422 for a body over <c>requestBytes</c> as received (spec/docs/limits.md, "Request limits").</summary>
+    private static IResult OverRequestBytes(Workspace workspace) =>
+        Invalid("", "limit.requestBytes", $"The body is over the limit of {workspace.Limits.RequestBytes} bytes (requestBytes).");
 
     private static IResult WithDocument(Workspace workspace, string id, Func<ProfileDocument, IResult> act)
     {

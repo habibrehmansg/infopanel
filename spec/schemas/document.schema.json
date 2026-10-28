@@ -233,10 +233,10 @@
       }
     },
     "sourceDeps": {
+      "description": "The stored blobs the description needs, each once. They have no count of their own: `sourceBytes` bounds them (docs/limits.md).",
       "type": "array",
       "items": { "$ref": "urn:infopanel:common:1#/$defs/blobId" },
-      "uniqueItems": true,
-      "maxItems": 256
+      "uniqueItems": true
     },
     "origin": {
       "$ref": "urn:infopanel:common:1#/$defs/opaque",

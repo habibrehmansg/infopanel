@@ -8,7 +8,7 @@ Unless a row below says otherwise, a file outside the profile is refused with `m
 
 - The file is XML in UTF-8 (a UTF-8 byte order mark is allowed), at most `svgBytes` (1 MiB), checked before any of it is read ([limits](limits.md)). An XML declaration that names another encoding (`encoding="ISO-8859-1"`, `"UTF-16"`, ...) and bytes that aren't valid UTF-8 are `media.svg-parse`.
 - The root element is `svg`, unprefixed, in the SVG namespace (`<svg xmlns="http://www.w3.org/2000/svg">`); any other root, a prefixed one (`<s:svg xmlns:s="http://www.w3.org/2000/svg">`) included, is `media.format`.
-- A reader stops at element 10,001 (`svgElements`) and refuses the file (`limit.svgElements`) without reading the rest. Elements nest at most 32 deep, the root counting 1; reading stops at the first element deeper than that.
+- A reader stops at element 10,001 (`svgElements`) and refuses the file (`limit.svgElements`) without reading the rest. Elements nest at most 32 deep (`svgDepth`), the root counting 1; reading stops at the first element deeper than that.
 - No DTD (`<!DOCTYPE`), and so no entities other than XML's own (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`) and character references: `media.svg-parse`, as for XML that isn't well formed.
 - No processing instructions other than the XML declaration (`<?xml-stylesheet ...?>` included), and no CDATA sections. Comments are ignored.
 - Text only inside `<title>` and `<desc>`, which hold text only (no elements). White space anywhere is ignored.
@@ -44,7 +44,7 @@ Every value is parsed by the grammar of its attribute or property, white space a
 
 | Values | Attributes and properties | Grammar |
 |---|---|---|
-| Number | `pathLength` (≥ 0), `stroke-miterlimit` (≥ 1) | `[+-]? (digits [. digits?] \| . digits) ([eE] [+-]? digits)?`, finite, magnitude at most 10⁹; the same everywhere a number appears below |
+| Number | `pathLength` (≥ 0), `stroke-miterlimit` (≥ 1) | `[+-]? (digits [. digits?] \| . digits) ([eE] [+-]? digits)?`, finite; a length, coordinate, number list, transform argument or path number has a magnitude of at most 10⁹ (`svgNumber`; beyond it the value doesn't parse, it isn't clamped), while an opacity and a colour's components are clamped as their rows below say |
 | Length | `x`, `y`, `cx`, `cy`, `fx`, `fy`, `x1`, `y1`, `x2`, `y2`; not negative: `width`, `height`, `r`, `rx`, `ry`, `fr`, `stroke-width` | a number, unitless, in `px` (any case) or a percentage (`50%`); no other unit. The root's `width` and `height` are read as in [size](#size) |
 | Opacity | `opacity`, `fill-opacity`, `stroke-opacity`, `stop-opacity`, `offset` | a number or a percentage, clamped to 0–1 |
 | Number lists | `points` (an even count), `viewBox` (four, the width and height not negative) | numbers separated by white space and at most one comma |
@@ -70,7 +70,7 @@ An SVG refers only to its own elements, by fragment:
 - `href` / `xlink:href` is exactly `#id` (no white space, no other scheme, `data:` included, and not empty). On `use` it names the element drawn; on a gradient, the gradient it inherits from.
 - `url(#id)` in `fill` and `stroke` names a gradient, in `clip-path` a `clipPath`, in `mask` a `mask`.
 
-Every reference resolves to an element of the file of the right kind (a gradient, `clipPath` or `mask` as above; anything for `use`). The references and the element tree together form a graph that has no cycle: an element that draws, through `use`, `clip-path` or `mask` (directly or through anything it contains), itself or an element that contains it is refused, as is a gradient that inherits from itself. A gradient inherits through at most 4 `href` references (`#g5` inheriting from `#g4` ... from `#g1` from `#g0` is one too many).
+Every reference resolves to an element of the file of the right kind (a gradient, `clipPath` or `mask` as above; anything for `use`). The references and the element tree together form a graph that has no cycle: an element that draws, through `use`, `clip-path` or `mask` (directly or through anything it contains), itself or an element that contains it is refused, as is a gradient that inherits from itself. A gradient inherits through at most 4 `href` references (`svgGradientChain`) (`#g5` inheriting from `#g4` ... from `#g1` from `#g0` is one too many).
 
 ## Expanded size and depth
 
@@ -83,7 +83,7 @@ The element limit applies to the drawn size, before anything decodes the file. A
 
 The file's expanded size is its root's, and it is held to `svgElements` (10,000): over it, `limit.svgElements`. So 20 definitions that each draw the previous one twice (2^20 drawn elements from about 60 written) are refused, as is a 100,000-segment path drawn by 50 uses, while a symbol of 20 elements drawn by 50 uses (about 1,100) is not.
 
-The drawn depth is the longest chain of elements drawn inside one another, counting each `use`, `clip-path` and `mask` reference as a level (the root is level 1, a `use` in it level 2, the element it draws level 3). It is at most 64.
+The drawn depth is the longest chain of elements drawn inside one another, counting each `use`, `clip-path` and `mask` reference as a level (the root is level 1, a `use` in it level 2, the element it draws level 3). It is at most 64 (`svgDrawnDepth`).
 
 ## Size
 

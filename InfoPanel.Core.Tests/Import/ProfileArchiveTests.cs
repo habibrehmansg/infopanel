@@ -169,6 +169,24 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.Equal(3, Open(zip, NewWorkspace("target"), limits).Blobs.Count);
     }
 
+    [Fact]
+    public void Import_OfAnArchiveOverArchiveBytes_IsArchiveExpanded_AndStoresNothing()
+    {
+        var source = Source();
+        var (archive, _) = ProfileArchive.Export(source, Id, Now);
+        byte[] zip;
+        using (archive)
+            zip = Bytes(archive!);
+
+        var target = NewWorkspace("over-archive-bytes");
+        var error = Assert.Throws<ImportRefusal>(() => Open(zip, target, new ImportLimits { ArchiveBytes = zip.Length - 1 }));
+        Assert.Equal("archive.expanded", error.Code);
+        Assert.False(target.Blobs.Exists(BlobStore.IdOf(Png)));
+        Assert.False(target.Blobs.Exists(BlobStore.IdOf(Gif)));
+
+        Assert.Equal(3, Open(zip, target, new ImportLimits { ArchiveBytes = zip.Length }).Blobs.Count);
+    }
+
     /// <summary>A workspace holding one profile whose document refers to no blob, and that document's export length.</summary>
     private (Workspace Source, long Length) DocumentOnly()
     {

@@ -1,8 +1,8 @@
 # Limits and budgets
 
-**Limits** are part of the format: every engine that reads version 1 accepts all content within them and refuses content beyond them, with `limit.<name>` ([validation](validation.md)). They are fixed for a major version ([versioning](versioning.md)) and an engine reports them in `GET /api/session`. They bound the worst case: what hostile or careless content can cost.
+**Limits** are part of the format: every engine that reads version 1 accepts all content and requests within them and refuses what is beyond them, with `limit.<name>` or the code a table gives ([validation](validation.md)). They are fixed for a major version ([versioning](versioning.md)) and an engine reports each by its name in `GET /api/session` (`formatSupport.limits`). They bound the worst case: what hostile or careless content can cost. Every limit that decides whether an engine accepts content or a request is on this page, once, grouped by what it bounds: scenes, documents, commits, request bodies, the preview socket's messages, media, archives, and the 1.x import with its record. Bounds on a single member (a list's length, a string's, a number's range) are in the schemas; the main ones are repeated below their format's table.
 
-**Budgets** are the engine's performance targets for ordinary content. They are not part of the format; the engine is measured against them. Costs marked as estimated are measured when the scene runtime exists, and these numbers are revised if they are wrong.
+**Budgets** are what an engine guarantees beyond the limits, for content within them: each states a floor that every engine meets and may exceed (undo steps kept, `opId`s remembered, the work a tick may do). Content is never refused for a budget, and budgets are not part of the format: an engine's values may change from release to release, never below the floor. **Performance targets** are what this engine is measured against for ordinary content; they promise nothing. Costs marked as estimated are measured when the scene runtime exists, and these numbers are revised if they are wrong.
 
 ## The reference
 
@@ -31,7 +31,7 @@ The five content sizes, `sceneBytes`, `documentBytes`, `sourceBytes`, `originByt
 
 `documentBytes` measures the document without its revision metadata: the `rev` member of the document, of `profile` and of every item (groups' children included), and nothing else; a `rev` inside an opaque member (`scene`, `source`, `origin`, `editor`) is content and is measured. The engine stores documents in the canonical form without those members, so a stored document's size is its measured size, and a document read with its revisions (a copy of one the API returned) is measured as it will be stored.
 
-A document's bytes as received or stored are held only to a read cap, which bounds reading and decides nothing else: a create's body, an archive's document and a stored document are read when they are at most `documentBytes` plus 64 KiB (otherwise `limit.documentBytes`, unread); then the document's canonical size decides. Only `commitBytes` and the size caps on other request bodies measure the bytes received.
+A document's bytes as received or stored are held only to a read cap, which bounds reading and decides nothing else: a create's body, an archive's document and a stored document are read when they are at most `documentBytes` plus 64 KiB (otherwise `limit.documentBytes`, unread); then the document's canonical size decides. Only `commitBytes` and the size limits on other request bodies ([request limits](#request-limits)) measure the bytes received.
 
 ## Scene limits
 
@@ -53,8 +53,9 @@ A document's bytes as received or stored are held only to a read cap, which boun
 | `mediaNodes` | 64 | Bounds decoders and cached frames per scene. |
 | `sequence` | 256 frames | 1.x gauges use at most 101 images. |
 | `effectCost` | 64 units | Each blur, shadow or glow costs 1 + ceil(sigma ÷ 8) (sigma 0–64; 9 for a computed sigma). Blur cost grows with sigma and area; with layers clipped to the canvas this bounds a scene to a few full-canvas blurs. 1.x glow (radius up to 20) costs 4. |
+| `composeDepth` | 16 | Compose paints nested in one another, through `dst` or `src` (the outermost is at 1). Two gradients multiplied need 1; bounds the paint tree's recursion. |
 
-Schema-level bounds also apply: up to 16 gradient stops, 16 dash lengths, 8 transform steps and 4 effects per group, 32 spans per text, 16 columns per table, `history` counts up to 4,096, `maxLines` up to 1,000.
+Schema-level bounds also apply, where the schema states them: up to 16 gradient stops, 16 dash lengths, 8 transform steps and 4 effects per group, 32 spans per text, 16 columns and 100 rows per table, 4,096 samples per series, `history` counts up to 4,096, `maxLines` up to 1,000, 16 operands per numeric or boolean operation and 32 per `concat`, 32 thresholds per `steps`, path data of 65,536 characters, string literals of 4,096 and 32 capabilities in `requires`.
 
 ## Document limits
 
@@ -62,7 +63,7 @@ Schema-level bounds also apply: up to 16 gradient stops, 16 dash lengths, 8 tran
 |---|---|---|
 | `documentBytes` | 16 MiB in the canonical form ([sizes](#sizes)), as stored | Fits 2,000 items of ordinary size with room; bounds memory per document (the parsed model is a small multiple of it). |
 | `items` | 2,000 | 1.x profiles have tens to a few hundred items. |
-| `groupDepth` | 8 | Group nesting. |
+| `itemDepth` | 8 levels | How deep items nest: a top-level item is at level 1 and a group's children one level below the group, so an item may be inside at most seven groups (and a group at level 8 is empty). |
 | `bindings` | 32 per item | As `inputs`. |
 | `sourceBytes` | 256 KiB per item, in the canonical form | A client's description of how it produced a scene; usually a few KB. |
 | `originBytes` | 4 KiB, in the canonical form | Where an item came from. |
@@ -74,6 +75,8 @@ Schema-level bounds also apply: up to 16 gradient stops, 16 dash lengths, 8 tran
 
 Aggregates are admitted in document order: a scene that would take the document over one is drawn as a placeholder (`budget`), and a commit that would is refused.
 
+Schema-level bounds also apply: up to 32 `triggerApps` of 260 characters, 256 `guides` and 32 capabilities in `requires`; names of 256 characters, sensor keys and source references of 512; canvas sides from 1 to 16,384 pixels and placements within ±1,000,000. A source's `deps` have no count of their own: `sourceBytes` bounds them.
+
 ## Commit limits
 
 | Limit | Value |
@@ -81,13 +84,34 @@ Aggregates are admitted in document order: a scene that would take the document 
 | `commitBytes` | 16 MiB of the request body as received, whitespace around the JSON value included (a commit may carry a whole document's worth of items) |
 | `ops` | 1,000 per commit |
 
+## Request limits
+
+Every request body is held to a size as received, whitespace around the JSON value included, before it is parsed. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""` (a blob's 413), and nothing is done.
+
+| Limit | Value | The body of |
+|---|---|---|
+| `requestBytes` | 64 KiB | An undo, redo, revert or duplicate (a few members; [API](api.md)) |
+| `tokenRequestBytes` | 4 KiB | A token create (a name and its scopes) |
+
+A commit's body is held to `commitBytes` ([commit limits](#commit-limits)), a create's is read up to `documentBytes` plus 64 KiB and its document then held to `documentBytes` ([sizes](#sizes)), and a blob's bytes to `mediaBytes` (413, nothing stored). Every body is nested at most `jsonDepth` deep. A body is read only as far as its limit plus one byte, whether or not it states its length.
+
+## Socket limits
+
+| Limit | Value | What it bounds |
+|---|---|---|
+| `socketMessageBytes` | 4,096 bytes | A client message on the preview socket, in UTF-8: a longer one closes the socket with 1009 once the socket is authenticated; on a socket still awaiting `auth`, a first message over the cap closes it with 1008 `auth expected` ([API](api.md#the-preview-socket)) |
+
 ## Media limits (checked from the header, before decoding)
 
 | Limit | Value | Why |
 |---|---|---|
 | `mediaBytes` | 32 MiB per asset, and per stored blob of any kind: a larger blob is refused (413) and not stored | Generous for images; bounds storage and upload. |
 | `svgBytes` | 1 MiB | SVG is parsed in full; checked before any of it is read. |
-| `svgElements` | 10,000 | Bounds SVG rendering cost: reading stops at element 10,001, and the expanded size (each `use`, `clip-path` and `mask` reference counting what it draws, every 32 path numbers and each gradient reference counting too, [SVG](svg.md)) is held to it. Elements nest at most 32 deep, drawing through references at most 64 deep, and a gradient inherits through at most 4 `href`s. |
+| `svgElements` | 10,000 | Bounds SVG rendering cost: reading stops at element 10,001, and the expanded size (each `use`, `clip-path` and `mask` reference counting what it draws, every 32 path numbers and each gradient reference counting too, [SVG](svg.md)) is held to it. |
+| `svgDepth` | 32 levels | Element nesting in an SVG file, the root at 1; reading stops at the first element deeper ([SVG](svg.md#reading)). Bounds the reader. |
+| `svgDrawnDepth` | 64 levels | Elements drawn inside one another, each `use`, `clip-path` and `mask` reference a level, the root at 1 ([SVG](svg.md#expanded-size-and-depth)). Bounds drawing's recursion. |
+| `svgGradientChain` | 4 `href` references | How far a gradient inherits ([SVG](svg.md#references)). |
+| `svgNumber` | 1,000,000,000 in magnitude | Every length, coordinate, number list entry, transform argument and path number in an SVG: a file with one beyond it is refused, not clamped ([SVG](svg.md#values)); opacities and colour components are clamped as documented there. Well beyond any drawable coordinate. |
 | `mediaSide` | 8,192 px | Twice a 4K panel's width. |
 | `mediaArea` | 16,777,216 px (16 Mpx) | The engine's frame cap: 64 MB of RGBA per decoded frame. |
 | `mediaFrames` | 1,000 | Animated GIF, PNG or WebP frames. |
@@ -96,23 +120,63 @@ Aggregates are admitted in document order: a scene that would take the document 
 
 Bytes over `mediaBytes` are refused when they are added, and not stored. An asset within `mediaBytes` that is over another limit (or fails another media check) is stored as a blob but refused as media: the engine reports why it can't be used as media (`mediaError`, [API](api.md#blobs)). Media in a document that names such a blob, or one over a limit, draws the missing-media placeholder. An SVG's size is its `width` and `height` in pixels (unitless or `px`; other units are unsupported, [SVG](svg.md)) or, where one is absent, its `viewBox` size, and the limits apply to that size.
 
+## Archive limits
+
+An import reads an archive, a profile archive or a 1.x `.infopanel` export, within these, and refuses one beyond them; an export that would be beyond them isn't made. The codes are those given.
+
+| Limit | Value | What it bounds |
+|---|---|---|
+| `archiveBytes` | 512 MiB | The archive's file, as received or as an export would write it (`archive.expanded`: an import refuses it before reading any of it, and no export over it is made) |
+| `archiveEntries` | 10,000 | Its entries, as its directory declares them and as they are read (`archive.entries`) |
+| `expandedBytes` | 512 MiB | The bytes one import decompresses or reads, counted as they are read, whatever the entries' headers claim; a 1.x folder's assets count too (`archive.expanded`) |
+| `entryNameBytes` | 1,024 bytes | An entry's name, in UTF-8 (`archive.name`) |
+| `entryRecordBytes` | 4 KiB | An entry's directory record: its name, extra field and comment, and 46 fixed bytes (`archive.entries`) |
+
+## 1.x import limits
+
+What an engine reads of 1.x files, and what one import answer and the 1.x migration's record hold.
+
+| Limit | Value | What it bounds |
+|---|---|---|
+| `v1ProfileXmlBytes` | 4 MiB | A `Profile.xml`, `profiles.xml` or `settings.xml` |
+| `v1ItemsXmlBytes` | 16 MiB | An items file (`DisplayItems.xml`, `profiles/{guid}.xml`) |
+| `v1XmlDepth` | 64 levels | Element nesting in any 1.x XML file (the root element at 1) |
+| `v1XmlElements` | 500,000 | Elements in any 1.x XML file |
+| `v1Profiles` | 1,000 | Profiles read from `profiles.xml`; the rest are left out with a warning |
+| `v1Devices` | 64 | Devices read per device family of `settings.xml`; the rest are left out with a warning |
+| `v1DeviceFields` | 64 | Fields read per device; the rest are left out with a warning |
+| `v1SettingLength` | 1,024 characters | A device field's value or a hotkey's: a longer field is left out, and a hotkey with one, each with a warning. The other settings are read by their own rules, not held to it |
+| `v1Hotkeys` | 256 | Hotkeys read; the rest are left out with a warning |
+| `diagnostics` | 1,000 | Diagnostics one import answer lists; then one more, `more`, counts the rest |
+| `recordOutcomes` | 1,000 | Profile outcomes in the migration record (`limit.recordOutcomes`) |
+| `recordBytes` | 1 MiB | The migration record, as stored (`limit.recordBytes`) |
+| `recordReasonLength` | 256 characters | An outcome's reason in the record (`record.reason`) |
+
+A 1.x file over one of the first four isn't read: an archive's `Profile.xml` refuses the import (`import.xml`), and any other file is reported in the answer's diagnostics.
+
 ## Run-time limits
 
-- Every string an expression produces is cut to its first 4,096 Unicode scalar values (`textLength`), at the operation that produces it ([expressions](expressions.md#numbers-and-strings)), so no string an engine holds for a scene is longer.
+These hold while a scene draws; content is never refused for them.
+
+| Limit | Value | What it bounds |
+|---|---|---|
+| `textLength` | 4,096 Unicode scalar values | Every string an expression produces, cut at the operation that produces it ([expressions](expressions.md#numbers-and-strings)); and what a text node draws, its spans together, and each table cell ([smart nodes](smart-nodes.md#text)). No string an engine holds for a scene is longer. |
+
+- Every number a scene draws with (a coordinate, size, radius, transform value, path or polyline number, stroke width, dash length or effect offset) is clamped to ±10⁹ on its own before drawing, and bounds are measured from the clamped values ([geometry](geometry.md#coordinate-range)). This is drawing, not acceptance, and covers a scene's own numbers only: an SVG's are held to `svgNumber`, and a file with one beyond it is refused.
 - Effect layers are clipped to the canvas plus the effect's reach.
 - Frames are at most 16 Mpx, counted after each side is rounded to whole pixels (a preview at a scale that would exceed it is drawn at the largest step of 0.25 that fits, [API](api.md#frame-size)).
 
-## Run-time budgets (this engine's current values)
+## Run-time budgets
 
-Content within the limits can still be expensive on a given tick. This engine draws an item that would exceed one of these as a `budget` placeholder for that tick, with a diagnostic, and tries it again on the next. They are the engine's current values, not part of the format; another engine may choose others.
+Content within the limits can still be expensive on a given tick. An engine draws an item that would exceed one of these as a `budget` placeholder for that tick, with a diagnostic, and tries it again on the next. Each is a floor: every engine allows at least this much (this engine allows exactly this much), and an item within all of them is never drawn as over budget.
 
-| Budget | Value |
+| Budget | At least |
 |---|---|
 | Text layouts per document tick | 4,000 (layouts made, not ones kept from earlier ticks; every paragraph laid out counts, `fit` probes and ellipsis passes included) |
 | Text layouts per item tick | 2,000, counted the same way |
 | Dashes per stroke | 100,000 along its outline: a shape's, or the glyph outlines of a text or table. The pattern starts again on every contour (each glyph has one or more), so each contour counts at least one period however short it is |
-| Expression work per item tick | twice `exprWork` (valid scenes stay under it) |
-| Watchdog | An item whose evaluation or drawing takes over 50 ms on three ticks running is drawn as over budget for 5 s, then tried again. A tick counts once, by its evaluation and its slowest draw, however many outputs and scales draw it |
+| Expression work per item tick | twice `exprWork`, so a valid scene always stays under it |
+| Watchdog | 50 ms: an item whose evaluation or drawing takes over it on three ticks running is drawn as over budget for 5 s, then tried again. A tick counts once, by its evaluation and its slowest draw, however many outputs and scales draw it |
 
 ## Checking hostile content
 
@@ -128,18 +192,19 @@ Validation itself is bounded, since it runs on untrusted imports and commits:
 
 ## Process budgets
 
-Shared by everything one engine renders:
+Shared by everything one engine runs. Each is a floor, as above: this engine's value, which every engine meets or exceeds.
 
-| Budget | Value |
+| Budget | At least |
 |---|---|
+| `opId`s remembered | the last 1,000 commits applied to each document, for as long as the engine runs ([commits](commit.md#opid-retries)) |
+| Undo history | per document the last 100 steps within 64 MiB, and all documents together 256 MiB; the byte caps win, so a document with large steps keeps fewer than 100; oldest steps are evicted first ([commits](commit.md#undo-redo-revert-and-save)) |
 | Decoded media cache | 512 MiB; least recently used frames are dropped first |
-| Undo history | per document the last 100 steps (an engine may keep more) within at most 64 MiB, and all documents together at most 256 MiB; the byte caps win, so a document with large steps keeps fewer than 100; oldest steps are evicted first |
 | Scene nodes being rendered | 100,000 across all documents; a document that would exceed it is not rendered until others stop (its outputs show it as over budget) |
-| Output buffers | a bounded pool per output; each buffer at most 16 Mpx (64 MiB) |
+| Output buffers | a bounded pool per output, each buffer up to the 16 Mpx frame (64 MiB) |
 
-## Performance budgets
+## Performance targets
 
-For a document like the reference (and any within the limits, at proportionally more cost):
+What this engine is measured against, for a document like the reference (and any within the limits, at proportionally more cost). They are targets, not guarantees:
 
 | Budget | Target (p95) | From the reference |
 |---|---|---|

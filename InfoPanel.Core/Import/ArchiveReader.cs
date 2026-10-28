@@ -44,9 +44,10 @@ public sealed class ArchiveEntry
 /// The guarded zip reader both archive kinds share (a 1.x <c>.infopanel</c> and the 2.0 profile archive). Opening
 /// checks the container and every entry's name before any entry is read:
 /// <list type="bullet">
+/// <item>a file longer than <see cref="ImportLimits.ArchiveBytes"/>: <c>archive.expanded</c>, before anything else;</item>
 /// <item>not a zip: <c>archive.zip</c>; more entries than <see cref="ImportLimits.Entries"/>, declared by the end
-/// records or found by walking the central directory's records before .NET reads them, or a record over 4,096 bytes:
-/// <c>archive.entries</c>;</item>
+/// records or found by walking the central directory's records before .NET reads them, or a record over
+/// <see cref="ImportLimits.EntryRecordBytes"/>: <c>archive.entries</c>;</item>
 /// <item>a name over <see cref="ImportLimits.EntryNameBytes"/> UTF-8 bytes, with NUL or <c>:</c>, rooted (<c>/</c>,
 /// <c>\</c>), or with an empty (other than a directory's trailing one), <c>.</c> or <c>..</c> segment:
 /// <c>archive.name</c>;</item>
@@ -61,13 +62,6 @@ public sealed class ArchiveReader : IDisposable
 {
     /// <summary>Unix file type bits in the high half of a zip entry's external attributes, and a symbolic link's type.</summary>
     private const int UnixTypeMask = 0xF000, UnixSymlink = 0xA000;
-
-    /// <summary>
-    /// The largest central directory record an entry may take, checked on every record before .NET reads the directory
-    /// (and, times the entry limit, on the declared directory size): 46 fixed bytes, a name of at most 1 KiB, and room
-    /// for extra fields and a comment.
-    /// </summary>
-    private const long CentralRecordBytes = 4096;
 
     private readonly ZipArchive _zip;
     private readonly ImportBudget _budget;
@@ -88,6 +82,10 @@ public sealed class ArchiveReader : IDisposable
     {
         if (!stream.CanSeek || !stream.CanRead)
             throw new ArgumentException("The archive must be a readable, seekable stream.", nameof(stream));
+
+        // The file's own size first, for both archive kinds: nothing of a file over it is parsed or stored.
+        if (stream.Length > limits.ArchiveBytes)
+            throw new ImportRefusal("archive.expanded", $"The archive is {stream.Length} bytes; an import accepts at most {limits.ArchiveBytes}.");
 
         CheckDirectory(stream, limits);
         stream.Position = 0;
@@ -183,7 +181,7 @@ public sealed class ArchiveReader : IDisposable
     /// <see cref="ImportLimits.Entries"/>, or a declared directory too large for that many records, is
     /// <c>archive.entries</c>. Then it walks the records themselves from each directory start either record declares,
     /// as .NET reads them (46 fixed bytes, while the signature matches), never trusting a declared size: more records
-    /// than the limit, or one over <see cref="CentralRecordBytes"/>, is <c>archive.entries</c>; a raw name over
+    /// than the limit, or one over <see cref="ImportLimits.EntryRecordBytes"/>, is <c>archive.entries</c>; a raw name over
     /// <see cref="ImportLimits.EntryNameBytes"/> is <c>archive.name</c>; a record past the end of the file is
     /// <c>archive.zip</c>. Nothing is allocated per record and no name is read. An end record that can't be found is
     /// left to the zip reader, which refuses the archive.
@@ -255,7 +253,7 @@ public sealed class ArchiveReader : IDisposable
         var declared = Math.Max(entriesOnDisk, entries);
         if (declared > (ulong)limits.Entries)
             throw new ImportRefusal("archive.entries", $"The archive declares {declared} entries; at most {limits.Entries} are allowed.");
-        if (directoryBytes > (ulong)(limits.Entries * CentralRecordBytes))
+        if (directoryBytes > (ulong)limits.Entries * (ulong)limits.EntryRecordBytes)
             throw new ImportRefusal("archive.entries", $"The archive's central directory is {directoryBytes} bytes, too large for {limits.Entries} entries.");
     }
 
@@ -279,8 +277,8 @@ public sealed class ArchiveReader : IDisposable
             if (name > limits.EntryNameBytes)
                 throw new ImportRefusal("archive.name", $"An entry name is {name} bytes, longer than {limits.EntryNameBytes} UTF-8 bytes.");
             long size = FixedBytes + name + BinaryPrimitives.ReadUInt16LittleEndian(header[30..]) + BinaryPrimitives.ReadUInt16LittleEndian(header[32..]);
-            if (size > CentralRecordBytes)
-                throw new ImportRefusal("archive.entries", $"A central directory record is {size} bytes; at most {CentralRecordBytes} are allowed.");
+            if (size > limits.EntryRecordBytes)
+                throw new ImportRefusal("archive.entries", $"A central directory record is {size} bytes; at most {limits.EntryRecordBytes} are allowed.");
             if (at + size > length)
                 throw new ImportRefusal("archive.zip", "A central directory record runs past the end of the file.");
             at += size;

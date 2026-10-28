@@ -53,13 +53,14 @@ public static class MediaProbe
     /// does when the SVG's expanded element count (references included, <see cref="SvgProfile"/>) is over the limit.
     /// </summary>
     public static MediaInfo? Inspect(ReadOnlySpan<byte> bytes, out MediaProblem? problem, int maxSvgElements) =>
-        Inspect(bytes, out problem, maxSvgElements, out _);
+        Inspect(bytes, out problem, SpecLimits.Default with { SvgElements = maxSvgElements }, out _);
 
     /// <summary>
-    /// As <see cref="Inspect(ReadOnlySpan{byte}, out MediaProblem?, int)"/>; for an SVG in the profile and within the
-    /// element limit, <paramref name="rebuiltSvg"/> is the canonical document rebuilt from it (<see cref="SvgProfile"/>).
+    /// As <see cref="Inspect(ReadOnlySpan{byte}, out MediaProblem?, int)"/>, an SVG read within the SVG limits of
+    /// <paramref name="limits"/>; for an SVG in the profile and within them, <paramref name="rebuiltSvg"/> is the canonical document
+    /// rebuilt from it (<see cref="SvgProfile"/>).
     /// </summary>
-    internal static MediaInfo? Inspect(ReadOnlySpan<byte> bytes, out MediaProblem? problem, int maxSvgElements, out byte[]? rebuiltSvg)
+    internal static MediaInfo? Inspect(ReadOnlySpan<byte> bytes, out MediaProblem? problem, SpecLimits limits, out byte[]? rebuiltSvg)
     {
         problem = null;
         rebuiltSvg = null;
@@ -87,7 +88,7 @@ public static class MediaProbe
             }
 
             if (LooksLikeSvg(bytes))
-                return SvgProfile.Read(bytes, out problem, maxSvgElements, out rebuiltSvg);
+                return SvgProfile.Read(bytes, out problem, limits, out rebuiltSvg);
 
             return Fail(out problem, FormatCode, "Not a supported image format (PNG, JPEG, GIF, WebP or SVG).");
         }

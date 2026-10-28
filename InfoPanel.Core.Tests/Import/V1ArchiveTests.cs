@@ -110,6 +110,19 @@ public sealed class V1ArchiveTests : IDisposable
     }
 
     [Fact]
+    public void AnArchiveOverArchiveBytes_IsArchiveExpanded_AndStoresNothing()
+    {
+        var zip = V1Archive(Items(Image("Logo", "logo.png")), ("assets/logo.png", Asset("logo.png")));
+
+        var error = Assert.Throws<ImportRefusal>(() => _kit.ReadArchive(zip, new ImportLimits { ArchiveBytes = zip.Length - 1 }));
+        Assert.Equal("archive.expanded", error.Code);
+        Assert.False(_kit.Stored(Asset("logo.png")));
+
+        var envelope = _kit.ReadArchive(zip, new ImportLimits { ArchiveBytes = zip.Length });
+        Assert.Equal(BlobStore.IdOf(Asset("logo.png")), envelope.Assets[0].Blob!.Id);
+    }
+
+    [Fact]
     public void SubFolders_ResolveAgainstTheSameSubFolder()
     {
         // A deviation from 1.4.x, which flattened sub-folders on import (so such an item drew the placeholder).

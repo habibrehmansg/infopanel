@@ -225,7 +225,7 @@ internal static class CommitApplier
         }
         if (result.Conflicts.Count > 0 || result.Errors.Count > 0) return result;
 
-        // The limits, checked once on the result: the item count and group depth first, on the draft, without recursion
+        // The limits, checked once on the result: the item count and item depth first, on the draft, without recursion
         // and stopping just past the limit, so nothing below runs over a tree larger or deeper than the limits allow.
         var limits = current.Limits;
         if (draft.Count > limits.Items)
@@ -236,8 +236,8 @@ internal static class CommitApplier
         foreach (var (id, op) in placed)
         {
             if (draft.Find(id) is null) continue;
-            var depth = draft.Depth(id, limits.GroupDepth);
-            if (depth > limits.GroupDepth) result.Errors.Add(DocumentValidator.Over($"/ops/{op}", "groupDepth", depth, limits.GroupDepth));
+            var depth = draft.Depth(id, limits.ItemDepth);
+            if (depth > limits.ItemDepth) result.Errors.Add(DocumentValidator.Over($"/ops/{op}", "itemDepth", depth, limits.ItemDepth));
         }
         if (result.Errors.Count > 0) return result;
 

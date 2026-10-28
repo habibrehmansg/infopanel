@@ -8,7 +8,7 @@ Example: `examples/scene/valid/text-layout.json`.
 
 | Member | Meaning |
 |---|---|
-| `text` | A string expression, or 1–32 **spans** `{ "text", "font", "fill", "underline", "strike" }`, each overriding the node's font fields and paint, laid out as one run (a value and its smaller unit). |
+| `text` | A string expression, or 1–32 **spans** `{ "text", "font", "fill", "underline", "strike" }`, each overriding the node's font fields and paint, laid out as one run (a value and its smaller unit). A text node draws at most `textLength` (4,096) Unicode scalar values in all ([limits](limits.md#run-time-limits)): the spans keep their text in order up to that many, and the rest is cut, so a span past it draws nothing. |
 | `font` | `family` (static), `size` (pixels, the em size, clamped to 1–2048), `weight` (1–1000, default 400; the nearest available face), `italic`. A family the engine doesn't have falls back to its default family (this engine: Inter) and is reported; characters a face lacks fall back per character. |
 | `fill`, `stroke` | Paints, as for shapes (default fill black). |
 | `x`, `y` | The anchor. |
@@ -44,7 +44,7 @@ A number input's history (newest last) drawn in the box (`x`, `y`, `w`, `h`), cl
 
 Example: `table.json`.
 
-A table input as text. Columns sit side by side from `x`, each `w` wide and `gap` apart; `column` picks the table's column by index (0 first) or by name, and a missing column keeps its width and draws nothing. With `header` (default true) the first row is each column's `title`, or its name, in `headerFont` (overriding `font`) and `headerFill`; then up to `rows` rows (1–100, default 10), each `rowHeight` below the last (default: the font's line height). Each cell is its text, aligned in its column by `align` and cut by `overflow` (`ellipsis` default, `clip`, `visible`) at the column's width. Cells are single lines, centred vertically in their row's `rowHeight`. A table with no reading draws nothing.
+A table input as text. Columns sit side by side from `x`, each `w` wide and `gap` apart; `column` picks the table's column by index (0 first) or by name, and a missing column keeps its width and draws nothing. With `header` (default true) the first row is each column's `title`, or its name, in `headerFont` (overriding `font`) and `headerFill`; then up to `rows` rows (1–100, default 10), each `rowHeight` below the last (default: the font's line height). Each cell is its text, at most `textLength` Unicode scalar values, aligned in its column by `align` and cut by `overflow` (`ellipsis` default, `clip`, `visible`) at the column's width. Cells are single lines, centred vertically in their row's `rowHeight`. A table with no reading draws nothing.
 
 ## `media`
 

@@ -331,7 +331,7 @@ public sealed class CommitTests
         Assert.Equal("limit.items ", string.Join(" ", tooMany.Errors.Select(e => $"{e.Code} {e.Path}")));
         var tooDeep = doc.Invalid(Chain(200));
         Assert.Equal(101, tooDeep.Errors.Count);
-        Assert.All(tooDeep.Errors.Take(100), e => Assert.Equal("limit.groupDepth", e.Code));
+        Assert.All(tooDeep.Errors.Take(100), e => Assert.Equal("limit.itemDepth", e.Code));
         Assert.Equal(("/ops/0", "more", "100 more errors not listed."), (tooDeep.Errors[0].Path, tooDeep.Errors[100].Code, tooDeep.Errors[100].Message));
         Assert.Same(before, doc.Current);
         Assert.Equal((0, 0), (doc.HistorySize.Undo, doc.HistorySize.Redo));
@@ -394,9 +394,9 @@ public sealed class CommitTests
         for (var i = 7; i >= 1; i--) deep = Group($"d{i}", deep);
         using var doc = Sample();
         var problem = doc.Invalid(Commit(Insert(deep.DeepClone().AsObject(), "g")));
-        Assert.Equal("limit.groupDepth /ops/0", string.Join(" ", problem.Errors.Select(e => $"{e.Code} {e.Path}")));
+        Assert.Equal("limit.itemDepth /ops/0", string.Join(" ", problem.Errors.Select(e => $"{e.Code} {e.Path}")));
         doc.Ok(Commit(Insert(deep)));
-        Assert.Equal("limit.groupDepth /ops/0", string.Join(" ", doc.Invalid(Commit(Move("d1", "g", 0))).Errors.Select(e => $"{e.Code} {e.Path}")));
+        Assert.Equal("limit.itemDepth /ops/0", string.Join(" ", doc.Invalid(Commit(Move("d1", "g", 0))).Errors.Select(e => $"{e.Code} {e.Path}")));
     }
 
     [Fact]

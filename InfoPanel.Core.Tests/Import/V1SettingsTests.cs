@@ -21,6 +21,16 @@ public sealed class V1SettingsTests
         return (settings, diagnostics.ToList());
     }
 
+    [Fact]
+    public void V1SettingLength_HoldsDeviceFieldsAndHotkeys_NotTheScalarSettings()
+    {
+        // spec/docs/limits.md, "1.x import limits": v1SettingLength is the cap on a device field's value and on a
+        // hotkey's; a scalar setting is read by its own parse (a frame rate of 1,024 spaces and 30 is 30, no warning).
+        var (settings, diagnostics) = Read($"<TargetFrameRate>{new string(' ', 1_024)}30</TargetFrameRate>");
+        Assert.Equal(30, settings.TargetFrameRate);
+        Assert.Empty(diagnostics);
+    }
+
     [Theory]
     [InlineData(0, 1)]
     [InlineData(-5, 1)]

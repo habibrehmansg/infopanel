@@ -1138,7 +1138,7 @@ export interface RefSource {
 }
 
 /**
- * Items: ≤ 256.
+ * The stored blobs the description needs, each once. They have no count of their own: `sourceBytes` bounds them (docs/limits.md).
  * Unique items.
  */
 export type SourceDeps = BlobId[];

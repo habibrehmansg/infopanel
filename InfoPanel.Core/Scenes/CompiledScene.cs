@@ -603,7 +603,7 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
                     Kind = GradientKind.Sweep, Geometry = [N(s.Cx), N(s.Cy), N(s.Start), s.End is null ? ExprCompiler.Zero : _x.Compile(s.End)],
                     DefaultEnd = s.End is null, Stops = Stops(s.Stops), Tile = Tile(s.Spread),
                 };
-            case ComposePaint c when depth < 16:
+            case ComposePaint c when depth < limits.ComposeDepth: // a valid scene's composes are all within it
                 return new CCompose(Blend(c.Blend), Paint(c.Dst, depth + 1) ?? new CSolid(ExprCompiler.Const(Val.Col(0), Ty.Color)),
                     Paint(c.Src, depth + 1) ?? new CSolid(ExprCompiler.Const(Val.Col(0), Ty.Color)));
             default: return null;

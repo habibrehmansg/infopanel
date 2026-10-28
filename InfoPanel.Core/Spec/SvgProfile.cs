@@ -10,7 +10,7 @@ namespace InfoPanel.Spec;
 /// The SVG profile of spec/docs/svg.md. A file is read as a stream (UTF-8 only; no DTD, no entities beyond XML's own,
 /// no processing instructions, no CDATA) against an allowlist of elements, attributes and <c>style</c> properties, and
 /// every value is parsed by a strict grammar for its property. Its references are resolved into a graph that must have
-/// no cycle, nest at most <see cref="MaxDrawnDepth"/> deep and expand to at most <c>svgElements</c>. A file that passes
+/// no cycle, nest at most <c>svgDrawnDepth</c> deep and expand to at most <c>svgElements</c>. A file that passes
 /// is <b>rebuilt</b>: a fresh, canonical SVG document with only the allowlisted elements and attributes, every value
 /// regenerated from its parsed form and <c>style</c> properties as attributes. Engines decode only the rebuilt document,
 /// never the original text, so nothing the validator and the renderer read differently survives.
@@ -21,15 +21,6 @@ internal static class SvgProfile
     public const string XLinkNamespace = "http://www.w3.org/1999/xlink";
     private const string XmlnsNamespace = "http://www.w3.org/2000/xmlns/";
     private const string XmlNamespace = "http://www.w3.org/XML/1998/namespace";
-
-    /// <summary>Deepest element nesting in the file, the root counting 1.</summary>
-    public const int MaxXmlDepth = 32;
-
-    /// <summary>Deepest drawn nesting: elements inside elements plus the <c>use</c>, <c>clip-path</c> and <c>mask</c> references they draw through.</summary>
-    public const int MaxDrawnDepth = 64;
-
-    /// <summary>Most <c>href</c> references a gradient inherits through.</summary>
-    public const int MaxGradientChain = 4;
 
     /// <summary>Numbers of <c>d</c> or <c>points</c> that count as one more element.</summary>
     public const int NumbersPerElement = 32;
@@ -84,18 +75,15 @@ internal static class SvgProfile
     }
 
     /// <summary>
-    /// Reads an SVG: null and a problem, or the info with <see cref="MediaInfo.Elements"/> the expanded element count
-    /// (<paramref name="maxElements"/> + 1 when over it; reading stops at element <paramref name="maxElements"/> + 1).
+    /// Reads an SVG within <paramref name="limits"/> (<c>svgElements</c>, <c>svgDepth</c>, <c>svgDrawnDepth</c>,
+    /// <c>svgGradientChain</c>): null and a problem, or the info with <see cref="MediaInfo.Elements"/> the expanded
+    /// element count (<c>svgElements</c> + 1 when over it; reading stops at element <c>svgElements</c> + 1), and
+    /// <paramref name="rebuilt"/> the canonical document (UTF-8, no BOM) when the file is in the profile and within
+    /// <c>svgElements</c>, else null.
     /// </summary>
-    public static MediaInfo? Read(ReadOnlySpan<byte> bytes, out MediaProblem? problem, int maxElements) =>
-        Read(bytes, out problem, maxElements, out _);
-
-    /// <summary>
-    /// As <see cref="Read(ReadOnlySpan{byte}, out MediaProblem?, int)"/>, and <paramref name="rebuilt"/> is the canonical
-    /// document (UTF-8, no BOM) when the file is in the profile and within <paramref name="maxElements"/>, else null.
-    /// </summary>
-    public static MediaInfo? Read(ReadOnlySpan<byte> bytes, out MediaProblem? problem, int maxElements, out byte[]? rebuilt)
+    public static MediaInfo? Read(ReadOnlySpan<byte> bytes, out MediaProblem? problem, SpecLimits limits, out byte[]? rebuilt)
     {
+        var maxElements = limits.SvgElements;
         problem = null;
         rebuilt = null;
         var settings = new XmlReaderSettings
@@ -164,8 +152,8 @@ internal static class SvgProfile
                     throw new Outside("has an element inside <title> or <desc>, which hold text only.");
 
                 var depth = reader.Depth;
-                if (depth >= MaxXmlDepth)
-                    throw new Outside($"nests elements more than {MaxXmlDepth} deep.");
+                if (depth >= limits.SvgDepth)
+                    throw new Outside($"nests elements more than {limits.SvgDepth} deep.");
                 var node = new Node(name, depth == 0 ? -1 : open[depth - 1], depth);
                 if (open.Count == depth) open.Add(index);
                 else open[depth] = index;
@@ -253,7 +241,7 @@ internal static class SvgProfile
         long expanded;
         try
         {
-            expanded = Expand(nodes, ids, (long)maxElements + 1);
+            expanded = Expand(nodes, ids, (long)maxElements + 1, limits);
         }
         catch (Outside ex)
         {
@@ -399,11 +387,11 @@ internal static class SvgProfile
     /// Resolves the references (each to an element of the right kind) and returns the root's expanded element count,
     /// saturating at <paramref name="cap"/>. An element counts 1, plus 1 per <see cref="NumbersPerElement"/> numbers of
     /// its <c>d</c> and <c>points</c>, plus for each <c>fill</c> and <c>stroke</c> gradient 1 and the number of
-    /// <c>href</c> references the gradient inherits through (at most <see cref="MaxGradientChain"/>), plus its children,
+    /// <c>href</c> references the gradient inherits through (at most <c>svgGradientChain</c>), plus its children,
     /// plus for each <c>use</c>, <c>clip-path</c> and <c>mask</c> reference the expanded count of the target. The tree
-    /// and references must have no cycle and nest at most <see cref="MaxDrawnDepth"/> deep. Iterative: no recursion.
+    /// and references must have no cycle and nest at most <c>svgDrawnDepth</c> deep. Iterative: no recursion.
     /// </summary>
-    private static long Expand(List<Node> nodes, Dictionary<string, int> ids, long cap)
+    private static long Expand(List<Node> nodes, Dictionary<string, int> ids, long cap, SpecLimits limits)
     {
         var n = nodes.Count;
         var edges = new List<(int To, bool Counts)>?[n];
@@ -444,7 +432,7 @@ internal static class SvgProfile
             weight[i] = 1 + node.Numbers / NumbersPerElement;
         }
 
-        // Gradient inheritance: at most MaxGradientChain href steps, and no cycle.
+        // Gradient inheritance: at most svgGradientChain href steps, and no cycle.
         var chain = new int[n];
         for (int i = 0; i < n; i++)
         {
@@ -453,8 +441,8 @@ internal static class SvgProfile
             for (int g = gradientHref[i]; g >= 0; g = gradientHref[g])
             {
                 if (g == i) throw new Outside($"has a reference cycle through <{nodes[g].Name}>.");
-                if (++steps > MaxGradientChain)
-                    throw new Outside($"has a gradient that inherits through more than {MaxGradientChain} href references.");
+                if (++steps > limits.SvgGradientChain)
+                    throw new Outside($"has a gradient that inherits through more than {limits.SvgGradientChain} href references.");
             }
             chain[i] = steps;
         }
@@ -493,8 +481,8 @@ internal static class SvgProfile
                     }
             size[node] = total;
             height[node] = deepest + 1;
-            if (height[node] > MaxDrawnDepth)
-                throw new Outside($"draws more than {MaxDrawnDepth} levels deep (nested elements and the use, clip-path and mask references they draw through).");
+            if (height[node] > limits.SvgDrawnDepth)
+                throw new Outside($"draws more than {limits.SvgDrawnDepth} levels deep (nested elements and the use, clip-path and mask references they draw through).");
             state[node] = 2;
         }
         return size[0];

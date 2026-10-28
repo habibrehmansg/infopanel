@@ -1,0 +1,16 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "rect",
+      "w": 100,
+      "h": 100,
+      "fill": {
+        "type": "compose",
+        "blend": "multiply",
+        "dst": {"type": "compose", "blend": "normal", "dst": "#ff0000", "src": "#0000ff80"},
+        "src": "#ffffff"
+      }
+    }
+  ]
+}

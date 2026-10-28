@@ -146,6 +146,59 @@ public class ArchiveReaderTests
     }
 
     [Fact]
+    public void An_archive_over_archiveBytes_is_archive_expanded_before_its_directory_is_read()
+    {
+        // spec/docs/limits.md, "Archive limits": the archive's file is at most archiveBytes, checked on its length first.
+        var zip = Zip(Text("a.txt", "1"));
+        using (var reader = Open(zip, new ImportLimits { ArchiveBytes = zip.Length }))
+            Assert.Single(reader.Entries);
+
+        var error = Refused(() => Open(zip, new ImportLimits { ArchiveBytes = zip.Length - 1 }));
+        Assert.Equal("archive.expanded", error.Code);
+        Assert.Contains($"{zip.Length} bytes", error.Message);
+
+        // Checked before the container: a file over it that isn't even a zip is refused for its length.
+        Assert.Equal("archive.expanded", Refused(() => Open(new byte[11], new ImportLimits { ArchiveBytes = 10 })).Code);
+    }
+
+    [Fact]
+    public void A_directory_record_over_4_KiB_is_archive_entries()
+    {
+        // spec/docs/limits.md, "Archive limits": an entry's directory record (its name, extra field and comment) is at
+        // most 4,096 bytes; the fixed part is 46.
+        static byte[] Commented(int commentLength)
+        {
+            using var buffer = new MemoryStream();
+            using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                var entry = zip.CreateEntry("a.txt");
+                entry.Comment = new string('c', commentLength);
+                using var stream = entry.Open();
+                stream.Write([1]);
+            }
+            return buffer.ToArray();
+        }
+
+        using (var reader = Open(Commented(4096 - 46 - 5)))
+            Assert.Single(reader.Entries);
+        var error = Refused(() => Open(Commented(4096 - 46 - 5 + 1)));
+        Assert.Equal("archive.entries", error.Code);
+        Assert.Contains("4097 bytes", error.Message);
+    }
+
+    [Fact]
+    public void A_directory_record_is_held_to_entryRecordBytes()
+    {
+        // The record of "a.txt" with no comment is 46 + 5 bytes (no extra field when written to a seekable stream).
+        var zip = Zip(Text("a.txt", "1"));
+        using (var reader = Open(zip, new ImportLimits { EntryRecordBytes = 51 }))
+            Assert.Single(reader.Entries);
+        var error = Refused(() => Open(zip, new ImportLimits { EntryRecordBytes = 50 }));
+        Assert.Equal("archive.entries", error.Code);
+        Assert.Contains("51 bytes; at most 50", error.Message);
+    }
+
+    [Fact]
     public void ExactDuplicates_AreRefused_CaseDuplicatesAreLeftToTheKind()
     {
         Assert.Equal("archive.duplicate", Refused(() => Open(Zip(Text("assets/a.png", "1"), Text("assets/a.png", "2")))).Code);

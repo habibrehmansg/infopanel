@@ -57,7 +57,7 @@ A scene item also has:
 | `bindings` | The sensor each scene input reads ([bindings](bindings.md)). |
 | `source` | How the client produced the scene (below). |
 
-A group item has `children`, in drawing order. Groups nest (at most 8 levels in all).
+A group item has `children`, in drawing order. Items nest at most 8 levels (`itemDepth`): a top-level item is at level 1 and a group's children one level below the group, so an item may be inside at most seven groups.
 
 ### View state is not document content
 
@@ -74,7 +74,7 @@ The engine never interprets an item's scene source: a client keeps there whateve
 
 - `format` (1–128 characters) names the client's own description in `data` (any JSON). Clients should namespace it so that two clients' formats can't be confused.
 - `ref` instead is **an opaque reference the engine never interprets**: the description is kept elsewhere and the document holds only the reference. An engine treats such an item like any other: it draws the scene and lets clients place, rotate, rebind, hide and remove it. A client that can't resolve the reference can still do all of that, but has no description to produce a new scene from.
-- `deps` lists stored blobs (by `sha256:` id) that the description needs. The engine keeps every blob that a retained version of the document (the current one, the saved one, any in the undo history) refers to, through `deps` or through the scene's media, and may delete the rest.
+- `deps` lists stored blobs (by `sha256:` id) that the description needs, each once; they have no count of their own, since `sourceBytes` bounds them ([limits](limits.md#document-limits)). The engine keeps every blob that a retained version of the document (the current one, the saved one, any in the undo history) refers to, through `deps` or through the scene's media, and may delete the rest.
 - `data` together with the envelope is at most 256 KiB.
 
 An item without a `source` has a scene that stands alone: a client that edits it edits the scene itself.
@@ -93,7 +93,7 @@ Every stored blob (media assets and other files) is named by the SHA-256 of its 
 
 ## Size and nesting
 
-A document is at most 16 MiB with at most 2,000 items, groups nested at most 8 levels and at most 32 bindings per item; see [limits](limits.md) for these and the aggregate budgets across its scenes. Its size, and that of its scenes, sources, origins and editor data, is measured on its canonical form ([sizes](limits.md#sizes)), however it was sent; its own size leaves out its `rev` members.
+A document is at most 16 MiB with at most 2,000 items nested at most 8 levels (a top-level item at level 1) and at most 32 bindings per item; see [limits](limits.md#document-limits) for these and the aggregate limits across its scenes. Its size, and that of its scenes, sources, origins and editor data, is measured on its canonical form ([sizes](limits.md#sizes)), however it was sent; its own size leaves out its `rev` members.
 
 The engine stores a document in that form, without its `rev` members, so its stored size is its measured size, and exports a document it can open in the same form. A stored document in another form (written by hand, say) is read the same way, and its next save writes the canonical form.
 

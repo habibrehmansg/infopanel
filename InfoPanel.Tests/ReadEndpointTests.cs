@@ -53,6 +53,18 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal(SpecLimits.Default.MediaBytes, support.GetProperty("limits").GetProperty("mediaBytes").GetInt32());
     }
 
+    [Fact]
+    public async Task Session_ReportsEveryLimitByItsName()
+    {
+        var limits = (await GetJson("/api/session")).GetProperty("formatSupport").GetProperty("limits")
+            .EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble());
+
+        Assert.Equal(SpecLimits.Default.ToDictionary().OrderBy(p => p.Key, StringComparer.Ordinal), limits.OrderBy(p => p.Key, StringComparer.Ordinal));
+        // The request bodies' limits, compose depth and item depth (once "groupDepth") among them.
+        Assert.Equal((16.0, 8.0, 65_536.0, 4_096.0), (limits["composeDepth"], limits["itemDepth"], limits["requestBytes"], limits["tokenRequestBytes"]));
+        Assert.DoesNotContain("groupDepth", limits.Keys);
+    }
+
     [Theory]
     [InlineData("/api/kinds")]
     [InlineData("/api/import")]

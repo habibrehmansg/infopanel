@@ -242,4 +242,46 @@ public sealed class SceneRegressionTests
         Assert.Equal(SKColors.Red, frame.GetPixel(10, 10));
         Assert.Equal(SKColors.Red, frame.GetPixel(40, 10));
     }
+
+    // ---- limits.md's run-time limits, drawn as stated --------------------------------------------------------------
+
+    [Fact]
+    public void A_paint_of_16_nested_composes_draws_its_deepest_paint()
+    {
+        // composeDepth is 16: every paint a valid scene nests is drawn, the innermost too.
+        using var s = Tick(Spec.LimitsTests.ComposeScene(16), 20, 20);
+        using var frame = s.Render();
+        Assert.Equal(SKColors.Red, frame.GetPixel(5, 5));
+    }
+
+    [Fact]
+    public void A_text_node_holds_textLength_scalar_values_in_all_its_spans_together()
+    {
+        // The spans keep their text in order up to 4,096 Unicode scalar values in all; the rest is cut.
+        var a = new string('a', 4096);
+        double Width(string text)
+        {
+            using var s = Tick("{'format':'infopanel.scene/1','nodes':[{'kind':'text','font':{'family':'Inter','size':2},'fill':'#ffffff','text':" + text + "}]}", 100, 20);
+            return s.Bounds.Single().Frame.W;
+        }
+
+        var alone = Width($"'{a}'");
+        Assert.Equal(alone, Width($"[{{'text':'{a}'}},{{'text':'bbbb'}}]"));
+        Assert.Equal(Width($"'xy{a[2..]}'"), Width($"[{{'text':'xy'}},{{'text':'{a}'}}]"));
+        Assert.True(Width($"[{{'text':'{a[1..]}'}},{{'text':'bbbb'}}]") > Width($"'{a[1..]}'"), "a span within the allowance is drawn");
+    }
+
+    [Fact]
+    public void Every_number_is_drawn_within_plus_or_minus_1e9()
+    {
+        // x clamps to -1e9 and w to 1e9 on their own, so the rect ends at 0: nothing of it is on the canvas.
+        using var s = Tick("{'format':'infopanel.scene/1','nodes':[{'kind':'rect','x':-1.5e9,'y':0,'w':3e9,'h':10,'fill':'#ff0000'}]}", 20, 20);
+        Assert.Equal(-1e9, s.Bounds.Single().Frame.X, 1);
+        Assert.Equal(1e9, s.Bounds.Single().Frame.W, 1);
+        using var frame = s.Render();
+        Assert.NotEqual(SKColors.Red, frame.GetPixel(5, 5));
+        using var within = Tick("{'format':'infopanel.scene/1','nodes':[{'kind':'rect','x':-0.5e9,'y':0,'w':1e9,'h':10,'fill':'#ff0000'}]}", 20, 20);
+        using var drawn = within.Render();
+        Assert.Equal(SKColors.Red, drawn.GetPixel(5, 5));
+    }
 }

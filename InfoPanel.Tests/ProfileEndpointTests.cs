@@ -114,6 +114,21 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         return await api.PostAsync(path, new ByteArrayContent(body), Ct);
     }
 
+    /// <summary>A body sent without a Content-Length (a stream that can't seek), so the engine sees its size only by reading it.</summary>
+    private async Task<HttpResponseMessage> PostUnsized(string path, byte[] body)
+    {
+        using var api = Api();
+        var content = new StreamContent(new UnsizedBody(body));
+        var response = await api.PostAsync(path, content, Ct);
+        Assert.Null(content.Headers.ContentLength);
+        return response;
+    }
+
+    internal sealed class UnsizedBody(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override bool CanSeek => false;
+    }
+
     private async Task<JsonElement> Get(string path)
     {
         using var api = Api();
@@ -412,6 +427,33 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         // Another instance's commit is a conflict of the whole request.
         var foreign = await Problem(await Post($"/api/profiles/{id}/commit", CommitBody(new string('0', 32), 2, Place("a", 1, 1))), HttpStatusCode.Conflict, "conflictProblem");
         Assert.Equal("instance", foreign.GetProperty("conflicts")[0].GetProperty("reason").GetString());
+    }
+
+    [Theory]
+    [InlineData("undo", false)]
+    [InlineData("redo", false)]
+    [InlineData("revert", false)]
+    [InlineData("duplicate", false)]
+    [InlineData("undo", true)]
+    [InlineData("redo", true)]
+    [InlineData("revert", true)]
+    [InlineData("duplicate", true)]
+    public async Task ABodyOverRequestBytes_Is422LimitRequestBytes(string request, bool withoutLength)
+    {
+        var id = await NewProfile(Scene("a"));
+        var instance = await Instance();
+        var body = request == "duplicate" ? $"{{\"id\":\"{NewId()}\"}}" : $"{{\"instance\":\"{instance}\",\"baseRev\":1}}";
+        // Bodies that match their definitions, padded with whitespace: 64 KiB is read, one byte more is over the limit;
+        // sent with a Content-Length, or without one (chunked), when only the bytes read can tell.
+        byte[] Padded(int length) => Encoding.UTF8.GetBytes(body + new string(' ', length - body.Length));
+        Task<HttpResponseMessage> Send(byte[] bytes) => withoutLength ? PostUnsized($"/api/profiles/{id}/{request}", bytes) : PostBytes($"/api/profiles/{id}/{request}", bytes);
+
+        var over = await Problem(await Send(Padded(65_537)), HttpStatusCode.UnprocessableEntity, "invalidProblem");
+        var error = Assert.Single(over.GetProperty("errors").EnumerateArray());
+        Assert.Equal(("limit.requestBytes", ""), (error.GetProperty("code").GetString(), error.GetProperty("path").GetString()));
+
+        using var at = await Send(Padded(65_536));
+        Assert.NotEqual(HttpStatusCode.UnprocessableEntity, at.StatusCode);
     }
 
     [Fact]

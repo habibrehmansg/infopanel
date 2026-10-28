@@ -168,7 +168,7 @@ Save takes no body and isn't guarded. It changes neither content nor revision, o
 
    An op that fails is not applied to the copy, and the engine goes on with the next op, so that every conflict is found. No limit is checked here.
 7. **The result**, when no op failed: the limits ([limits](limits.md#document-limits)), checked once, on the document the ops produced:
-   - its item count, groups' children included (`limit.items`), at `""`; then its group depth, `limit.groupDepth` at `/ops/{i}` for each `insert` or `move` that left items nested deeper than it allows. When either fails, nothing below is checked;
+   - its item count, groups' children included (`limit.items`), at `""`; then its item depth, `limit.itemDepth` at `/ops/{i}` for each `insert` or `move` that left items nested deeper than it allows. When either fails, nothing below is checked;
    - its size (`limit.documentBytes`) and its nesting (`limit.jsonDepth`: the document as it would be stored, where a value an op carries sits under the groups it lands in, so a body within the limit can still make a document deeper than it), at `""`;
    - the aggregate limits (`limit.documentNodes`, `limit.documentWork`, `limit.documentTextNodes`, `limit.documentEffectCost`), counted in document order as when the document is drawn: an item over one of them is refused when it wasn't over it before the commit or the commit inserted or designed it, so an item already over one in a stored document doesn't stop other edits. The error is at `/ops/{i}`, the last op that inserted, designed or moved the item, or at `""` when no op wrote it (an item that other changes in the commit put over a limit).
 

@@ -38,7 +38,7 @@ public static class MediaValidator
         if (MediaProbe.LooksLikeSvg(bytes) && bytes.Length > limits.SvgBytes)
             return new(null, [Over("svgBytes", bytes.Length, limits.SvgBytes)]);
 
-        var info = MediaProbe.Inspect(bytes, out var problem, limits.SvgElements, out var rebuilt);
+        var info = MediaProbe.Inspect(bytes, out var problem, limits, out var rebuilt);
         if (info is null) return new(null, [new SpecError("", problem?.Code ?? "media.malformed", problem?.Message ?? "Unreadable media.")]);
         if (info.Format == MediaFormat.Svg && info.Elements > limits.SvgElements)
             return new(null, [new SpecError("", "limit.svgElements", $"Over {limits.SvgElements} elements; the limit is {limits.SvgElements} (svgElements).")]);

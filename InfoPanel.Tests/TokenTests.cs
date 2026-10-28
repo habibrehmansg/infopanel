@@ -134,6 +134,78 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
     }
 
     [Fact]
+    public async Task Create_RefusesABodyOverTokenRequestBytes_WithTheLimitsCode()
+    {
+        using var session = factory.CreateApiClient();
+        const string Body = """{"name":"padded","scopes":["read"]}""";
+        StringContent Padded(int length) => new(Body + new string(' ', length - Body.Length), Encoding.UTF8, "application/json");
+
+        using (var over = await session.PostAsync("/api/tokens", Padded(4_097), Ct))
+        {
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, over.StatusCode);
+            var error = Assert.Single((await over.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors").EnumerateArray());
+            Assert.Equal(("limit.tokenRequestBytes", ""), (error.GetProperty("code").GetString(), error.GetProperty("path").GetString()));
+        }
+        using (var at = await session.PostAsync("/api/tokens", Padded(4_096), Ct))
+            Assert.Equal(HttpStatusCode.Created, at.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_RefusesABodyOverTokenRequestBytes_SentWithoutALength()
+    {
+        // Chunked: no Content-Length, so the size is known only as the body is read.
+        using var session = factory.CreateApiClient();
+        const string Body = """{"name":"unsized","scopes":["read"]}""";
+        StreamContent Padded(int length)
+        {
+            var content = new StreamContent(new ProfileEndpointTests.UnsizedBody(Encoding.UTF8.GetBytes(Body + new string(' ', length - Body.Length))));
+            content.Headers.ContentType = new("application/json");
+            return content;
+        }
+
+        using (var over = await session.PostAsync("/api/tokens", Padded(4_097), Ct))
+        {
+            Assert.Null(over.RequestMessage!.Content!.Headers.ContentLength);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, over.StatusCode);
+            var error = Assert.Single((await over.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors").EnumerateArray());
+            Assert.Equal(("limit.tokenRequestBytes", ""), (error.GetProperty("code").GetString(), error.GetProperty("path").GetString()));
+        }
+        using (var at = await session.PostAsync("/api/tokens", Padded(4_096), Ct))
+            Assert.Equal(HttpStatusCode.Created, at.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_ChecksTheBodyToJsonDepth_At256And257()
+    {
+        // jsonDepth is 256: the root object is level 1, so an unknown member holding 255 nested arrays is at 256 and
+        // gets schema at it; one more array is over the limit, the one error limit.jsonDepth at "".
+        using var session = factory.CreateApiClient();
+        async Task<(string?, string?)> Error(int arrays)
+        {
+            using var response = await session.PostAsync("/api/tokens",
+                new StringContent("{\"name\":\"ok\",\"scopes\":[\"read\"],\"x\":" + new string('[', arrays) + new string(']', arrays) + "}", Encoding.UTF8, "application/json"), Ct);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+            var error = Assert.Single((await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors").EnumerateArray());
+            return (error.GetProperty("code").GetString(), error.GetProperty("path").GetString());
+        }
+
+        Assert.Equal(("schema", "/x"), await Error(255));
+        Assert.Equal(("limit.jsonDepth", ""), await Error(256));
+    }
+
+    [Fact]
+    public async Task Create_ChecksTheBodyToJsonDepth()
+    {
+        // A member the body doesn't define, nested 5 deep, is a schema error at it: the body is held to jsonDepth (256), as every body is.
+        using var session = factory.CreateApiClient();
+        using var response = await session.PostAsync("/api/tokens",
+            new StringContent("""{"name":"ok","scopes":["read"],"x":[[[[1]]]]}""", Encoding.UTF8, "application/json"), Ct);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = Assert.Single((await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors").EnumerateArray());
+        Assert.Equal(("schema", "/x"), (error.GetProperty("code").GetString(), error.GetProperty("path").GetString()));
+    }
+
+    [Fact]
     public async Task Create_KeepsTheJsonLevelPassesCodes()
     {
         // A string that isn't Unicode text is json at it, and 101 of them end with one more, as every body reports them.

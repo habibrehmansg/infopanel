@@ -160,7 +160,7 @@ public static class SceneValidator
         private readonly HashSet<string> _measured = new(StringComparer.Ordinal);
         private readonly List<(string Id, string Path)> _measureLayouts = [];
         private int _nodes, _textNodes, _series, _tables, _media, _geometry, _effectCost, _work;
-        private bool _depthReported, _exprDepthReported, _quiet;
+        private bool _depthReported, _exprDepthReported, _composeDepthReported, _quiet;
 
         private IReadOnlyDictionary<string, InputDecl> Inputs => scene.Inputs ?? EmptyInputs;
         private static readonly Dictionary<string, InputDecl> EmptyInputs = new();
@@ -750,7 +750,8 @@ public static class SceneValidator
             _geometry += segments;
         }
 
-        private void WalkPaint(Paint? paint, string p)
+        /// <param name="composes">How many compose paints this one is nested in.</param>
+        private void WalkPaint(Paint? paint, string p, int composes = 0)
         {
             switch (paint)
             {
@@ -769,8 +770,13 @@ public static class SceneValidator
                     WalkStops(s.Stops, p + "/stops");
                     return;
                 case ComposePaint c:
-                    WalkPaint(c.Dst, p + "/dst");
-                    WalkPaint(c.Src, p + "/src");
+                    if (composes + 1 > limits.ComposeDepth && !_composeDepthReported)
+                    {
+                        _composeDepthReported = true;
+                        Limit(p, "composeDepth", composes + 1, limits.ComposeDepth);
+                    }
+                    WalkPaint(c.Dst, p + "/dst", composes + 1);
+                    WalkPaint(c.Src, p + "/src", composes + 1);
                     return;
             }
         }

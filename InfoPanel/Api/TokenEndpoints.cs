@@ -1,3 +1,4 @@
+using InfoPanel.Documents;
 using InfoPanel.Security;
 using InfoPanel.Spec;
 using InfoPanel.Spec.Schema;
@@ -12,12 +13,6 @@ namespace InfoPanel.Api;
 /// </summary>
 public static class TokenEndpoints
 {
-    /// <summary>The largest body of a create: a name and two scopes, with room to spare.</summary>
-    private const int MaxBodyBytes = 4096;
-
-    /// <summary>How deep a create's body is checked: an object holding an array of strings.</summary>
-    private const int MaxBodyDepth = 4;
-
     private const string CreateTokenSchema = SpecSchemas.Api + "#/$defs/createTokenRequest";
 
     public static void MapTokenEndpoints(this IEndpointRouteBuilder app)
@@ -30,14 +25,18 @@ public static class TokenEndpoints
             return Json(tokens.List().Select(Info).ToList());
         }).RequireScope(ApiScope.Session);
 
-        api.MapPost("", async (HttpRequest request, TokenStore tokens, HttpContext context, CancellationToken ct) =>
+        api.MapPost("", async (HttpRequest request, TokenStore tokens, Workspace workspace, HttpContext context, CancellationToken ct) =>
         {
-            var (body, over) = await ReadBodyAsync(request, MaxBodyBytes, ct);
-            using var json = over ? null : ParseJson(body);
+            // The body's size as received, then the formats' JSON rules (jsonDepth included) and the schema, as every body.
+            var limits = workspace.Limits;
+            var (body, over) = await ReadBodyAsync(request, limits.TokenRequestBytes, ct);
+            if (over)
+                return Invalid("", "limit.tokenRequestBytes", $"The body is over the limit of {limits.TokenRequestBytes} bytes (tokenRequestBytes).");
+            using var json = ParseJson(body);
             if (json == null)
-                return Invalid("", over ? "schema" : "json", over ? "The body is {\"name\", \"scopes\"}." : "The body isn't JSON.");
+                return Invalid("", "json", "The body isn't JSON.");
 
-            var check = SpecSchemas.Strict.Validate(json.RootElement, CreateTokenSchema, MaxBodyDepth);
+            var check = SpecSchemas.Strict.Validate(json.RootElement, CreateTokenSchema, limits.JsonDepth);
             if (!check.IsValid)
             {
                 return Problem(new InvalidProblem

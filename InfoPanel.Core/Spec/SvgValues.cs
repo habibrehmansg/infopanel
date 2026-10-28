@@ -12,8 +12,8 @@ namespace InfoPanel.Spec;
 /// </summary>
 internal static class SvgValues
 {
-    /// <summary>Largest magnitude of a number in the profile.</summary>
-    public const double MaxMagnitude = 1e9;
+    /// <summary>Largest magnitude of a number in the profile: <c>svgNumber</c>; a number beyond it doesn't parse.</summary>
+    public static readonly double MaxMagnitude = SpecLimits.Default.SvgNumber;
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 

@@ -150,7 +150,7 @@ public static class DocumentValidator
         {
             Count++;
             if (!ids.Add(item.Id)) Errors.Add(new SpecError(p + "/id", "id.duplicate", $"Another item has the id '{item.Id}'."));
-            if (depth > limits.GroupDepth) Errors.Add(Over(p, "groupDepth", depth, limits.GroupDepth));
+            if (depth > limits.ItemDepth) Errors.Add(Over(p, "itemDepth", depth, limits.ItemDepth));
             if (item.Origin is { } origin && ValidationText.CanonicalBytes(origin) is var originBytes && originBytes > limits.OriginBytes)
                 Errors.Add(Over(p + "/origin", "originBytes", originBytes, limits.OriginBytes));
 

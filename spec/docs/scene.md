@@ -20,7 +20,7 @@ A scene is what one item draws: a tree of nodes in the item's local coordinates.
 - Nodes draw in order (painter's algorithm), each onto what is below with source-over unless a group says otherwise.
 - Colours are sRGB with straight (not premultiplied) alpha in the format; blending and gradients interpolate in sRGB (not linear light), premultiplied, as common 2D renderers do.
 - Geometry is antialiased. Coordinates are not snapped: a 1 px line at an integer x covers two half pixels, at x + 0.5 one pixel.
-- Numbers are 64-bit floating point while evaluated; an engine may draw with 32-bit precision. A value that isn't finite reads as 0 ([expressions](expressions.md)).
+- Numbers are 64-bit floating point while evaluated; an engine may draw with 32-bit precision. A value that isn't finite reads as 0 ([expressions](expressions.md)), and every number is drawn within ±10⁹ ([geometry](geometry.md#coordinate-range)).
 - Out-of-range values are clamped where a member says so (opacity 0–1, sigma 0–64, sweep −360…360, …) and otherwise draw what they say: a rectangle with a negative width or height, an ellipse with a radius at or below 0 and an arc with `inner` ≥ `r` draw nothing.
 - Every node has an optional `id` (its instance id, unique in the scene), `visible` (bool, default true) and `opacity` (0–1, default 1).
 
@@ -50,7 +50,7 @@ A paint is a colour (a literal `#RRGGBB`/`#RRGGBBAA` or a colour expression) or 
 | `linear` | `x1`, `y1`, `x2`, `y2`, `stops`, `spread` |
 | `radial` | `cx`, `cy`, `r`, `stops`, `spread` |
 | `sweep` | `cx`, `cy`, `start` (default 0), `end` (default start + 360), `stops`, `spread`; angles as for arcs |
-| `compose` | `blend`, `dst`, `src`: two paints combined per pixel, `src` blended onto `dst`, then drawn as one paint (two perpendicular linear gradients multiplied make a diamond) |
+| `compose` | `blend`, `dst`, `src`: two paints combined per pixel, `src` blended onto `dst`, then drawn as one paint (two perpendicular linear gradients multiplied make a diamond). Compose paints nest at most 16 deep (`composeDepth`, [limits](limits.md#scene-limits)) |
 
 `stops` are 2–16 `{ "at", "color" }`, used in the order given, `at` clamped to 0–1; both may be expressions, so a gradient can move with time or a value. `spread` says what lies outside 0–1: `pad` (default: the end colours), `repeat`, `reflect`. Animated gradients are expressions over `{"op": "time", "field": "elapsed"}`: a rotating sweep, a pulsing radial, a moving linear (`examples/scene/valid/shapes.json`).
 

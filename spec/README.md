@@ -30,7 +30,7 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 10. [Unsupported content](docs/unsupported.md): placeholders, never rewriting what an engine can't read.
 11. [Versioning](docs/versioning.md): formats, what freezes, minor versions and what each ships with, capabilities and `requires`, major versions, unknown members and values, the engine API and its identifiers, the four markers.
 12. [Validation](docs/validation.md): the order of checks and every error code.
-13. [Limits and budgets](docs/limits.md): the numbers, and the performance budgets they serve.
+13. [Limits and budgets](docs/limits.md): every acceptance limit, the budgets an engine guarantees, and the performance targets.
 14. [SVG profile](docs/svg.md): the restricted SVG that media assets may use.
 
 ## The request index
