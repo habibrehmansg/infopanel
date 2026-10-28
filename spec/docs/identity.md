@@ -34,7 +34,7 @@ So a scene whose behaviour over time is written this way behaves the same whethe
 
 The engine renders a document in ticks. In each tick it reads, once:
 
-- the time (`elapsed`, the wall clock and the time zone),
+- the time (`elapsed`, the wall clock and the time zone) and the profile's regional format ([expressions](expressions.md#regional-format)),
 - every input (readings, statistics, status, history, tables),
 - the media samples (the frame of each animated or provider media),
 
@@ -44,12 +44,12 @@ A one-off render of a document no output is rendering (a thumbnail) takes a fres
 
 ## Determinism
 
-Given the same document, the same inputs and the same tick times, and the same fonts, locale and time zone, every engine computes the same values, state and text (all arithmetic is 64-bit IEEE 754 in the order the operations define). The pixels may differ slightly between engines (antialiasing, font rasterisation); the values don't.
+Given the same document, the same inputs and the same tick times, and the same fonts, regional format and time zone, every engine computes the same values, state and text (all arithmetic is 64-bit IEEE 754 in the order the operations define). The pixels may differ slightly between engines (antialiasing, font rasterisation); the values don't.
 
 The three conditions are what an engine reads from the computer it runs on:
 
 - **Fonts**: the installed fonts and their fallback decide every text layout, so what `measure` reads, where text wraps, fits or is cut, and the values that follow from them.
-- **Locale**: the engine's locale gives the month and weekday names and the AM/PM marker of a `formatTime` without `locale`; the locale data gives them for every locale named.
+- **Regional format**: the profile's `locale`, or the PC's regional format when it has none ([expressions](expressions.md#regional-format)), gives the separators a `format` doesn't name and the month and weekday names and the AM/PM marker of a `formatTime` without `locale`; the locale data gives them for every locale named.
 - **Time zone**: the engine's local zone gives the clock and calendar fields of a `time` or `formatTime` without `zone` (`elapsed` and `epoch` don't depend on it); the time zone data gives them for every zone named.
 
-A scene that names a `locale` and a `zone` wherever it reads the time depends on the computer only through its fonts and its locale and time zone data.
+A document whose profile sets `locale` and whose scenes name a `zone` wherever they read the time depends on the computer only through its fonts and its locale and time zone data.

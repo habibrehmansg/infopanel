@@ -100,6 +100,8 @@
   "document/invalid/item-id-newline.json": {"code": "schema", "path": "/items/0/id"},
   "document/invalid/json-depth.json": {"code": "limit.jsonDepth", "path": ""},
   "document/invalid/items.json": {"code": "limit.items", "path": "/items", "limits": {"items": 2}},
+  "document/invalid/locale-empty.json": {"code": "schema", "path": "/profile/locale"},
+  "document/invalid/locale-underscore.json": {"code": "schema", "path": "/profile/locale"},
   "document/invalid/lone-surrogate.json": {"code": "json", "path": "/profile/name"},
   "document/invalid/missing-placement.json": {"code": "schema", "path": "/items/0"},
   "document/invalid/origin-bytes-canonical.json": {"code": "limit.originBytes", "path": "/items/0/origin", "limits": {"originBytes": 64}},

@@ -1,14 +1,17 @@
 using System.Net.Http.Headers;
+using InfoPanel.Scenes;
 using InfoPanel.Tests.Contract;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InfoPanel.Tests;
 
 /// <summary>
 /// The engine on a <c>TestServer</c>, with a temp data folder, a temp web root holding an <c>index.html</c>,
-/// a fixed token, port, dev origin and cross origin, and seeded mock sensors. Every response it gives, on the TestServer
+/// a fixed token, port, dev origin and cross origin, seeded mock sensors and a fixed PC regional format (en-US), so
+/// frames don't depend on the machine's region. Every response it gives, on the TestServer
 /// or on Kestrel (<c>LiveEngine</c>), is checked against spec/openapi.json (<see cref="ContractCheck"/>), except in
 /// <c>Category=Performance</c> tests; <see cref="Contract"/> holds what the check saw, and disposing the factory fails on
 /// any violation it recorded.
@@ -21,6 +24,9 @@ public class EngineFactory : WebApplicationFactory<Program>
     /// <summary>A web client served from another origin (<c>--allow-origin</c>).</summary>
     public const string CrossOrigin = "https://client.example";
     public const string IndexMarker = "client-test-index";
+
+    /// <summary>The PC's regional format every test engine has, whatever the machine's.</summary>
+    public static RegionalFormat Regional { get; } = RegionalFormat.Lookup("en-US")!;
 
     public EngineFactory()
     {
@@ -55,6 +61,7 @@ public class EngineFactory : WebApplicationFactory<Program>
         builder.UseSetting("Engine:MockSeed", "42");
         builder.UseSetting("Engine:DevOrigins:0", DevOrigin);
         builder.UseSetting("Engine:AllowOrigins:0", CrossOrigin);
+        builder.ConfigureTestServices(services => services.AddSingleton(Regional));
     }
 
     /// <summary>A client that doesn't follow redirects or keep cookies.</summary>

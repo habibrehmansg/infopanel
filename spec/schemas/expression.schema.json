@@ -220,8 +220,8 @@
         "value": { "$ref": "#/$defs/numberExpr" },
         "decimals": { "$ref": "#/$defs/numberExpr", "description": "Rounded to an integer and clamped to 0–6.", "default": 0 },
         "group": { "$ref": "#/$defs/boolExpr", "description": "Insert `groupSeparator` between groups of three integer digits.", "default": false },
-        "decimalSeparator": { "type": "string", "maxLength": 4, "default": "." },
-        "groupSeparator": { "type": "string", "maxLength": 4, "default": "," }
+        "decimalSeparator": { "description": "Absent: the regional format's (see docs/expressions.md, Regional format).", "type": "string", "maxLength": 4 },
+        "groupSeparator": { "description": "Absent: the regional format's (see docs/expressions.md, Regional format).", "type": "string", "maxLength": 4 }
       }
     },
     "formatTimeOp": {
@@ -233,9 +233,8 @@
         "op": { "const": "formatTime" },
         "pattern": { "type": "string", "minLength": 1, "maxLength": 128 },
         "locale": {
-          "description": "A BCP 47 language tag for month and day names and the AM/PM marker. Absent: the engine's locale.",
-          "type": "string",
-          "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,4}$"
+          "$ref": "urn:infopanel:common:1#/$defs/localeTag",
+          "description": "A BCP 47 language tag for month and day names and the AM/PM marker. Absent: the regional format's (see docs/expressions.md, Regional format)."
         },
         "zone": { "$ref": "#/$defs/timeZone" }
       }

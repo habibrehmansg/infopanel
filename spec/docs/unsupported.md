@@ -36,4 +36,4 @@ An engine is strict with what clients send and tolerant with what it reads:
 
 ## What is not unsupported
 
-Things the engine can draw a fallback for are reported, not placeholders: a missing font family (drawn in the default family), missing media (the missing-media placeholder in the media's box), an unknown time zone (the local zone), a sensor with no reading (its input's status).
+Things the engine can draw a fallback for are reported, not placeholders: a missing font family (drawn in the default family), missing media (the missing-media placeholder in the media's box), an unknown time zone (the local zone), a profile `locale` the engine doesn't know (the PC's regional format, [expressions](expressions.md#regional-format)), a sensor with no reading (its input's status).

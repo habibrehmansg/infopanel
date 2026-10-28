@@ -358,7 +358,7 @@ public sealed class SceneTableTests(ITestOutputHelper output)
         inputs.Readings["test:t"] = Cells((_, _) => string.Concat(Enumerable.Repeat("W ", 2_000)));
         var options = new SceneRuntimeOptions
         {
-            Inputs = inputs, LocalZone = TimeZoneInfo.Utc, Locale = CultureInfo.InvariantCulture, ItemBudgetMs = double.MaxValue,
+            Inputs = inputs, LocalZone = TimeZoneInfo.Utc, Locale = RegionalFormat.Invariant, ItemBudgetMs = double.MaxValue,
         };
         var node = WideTable(20, 1_000, 16).Replace("\"header\":false", "\"header\":false,\"rowHeight\":20", StringComparison.Ordinal);
         using var runtime = TableRuntime(node, inputs, options);
@@ -387,7 +387,7 @@ public sealed class SceneTableTests(ITestOutputHelper output)
         };
         var options = new SceneRuntimeOptions
         {
-            Inputs = inputs, LocalZone = TimeZoneInfo.Utc, Locale = CultureInfo.InvariantCulture, ItemBudgetMs = double.MaxValue,
+            Inputs = inputs, LocalZone = TimeZoneInfo.Utc, Locale = RegionalFormat.Invariant, ItemBudgetMs = double.MaxValue,
         };
         var node = "{\"kind\":\"table\",\"input\":\"t\",\"header\":false,\"rowHeight\":20,\"wrap\":\"word\",\"maxLines\":1000,"
             + "\"overflow\":\"visible\",\"columns\":[{\"column\":0,\"w\":20}],\"font\":{\"family\":\"Inter\",\"size\":16},\"fill\":\"#ffffff\"}";

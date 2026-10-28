@@ -133,7 +133,7 @@ public sealed class SceneStateRulesTests
             var options = new SceneRuntimeOptions
             {
                 Inputs = new FakeSceneInputs(),
-                Locale = CultureInfo.GetCultureInfo(locale),
+                Locale = RegionalFormat.Of(CultureInfo.GetCultureInfo(locale)),
                 LocalZone = TimeZoneInfo.FindSystemTimeZoneById(zone),
             };
             var doc = SceneKit.Doc(SceneKit.Json("{'format':'infopanel.scene/1','nodes':[{'kind':'text','w':300,'h':40,"

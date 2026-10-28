@@ -10,11 +10,14 @@ public sealed class SceneExpressionTests
 {
     private const string Inputs = "{'v':{'type':'number'},'s':{'type':'text'},'t':{'type':'table'},'u':{'type':'number'}}";
 
-    internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) Eval(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5) =>
-        EvalJson(expr.Replace('\'', '"'), setup, elapsed);
+    internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) Eval(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5,
+        RegionalFormat? format = null) =>
+        EvalJson(expr.Replace('\'', '"'), setup, elapsed, format);
 
     /// <summary>An expression written as JSON (no quote replacement), evaluated as the named value <c>x</c> of a scene.</summary>
-    internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) EvalJson(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5)
+    /// <summary>The same, with the tick's regional format <paramref name="format"/> (the invariant one when null).</summary>
+    internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) EvalJson(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5,
+        RegionalFormat? format = null)
     {
         var json = SceneKit.Json("{'format':'infopanel.scene/1','inputs':" + Inputs + ",'values':{'x':" + expr.Replace("'", "\\u0027") + "},'nodes':[]}");
         var check = SceneValidator.Check(json);
@@ -34,7 +37,7 @@ public sealed class SceneExpressionTests
             Values = new Val[scene.ValueCount],
             State = [],
             Inputs = snaps,
-            Clock = new SceneClock(elapsed, SceneKit.Now, TimeZoneInfo.Utc, CultureInfo.InvariantCulture),
+            Clock = new SceneClock(elapsed, SceneKit.Now, TimeZoneInfo.Utc, format ?? RegionalFormat.Invariant),
             MeasureW = [],
             MeasureH = [],
             BoxW = 200,

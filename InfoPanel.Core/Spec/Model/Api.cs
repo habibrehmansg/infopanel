@@ -220,6 +220,7 @@ public sealed record ProfileFields
     public int? Height { get; init; }
     public string? Background { get; init; }
     public bool? StatsOverlay { get; init; }
+    public string? Locale { get; init; }
     public WindowSettings? Window { get; init; }
     public IReadOnlyList<string>? TriggerApps { get; init; }
     public IReadOnlyList<Guide>? Guides { get; init; }

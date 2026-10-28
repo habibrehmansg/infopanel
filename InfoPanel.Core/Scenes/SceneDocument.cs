@@ -54,6 +54,10 @@ internal sealed class SceneDocumentModel
     public required string Id;
     public required int Width, Height;
     public required uint Background;
+    /// <summary>The profile's <c>locale</c> as written; null when it has none.</summary>
+    public required string? Locale;
+    /// <summary>The format <see cref="Locale"/> names (no user overrides); null when there is none or this engine doesn't know it.</summary>
+    public required RegionalFormat? Format;
     public required DocItem[] Items;
     public required long Generation;
     public required long Rev;
@@ -122,6 +126,8 @@ internal sealed class SceneDocumentModel
             Width = doc.Profile.Width,
             Height = doc.Profile.Height,
             Background = SceneColor.TryParse(doc.Profile.Background, out var bg) ? bg : 0xFFFFFFFF,
+            Locale = doc.Profile.Locale,
+            Format = doc.Profile.Locale is { } locale ? RegionalFormat.Lookup(locale) : null,
             Items = items,
             Generation = generation,
             Rev = document.Rev,

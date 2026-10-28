@@ -8,11 +8,12 @@ namespace InfoPanel.Scenes;
 
 /// <summary>
 /// The tick's clock (spec/docs/identity.md): <see cref="Elapsed"/> seconds since rendering started (monotonic), the wall
-/// clock <see cref="Now"/>, and the engine's local zone and locale. Read once per tick; every expression of the tick sees it.
+/// clock <see cref="Now"/>, the engine's local zone and the document's regional format (its profile's <c>locale</c>, else
+/// the PC's). Read once per tick; every expression of the tick sees it.
 /// </summary>
-public sealed record SceneClock(double Elapsed, DateTimeOffset Now, TimeZoneInfo LocalZone, CultureInfo Locale)
+public sealed record SceneClock(double Elapsed, DateTimeOffset Now, TimeZoneInfo LocalZone, RegionalFormat Format)
 {
-    public static SceneClock At(double elapsed, DateTimeOffset now) => new(elapsed, now, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
+    public static SceneClock At(double elapsed, DateTimeOffset now) => new(elapsed, now, TimeZoneInfo.Local, PcRegionalFormat.Current);
 }
 
 /// <summary>Time fields and <c>formatTime</c> patterns (spec/docs/expressions.md).</summary>

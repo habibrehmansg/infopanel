@@ -45,6 +45,11 @@
       "minimum": 0,
       "maximum": 9007199254740991
     },
+    "localeTag": {
+      "description": "A BCP 47 language tag such as de-CH: a language and up to four subtags, letters and digits only (no extensions).",
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,4}$"
+    },
     "opaque": {
       "description": "A JSON object the engine stores and returns unchanged and never interprets.",
       "type": "object"

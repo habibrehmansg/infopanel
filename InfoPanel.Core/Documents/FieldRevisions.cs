@@ -39,7 +39,8 @@ public enum ProfileField
     TriggerApps = 64,
     Guides = 128,
     Editor = 256,
-    All = 511,
+    Locale = 512,
+    All = 1023,
 }
 
 /// <summary>
@@ -50,10 +51,10 @@ public enum ProfileField
 /// </summary>
 public sealed class FieldRevisions
 {
-    private const int ItemSlots = 8, ProfileSlots = 9;
+    private const int ItemSlots = 8, ProfileSlots = 10;
 
     private static readonly string[] ItemNames = ["placement", "design", "bindings", "name", "visible", "locked", "position", "children"];
-    private static readonly string[] ProfileNames = ["name", "width", "height", "background", "statsOverlay", "window", "triggerApps", "guides", "editor"];
+    private static readonly string[] ProfileNames = ["name", "width", "height", "background", "statsOverlay", "window", "triggerApps", "guides", "editor", "locale"];
 
     private readonly Dictionary<string, long[]> _items = new(StringComparer.Ordinal);
     private readonly long[] _profile = new long[ProfileSlots];
@@ -250,6 +251,7 @@ internal sealed class ChangeSet
         if (fields.HasFlag(ProfileField.TriggerApps) && !SameList(a.TriggerApps, b.TriggerApps)) changed |= ProfileField.TriggerApps;
         if (fields.HasFlag(ProfileField.Guides) && !SameList(a.Guides, b.Guides)) changed |= ProfileField.Guides;
         if (fields.HasFlag(ProfileField.Editor) && !SameJson(a.Editor, b.Editor)) changed |= ProfileField.Editor;
+        if (fields.HasFlag(ProfileField.Locale) && a.Locale != b.Locale) changed |= ProfileField.Locale;
         return changed;
     }
 

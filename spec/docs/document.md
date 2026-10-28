@@ -24,6 +24,7 @@ A document is one profile: a canvas size, settings, and a tree of items. The eng
 | `width`, `height` | The canvas in pixels, 1–16384. Every output shows this canvas (scaled where it must be); nothing is drawn outside it. |
 | `background` | `#RRGGBB` or `#RRGGBBAA`; every frame starts as this colour (default opaque white). A transparent background lets a desktop window show what is behind it. |
 | `statsOverlay` | Draw the engine's frame-rate overlay on every output (default false). |
+| `locale` | The regional format numbers and dates are drawn in, a BCP 47 tag such as `de-CH` ([expressions](expressions.md#regional-format)). Absent, the PC's regional format. Set it so a shared profile looks the same on every PC. |
 | `window` | The profile's desktop window: `enabled`, `x`/`y` (pixels from the top-left of the matched display), `display` (name and size in pixels; `x`/`y` only tell equal displays apart), `strict` (hide the window when no display matches), `topmost`, `draggable`, `resizable`. A user's drag or resize of the window is an ordinary undoable change of these fields. |
 | `triggerApps` | Process names whose being in front should bring the profile up. Stored and kept; acted on by engines that support it. |
 | `guides` | Editor-only guide lines (below). |

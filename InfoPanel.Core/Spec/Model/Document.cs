@@ -30,6 +30,8 @@ public sealed record DocumentProfile
     public required int Height { get; init; }
     public string? Background { get; init; }
     public bool? StatsOverlay { get; init; }
+    /// <summary>The regional format numbers and dates are drawn in, a BCP 47 tag; null: the PC's.</summary>
+    public string? Locale { get; init; }
     public WindowSettings? Window { get; init; }
     public IReadOnlyList<string>? TriggerApps { get; init; }
     public IReadOnlyList<Guide>? Guides { get; init; }

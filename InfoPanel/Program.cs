@@ -119,6 +119,12 @@ try
     if (userFonts.Count > 0)
         Log.Information("Registered {Count} font families from {Folder}", userFonts.Count, paths.FontsDirectory);
 
+    // The PC's regional format, read once: a profile without a locale draws numbers and dates in it. A change in the
+    // operating system's settings shows after a restart.
+    var regionalFormat = PcRegionalFormat.Read();
+    Log.Information("Regional format: {Tag:l} (decimal '{Decimal:l}', group '{Group:l}')",
+        regionalFormat.Tag, regionalFormat.DecimalSeparator, regionalFormat.GroupSeparator);
+
     var webRoot = DataFolder.FindWebRoot(options.WebRoot);
     if (webRoot == null)
         Log.Warning("No web client installed (no wwwroot next to the engine and no --web-root); serving the API only");
@@ -158,6 +164,7 @@ try
     builder.Services.AddSingleton(tokens);
     builder.Services.AddSingleton(settings);
     builder.Services.AddSingleton(recentLog);
+    builder.Services.AddSingleton(regionalFormat);
     // Made by a factory so the container disposes it, removing its handlers, when the host stops; the finally below
     // covers a start that fails before the host is built.
     builder.Services.AddSingleton(_ => crashLogging);
@@ -201,6 +208,7 @@ try
         Media = sp.GetRequiredService<MediaSampleCache>(),
         Limits = workspace.Limits,
         Support = workspace.Support,
+        Locale = sp.GetRequiredService<RegionalFormat>(),
     });
     // Live frames for /ws and desktop windows; disposed with the host, which stops every render loop.
     builder.Services.AddSingleton(sp => new RenderService(

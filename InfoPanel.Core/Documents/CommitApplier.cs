@@ -199,7 +199,7 @@ internal static class CommitApplier
                         | (set.Height is null ? ProfileField.None : ProfileField.Height) | (set.Background is null ? ProfileField.None : ProfileField.Background)
                         | (set.StatsOverlay is null ? ProfileField.None : ProfileField.StatsOverlay) | (set.Window is null ? ProfileField.None : ProfileField.Window)
                         | (set.TriggerApps is null ? ProfileField.None : ProfileField.TriggerApps) | (set.Guides is null ? ProfileField.None : ProfileField.Guides)
-                        | (set.Editor is null ? ProfileField.None : ProfileField.Editor);
+                        | (set.Editor is null ? ProfileField.None : ProfileField.Editor) | (set.Locale is null ? ProfileField.None : ProfileField.Locale);
                     if (o.BaseRev is { } baseRev && revisions.ChangedAfter(fields, baseRev) is var changed and not ProfileField.None)
                     {
                         result.Conflicts.Add(new Conflict { Op = i, Reason = "changed", Rev = revisions.ProfileRev, Fields = FieldRevisions.Names(changed) });
@@ -213,6 +213,7 @@ internal static class CommitApplier
                         Height = set.Height ?? profile.Height,
                         Background = set.Background ?? profile.Background,
                         StatsOverlay = set.StatsOverlay ?? profile.StatsOverlay,
+                        Locale = set.Locale ?? profile.Locale,
                         Window = set.Window ?? profile.Window,
                         TriggerApps = set.TriggerApps ?? profile.TriggerApps,
                         Guides = set.Guides ?? profile.Guides,

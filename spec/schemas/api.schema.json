@@ -529,6 +529,7 @@
             "height": { "type": "integer", "minimum": 1, "maximum": 16384 },
             "background": { "$ref": "urn:infopanel:common:1#/$defs/colorLiteral" },
             "statsOverlay": { "type": "boolean" },
+            "locale": { "$ref": "urn:infopanel:common:1#/$defs/localeTag" },
             "window": { "$ref": "urn:infopanel:document:1#/$defs/windowSettings" },
             "triggerApps": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 260 }, "maxItems": 32 },
             "guides": { "type": "array", "items": { "$ref": "urn:infopanel:document:1#/$defs/guide" }, "maxItems": 256 },

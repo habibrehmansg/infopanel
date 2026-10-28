@@ -44,7 +44,7 @@ Named operands:
 | `history` | `input`, `fn`, `count` → number | Over the last `count` (1–4096) samples: `min`, `max`, `avg`, `first`, `last`, `count`; 0 without samples |
 | `time` | `field`, `zone` → number | From the tick's clock: `elapsed` (seconds since the engine started rendering the document, monotonic), `epoch` (seconds since 1970-01-01T00:00:00Z), `dayTime` (seconds since local midnight, with fraction), `year`, `month` (1–12), `day` (1–31), `weekday` (1 Monday … 7 Sunday), `hour` (0–23), `minute`, `second`, `millisecond` |
 | `formatTime` | `pattern`, `locale`, `zone` → string | The tick's date and time as text (below) |
-| `format` | `value`, `decimals`, `group`, `decimalSeparator`, `groupSeparator` → string | A number rounded half away from zero to `decimals` (0–6, default 0) places; with `group`, `groupSeparator` (default ",") between groups of three integer digits; `decimalSeparator` default "." ([number formatting](#number-formatting)) |
+| `format` | `value`, `decimals`, `group`, `decimalSeparator`, `groupSeparator` → string | A number rounded half away from zero to `decimals` (0–6, default 0) places; with `group`, `groupSeparator` between groups of three integer digits; each separator, when absent, the [regional format](#regional-format)'s ([number formatting](#number-formatting)) |
 | `box` | `field` (`w`, `h`, `rotation`) → number | The item's layout box; an automatic dimension reads 0. `rotation`: the item's rotation on the canvas in degrees, its own and its groups' summed ([geometry](geometry.md#layout-box-an-input-to-the-scene)) |
 | `measure` | `node`, `field` (`w`, `h`) → number | The measured size of a text node of this scene this tick: its laid-out text (the widest line's width, the lines' height), not its box |
 | `value` | `name` → its type | A named value |
@@ -89,7 +89,7 @@ Other values are the platform's sine and arctangent, which may differ in the las
 
 ## Number formatting
 
-`format` computes its text in four steps:
+`format` computes its text in four steps (the examples use the separators "." and ","):
 
 1. `decimals` is rounded half away from zero to an integer and clamped to 0–6 (absent: 0); `value` that isn't finite is 0.
 2. When |value| < 10¹⁶, it is multiplied by 10^decimals in doubles, that product is rounded half away from zero to an integer, and the integer is divided by 10^decimals in doubles; larger values are already integers and are kept. The product is the double nearest the true product, so the halfway cases are those of the double: `format(2.675, 2)` is "2.68" (2.675 × 100 is 267.5 in doubles), `format(8.345, 2)` is "8.35", while `format(1.005, 2)` is "1.00" (100.49999999999999) and `format(0.285, 2)` is "0.28".
@@ -123,7 +123,13 @@ The mappings are those of the Unicode version the engine's platform provides; a 
 | `s`, `ss` | Second |
 | `S`, `SS`, `SSS` | Tenths, hundredths, milliseconds |
 
-Names and the AM/PM marker come from `locale` (a BCP 47 tag such as `en-GB`), or the engine's locale when it is absent. Two letters pad with a zero.
+Names and the AM/PM marker come from `locale` (a BCP 47 tag such as `en-GB`), or the [regional format](#regional-format)'s when it is absent. Two letters pad with a zero.
+
+## Regional format
+
+A profile's regional format is its `locale` ([document](document.md#profile)), or, when it has none, the PC's regional format: the decimal separator, group separator and language that the PC's user chose in the operating system's regional settings, as the engine read them when it started. It supplies `format`'s `decimalSeparator` and `groupSeparator` when the scene gives none (each on its own) and `formatTime`'s month and day names and AM/PM marker when it has no `locale`. Nothing else depends on it: digits are always 0–9, the minus sign is always `-`, groups are always three digits, and `upper` and `lower` stay locale-independent.
+
+So an explicit separator on `format` comes first, then `formatTime`'s `locale`, then the profile's `locale`, then the PC's format. A profile's `locale` is looked up in the engine's locale data with no user changes, so a profile that sets one gives the same text on every PC whose locale data agrees; a tag the engine doesn't know is drawn in the PC's format and reported ([unsupported](unsupported.md#what-is-not-unsupported)). A change of the profile's `locale` takes effect at the next tick. A separator from the PC's settings that is empty or longer than 4 characters is replaced by its language's own.
 
 ## Named values
 

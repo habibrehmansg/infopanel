@@ -94,14 +94,17 @@ internal static class SceneKit
 
     public static JsonElement Fixture(string name) => Load(Path.Combine(FixturesDir, name));
 
+    /// <summary>Runtime options with the zone (UTC) and the PC's regional format (<paramref name="locale"/>, else the invariant one) pinned.</summary>
     public static SceneRuntimeOptions Options(ISceneInputSource? inputs = null, MediaSampleCache? media = null,
-        IReadOnlyDictionary<string, IMediaProvider>? providers = null, SpecLimits? limits = null) => new()
+        IReadOnlyDictionary<string, IMediaProvider>? providers = null, SpecLimits? limits = null, RegionalFormat? locale = null,
+        Serilog.ILogger? logger = null) => new()
     {
         Inputs = inputs ?? new FakeSceneInputs(),
         Media = media,
         Providers = providers ?? new Dictionary<string, IMediaProvider>(),
         LocalZone = TimeZoneInfo.Utc,
-        Locale = CultureInfo.InvariantCulture,
+        Locale = locale ?? RegionalFormat.Invariant,
+        Logger = logger,
         Limits = limits ?? SpecLimits.Default,
     };
 

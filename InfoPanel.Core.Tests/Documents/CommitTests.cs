@@ -619,6 +619,37 @@ public sealed class CommitTests
         Assert.Equal(1, doc.ReadRevisions(r => r.FieldRev(ProfileField.Name)));
     }
 
+    [Fact]
+    public void The_profiles_locale_is_its_own_field_group()
+    {
+        using var doc = Sample();
+        var result = doc.Ok(Commit(Profile(new JsonObject { ["locale"] = "de-CH" })));
+        Assert.Equal(2, result.ProfileRev);
+        Assert.Equal("de-CH", doc.Current.Document.Profile.Locale);
+        Assert.Equal(2, doc.ReadRevisions(r => r.FieldRev(ProfileField.Locale)));
+        Assert.Equal(1, doc.ReadRevisions(r => r.FieldRev(ProfileField.Name)));
+
+        // Another client's op based on revision 1 conflicts on the locale only; a name change doesn't.
+        var conflict = doc.Conflict(Commit(1, "stale", null, Profile(new JsonObject { ["locale"] = "fr-FR", ["name"] = "N" }, baseRev: 1)));
+        Assert.Equal(["0::changed:2:locale"], conflict.Conflicts.Select(Text));
+        doc.Ok(Commit(Profile(new JsonObject { ["name"] = "N" }, baseRev: 1)));
+
+        // Setting the same tag again stamps nothing.
+        Assert.Equal(3, doc.Ok(Commit(Profile(new JsonObject { ["locale"] = "de-CH" }))).Rev);
+        Assert.Equal(2, doc.ReadRevisions(r => r.FieldRev(ProfileField.Locale)));
+
+        doc.Undo();
+        Assert.Equal("de-CH", doc.Current.Document.Profile.Locale);
+        doc.Undo();
+        Assert.Null(doc.Current.Document.Profile.Locale);
+        Assert.Equal(5, doc.ReadRevisions(r => r.FieldRev(ProfileField.Locale)));
+        Assert.DoesNotContain("locale", SpecJson.Write(doc.Read().Document).GetProperty("profile").EnumerateObject().Select(p => p.Name));
+
+        // A malformed tag is refused like any schema error.
+        var invalid = doc.Commit(Commit(Profile(new JsonObject { ["locale"] = "en_US" })));
+        Assert.Equal(("schema", "/ops/0/set/locale"), (Assert.Single(invalid.Invalid!.Errors).Code, invalid.Invalid.Errors[0].Path));
+    }
+
     private static ExpiredProblem Expired(ProfileDocument doc, JsonElement body)
     {
         var outcome = doc.Commit(body);

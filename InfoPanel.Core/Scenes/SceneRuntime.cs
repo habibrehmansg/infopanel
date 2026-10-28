@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -29,7 +28,14 @@ public sealed class SceneRuntimeOptions
 
     public TimeZoneInfo? LocalZone { get; init; }
 
-    public CultureInfo? Locale { get; init; }
+    /// <summary>
+    /// The PC's regional format, for documents whose profile sets no <c>locale</c> (or one this engine doesn't know);
+    /// null: <see cref="PcRegionalFormat.Current"/>.
+    /// </summary>
+    public RegionalFormat? Locale { get; init; }
+
+    /// <summary>Where the runtime logs; null: the process's logger.</summary>
+    public ILogger? Logger { get; init; }
 
     /// <summary>Text lines (of layouts made, not cached) a document may lay out per tick; an item that would exceed it is drawn as over budget for that tick.</summary>
     public int LayoutsPerTick { get; init; } = 4_000;
@@ -93,10 +99,12 @@ public sealed class SceneRuntime : IDisposable
     private long _tick;
     private int _reserved = -1;
     private bool _disposed;
+    private readonly ILogger _log;
 
     public SceneRuntime(SceneRuntimeOptions? options = null)
     {
         _options = options ?? new SceneRuntimeOptions();
+        _log = _options.Logger ?? Logger;
     }
 
     /// <summary>The latest tick, retained by the runtime (thumbnails during a tick use it); null before the first tick.</summary>
@@ -145,6 +153,8 @@ public sealed class SceneRuntime : IDisposable
             var model = SceneDocumentModel.Load(generation, _generation + 1);
             _generation = model.Generation;
             _model = model;
+            if (model.Locale is { } locale && model.Format is null && RegionalFormat.FirstReport(locale))
+                _log.Warning("Unknown profile locale '{Locale:l}'; the PC's regional format is used", locale);
             Reconcile(model);
             if (_reserved >= 0)
             {
@@ -208,12 +218,13 @@ public sealed class SceneRuntime : IDisposable
         return runtime.Snapshot(now);
     }
 
-    private SceneClock Clock(double elapsed, DateTimeOffset now) =>
-        new(SceneMath.Finite(elapsed), now, _options.LocalZone ?? TimeZoneInfo.Local, _options.Locale ?? CultureInfo.CurrentCulture);
+    /// <summary>The tick's clock; its regional format is the profile's <c>locale</c>, else the PC's (spec/docs/expressions.md, "Regional format").</summary>
+    private SceneClock Clock(SceneDocumentModel model, double elapsed, DateTimeOffset now) =>
+        new(SceneMath.Finite(elapsed), now, _options.LocalZone ?? TimeZoneInfo.Local, model.Format ?? _options.Locale ?? PcRegionalFormat.Current);
 
     private TickSnapshot Build(SceneDocumentModel model, double elapsed, DateTimeOffset now, bool advance, bool overProcessBudget)
     {
-        var clock = Clock(elapsed, now);
+        var clock = Clock(model, elapsed, now);
         var tick = advance ? ++_tick : _tick;
         var services = new TickServices
         {
@@ -284,7 +295,7 @@ public sealed class SceneRuntime : IDisposable
                     }
                     catch (Exception e) when (e is not OutOfMemoryException)
                     {
-                        Logger.Error(e, "Item {Id} could not be evaluated", d.Id);
+                        _log.Error(e, "Item {Id} could not be evaluated", d.Id);
                         snap.Problem = "invalid";
                         diag.Add("runtime.error", e.Message);
                     }
@@ -326,7 +337,7 @@ public sealed class SceneRuntime : IDisposable
         {
             rt.Suspended = true;
             rt.SuspendedAt = now;
-            Logger.Warning("Item {Id} is suspended for {Seconds} s: it took too long to evaluate or draw", rt.Id, _options.SuspendFor.TotalSeconds);
+            _log.Warning("Item {Id} is suspended for {Seconds} s: it took too long to evaluate or draw", rt.Id, _options.SuspendFor.TotalSeconds);
         }
     }
 
@@ -378,7 +389,7 @@ public sealed class SceneRuntime : IDisposable
                 }
                 catch (Exception e)
                 {
-                    Logger.Warning(e, "Sensor {Key} could not be read", binding.Key);
+                    _log.Warning(e, "Sensor {Key} could not be read", binding.Key);
                     reading = SceneReading.Unavailable;
                 }
                 readings[(binding.Key, type)] = reading;
@@ -395,7 +406,7 @@ public sealed class SceneRuntime : IDisposable
                     }
                     catch (Exception e)
                     {
-                        Logger.Warning(e, "History of {Key} could not be read", binding.Key);
+                        _log.Warning(e, "History of {Key} could not be read", binding.Key);
                         history = [];
                     }
                     histories[binding.Key] = history;

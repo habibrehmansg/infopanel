@@ -48,6 +48,10 @@
           "default": "#ffffffff"
         },
         "statsOverlay": { "description": "Draw the engine's frame-rate overlay on every output.", "type": "boolean", "default": false },
+        "locale": {
+          "$ref": "urn:infopanel:common:1#/$defs/localeTag",
+          "description": "The regional format numbers and dates are drawn in (see docs/expressions.md, Regional format). Absent: the PC's regional format."
+        },
         "window": { "$ref": "#/$defs/windowSettings" },
         "triggerApps": {
           "description": "Applications (process names) whose being in front should bring this profile up. Stored; acted on by engines that support it.",

@@ -341,17 +341,18 @@ internal sealed class FormatTimeExprC(PatternToken[] tokens, string? locale, str
     public override Val Eval(Ev e)
     {
         e.Work += CallExprC.StringWork;
-        var culture = e.Clock.Locale;
+        var culture = e.Clock.Format.Culture;
         if (locale is not null)
         {
             if (SceneTime.Culture(locale) is { } c) culture = c;
-            else e.Diagnostics?.Add("time.locale", $"Unknown locale '{locale}'; the engine's locale is used.");
+            else e.Diagnostics?.Add("time.locale", $"Unknown locale '{locale}'; the regional format's names are used.");
         }
         return Val.Str(e.Cut(SceneTime.Format(tokens, SceneTime.Local(e.Clock, e.ZoneOf(zone)), culture)));
     }
 }
 
-internal sealed class FormatExprC(CExpr value, CExpr? decimals, CExpr? group, string decimalSeparator, string groupSeparator) : CExpr
+/// <summary><c>format</c>; a separator the scene doesn't give is the tick's regional format's (spec/docs/expressions.md, "Regional format").</summary>
+internal sealed class FormatExprC(CExpr value, CExpr? decimals, CExpr? group, string? decimalSeparator, string? groupSeparator) : CExpr
 {
     public override Val Eval(Ev e)
     {
@@ -359,7 +360,7 @@ internal sealed class FormatExprC(CExpr value, CExpr? decimals, CExpr? group, st
         var v = value.Num(e);
         var d = decimals is null ? 0 : (int)Math.Clamp(Math.Round(decimals.Num(e), MidpointRounding.AwayFromZero), 0, 6);
         var g = group?.Bool(e) ?? false;
-        return Val.Str(e.Cut(FormatNumber(v, d, g, decimalSeparator, groupSeparator)));
+        return Val.Str(e.Cut(FormatNumber(v, d, g, decimalSeparator ?? e.Clock.Format.DecimalSeparator, groupSeparator ?? e.Clock.Format.GroupSeparator)));
     }
 
     internal static string FormatNumber(double v, int decimals, bool group, string decimalSeparator, string groupSeparator)
@@ -543,7 +544,7 @@ internal sealed class ExprCompiler(ExprScope scope)
                 return Typed(new FormatExprC(Compile(f.Value, depth + 1),
                     f.Decimals is null ? null : Compile(f.Decimals, depth + 1),
                     f.Group is null ? null : Compile(f.Group, depth + 1),
-                    f.DecimalSeparator ?? ".", f.GroupSeparator ?? ","), Ty.String);
+                    f.DecimalSeparator, f.GroupSeparator), Ty.String);
             case BoxExpr b:
                 return Typed(new BoxExprC(b.Field switch { "w" => BoxField.W, "rotation" => BoxField.Rotation, _ => BoxField.H }), Ty.Number);
             case MeasureExpr m:

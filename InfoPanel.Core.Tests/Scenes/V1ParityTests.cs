@@ -117,7 +117,7 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         Inputs = new SensorSceneInputs(scene.Sensors, scene.History),
         Media = media,
         LocalZone = TimeZoneInfo.Utc,
-        Locale = CultureInfo.InvariantCulture,
+        Locale = RegionalFormat.Invariant,
     };
 
     internal static MediaSampleCache FixtureMedia() =>
@@ -776,7 +776,7 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     {
         using var media = FixtureMedia();
         var document = SceneKit.Load(Path.Combine(ReferenceDir, "all-kinds.document.json"));
-        var options = new SceneRuntimeOptions { Inputs = new EveryKeyInputs(), Media = media, LocalZone = TimeZoneInfo.Utc, Locale = CultureInfo.InvariantCulture };
+        var options = new SceneRuntimeOptions { Inputs = new EveryKeyInputs(), Media = media, LocalZone = TimeZoneInfo.Utc, Locale = RegionalFormat.Invariant };
         using var snapshot = SceneRuntime.RenderOnce(document, GoldenScene.UtcNow, options);
         Assert.True(snapshot.Bounds.Count >= 17);
         Assert.All(snapshot.Bounds, b => Assert.Null(b.Problem));

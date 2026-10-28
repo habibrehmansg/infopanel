@@ -433,6 +433,7 @@ export interface ProfileOp {
     height?: number;
     background?: ColorLiteral;
     statsOverlay?: boolean;
+    locale?: LocaleTag;
     window?: WindowSettings;
     /** Items: ≤ 32. */
     triggerApps?: string[];
@@ -900,6 +901,12 @@ export type ColorLiteral = string;
  */
 export type Revision = number;
 
+/**
+ * A BCP 47 language tag such as de-CH: a language and up to four subtags, letters and digits only (no extensions).
+ * Pattern: `^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,4}$`.
+ */
+export type LocaleTag = string;
+
 /** A JSON object the engine stores and returns unchanged and never interprets. */
 export type Opaque = { [key: string]: JsonValue };
 
@@ -957,6 +964,8 @@ export interface Profile {
    * @default false
    */
   statsOverlay?: boolean;
+  /** The regional format numbers and dates are drawn in (see docs/expressions.md, Regional format). Absent: the PC's regional format. */
+  locale?: LocaleTag;
   window?: WindowSettings;
   /**
    * Applications (process names) whose being in front should bring this profile up. Stored; acted on by engines that support it.
@@ -1247,13 +1256,13 @@ export interface FormatOp {
    */
   group?: BoolExpr;
   /**
+   * Absent: the regional format's (see docs/expressions.md, Regional format).
    * Length: ≤ 4.
-   * @default "."
    */
   decimalSeparator?: string;
   /**
+   * Absent: the regional format's (see docs/expressions.md, Regional format).
    * Length: ≤ 4.
-   * @default ","
    */
   groupSeparator?: string;
 }
@@ -1263,11 +1272,8 @@ export interface FormatTimeOp {
   op: "formatTime";
   /** Length: 1–128. */
   pattern: string;
-  /**
-   * A BCP 47 language tag for month and day names and the AM/PM marker. Absent: the engine's locale.
-   * Pattern: `^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,4}$`.
-   */
-  locale?: string;
+  /** A BCP 47 language tag for month and day names and the AM/PM marker. Absent: the regional format's (see docs/expressions.md, Regional format). */
+  locale?: LocaleTag;
   zone?: TimeZone;
 }
 

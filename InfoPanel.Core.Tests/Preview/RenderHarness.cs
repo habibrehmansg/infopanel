@@ -55,7 +55,7 @@ internal sealed class RenderHarness : IAsyncDisposable
         Limits = workspace.Limits,
         Support = workspace.Support,
         LocalZone = TimeZoneInfo.Utc,
-        Locale = CultureInfo.InvariantCulture,
+        Locale = RegionalFormat.Invariant,
     };
 
     public TimeProvider Time { get; }
