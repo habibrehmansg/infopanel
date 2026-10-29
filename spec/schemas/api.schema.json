@@ -1040,6 +1040,259 @@
         "path": { "description": "The JSON pointer to what the error is about in the client message it answers: \"\" for the whole message, or when it answers none (a subscription that ended).", "type": "string" },
         "message": { "description": "What went wrong, for people: display text, never read by a client.", "type": "string" }
       }
+    },
+    "v1Migration": {
+      "description": "GET and PUT /api/import/v1: the 1.x migration (docs/import.md#migrating-a-1x-folder): its state, the 1.x folder the engine reads, the run-once record once there is one, and the folder's profiles, settings and diagnostics when it has 1.x data. Read tolerantly: a client ignores members it doesn't know.",
+      "type": "object",
+      "required": ["state", "folder"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "description": "`none` (the folder has no 1.x data), `pending` (1.x data and no record: not migrated yet) or `done` (a record, or one the engine can't read: the migration never runs on its own twice). A client treats a state it doesn't know as `done`: it doesn't migrate on its own.",
+          "enum": ["none", "pending", "done"]
+        },
+        "folder": { "description": "The 1.x folder the engine reads, as a full path. The engine only reads it.", "type": "string", "minLength": 1 },
+        "record": { "$ref": "#/$defs/v1MigrationRecord", "description": "The run-once record, when there is one the engine can read." },
+        "profiles": { "description": "The folder's profiles, in 1.x order, when it has 1.x data (at most `v1Profiles`, docs/limits.md#1x-import-limits).", "type": "array", "items": { "$ref": "#/$defs/v1ProfileSummary" } },
+        "settings": { "$ref": "#/$defs/v1Settings", "description": "The folder's settings, when it has 1.x data whose settings can be read (and isn't 1.1.x data)." },
+        "diagnostics": { "description": "What was found reading the folder and the record (docs/import.md#diagnostics): at most `diagnostics`, then one `more`.", "type": "array", "items": { "$ref": "#/$defs/importDiagnostic" }, "maxItems": 1001 }
+      }
+    },
+    "v1MigrationRequest": {
+      "description": "PUT /api/import/v1: what a migration did, as a client reports it; the engine stores it as the run-once record (docs/import.md#the-record), adding the time and the folder. At most `recordOutcomes` outcomes, and at most `recordBytes` as received and as stored (docs/limits.md#1x-import-limits).",
+      "type": "object",
+      "required": ["profiles", "settings"],
+      "additionalProperties": false,
+      "properties": {
+        "profiles": { "description": "One outcome per 1.x profile the migration dealt with, in any order.", "type": "array", "items": { "$ref": "#/$defs/v1MigrationOutcome" } },
+        "settings": { "description": "Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client reading it treats a value it doesn't know as `skipped`.", "enum": ["imported", "skipped"] }
+      }
+    },
+    "v1MigrationRecord": {
+      "description": "The run-once record: what a migration did, as a client reported it, with when the engine stored it and the 1.x folder it read.",
+      "type": "object",
+      "required": ["completed", "folder", "profiles", "settings"],
+      "additionalProperties": false,
+      "properties": {
+        "completed": { "$ref": "#/$defs/timestamp", "description": "When the engine stored the record, in UTC to the second." },
+        "folder": { "description": "The 1.x folder the engine read then, as a full path.", "type": "string", "minLength": 1 },
+        "profiles": { "type": "array", "items": { "$ref": "#/$defs/v1MigrationOutcome" }, "maxItems": 1000 },
+        "settings": { "description": "Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client treats a value it doesn't know as `skipped`.", "enum": ["imported", "skipped"] }
+      }
+    },
+    "v1MigrationOutcome": {
+      "description": "What a migration did with one 1.x profile.",
+      "type": "object",
+      "required": ["v1Id", "id", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "v1Id": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "The 1.x profile's Guid, in lower case." },
+        "id": {
+          "description": "The profile created from it, or null when none was.",
+          "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/documentId" }, { "type": "null" }]
+        },
+        "outcome": { "description": "`imported`, `skipped` (the user left it out) or `failed`. A client treats an outcome it doesn't know as `failed`.", "enum": ["imported", "skipped", "failed"] },
+        "reason": { "description": "Why, for people: display text.", "type": "string", "maxLength": 256 }
+      }
+    },
+    "v1ProfileSummary": {
+      "description": "A profile of the 1.x folder's profile list, as 1.x lists it.",
+      "type": "object",
+      "required": ["id", "name", "width", "height", "active"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "The 1.x profile's Guid, in lower case: what POST /api/import/v1/profiles/{v1Id} names." },
+        "name": { "description": "Its name as stored (empty when it has none).", "type": "string" },
+        "width": { "description": "Its canvas width as stored, which may be over a document's limit (a client clamps it).", "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "height": { "description": "Its canvas height as stored.", "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "active": { "description": "Whether 1.x showed it as a window.", "type": "boolean" }
+      }
+    },
+    "v1Settings": {
+      "description": "The user data of the 1.x folder's settings (`settings.xml`, else `settings.xml.bak`), each value as 1.x would use it: an absent one is 1.x's default. Nothing is applied by reading it (docs/import.md#settings).",
+      "type": "object",
+      "required": ["targetFrameRate", "targetGraphUpdateRate", "libre", "programSpecific", "devices", "multiDevice", "hotkeys"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "description": "The settings version: 131 from 1.3.1 on, 115 from 1.2.x. Absent when it doesn't parse.", "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "targetFrameRate": { "description": "Frames a second, 1.x's default 15, within the engine setting's range.", "type": "integer", "minimum": 1, "maximum": 60 },
+        "targetGraphUpdateRate": { "description": "Graph samples' interval in milliseconds, 1.x's default 1000, within the engine setting's range.", "type": "integer", "minimum": 100, "maximum": 3000 },
+        "libre": { "$ref": "#/$defs/v1LibreSettings" },
+        "programSpecific": { "$ref": "#/$defs/v1ProgramSpecificSettings" },
+        "devices": { "description": "The panel devices of 1.x's device families, at most `v1Devices` per family.", "type": "array", "items": { "$ref": "#/$defs/v1Device" } },
+        "multiDevice": { "description": "Per device family (as `v1Device.family` names it), whether 1.x drove several devices of it.", "type": "object", "additionalProperties": { "type": "boolean" } },
+        "hotkeys": { "description": "1.x's hotkeys, at most `v1Hotkeys`.", "type": "array", "items": { "$ref": "#/$defs/v1Hotkey" } }
+      }
+    },
+    "v1LibreSettings": {
+      "description": "1.x's LibreHardwareMonitor settings: whether it read sensors with it, and whether and how often it kept their readings.",
+      "type": "object",
+      "required": ["enabled", "storage", "storageInterval"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "storage": { "type": "boolean" },
+        "storageInterval": { "description": "Seconds, within the engine setting's range.", "type": "integer", "minimum": 1, "maximum": 300 }
+      }
+    },
+    "v1ProgramSpecificSettings": {
+      "description": "Whether 1.x switched profiles by the program in front at all (its profiles' trigger apps), and whether it hid the other profiles then.",
+      "type": "object",
+      "required": ["enabled", "hideOthers"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hideOthers": { "type": "boolean" }
+      }
+    },
+    "v1Device": {
+      "description": "A panel device of one of 1.x's device families: the 1.x profile it showed, and every simple element of the device as stored, as strings, at most `v1DeviceFields`.",
+      "type": "object",
+      "required": ["family", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "description": "`beada`, `turing`, `lianLi`, `thermalright`, `thermaltake`, `jl`, `jonsbo` or `vmax`. A client leaves out a device of a family it doesn't know.",
+          "enum": ["beada", "turing", "lianLi", "thermalright", "thermaltake", "jl", "jonsbo", "vmax"]
+        },
+        "profile": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "The 1.x profile it showed, its Guid in lower case; absent for none." },
+        "fields": { "description": "The device's elements by their 1.x names, each value as stored (at most `v1SettingLength` characters).", "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "v1Hotkey": {
+      "description": "A 1.x hotkey as stored: the keys, the device it targets and the 1.x profile it switches to.",
+      "type": "object",
+      "required": ["modifiers", "key", "deviceType", "deviceId", "deviceLocation"],
+      "additionalProperties": false,
+      "properties": {
+        "modifiers": { "type": "string" },
+        "key": { "type": "string" },
+        "deviceType": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "deviceLocation": { "type": "string" },
+        "profile": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "The 1.x profile it switches to, its Guid in lower case; absent for none." }
+      }
+    },
+    "v1Profile": {
+      "description": "POST /api/import/v1/profiles/{v1Id} and POST /api/import/v1/archive: one 1.x profile, read without installing anything (the envelope, docs/import.md#the-envelope): its properties, its items as the 1.x item JSON, its guides, its image files stored as blobs, and what was found on the way. A client creates a profile from it with POST /api/profiles, choosing the profile's id. Read tolerantly: a client ignores members it doesn't know.",
+      "type": "object",
+      "required": ["source", "id", "profile", "items", "guides", "assets", "diagnostics"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "description": "`folder` (a profile of the 1.x folder) or `archive` (a 1.x `.infopanel` file). A client treats a source it doesn't know as `archive`.", "enum": ["folder", "archive"] },
+        "id": { "$ref": "urn:infopanel:common:1#/$defs/documentId", "description": "The 1.x profile's Guid as stored, in lower case. It isn't a profile id of this engine: a client that creates a profile from the envelope chooses that." },
+        "profile": { "$ref": "#/$defs/v1ProfileProps" },
+        "targetWindow": { "$ref": "#/$defs/v1TargetWindow" },
+        "items": { "description": "The top-level items, in 1.x order, the first at the back (docs/import.md#items).", "type": "array", "items": { "$ref": "urn:infopanel:v1item:1#/$defs/v1Item" } },
+        "guides": { "description": "1.x's guides, wherever they sat among the items.", "type": "array", "items": { "$ref": "#/$defs/v1Guide" } },
+        "assets": { "description": "One entry per image file the items name (gauge frames included), keyed by the items' `filePath` and `relativePath`.", "type": "array", "items": { "$ref": "#/$defs/v1Asset" } },
+        "diagnostics": { "description": "What was found reading the profile (docs/import.md#diagnostics): at most `diagnostics`, then one `more`.", "type": "array", "items": { "$ref": "#/$defs/importDiagnostic" }, "maxItems": 1001 }
+      }
+    },
+    "v1ProfileProps": {
+      "description": "Every member of the 1.x profile model, by its camelCase name, as stored. A string 1.x left null, or a number that isn't finite, is null.",
+      "type": "object",
+      "required": ["name", "width", "height", "showFps", "drag", "backgroundColor", "active", "openGL", "fontScale", "topmost", "font", "fontSize", "color", "windowX", "windowY", "resize", "strictWindowMatching", "triggerProcessNames", "isSelected"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "width": { "description": "As stored, which may be over a document's limit (a client clamps it, `import.size`).", "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "height": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "showFps": { "type": "boolean" },
+        "drag": { "type": "boolean" },
+        "backgroundColor": { "type": ["string", "null"] },
+        "active": { "description": "Whether 1.x showed it as a window. A 1.x export writes the model's default, true.", "type": "boolean" },
+        "openGL": { "type": "boolean" },
+        "fontScale": { "type": ["number", "null"] },
+        "topmost": { "type": "boolean" },
+        "font": { "description": "The profile's default font family (`import.font` when the engine doesn't have it).", "type": ["string", "null"] },
+        "fontSize": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "color": { "type": ["string", "null"] },
+        "windowX": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "windowY": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "resize": { "type": "boolean" },
+        "strictWindowMatching": { "type": "boolean" },
+        "triggerProcessNames": { "description": "The programs whose window in front shows the profile, as 1.x stored them (comma-separated).", "type": ["string", "null"] },
+        "isSelected": { "description": "Whether it was selected in 1.x.", "type": "boolean" }
+      }
+    },
+    "v1TargetWindow": {
+      "description": "The display 1.x placed the profile's window on.",
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "y": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "width": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "height": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "deviceName": { "description": "The display's device name on Windows, such as \"\\\\.\\DISPLAY2\".", "type": "string" }
+      }
+    },
+    "v1ItemMeta": {
+      "description": "What the engine adds to a 1.x item: its sensor binding as this engine reads it now.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sensor": { "$ref": "#/$defs/v1SensorMeta" }
+      }
+    },
+    "v1SensorMeta": {
+      "description": "The sensor a 1.x item is bound to: its key in this engine and its status now (`import.sensor` when it has no reading).",
+      "type": "object",
+      "required": ["key", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "description": "The sensor's key, as a binding names it (docs/bindings.md).", "type": "string", "minLength": 1 },
+        "status": {
+          "description": "As `sensorEntry.status`: `live`, `stale`, `unavailable`, `denied`, `simulated` or `missing`. A client treats a status it doesn't know as no reading.",
+          "enum": ["live", "stale", "unavailable", "denied", "simulated", "missing"]
+        }
+      }
+    },
+    "v1Guide": {
+      "description": "A 1.x guide (a line 1.x showed only while a profile was being designed, never on a panel): data for a client, not an item. A member 1.x left out has 1.x's default.",
+      "type": "object",
+      "required": ["x", "y", "length", "color", "rotation", "name", "hidden", "locked"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "y": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "length": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "color": { "type": "string" },
+        "rotation": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "name": { "description": "As stored; 1.x's default \"DisplayItem\" when absent.", "type": "string" },
+        "hidden": { "description": "As stored: a guide in a hidden group keeps its own value (`container` tells the group).", "type": "boolean" },
+        "locked": { "type": "boolean" },
+        "container": { "description": "The JSON pointer of the group's `children` the guide sat in (`/items/1/children`), in the answer's items; absent at the top level.", "type": "string" }
+      }
+    },
+    "v1Asset": {
+      "description": "An image file the items name: the blob it was stored as, or why nothing was stored (docs/import.md#assets).",
+      "type": "object",
+      "required": ["path", "relative"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "description": "Exactly the items' `filePath`.", "type": "string" },
+        "relative": { "description": "Exactly the items' `relativePath`: the path is inside the profile's assets.", "type": "boolean" },
+        "blob": { "$ref": "#/$defs/blobInfo", "description": "The stored blob, as POST /api/blobs answers it." },
+        "code": { "description": "Why nothing was stored: an `import.asset.*` code (docs/import.md#diagnostics). A later engine may add codes: a client treats one it doesn't know as a file that wasn't stored.", "type": "string", "minLength": 1 },
+        "reason": { "description": "With `import.asset.media`: the media check's code or the limit's (`media.format`, `limit.mediaBytes`, `archive.expanded`, ...).", "type": "string", "minLength": 1 }
+      }
+    },
+    "importDiagnostic": {
+      "description": "A problem found reading 1.x data, inside an otherwise readable answer (docs/import.md#diagnostics).",
+      "type": "object",
+      "required": ["severity", "code", "path", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "severity": { "description": "`error` (something wasn't read), `warning` (read, but not as 1.x had it) or `info`. A client treats a severity it doesn't know as `warning`.", "enum": ["error", "warning", "info"] },
+        "code": { "description": "A code of docs/import.md's catalogue (`import.*`), or `more`, which counts the diagnostics not listed. A later engine may add codes: a client handles a code it doesn't know by its severity (docs/versioning.md#error-codes-and-paths).", "type": "string", "minLength": 1 },
+        "path": { "description": "The JSON pointer to what it is about, in the answer; \"\" for the whole.", "type": "string" },
+        "message": { "description": "What was found, for people: display text, never read by a client.", "type": "string" },
+        "file": { "description": "The 1.x file it was found in, as the folder or the archive names it (`profiles/{guid}.xml`, `Profile.xml`), when known.", "type": "string" },
+        "line": { "description": "The line in `file`, from 1, when known.", "type": "integer", "minimum": 1, "maximum": 2147483647 }
+      }
     }
   }
 }

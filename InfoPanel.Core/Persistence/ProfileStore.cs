@@ -39,15 +39,6 @@ public sealed class ProfileStore : IAssetLocator
 
     public string GetProfileAssetsDirectory(Guid profileId) => Paths.ProfileAssetsDirectory(profileId);
 
-    /// <summary>
-    /// Why an imported profile is refused for its size, or null: a width or height over <see cref="MaxDimension"/>.
-    /// Smaller sizes, 0 and negative ones included (1.x wrote them; rendering treats them as 1), are kept as they are.
-    /// </summary>
-    internal static string? ImportSizeError(Profile profile) =>
-        profile.Width > MaxDimension || profile.Height > MaxDimension
-            ? $"its size {profile.Width}×{profile.Height} is over the {MaxDimension}×{MaxDimension} maximum"
-            : null;
-
     /// <summary>The profile list, or an empty list when there is no <c>profiles.xml</c> yet.</summary>
     /// <exception cref="InvalidDataException"><c>profiles.xml</c> exists but can't be read. It is left untouched.</exception>
     public List<Profile> LoadProfiles()
@@ -122,49 +113,6 @@ public sealed class ProfileStore : IAssetLocator
             }
         }
     }
-
-    /// <summary>
-    /// For importers, all under the data folder's lock: gives <paramref name="profile"/> a Guid with no list entry,
-    /// items file or assets folder (its own when <paramref name="keepGuidIfFree"/> and it is free, else a new one),
-    /// runs <paramref name="writeAssets"/> on that (absent) assets folder, writes the items and appends the profile to
-    /// the list. Returns what <paramref name="writeAssets"/> returned. On failure it removes the assets folder and items
-    /// file this call created, best effort (anything it can't remove is logged and added to
-    /// <paramref name="cleanupErrors"/>), and rethrows; the profile's Guid is left as assigned.
-    /// </summary>
-    internal int AddImportedProfile(Profile profile, List<DisplayItem> items, bool keepGuidIfFree,
-        Func<string, int> writeAssets, ICollection<string> cleanupErrors)
-    {
-        lock (_lock)
-        {
-            var profiles = LoadProfilesCore();
-            if (!keepGuidIfFree || !IsGuidFree(profiles, profile.Guid))
-            {
-                do
-                    profile.Guid = Guid.NewGuid();
-                while (!IsGuidFree(profiles, profile.Guid));
-            }
-
-            var assets = Paths.ProfileAssetsDirectory(profile.Guid);
-            try
-            {
-                var result = writeAssets(assets);
-                AppendProfile(profiles, profile, items);
-                return result;
-            }
-            catch
-            {
-                // The Guid was free, so the items file and assets folder, if present now, are this call's.
-                TryDelete(Paths.ProfileItemsFile(profile.Guid), directory: false, cleanupErrors);
-                TryDelete(assets, directory: true, cleanupErrors);
-                throw;
-            }
-        }
-    }
-
-    private bool IsGuidFree(List<Profile> profiles, Guid guid) =>
-        profiles.All(p => p.Guid != guid)
-        && !File.Exists(Paths.ProfileItemsFile(guid))
-        && !Directory.Exists(Paths.ProfileAssetsDirectory(guid));
 
     private void AppendProfile(List<Profile> profiles, Profile profile, List<DisplayItem> items)
     {

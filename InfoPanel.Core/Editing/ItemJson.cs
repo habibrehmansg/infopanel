@@ -3,13 +3,18 @@ using InfoPanel.Sensors;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using InfoPanel.Spec;
 
 namespace InfoPanel.Editing;
 
 /// <summary>An item's sensor binding and where its value comes from.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/v1SensorMeta")]
 public sealed record SensorMeta(string Key, SensorStatus Status);
 
-public sealed record ItemMeta(SensorMeta? Sensor);
+/// <summary>What the engine adds to an item: its sensor binding as it reads it now, when it has one.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/v1ItemMeta")]
+public sealed record ItemMeta(SensorMeta? Sensor = null);
 
 /// <summary>
 /// An item as the API sends it (plan §6.2). Properties are nested under <see cref="Props"/> because
@@ -21,7 +26,15 @@ public sealed record ItemNode(
     JsonObject Props,
     IReadOnlyList<ItemNode>? Children,
     IReadOnlyList<ItemNode>? Images,
-    ItemMeta Meta);
+    ItemMeta Meta)
+{
+    /// <summary>Reads a node: <c>children</c> (a group's) and <c>images</c> (a gauge's) may be absent.</summary>
+    [JsonConstructor]
+    public ItemNode(string id, string kind, JsonObject props, ItemMeta meta, IReadOnlyList<ItemNode>? children = null, IReadOnlyList<ItemNode>? images = null)
+        : this(id, kind, props, children, images, meta)
+    {
+    }
+}
 
 /// <summary>Converts items and profiles to and from their API JSON.</summary>
 public static class ItemJson

@@ -10,7 +10,7 @@ namespace InfoPanel.Core.Tests.Persistence;
 /// The end-to-end fixture <c>InfoPanel.Core.Tests/Fixtures/e2e/all-kinds.infopanel</c>: the frozen 1.x "Desk Overlay" profile
 /// and its all-kinds items, packaged as 1.x's <c>ExportProfile</c> wrote them on Windows. Rewrite it with
 /// <c>UPDATE_FIXTURES=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~E2eArchiveFixture</c>; the other tests
-/// here check the committed file still matches and imports with every kind and its images. With UPDATE_FIXTURES=1
+/// here check the committed file still matches and reads through the 1.x import with every kind and its images. With UPDATE_FIXTURES=1
 /// every test here rewrites the file first (once per run), so they pass in any order against the new archive.
 /// </summary>
 public class E2eArchiveFixture
@@ -70,32 +70,30 @@ public class E2eArchiveFixture
     }
 
     /// <summary>
-    /// The committed archive imports as the 2.0 engine imports it, with all 14 kinds (counting nested items) and
-    /// every relative image path pointing at a packaged asset.
+    /// The committed archive reads through the 1.x import with all 14 kinds (counting nested items), its canvas size, and
+    /// every relative image path pointing at a packaged asset, each stored as a blob.
     /// </summary>
     [Fact]
     public void CommittedArchive_ImportsWithEveryKindAndItsImages()
     {
-        using var temp = new TempDirectory();
-        var store = new ProfileStore(new DataPaths(temp.Combine("data")));
+        using var kit = new Import.ImportKit();
 
-        var result = InfoPanelArchive.Import(Archive(), store);
+        var envelope = kit.ReadArchive(File.ReadAllBytes(Archive()));
 
-        Assert.Equal("[Import] Desk Overlay", result.Profile.Name);
-        Assert.Equal((800, 480), (result.Profile.Width, result.Profile.Height));
-        Assert.Equal(Assets.Length, result.AssetCount);
-        Assert.Empty(result.SkippedEntries);
+        Assert.Equal("Desk Overlay", (string)envelope.Profile["name"]!);
+        Assert.Equal((800, 480), ((int)envelope.Profile["width"]!, (int)envelope.Profile["height"]!));
+        Assert.DoesNotContain(envelope.Diagnostics, d => d.Code is "import.entry" or "import.asset.unused");
 
-        var items = ItemTree.Walk(store.LoadItems(result.Profile)).ToList();
-        Assert.Equal(ItemKinds.All.Select(k => k.Id).Order(), items.Select(i => ItemKinds.Of(i).Id).Distinct().Order());
+        var items = Walk(envelope.Items).ToList();
+        Assert.Equal(ItemKinds.All.Select(k => k.Id).Order(), items.Select(i => i.Kind).Distinct().Order());
 
-        var assets = store.GetProfileAssetsDirectory(result.Profile.Guid);
-        var relative = items.OfType<ImageDisplayItem>()
-            .Where(i => i.Type == ImageDisplayItem.ImageType.FILE && i.RelativePath && !string.IsNullOrEmpty(i.FilePath))
-            .Select(i => i.FilePath!)
-            .ToList();
-        Assert.Equal(["anim.gif", "g0.png", "g1.png", "g2.png", "icon.svg", "logo.png"], relative.Order());
-        Assert.All(relative, file => Assert.True(File.Exists(Path.Combine(assets, file)), $"{file} is not in the imported assets"));
+        var relative = envelope.Assets.Where(a => a.Relative).ToList();
+        Assert.Equal(["anim.gif", "g0.png", "g1.png", "g2.png", "icon.svg", "logo.png"], relative.Select(a => a.Path).Order());
+        Assert.Equal(Assets.Length, relative.Count);
+        Assert.All(relative, asset => Assert.True(asset.Blob is not null, $"{asset.Path} is not stored ({asset.Code})"));
+
+        static IEnumerable<ItemNode> Walk(IEnumerable<ItemNode> nodes) =>
+            nodes.SelectMany(n => new[] { n }.Concat(Walk(n.Children ?? [])).Concat(Walk(n.Images ?? [])));
     }
 
     /// <summary>

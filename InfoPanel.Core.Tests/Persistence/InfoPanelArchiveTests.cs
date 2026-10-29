@@ -5,9 +5,15 @@ using Xunit;
 
 namespace InfoPanel.Core.Tests.Persistence;
 
+/// <summary>
+/// The 1.4 <c>.infopanel</c> export the e2e archive is written with. 1.x archives are read by the 1.x import
+/// (<c>InfoPanel.Core.Tests.Import</c>: <c>V1ArchiveTests</c>, <c>ArchiveReaderTests</c>), which installs nothing.
+/// </summary>
 public class InfoPanelArchiveTests
 {
-    private static readonly byte[] LogoBytes = [0x89, 0x50, 0x4E, 0x47, 1, 2, 3, 4];
+    private static readonly byte[] LogoBytes = ImportKitAsset("logo.png");
+
+    private static byte[] ImportKitAsset(string name) => Import.ImportKit.Asset(name);
 
     private static (ProfileStore Store, Profile Profile, List<DisplayItem> Items) SeedStore(TempDirectory temp)
     {
@@ -22,7 +28,7 @@ public class InfoPanelArchiveTests
     }
 
     [Fact]
-    public void Archive_ImportExport_RoundTrip()
+    public void Archive_Export_ReadsBackThroughThe1xImport()
     {
         using var temp = new TempDirectory();
         var (store, profile, items) = SeedStore(temp);
@@ -34,139 +40,19 @@ public class InfoPanelArchiveTests
         using (var zip = ZipFile.OpenRead(archivePath))
             Assert.Equal(["Profile.xml", "DisplayItems.xml", "assets/logo.png"], zip.Entries.Select(e => e.FullName));
 
-        // Add what a hostile or Windows-made archive could hold.
-        using (var zip = ZipFile.Open(archivePath, ZipArchiveMode.Update))
-        {
-            Write(zip, "assets/../../escaped.txt", "x");
-            Write(zip, "assets/sub/../../../escaped2.txt", "x");
-            Write(zip, "assets\\win.png", "win");
-            zip.CreateEntry("assets/folder/");
-            Write(zip, "unrelated.txt", "ignored");
-        }
+        using var kit = new Import.ImportKit();
+        var envelope = kit.ReadArchive(File.ReadAllBytes(archivePath));
 
-        var result = InfoPanelArchive.Import(archivePath, store);
-
-        var imported = result.Profile;
-        Assert.NotEqual(profile.Guid, imported.Guid);
-        Assert.Equal("[Import] Desk Overlay", imported.Name);
         // Profile.xml carries what 1.x exported, not this machine's window placement.
-        Assert.Equal((800, 480, "#FF102030", 1.5f, true, true), (imported.Width, imported.Height, imported.BackgroundColor, imported.FontScale, imported.ShowFps, imported.OpenGL));
-        Assert.Null(imported.TargetWindow);
+        Assert.Equal((800, 480, "#FF102030", 1.5f, true, true),
+            ((int)envelope.Profile["width"]!, (int)envelope.Profile["height"]!, (string)envelope.Profile["backgroundColor"]!,
+                (float)envelope.Profile["fontScale"]!, (bool)envelope.Profile["showFps"]!, (bool)envelope.Profile["openGL"]!));
+        Assert.Null(envelope.TargetWindow);
+        Assert.Equal(ItemTree.Walk(items).Count(), Walk(envelope.Items).Count());
+        Assert.Equal(ItemTree.Walk(items).Select(i => i.Name), Walk(envelope.Items).Select(n => (string?)n.Props["name"]));
+        Assert.True(kit.Stored(LogoBytes));
 
-        Assert.Equal([profile.Guid, imported.Guid], store.LoadProfiles().Select(p => p.Guid));
-        var importedItems = store.LoadItems(imported);
-        Assert.Equal(items.Count, result.ItemCount);
-        Assert.Equal(ItemTree.Walk(items).Select(i => (i.GetType(), i.Name)), ItemTree.Walk(importedItems).Select(i => (i.GetType(), i.Name)));
-
-        var assets = store.GetProfileAssetsDirectory(imported.Guid);
-        Assert.Equal(LogoBytes, File.ReadAllBytes(Path.Combine(assets, "logo.png")));
-        Assert.Equal("win", File.ReadAllText(Path.Combine(assets, "win.png")));
-        Assert.Equal(2, result.AssetCount);
-        Assert.Equal(["assets/../../escaped.txt", "assets/sub/../../../escaped2.txt"], result.SkippedEntries.Select(s => s.Entry));
-        Assert.Empty(Directory.GetFiles(temp.Path, "escaped*", SearchOption.AllDirectories));
-    }
-
-    [Fact]
-    public void Archive_Import_RequiresBothXmlEntries()
-    {
-        using var temp = new TempDirectory();
-        var store = new ProfileStore(new DataPaths(temp.Combine("data")));
-        var archive = new MemoryStream();
-        using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
-            Write(zip, "Profile.xml", "<Profile />");
-        archive.Position = 0;
-
-        Assert.Throws<InvalidDataException>(() => InfoPanelArchive.Import(archive, store));
-        Assert.Throws<InvalidDataException>(() => InfoPanelArchive.Import(new MemoryStream("not a zip"u8.ToArray()), store));
-        Assert.Empty(store.LoadProfiles());
-    }
-
-    [Fact]
-    public void Archive_Import_EnforcesLimits()
-    {
-        using var temp = new TempDirectory();
-        var (store, profile, items) = SeedStore(temp);
-        var archive = new MemoryStream();
-        InfoPanelArchive.Export(profile, items, store, archive);
-
-        archive.Position = 0;
-        Assert.Throws<InvalidDataException>(() => InfoPanelArchive.Import(archive, store, maxEntries: 2, InfoPanelArchive.MaxExtractedBytes));
-
-        // The XML fits, the asset pushes it over: nothing is left behind.
-        archive.Position = 0;
-        long xmlBytes;
-        using (var zip = new ZipArchive(archive, ZipArchiveMode.Read, leaveOpen: true))
-            xmlBytes = zip.Entries.Where(e => e.FullName.EndsWith(".xml")).Sum(e => e.Length);
-        archive.Position = 0;
-        Assert.Throws<InvalidDataException>(() => InfoPanelArchive.Import(archive, store, InfoPanelArchive.MaxEntries, xmlBytes + 1));
-
-        Assert.Single(store.LoadProfiles());
-        Assert.Single(Directory.GetDirectories(store.Paths.AssetsDirectory));
-    }
-
-    [Fact]
-    public void Archive_Import_ListWriteFails_LeavesNoItemsFileOrAssets()
-    {
-        using var temp = new TempDirectory();
-        var (store, profile, items) = SeedStore(temp);
-        var archive = new MemoryStream();
-        InfoPanelArchive.Export(profile, items, store, archive);
-
-        // Replace profiles.xml with a folder so the list write fails after the items and assets are written.
-        var target = new ProfileStore(new DataPaths(temp.Combine("other")));
-        Directory.CreateDirectory(target.Paths.ProfilesFile);
-        archive.Position = 0;
-        Assert.ThrowsAny<IOException>(() => InfoPanelArchive.Import(archive, target));
-
-        Assert.Empty(Directory.GetFiles(target.Paths.ProfilesDirectory));
-        Assert.Empty(Directory.GetDirectories(target.Paths.AssetsDirectory));
-    }
-
-    [Theory]
-    [InlineData("logo.png", true)]
-    [InlineData("sub/logo.png", true)]
-    [InlineData("../logo.png", false)]
-    [InlineData("sub/../../logo.png", false)]
-    [InlineData("./logo.png", false)]
-    [InlineData("/etc/passwd", false)]
-    [InlineData("C:/Windows/win.ini", false)]
-    [InlineData("sub//logo.png", false)]
-    public void ResolveAssetPath_StaysInsideAssets(string relative, bool allowed)
-    {
-        var assets = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "assets-root"));
-        var resolved = InfoPanelArchive.ResolveAssetPath(assets, relative);
-
-        Assert.Equal(allowed, resolved != null);
-        if (resolved != null)
-            Assert.StartsWith(assets + Path.DirectorySeparatorChar, resolved);
-    }
-
-    [Theory]
-    [InlineData(1_000_000, 1_000_000)]
-    [InlineData(ProfileStore.MaxDimension + 1, 480)]
-    [InlineData(800, ProfileStore.MaxDimension + 1)]
-    public void Archive_Import_RefusesAProfileOverTheMaximumSize(int width, int height)
-    {
-        using var temp = new TempDirectory();
-        var (store, profile, items) = SeedStore(temp);
-        var archive = new MemoryStream();
-        InfoPanelArchive.Export(new Profile(profile.Name, width, height), items, store, archive);
-        archive.Position = 0;
-
-        var error = Assert.Throws<InvalidDataException>(() => InfoPanelArchive.Import(archive, store));
-        Assert.Contains($"{width}×{height} is over the 16384×16384 maximum", error.Message);
-        Assert.Equal([profile.Guid], store.LoadProfiles().Select(p => p.Guid));
-
-        // The largest allowed size imports.
-        archive = new MemoryStream();
-        InfoPanelArchive.Export(new Profile(profile.Name, ProfileStore.MaxDimension, ProfileStore.MaxDimension), items, store, archive);
-        archive.Position = 0;
-        Assert.Equal(ProfileStore.MaxDimension, InfoPanelArchive.Import(archive, store).Profile.Width);
-    }
-
-    private static void Write(ZipArchive zip, string name, string content)
-    {
-        using var writer = new StreamWriter(zip.CreateEntry(name).Open());
-        writer.Write(content);
+        static IEnumerable<InfoPanel.Editing.ItemNode> Walk(IEnumerable<InfoPanel.Editing.ItemNode> nodes) =>
+            nodes.SelectMany(n => new[] { n }.Concat(Walk(n.Children ?? [])).Concat(Walk(n.Images ?? [])));
     }
 }

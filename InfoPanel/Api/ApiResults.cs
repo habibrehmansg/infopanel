@@ -1,5 +1,6 @@
 using InfoPanel.Documents;
 using InfoPanel.Spec;
+using InfoPanel.Spec.Schema;
 using System.Text.Json;
 
 namespace InfoPanel.Api;
@@ -42,6 +43,23 @@ internal static class ApiResults
         Code = "invalid",
         Errors = [new ValidationErrorBody { Path = path, Code = code, Message = message }],
     }, StatusCodes.Status422UnprocessableEntity);
+
+    /// <summary>
+    /// A schema error as every body reports it (spec/docs/validation.md#codes): <c>schema</c> (a repeated member name
+    /// included), except the count of the errors not listed after the first 100 (<c>more</c>, at <c>""</c>), a number that
+    /// rounds to ±∞ or a string that isn't Unicode text (<c>json</c>), and content nested too deeply (<c>limit.jsonDepth</c>).
+    /// </summary>
+    public static ValidationErrorBody ErrorBody(SchemaError e) => new()
+    {
+        Path = e.InstancePath,
+        Code = e.Keyword switch
+        {
+            "more" or "json" => e.Keyword,
+            "depth" => "limit.jsonDepth",
+            _ => "schema",
+        },
+        Message = e.Keyword is "more" or "json" ? e.Message : $"{e.Message} ({e.Keyword})",
+    };
 
     public static IResult ProfileNotFound(string id) => Security.Problems.NotFound($"No profile '{id}'.");
 

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using InfoPanel.Core.Tests.Persistence;
 using InfoPanel.Documents;
 using InfoPanel.Editing;
@@ -158,6 +159,33 @@ public sealed class V1FolderTests : IDisposable
         Assert.Contains("/profiles/0", Assert.Single(nullOutcome.Diagnostics!, d => d.Code == "import.record").Message);
     }
 
+    [Fact]
+    public void Record_WhoseKnownMembersBreakTheirFormat_IsUnreadable_AndNotAnswered()
+    {
+        Directory.CreateDirectory(_kit.Data.Root);
+        // The invalid example's record: completed isn't a timestamp.
+        var example = JsonNode.Parse(File.ReadAllText(Path.Combine(InfoPanel.Core.Tests.Spec.SpecExampleTests.SpecDir, "examples", "api", "v1Migration", "invalid", "completed.json")))!;
+        var record = example["record"]!.ToJsonString();
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data), record);
+
+        var state = Folder().GetState(_kit.Data);
+
+        Assert.Equal(("done", (V1MigrationRecord?)null), (state.State, state.Record));
+        var warning = Assert.Single(state.Diagnostics!, d => d.Code == "import.record");
+        Assert.Equal(("warning", "/record"), (warning.Severity, warning.Path));
+        Assert.DoesNotContain("2026-10-29 09:30", warning.Message);
+
+        // An empty folder is outside its format too; the record with every known member valid reads.
+        var fixedTime = example["record"]!.DeepClone();
+        fixedTime["completed"] = "2026-10-29T09:30:00Z";
+        var emptyFolder = fixedTime.DeepClone();
+        emptyFolder["folder"] = "";
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data), emptyFolder.ToJsonString());
+        Assert.Null(Folder().GetState(_kit.Data).Record);
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data), fixedTime.ToJsonString());
+        Assert.Equal("2026-10-29T09:30:00Z", Folder().GetState(_kit.Data).Record!.Completed);
+    }
+
     /// <summary>
     /// The record is read tolerantly: a member this engine doesn't know, at its top or in an outcome, is ignored, so the
     /// outcomes it knows stay readable. When the engine replaces the record, it keeps the record's unknown members (the
@@ -275,7 +303,11 @@ public sealed class V1FolderTests : IDisposable
         V1MigrationOutcome Ok(int i) => new() { V1Id = new Guid(i, 0, 0, new byte[8]).ToString(), Id = null, Outcome = "skipped" };
 
         Assert.Equal("limit.recordOutcomes", Refused(Enumerable.Range(0, 1001).Select(Ok).ToList()).Code);
-        Assert.Equal("record.reason", Refused([Ok(1) with { Reason = new string('x', 257) }]).Code);
+        // A reason's length in characters, as the schema counts it (maxLength: schema, at the reason).
+        var longReason = Refused([Ok(1) with { Reason = new string('x', 257) }]);
+        Assert.Equal(("schema", "/profiles/0/reason"), (longReason.Code, longReason.Errors[0].Path));
+        var emoji = char.ConvertFromUtf32(0x1F600);
+        Assert.Equal("schema", Refused([Ok(1) with { Reason = string.Concat(Enumerable.Repeat(emoji, 257)) }]).Code);
         var small = new V1Folder(_root, new ImportLimits { RecordBytes = 4096 });
         Assert.Equal("limit.recordBytes", Assert.Throws<ImportRefusal>(() =>
             small.WriteRecord(_kit.Data, Enumerable.Range(0, 20).Select(i => Ok(i) with { Reason = new string('x', 200) }).ToList(), "skipped", now)).Code);
@@ -290,6 +322,7 @@ public sealed class V1FolderTests : IDisposable
         // 1,000 outcomes fit, each with both ids and the longest reason.
         var most = Enumerable.Range(0, 1000).Select(i => Ok(i) with { Id = new Guid(i, 1, 1, new byte[8]).ToString(), Outcome = "imported", Reason = new string('r', 256) }).ToList();
         Assert.Equal("done", folder.WriteRecord(_kit.Data, most, "skipped", now).State);
+        Assert.Equal("done", folder.WriteRecord(_kit.Data, [Ok(1) with { Reason = string.Concat(Enumerable.Repeat(emoji, 256)) }], "skipped", now).State);
     }
 
     [Fact]
@@ -855,6 +888,22 @@ public sealed class V1FolderTests : IDisposable
         Write($"profiles/{Huge}.xml", Items(Text("A")));
         var over = Folder().ReadProfile(Guid.Parse(Huge), _kit.Context(new ImportLimits { ItemsXmlBytes = 100 }))!;
         Assert.Contains("larger than 100 bytes", Single(over, "import.items").Message);
+    }
+
+    [Fact]
+    public void ReadProfile_AFifoItemsFile_IsUnreadable_WithoutWaiting()
+    {
+        Assert.SkipUnless(Fifo.Supported, "Windows has no FIFOs in folders.");
+        var fifo = Path.Combine(_root, "profiles", Huge + ".xml");
+        File.Delete(fifo);
+        Fifo.Create(fifo);
+
+        var envelope = Fifo.Within(10, () => Folder().ReadProfile(Guid.Parse(Huge), _kit.Context())!, fifo);
+
+        Assert.Empty(envelope.Items);
+        var items = Single(envelope, "import.items");
+        Assert.Equal(("error", $"profiles/{Huge}.xml"), (items.Severity, items.File!));
+        Assert.Contains("FIFO", items.Message);
     }
 
     [Fact]

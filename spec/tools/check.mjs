@@ -1,5 +1,6 @@
 // node tools/check.mjs
-// Checks that types/index.d.ts is what tools/gen-types.mjs generates from schemas/ and openapi.json (which checks both
+// Checks that schemas/v1item.schema.json is what tools/gen-v1-items.mjs generates from the 1.x kind manifest
+// (InfoPanel.Core.Tests/Snapshots/kinds.json); that types/index.d.ts is what tools/gen-types.mjs generates from schemas/ and openapi.json (which checks both
 // against their subsets, every $ref and the operation ids); that every definition of the API schema is used by a request
 // or the preview socket in openapi.json; that every enumeration in what the engine sends says what a client does with a
 // value it doesn't know (docs/versioning.md#unknown-members-and-values); and that docs/api.md's request table lists
@@ -14,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GenError, SUBSCHEMA_LIST, SUBSCHEMA_MAP, SUBSCHEMA_ONE, generate, isJsonMedia, pascalCase, readOperations } from './gen-types.mjs';
+import { DEFAULT_MANIFEST, ManifestError, generateV1Items } from './gen-v1-items.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const schemaDir = join(root, 'schemas');
@@ -27,6 +29,24 @@ const fail = (message) => {
   console.error(message);
   process.exit(1);
 };
+
+// ---- the 1.x item schema is what tools/gen-v1-items.mjs generates from the engine's kind manifest ----
+
+// INFOPANEL_KIND_MANIFEST names another copy of the manifest (the check's own tests run it on a copy of this folder).
+const manifestPath = process.env.INFOPANEL_KIND_MANIFEST ?? join(root, DEFAULT_MANIFEST);
+const v1ItemPath = join(schemaDir, 'v1item.schema.json');
+if (!existsSync(manifestPath)) fail(`${DEFAULT_MANIFEST} (the 1.x kind manifest schemas/v1item.schema.json is generated from) is missing.`);
+let v1Items;
+try {
+  v1Items = generateV1Items(JSON.parse(readFileSync(manifestPath, 'utf8')));
+} catch (e) {
+  if (e instanceof ManifestError || e instanceof SyntaxError) fail(`gen-v1-items: ${DEFAULT_MANIFEST}: ${e.message}`);
+  throw e;
+}
+if (!existsSync(v1ItemPath) || readFileSync(v1ItemPath, 'utf8') !== v1Items) {
+  fail('schemas/v1item.schema.json is out of date with the 1.x kind manifest: run `npm run gen` in spec/.');
+}
+console.log('schemas/v1item.schema.json is current with the 1.x kind manifest.');
 
 const schemas = readdirSync(schemaDir)
   .filter((f) => f.endsWith('.schema.json'))

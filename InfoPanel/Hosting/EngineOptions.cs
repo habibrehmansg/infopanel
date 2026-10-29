@@ -21,6 +21,12 @@ public sealed partial class EngineOptions
     /// <summary>Data folder; null means <c>DataPaths.DefaultRoot()</c>.</summary>
     public string? DataDir { get; init; }
 
+    /// <summary>
+    /// The 1.x data folder the 1.x import reads (<c>--v1-dir</c>), a full path that need not exist; null means 1.x's own,
+    /// <c>{LocalApplicationData}/InfoPanel</c> (<c>V1Folder.DefaultRoot</c>).
+    /// </summary>
+    public string? V1Dir { get; init; }
+
     /// <summary>The web client's built files; null means <c>{BaseDirectory}/wwwroot</c> when it has an <c>index.html</c>.</summary>
     public string? WebRoot { get; init; }
 
@@ -135,6 +141,20 @@ public sealed partial class EngineOptions
                 problems.Add(wipeError);
         }
 
+        var v1Dir = Value(section, "V1Dir");
+        string? fullV1Dir = null;
+        if (v1Dir != null)
+        {
+            try
+            {
+                fullV1Dir = Path.GetFullPath(v1Dir);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                problems.Add($"--v1-dir '{v1Dir}' is not a valid path: {ex.Message}");
+            }
+        }
+
         var webRoot = Value(section, "WebRoot");
         if (webRoot != null && !Directory.Exists(webRoot))
             problems.Add($"--web-root '{webRoot}' does not exist.");
@@ -147,6 +167,7 @@ public sealed partial class EngineOptions
         {
             Port = port,
             DataDir = fullDataDir,
+            V1Dir = fullV1Dir,
             WebRoot = webRoot == null ? null : Path.GetFullPath(webRoot),
             NoBrowser = noBrowser,
             NoWindows = noWindows,

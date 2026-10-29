@@ -1,0 +1,44 @@
+{
+  "source": "archive",
+  "id": "0b7e5c4d-1a2b-4c3d-8e9f-a0b1c2d3e4f5",
+  "profile": {
+    "name": "Neon",
+    "width": 800,
+    "height": 480,
+    "showFps": false,
+    "drag": true,
+    "backgroundColor": "#FF102030",
+    "active": true,
+    "openGL": false,
+    "fontScale": 1.33,
+    "topmost": false,
+    "font": "Consolas",
+    "fontSize": 18,
+    "color": "#FFEEEEEE",
+    "windowX": 0,
+    "windowY": 0,
+    "resize": true,
+    "strictWindowMatching": false,
+    "triggerProcessNames": null,
+    "isSelected": false
+  },
+  "items": [],
+  "guides": [],
+  "assets": [],
+  "diagnostics": [
+    {
+      "severity": "fatal",
+      "code": "import.items",
+      "path": "/items",
+      "message": "The profile has no items.",
+      "file": "DisplayItems.xml"
+    },
+    {
+      "severity": "info",
+      "code": "import.entry",
+      "path": "",
+      "message": "The entry 'readme.txt' isn't part of a 1.x profile export and is ignored.",
+      "file": "readme.txt"
+    }
+  ]
+}

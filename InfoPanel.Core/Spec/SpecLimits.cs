@@ -155,7 +155,7 @@ public sealed record SpecLimits
     /// <summary>The migration record, in bytes as stored.</summary>
     public int RecordBytes { get; init; } = 1_048_576;
 
-    /// <summary>A profile outcome's reason in the record, in characters (<c>record.reason</c>).</summary>
+    /// <summary>A profile outcome's reason in the record, in characters (the schema's <c>maxLength</c>: <c>schema</c>).</summary>
     public int RecordReasonLength { get; init; } = 256;
 
     // Per preview socket message.

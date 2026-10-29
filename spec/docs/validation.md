@@ -92,6 +92,8 @@ Each code is reported at the value it is about ([versioning](versioning.md#error
 | `op.parent` | An `insert` or `move` into an item that isn't a group. |
 | `op.cycle` | A group moved into itself or into something it contains. |
 
+The 1.x import's codes (`import.*`, and the `archive.*` codes of the archive guards) are on its own page ([1.x import](import.md#diagnostics)): `import.version`, `import.archive`, `import.xml` and `archive.*` refuse a request, every other `import.*` code is a diagnostic in an answer that succeeded.
+
 Conflicts and other refusals that depend on the document's state (409: `conflictProblem`, `expiredProblem`, `existsProblem`, `profileStatusProblem`) are not validation errors: see [commits](commit.md) and the [API](api.md).
 
 ## The examples

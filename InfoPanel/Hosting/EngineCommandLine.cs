@@ -21,6 +21,7 @@ public static class EngineCommandLine
     {
         ["--port"] = "Port",
         ["--data-dir"] = "DataDir",
+        ["--v1-dir"] = "V1Dir",
         ["--web-root"] = "WebRoot",
         ["--token"] = "Token",
         ["--mock-seed"] = "MockSeed",
@@ -57,6 +58,8 @@ public static class EngineCommandLine
 
           --port <n>            Loopback port to listen on (default 0: a free port)
           --data-dir <dir>      Data folder (default: the per-user InfoPanel/v2 folder)
+          --v1-dir <dir>        The InfoPanel 1.x data folder the 1.x import reads, never writes
+                                (default: 1.x's own per-user InfoPanel folder)
           --web-root <dir>      The web client's built files (default: wwwroot next to the engine)
           --no-browser          Don't open the browser
           --no-windows          Don't show active profiles as desktop windows

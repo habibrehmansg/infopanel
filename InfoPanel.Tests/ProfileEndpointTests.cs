@@ -17,7 +17,8 @@ namespace InfoPanel.Tests;
 /// <summary>
 /// The engine with a data folder seeded before it starts: profiles it can't open (<c>unsupported</c>, <c>unreadable</c>
 /// JSON, an unreadable file), one whose document has an invalid scene, and one whose item's source is an opaque
-/// <c>ref</c>. The store exists, so no example is created.
+/// <c>ref</c>. The store exists, so no example is created. Its 1.x folder is a copy of the Core fixtures' (1.x data waiting
+/// to be migrated), and its archive bodies are held to <see cref="ArchiveBytes"/>, so the tour's 413 stays small.
 /// </summary>
 public sealed class SeededEngineFactory : EngineFactory
 {
@@ -32,8 +33,12 @@ public sealed class SeededEngineFactory : EngineFactory
 
     public const string SourceJson = """{"ref":"c1c2b7f0-opaque-reference","deps":["sha256:1111111111111111111111111111111111111111111111111111111111111111"]}""";
 
+    /// <summary>The archive bodies' limit (<c>archiveBytes</c>) of this engine.</summary>
+    public const int ArchiveBytes = 1024 * 1024;
+
     public SeededEngineFactory()
     {
+        Import.V1Fixture.CopyTo(V1Dir);
         File.WriteAllText(Seed(Unsupported, UnsupportedText), UnsupportedText);
         Seed(NotJson, "{ not json");
         Seed(NoAccess, "{}");
@@ -53,6 +58,13 @@ public sealed class SeededEngineFactory : EngineFactory
         held["id"] = RefSource;
         Seed(RefSource, held.ToJsonString());
         File.WriteAllText(Path.Combine(DataDir, "profiles.json"), """{"order":[]}""");
+    }
+
+    protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        Microsoft.AspNetCore.TestHost.WebHostBuilderExtensions.ConfigureTestServices(builder,
+            services => services.AddSingleton(new InfoPanel.Import.ImportLimits { ArchiveBytes = ArchiveBytes }));
     }
 
     private string Seed(string id, string json)

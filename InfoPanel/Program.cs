@@ -5,6 +5,7 @@ using InfoPanel.Documents;
 using InfoPanel.Drawing;
 using InfoPanel.Hosting;
 using InfoPanel.Images;
+using InfoPanel.Import;
 using InfoPanel.Output;
 using InfoPanel.Persistence;
 using InfoPanel.Preview;
@@ -50,6 +51,15 @@ if (options == null)
 }
 
 var paths = options.DataDir != null ? new DataPaths(options.DataDir) : DataPaths.DefaultRoot();
+
+// The 1.x folder the 1.x import reads, never writes: a data folder that is it, holds it, or sits inside its profiles or
+// assets folder is refused before anything is created (the default layout, InfoPanel/v2 inside it, passes).
+var v1Root = options.V1Dir ?? V1Folder.DefaultRoot();
+if (V1Folder.FindOverlap(v1Root, paths.Root) is { } overlap)
+{
+    Console.Error.WriteLine($"InfoPanel: {overlap}");
+    return 2;
+}
 
 // The data folder's marker, read only, before anything is created there (the lock file included): a folder this engine
 // can't honour stops it with the reason on the console and is left exactly as it was. --fresh wipes the folder, marker
@@ -150,6 +160,8 @@ try
     {
         Logger = engineLogger.ForContext<Workspace>(),
         Examples = Workspace.FirstRunExamples(OperatingSystem.IsMacOS(), options.Mock),
+        // 1.x data waiting to be migrated brings the user's own profiles: no example then.
+        ExamplesWanted = () => !new V1Folder(v1Root).IsPending(paths),
     }, DateTimeOffset.UtcNow);
     // The engine settings: a file that can't be read is logged, leaves the defaults in effect and is never rewritten.
     var settings = SettingsStore.Open(paths, engineLogger.ForContext<SettingsStore>());
@@ -209,6 +221,10 @@ try
     builder.Services.AddSingleton(settings);
     builder.Services.AddSingleton(recentLog);
     builder.Services.AddSingleton(regionalFormat);
+    // The 1.x import: its limits (tests lower them), the 1.x folder, and one import read at a time.
+    builder.Services.AddSingleton(ImportLimits.Default);
+    builder.Services.AddSingleton(sp => new V1Folder(v1Root, sp.GetRequiredService<ImportLimits>()));
+    builder.Services.AddSingleton<ImportGate>();
     // Made by a factory so the container disposes it, removing its handlers, when the host stops; the finally below
     // covers a start that fails before the host is built.
     builder.Services.AddSingleton(_ => crashLogging);
@@ -288,6 +304,7 @@ try
     app.MapReadEndpoints();
     app.MapProfileEndpoints();
     app.MapBlobEndpoints();
+    app.MapImportEndpoints();
     app.MapTokenEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);

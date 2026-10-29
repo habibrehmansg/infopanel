@@ -200,6 +200,38 @@ public class EngineStartupTests
     }
 
     /// <summary>
+    /// A data folder inside the 1.x folder's profiles (or assets) folder, or the 1.x folder itself: start-up stops with
+    /// exit 2 (bad arguments) and a message naming both, before anything is created.
+    /// </summary>
+    [Theory]
+    [InlineData("profiles/v2")]
+    [InlineData("assets/v2")]
+    [InlineData("")]
+    public async Task ADataFolderThatOverlapsThe1xFolder_StopsStartUp_WithExit2_AndCreatesNothing(string inside)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "infopanel-overlap-" + Guid.NewGuid().ToString("N"));
+        var v1 = Path.Combine(root, "v1");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(v1, "profiles"));
+            Directory.CreateDirectory(Path.Combine(v1, "assets"));
+            File.WriteAllText(Path.Combine(v1, "profiles.xml"), "<ArrayOfProfile />");
+            var data = inside.Length == 0 ? v1 : Path.Combine(v1, inside);
+            var before = TreeHash(root);
+
+            var (exitCode, said) = await RunUntilItStops(data, () => TreeHash(root), before, v1);
+
+            Assert.True(exitCode == 2, $"exit {exitCode}: {said}");
+            Assert.Contains("1.x folder", said);
+            Assert.Equal(before, TreeHash(root));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
     /// Runs the engine as a child process on <paramref name="data"/> until it exits: its exit code and everything it
     /// said. It fails at once when the folder changes from <paramref name="before"/> while it runs (an engine that doesn't
     /// stop writes there within moments), or after a minute.
@@ -209,9 +241,10 @@ public class EngineStartupTests
 
     /// <inheritdoc cref="RunUntilItStops(string, string)"/>
     /// <param name="snapshot">What must not change while it runs (<paramref name="before"/> is its value before).</param>
-    private static async Task<(int ExitCode, string Said)> RunUntilItStops(string data, Func<string> snapshot, string before)
+    /// <param name="v1">The engine's 1.x folder (<see cref="EngineProcess"/>).</param>
+    private static async Task<(int ExitCode, string Said)> RunUntilItStops(string data, Func<string> snapshot, string before, string? v1 = null)
     {
-        using var engine = System.Diagnostics.Process.Start(EngineProcess(data, EngineRuntime.FindFreePort()))!;
+        using var engine = System.Diagnostics.Process.Start(EngineProcess(data, EngineRuntime.FindFreePort(), v1))!;
         var output = engine.StandardOutput.ReadToEndAsync(Ct);
         var errors = engine.StandardError.ReadToEndAsync(Ct);
         try
@@ -235,8 +268,12 @@ public class EngineStartupTests
         return (engine.ExitCode, await output + await errors);
     }
 
-    /// <summary>The engine as a child process on <paramref name="data"/> and <paramref name="port"/>, its output read.</summary>
-    private static System.Diagnostics.ProcessStartInfo EngineProcess(string data, int port)
+    /// <summary>
+    /// The engine as a child process on <paramref name="data"/> and <paramref name="port"/>, its output read. Its 1.x folder is
+    /// <paramref name="v1"/>, else one beside the data folder that isn't created: a test engine never reads the 1.x data of
+    /// the user running the tests.
+    /// </summary>
+    private static System.Diagnostics.ProcessStartInfo EngineProcess(string data, int port, string? v1 = null)
     {
         var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "InfoPanel.exe" : "InfoPanel"))
         {
@@ -244,7 +281,7 @@ public class EngineStartupTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--data-dir", data, "--port", port.ToString(), "--token", EngineFactory.Token, "--no-browser", "--no-windows", "--mock" })
+        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", v1 ?? data + "-v1", "--port", port.ToString(), "--token", EngineFactory.Token, "--no-browser", "--no-windows", "--mock" })
             start.ArgumentList.Add(arg);
         return start;
     }

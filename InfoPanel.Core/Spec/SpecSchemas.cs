@@ -20,6 +20,9 @@ public static class SpecSchemas
     public const string Document = "urn:infopanel:document:1";
     public const string Api = "urn:infopanel:api:1";
 
+    /// <summary>The 1.x items of a 1.x import's answer, generated from the 1.x kind manifest (spec/tools/gen-v1-items.mjs).</summary>
+    public const string V1Item = "urn:infopanel:v1item:1";
+
     public const string SceneFormat = "infopanel.scene/1";
     public const string DocumentFormat = "infopanel.document/1";
 

@@ -75,7 +75,8 @@ public interface IV1AssetSource
 /// <summary>
 /// A 1.x folder profile's assets, <c>{v1}/assets/{guid}/</c>. Every name is matched case-insensitively (enumerated,
 /// then compared), so a folder copied to a case-sensitive file system still resolves; a link at any step is never
-/// followed. Files are opened read-only and shared; nothing is created, locked or written.
+/// followed. Files are opened read-only and shared, regular files only (<see cref="RegularFile.OpenRead"/>); nothing is
+/// created, locked or written.
 /// </summary>
 public sealed class V1FolderAssets : IV1AssetSource
 {
@@ -106,7 +107,8 @@ public sealed class V1FolderAssets : IV1AssetSource
 
     public byte[]? Read(object handle, long maxBytes)
     {
-        using var stream = new FileStream((string)handle, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        // A regular file only, opened without waiting: a FIFO, socket or device there is refused, not waited on.
+        using var stream = RegularFile.OpenRead((string)handle, FileShare.ReadWrite | FileShare.Delete);
         return _budget.ReadAll(stream, maxBytes);
     }
 

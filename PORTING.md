@@ -41,10 +41,10 @@ The 2.0 targets are the seams in `InfoPanel.Core` (`ISensorSource`, `IImageSourc
 
 | 1.4.x component | 2.0 target | Source |
 |---|---|---|
-| `SharedModel` item XML load/save, `.infopanel` import/export | `ProfileSerializer`, `ProfileStore`, `InfoPanelArchive` (M2) | `InfoPanel/Models/SharedModel.cs` |
-| `ConfigModel` profile list | `ProfileStore` (M2) | `InfoPanel/Models/ConfigModel.cs` |
+| `SharedModel` item XML load/save, `.infopanel` import/export | Read: `ProfileSerializer` (through `SafeXml`); `.infopanel` import and the 1.x folder: the 1.x import (`InfoPanel.Core/Import/`: `V1Reader`, `V1Folder`, `ArchiveReader`), which reads into an envelope through `/api/import/v1` (spec `docs/import.md`) and installs nothing; a client creates the profiles. `InfoPanelArchive.Export` writes only the e2e archive. Export of a 2.0 profile: later, with its archive | `InfoPanel/Models/SharedModel.cs` |
+| `ConfigModel` profile list and settings (`settings.xml`, its `.bak` fallback) | Read by the 1.x import (`V1Folder`, `V1SettingsReader`: the profile list, the settings' user data); applying the settings is the settings and panel tasks' | `InfoPanel/Models/ConfigModel.cs`, `InfoPanel/Models/Settings.cs` |
 | `UndoManager` | Done (M5): `UndoHistory` per `ProfileDocument` (profile + items snapshots, coalescing by the edit's key) | `InfoPanel/Services/UndoManager.cs` |
-| 1.4.x model changes after `8a3062d`: `GuideDisplayItem` (15th item type, editor alignment guides; dropped on read today) and `ImageDisplayItem.RefreshInterval` (ignored on read) | sync into the Core models and the kind manifest, later | `InfoPanel/Models/GuideDisplayItem.cs`, `InfoPanel/Models/ImageDisplayItem.cs` |
+| 1.4.x model changes after `8a3062d`: `GuideDisplayItem` (15th item type, editor alignment guides) and `ImageDisplayItem.RefreshInterval` | Guides: read from the raw XML by the 1.x import (the envelope's `guides`); `RefreshInterval`: reported (`import.element`) and ignored. The model sync is needed only for the refresh behaviour, with the HTTP image provider | `InfoPanel/Models/GuideDisplayItem.cs`, `InfoPanel/Models/ImageDisplayItem.cs` |
 | `FontCache` (system font list for pickers) | `FontRegistry` + `/api/fonts` (M3/M4) | `InfoPanel/Utils/FontCache.cs` |
 
 ## 1.4.x commits after `8a3062d` still to port
@@ -90,7 +90,7 @@ The host side runs on `2.0.x` (net8.0, not loaded by the engine yet); these two 
 
 ### Guide and image-refresh model fields
 
-Both belong with the Core model sync in the Persistence and editing table above (`ProfileSerializer`, `kinds.json`); the behaviour needs an HTTP image provider behind `IImageSource`.
+The 1.x import already reads guides from the raw XML and reports `RefreshInterval`; what remains is the refresh behaviour, which needs an HTTP image provider behind `IImageSource`.
 
 | Commit | What it does |
 |---|---|

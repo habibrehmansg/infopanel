@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace InfoPanel.Import;
 
@@ -52,6 +54,37 @@ public static class TempFile
         catch
         {
             file.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="Buffer"/>, reading <paramref name="body"/> asynchronously (a request's body): nothing more than
+    /// <paramref name="maxBytes"/> plus one buffer is written, and the file is gone when the body is too long.
+    /// </summary>
+    /// <exception cref="ImportBodyTooLargeException">The body is longer than <paramref name="maxBytes"/>.</exception>
+    public static async Task<FileStream> BufferAsync(Stream body, long maxBytes, CancellationToken ct)
+    {
+        var file = Create();
+        try
+        {
+            var chunk = new byte[81920];
+            long total = 0;
+            int read;
+            while ((read = await body.ReadAsync(chunk, ct)) > 0)
+            {
+                total += read;
+                if (total > maxBytes)
+                    throw new ImportBodyTooLargeException(maxBytes);
+                await file.WriteAsync(chunk.AsMemory(0, read), ct);
+            }
+            await file.FlushAsync(ct);
+            file.Position = 0;
+            return file;
+        }
+        catch
+        {
+            await file.DisposeAsync();
             throw;
         }
     }

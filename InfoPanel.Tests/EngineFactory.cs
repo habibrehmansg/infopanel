@@ -11,7 +11,8 @@ namespace InfoPanel.Tests;
 /// <summary>
 /// The engine on a <c>TestServer</c>, with a temp data folder, a temp web root holding an <c>index.html</c>,
 /// a fixed token, port, dev origin and cross origin, seeded mock sensors and a fixed PC regional format (en-US), so
-/// frames don't depend on the machine's region. Every response it gives, on the TestServer
+/// frames don't depend on the machine's region. Its 1.x folder is its own (<see cref="V1Dir"/>, empty unless a test puts
+/// 1.x data there), so no test engine reads the 1.x data of the user running the tests. Every response it gives, on the TestServer
 /// or on Kestrel (<c>LiveEngine</c>), is checked against spec/openapi.json (<see cref="ContractCheck"/>), except in
 /// <c>Category=Performance</c> tests; <see cref="Contract"/> holds what the check saw, and disposing the factory fails on
 /// any violation it recorded.
@@ -33,6 +34,7 @@ public class EngineFactory : WebApplicationFactory<Program>
         Root = Path.Combine(Path.GetTempPath(), "infopanel-engine-tests-" + Guid.NewGuid().ToString("N"));
         DataDir = Path.Combine(Root, "data");
         WebRoot = Path.Combine(Root, "web");
+        V1Dir = Path.Combine(Root, "v1");
         Directory.CreateDirectory(Path.Combine(WebRoot, "assets"));
         File.WriteAllText(Path.Combine(WebRoot, "index.html"), $"<!doctype html><title>{IndexMarker}</title>");
         File.WriteAllText(Path.Combine(WebRoot, "assets", "app.js"), "console.log('web-client');");
@@ -43,6 +45,9 @@ public class EngineFactory : WebApplicationFactory<Program>
     public string DataDir { get; }
 
     public string WebRoot { get; }
+
+    /// <summary>The engine's 1.x folder (<c>--v1-dir</c>): not created, so the engine finds no 1.x data unless a test puts some there.</summary>
+    public string V1Dir { get; }
 
     /// <summary>What the contract check saw of this engine's responses.</summary>
     public ContractLog Contract { get; } = new();
@@ -55,6 +60,7 @@ public class EngineFactory : WebApplicationFactory<Program>
 
         builder.UseSetting("Engine:DataDir", DataDir);
         builder.UseSetting("Engine:WebRoot", WebRoot);
+        builder.UseSetting("Engine:V1Dir", V1Dir);
         builder.UseSetting("Engine:Token", Token);
         builder.UseSetting("Engine:Port", Port.ToString());
         builder.UseSetting("Engine:NoBrowser", "true");

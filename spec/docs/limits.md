@@ -93,7 +93,7 @@ Every request body is held to a size as received, whitespace around the JSON val
 | `requestBytes` | 64 KiB | An undo, redo, revert, save or duplicate (a few members; [API](api.md)) |
 | `tokenRequestBytes` | 4 KiB | A token create (a name and its scopes) |
 
-A commit's body is held to `commitBytes` ([commit limits](#commit-limits)), a create's is read up to `documentBytes` plus 64 KiB and its document then held to `documentBytes` ([sizes](#sizes)), and a blob's bytes to `mediaBytes` (413, nothing stored). Every body is nested at most `jsonDepth` deep. A body is read only as far as its limit plus one byte, whether or not it states its length.
+A commit's body is held to `commitBytes` ([commit limits](#commit-limits)), a create's is read up to `documentBytes` plus 64 KiB and its document then held to `documentBytes` ([sizes](#sizes)), a 1.x migration record's to `recordBytes` ([1.x import limits](#1x-import-limits)), a blob's bytes to `mediaBytes` and an archive's to `archiveBytes` (413, nothing read further or stored). Every body is nested at most `jsonDepth` deep. A body is read only as far as its limit plus one byte, whether or not it states its length.
 
 ## Stored list limits
 
@@ -135,7 +135,7 @@ An import reads an archive, a profile archive or a 1.x `.infopanel` export, with
 
 | Limit | Value | What it bounds |
 |---|---|---|
-| `archiveBytes` | 512 MiB | The archive's file, as received or as an export would write it (`archive.expanded`: an import refuses it before reading any of it, and no export over it is made) |
+| `archiveBytes` | 512 MiB | The archive's file, as received or as an export would write it: an import's body over it is answered 413 before any of it is read, and no export over it is made (`archive.expanded`) |
 | `archiveEntries` | 10,000 | Its entries, as its directory declares them and as they are read (`archive.entries`) |
 | `expandedBytes` | 512 MiB | The bytes one import decompresses or reads, counted as they are read, whatever the entries' headers claim; a 1.x folder's assets count too (`archive.expanded`) |
 | `entryNameBytes` | 1,024 bytes | An entry's name, in UTF-8 (`archive.name`) |
@@ -143,7 +143,7 @@ An import reads an archive, a profile archive or a 1.x `.infopanel` export, with
 
 ## 1.x import limits
 
-What an engine reads of 1.x files, and what one import answer and the 1.x migration's record hold.
+What an engine reads of 1.x files, and what one import answer and the 1.x migration's record hold ([1.x import](import.md)).
 
 | Limit | Value | What it bounds |
 |---|---|---|
@@ -157,9 +157,9 @@ What an engine reads of 1.x files, and what one import answer and the 1.x migrat
 | `v1SettingLength` | 1,024 characters | A device field's value or a hotkey's: a longer field is left out, and a hotkey with one, each with a warning. The other settings are read by their own rules, not held to it |
 | `v1Hotkeys` | 256 | Hotkeys read; the rest are left out with a warning |
 | `diagnostics` | 1,000 | Diagnostics one import answer lists; then one more, `more`, counts the rest |
-| `recordOutcomes` | 1,000 | Profile outcomes in the migration record (`limit.recordOutcomes`) |
-| `recordBytes` | 1 MiB | The migration record, as stored (`limit.recordBytes`) |
-| `recordReasonLength` | 256 characters | An outcome's reason in the record (`record.reason`) |
+| `recordOutcomes` | 1,000 | Profile outcomes in the migration record, counted before the schema (`limit.recordOutcomes`) |
+| `recordBytes` | 1 MiB | The migration record, as received and as stored (`limit.recordBytes`) |
+| `recordReasonLength` | 256 characters | An outcome's reason in the record (the schema's `maxLength`: `schema`) |
 
 A 1.x file over one of the first four isn't read: an archive's `Profile.xml` refuses the import (`import.xml`), and any other file is reported in the answer's diagnostics.
 

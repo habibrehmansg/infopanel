@@ -8,12 +8,12 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 
 | Path | What |
 |---|---|
-| `schemas/` | JSON Schemas (draft 2020-12): `common`, `expression`, `scene` (`infopanel.scene/1`), `document` (`infopanel.document/1`), `api` (session and format support, sensors and readings, profile list, profile creation and duplication, document, blob, commit request, undo, redo and revert request and result, problems, integration tokens, the preview socket's messages, frame header with item bounds, change event). Ids are `urn:infopanel:<name>:1`. |
+| `schemas/` | JSON Schemas (draft 2020-12): `common`, `expression`, `scene` (`infopanel.scene/1`), `document` (`infopanel.document/1`), `api` (session and format support, sensors and readings, profile list, profile creation and duplication, document, blob, commit request, undo, redo and revert request and result, problems, integration tokens, the 1.x import's answers and migration record, the preview socket's messages, frame header with item bounds, change event), `v1item` (the 1.x items of a 1.x import's answer, generated from the engine's 1.x kind manifest by `npm run gen`). Ids are `urn:infopanel:<name>:1`. |
 | `openapi.json` | The engine API's requests ([below](#the-request-index)): every operation, its parameters and each status it answers, with its bodies' definitions in `schemas/`. |
 | `types/index.d.ts` | TypeScript types, generated from the schemas (`npm run gen`), and `ApiOperations`, generated from `openapi.json`: each request, keyed `'METHOD /path'`, with its `params`, `query`, `request` and `responses` by status. |
 | `docs/` | The specification in prose (below). |
 | `examples/` | Valid and invalid documents, scenes, commits, API bodies (`api/{definition}/`, refused ones in its `invalid/`) and media; `examples/expected.json` gives each invalid example's error code and path. `examples/expressions/vectors.json` gives expressions with their exact results. |
-| `tools/` | `gen-types.mjs` (schemas and `openapi.json` to TypeScript, no dependencies), `check.mjs` (the types are current; `openapi.json` keeps to its subset, its `$ref`s resolve, its operation ids are unique, every `api` definition is used by a request or the socket, every enumeration in what the engine sends says what a client does with a value it doesn't know, and `docs/api.md`'s request table lists exactly its operations; with `TSC` set, every valid example type-checks, except those nested deeper than 32 levels, which the compiler can't compare with the recursive JSON types, and so do `ApiOperations` and the response examples assigned to it). |
+| `tools/` | `gen-types.mjs` (schemas and `openapi.json` to TypeScript, no dependencies), `gen-v1-items.mjs` (the 1.x kind manifest, `../InfoPanel.Core.Tests/Snapshots/kinds.json`, to `schemas/v1item.schema.json`), `check.mjs` (the 1.x item schema and the types are current; `openapi.json` keeps to its subset, its `$ref`s resolve, its operation ids are unique, every `api` definition is used by a request or the socket, every enumeration in what the engine sends says what a client does with a value it doesn't know, and `docs/api.md`'s request table lists exactly its operations; with `TSC` set, every valid example type-checks, except those nested deeper than 32 levels, which the compiler can't compare with the recursive JSON types, and so do `ApiOperations` and the response examples assigned to it). |
 | `package.json` | `@infopanel/spec`, private for now: use it by path. |
 
 ## The specification
@@ -27,11 +27,12 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 7. [Identity and state](docs/identity.md): instance ids, what keeps and what resets state, the tick snapshot.
 8. [Commits](docs/commit.md): per-item per-field ops, what a change stamps, `baseRev`, `opId` and the retry window, coalescing, 409 and 422; undo, redo, revert and save.
 9. [Engine API](docs/api.md): the requests, errors and tokens, the session, fonts and sensors, the profile list and its statuses, creating, duplicating, deleting and exporting profiles, documents, blobs, the preview socket's messages, frames and change events.
-10. [Unsupported content](docs/unsupported.md): placeholders, never rewriting what an engine can't read.
-11. [Versioning](docs/versioning.md): formats, what freezes, minor versions and what each ships with, capabilities and `requires`, major versions, unknown members and values, the engine API and its identifiers, the four markers.
-12. [Validation](docs/validation.md): the order of checks and every error code.
-13. [Limits and budgets](docs/limits.md): every acceptance limit, the budgets an engine guarantees, and the performance targets.
-14. [SVG profile](docs/svg.md): the restricted SVG that media assets may use.
+10. [1.x import](docs/import.md): reading a 1.x data folder and a 1.x `.infopanel` file, the migration's state and run-once record, the envelope (items, guides, assets, settings), the archive guards and the diagnostics.
+11. [Unsupported content](docs/unsupported.md): placeholders, never rewriting what an engine can't read.
+12. [Versioning](docs/versioning.md): formats, what freezes, minor versions and what each ships with, capabilities and `requires`, major versions, unknown members and values, the engine API and its identifiers, the four markers.
+13. [Validation](docs/validation.md): the order of checks and every error code.
+14. [Limits and budgets](docs/limits.md): every acceptance limit, the budgets an engine guarantees, and the performance targets.
+15. [SVG profile](docs/svg.md): the restricted SVG that media assets may use.
 
 ## The request index
 
@@ -44,7 +45,7 @@ It uses a subset of OpenAPI: the objects and fields above, and in schemas the sa
 From `spec/`:
 
 ```bash
-npm run gen                                  # regenerate types/index.d.ts after a schema change
+npm run gen                                  # regenerate schemas/v1item.schema.json and types/index.d.ts after a schema or kind manifest change
 npm run check                                # the types are current; the generator's own tests
 TSC=path/to/tsc npm run check                # also type-check the types and the valid examples
 ```

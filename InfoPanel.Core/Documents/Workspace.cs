@@ -46,6 +46,12 @@ public sealed class WorkspaceOptions
     /// gives <see cref="Workspace.FirstRunExamples"/> for its platform and sensor source. Wide bar when not set.
     /// </summary>
     public IReadOnlyList<string> Examples { get; init; } = [Workspace.WideBarExample];
+
+    /// <summary>
+    /// Asked on a first run only, before <see cref="Examples"/> are stored: false stores none (the engine says so when
+    /// 1.x data waits to be migrated, whose own profiles arrive instead). True when not set.
+    /// </summary>
+    public Func<bool> ExamplesWanted { get; init; } = static () => true;
 }
 
 /// <summary>Raised when profiles are created or deleted. <see cref="Version"/> goes up by one each time.</summary>
@@ -186,7 +192,8 @@ public sealed class Workspace : IDisposable
     /// Checks the data folder's marker (<see cref="StoreMarker.Open"/>: nothing is repaired, swept or written in a folder
     /// this engine can't honour), opens the stores in <paramref name="paths"/>, sweeps the blobs, and on the first run (no
     /// profile order file and no profile folder before) stores the example documents <see cref="WorkspaceOptions.Examples"/>
-    /// names, each with its blobs. Logs once when the folder holds step-1 data.
+    /// names, each with its blobs, unless <see cref="WorkspaceOptions.ExamplesWanted"/> says no. Logs once when the folder
+    /// holds step-1 data.
     /// </summary>
     /// <exception cref="StoreMarkerException">The marker stops start-up; nothing in the folder was changed.</exception>
     /// <exception cref="IOException">A store can't be opened.</exception>
@@ -214,7 +221,7 @@ public sealed class Workspace : IDisposable
             logger.Information("Deleted {Deleted} of {Blobs} stored blobs that no document refers to", sweep.Deleted, sweep.Blobs);
 
         var workspace = new Workspace(documents, blobs, options);
-        if (firstRun)
+        if (firstRun && options.ExamplesWanted())
             workspace.StoreExamples(options.Examples, ExampleDocuments().ToDictionary(e => e.Name, e => e.Bytes, StringComparer.Ordinal), ExampleBlobs());
         return workspace;
     }

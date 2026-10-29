@@ -218,6 +218,21 @@ public sealed class V1AssetsTests : IDisposable
     }
 
     [Fact]
+    public void Folder_AFifo_IsMissing_WithoutWaiting()
+    {
+        Assert.SkipUnless(Fifo.Supported, "Windows has no FIFOs in folders.");
+        var (root, id, assets) = Folder();
+        var fifo = Path.Combine(assets, "pipe.png");
+        Fifo.Create(fifo);
+
+        var asset = Assert.Single(Fifo.Within(10, () => Resolve(root, id, ("pipe.png", true)), fifo));
+
+        Assert.Equal("import.asset.missing", asset.Code);
+        Assert.Null(asset.Blob);
+        Assert.Equal(0, _kit.BlobCount);
+    }
+
+    [Fact]
     public void Folder_ALinkedAssetsFolder_IsNeverFollowed()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");

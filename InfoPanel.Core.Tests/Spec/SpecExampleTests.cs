@@ -572,6 +572,7 @@ public class SpecSchemaAgreementTests
         foreach (var (id, schema) in Schemas)
         {
             if (id == SpecSchemas.Expression) continue; // Expressions are modelled as Expr records, read by SpecJson.
+            if (id == SpecSchemas.V1Item) continue; // The 1.x items are ItemNode, whose props stay JSON: their grammar is the kind manifest's, generated.
             if (schema["properties"] is not null && !covered.Contains(id)) missing.Add(id);
             foreach (var (name, def) in schema["$defs"]?.AsObject() ?? [])
                 if (def?["properties"] is not null && !covered.Contains($"{id}#/$defs/{name}")) missing.Add($"{id}#/$defs/{name}");

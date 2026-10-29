@@ -82,7 +82,7 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         // Every operation that needs a token: none is 401, and one without the scope 403.
         foreach (var op in Contract.Operations.Where(o => o.Scope != null && o.Path != "/ws"))
         {
-            var path = op.Path.Replace("{id}", AbsentProfile);
+            var path = op.Path.Replace("{id}", AbsentProfile).Replace("{v1Id}", AbsentProfile);
             HttpContent? Empty() => op.Method == "POST" ? Body("{}") : null;
             await Send(anonymous, op.Method, path, 401, Empty());
             if (op.Scope == "edit")
@@ -171,6 +171,21 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "HEAD", $"/api/blobs/{AbsentBlob}", 404);
         await Send(session, "GET", $"/api/blobs/{blob}", 200);
         await Send(session, "GET", $"/api/blobs/{AbsentBlob}", 404);
+
+        // The 1.x import: the migration's state and record, a profile of the 1.x folder (1.1.x data for one request), a 1.x file.
+        await Send(session, "GET", "/api/import/v1", 200);
+        await Send(session, "PUT", "/api/import/v1", 200, Body($$"""{"profiles":[{"v1Id":"{{Import.V1Fixture.Desk}}","id":null,"outcome":"skipped"}],"settings":"skipped"}"""));
+        await Send(session, "PUT", "/api/import/v1", 422, Body("{}"));
+        await Send(session, "POST", $"/api/import/v1/profiles/{Import.V1Fixture.Desk}", 200);
+        await Send(session, "POST", $"/api/import/v1/profiles/{AbsentProfile}", 404);
+        var v1Settings = Path.Combine(factory.V1Dir, "settings.xml");
+        var keptSettings = File.ReadAllBytes(v1Settings);
+        File.WriteAllText(v1Settings, "<Settings><Version>114</Version></Settings>");
+        await Send(session, "POST", $"/api/import/v1/profiles/{Import.V1Fixture.Desk}", 422);
+        File.WriteAllBytes(v1Settings, keptSettings);
+        await Send(session, "POST", "/api/import/v1/archive", 200, new ByteArrayContent(File.ReadAllBytes(Import.V1Fixture.AllKindsArchive)));
+        await Send(session, "POST", "/api/import/v1/archive", 413, new ByteArrayContent(new byte[SeededEngineFactory.ArchiveBytes + 1]));
+        await Send(session, "POST", "/api/import/v1/archive", 422, new ByteArrayContent("not a zip"u8.ToArray()));
 
         // Deleting: with the profile's tag, required, and never another's.
         await Send(session, "DELETE", $"/api/profiles/{copy}", 400);

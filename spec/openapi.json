@@ -491,6 +491,87 @@
         }
       }
     },
+    "/api/import/v1": {
+      "get": {
+        "operationId": "getV1Migration",
+        "summary": "The 1.x migration: its state, the 1.x folder and, when it has 1.x data, its profiles, settings and diagnostics.",
+        "description": "docs/import.md#migrating-a-1x-folder.",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {
+            "description": "The migration's state.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/v1Migration"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"}
+        }
+      },
+      "put": {
+        "operationId": "recordV1Migration",
+        "summary": "Stores what a migration did as the run-once record, replacing any record, and answers the new state.",
+        "description": "docs/import.md#the-record.",
+        "security": [{"bearer": ["edit"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/v1MigrationRequest"}}}},
+        "responses": {
+          "200": {
+            "description": "The record is stored; the migration's state, now done.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/v1Migration"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "422": {
+            "description": "The body breaks its definition or a limit (limit.recordBytes, limit.recordOutcomes); nothing was stored.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
+        }
+      }
+    },
+    "/api/import/v1/profiles/{v1Id}": {
+      "parameters": [{"$ref": "#/components/parameters/v1Id"}],
+      "post": {
+        "operationId": "readV1FolderProfile",
+        "summary": "Reads one profile of the 1.x folder into its envelope, storing its image files as blobs; installs nothing.",
+        "description": "docs/import.md#the-envelope.",
+        "security": [{"bearer": ["edit"]}],
+        "responses": {
+          "200": {
+            "description": "The profile's envelope.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/v1Profile"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {"$ref": "#/components/responses/notFound"},
+          "422": {
+            "description": "The folder holds 1.1.x data, which isn't imported (import.version); nothing was stored.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
+        }
+      }
+    },
+    "/api/import/v1/archive": {
+      "post": {
+        "operationId": "readV1Archive",
+        "summary": "Reads a 1.x .infopanel file into its envelope, storing its image files as blobs; installs nothing.",
+        "description": "docs/import.md#the-envelope.",
+        "security": [{"bearer": ["edit"]}],
+        "requestBody": {"required": true, "description": "The file's bytes, of any content type.", "content": {"application/octet-stream": {}}},
+        "responses": {
+          "200": {
+            "description": "The profile's envelope.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/v1Profile"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "413": {
+            "description": "The bytes are over archiveBytes; nothing was read or stored.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {
+            "description": "The file breaks an archive guard (archive.*), isn't a 1.x profile export (import.archive, archive.v2) or its Profile.xml can't be read (import.xml); nothing was stored.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
+        }
+      }
+    },
     "/api/tokens": {
       "get": {
         "operationId": "listTokens",
@@ -609,6 +690,13 @@
   },
   "components": {
     "parameters": {
+      "v1Id": {
+        "name": "v1Id",
+        "in": "path",
+        "required": true,
+        "description": "The 1.x profile's Guid, as the migration's state lists it.",
+        "schema": {"type": "string"}
+      },
       "profileId": {
         "name": "id",
         "in": "path",

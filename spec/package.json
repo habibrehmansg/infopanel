@@ -15,7 +15,7 @@
   "files": ["openapi.json", "schemas", "types", "docs", "examples", "LICENSE", "README.md"],
   "engines": { "node": ">=22" },
   "scripts": {
-    "gen": "node tools/gen-types.mjs --schemas schemas --out types/index.d.ts",
+    "gen": "node tools/gen-v1-items.mjs --manifest ../InfoPanel.Core.Tests/Snapshots/kinds.json --out schemas/v1item.schema.json && node tools/gen-types.mjs --schemas schemas --out types/index.d.ts",
     "check": "node tools/check.mjs && node --test tools/*.test.mjs"
   }
 }

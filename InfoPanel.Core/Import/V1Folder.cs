@@ -48,6 +48,8 @@ public sealed class V1Folder
     /// <summary>The record's own members; any other is a later engine's, ignored when read and kept when replaced.</summary>
     private static readonly string[] RecordMembers = ["completed", "folder", "profiles", "settings"];
 
+    private const string RecordSchema = SpecSchemas.Api + "#/$defs/v1MigrationRecord";
+
     /// <summary>The record is the engine's own file, read tolerantly: members this engine doesn't know are ignored.</summary>
     private static readonly JsonSerializerOptions RecordReading = new(SpecJson.Options) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip };
 
@@ -155,6 +157,13 @@ public sealed class V1Folder
     /// <summary>Whether the folder has 1.x data: <c>profiles.xml</c> or <c>settings.xml</c>.</summary>
     public bool HasData => Find([ProfilesFile]) is not null || Find([SettingsFile]) is not null;
 
+    /// <summary>
+    /// Whether the migration is <c>pending</c> for the engine whose data folder is <paramref name="data"/>, as
+    /// <see cref="GetState"/> tells it, without reading the folder's files: it has 1.x data and the data folder no record
+    /// (a record there, readable or not, makes it done).
+    /// </summary>
+    public bool IsPending(DataPaths data) => RegularFile.StateOf(RecordFile(data)) == PathState.Absent && HasData;
+
     /// <summary>A file of the folder by its segments, matched ignoring case; null when missing or a link.</summary>
     private string? Find(IReadOnlyList<string> segments) =>
         V1FolderAssets.Walk(Root, segments, directoryAtEnd: false, out var path) == V1AssetLookup.Found ? path : null;
@@ -177,7 +186,8 @@ public sealed class V1Folder
 
         try
         {
-            using var stream = new FileStream(path!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            // A regular file only, opened without waiting: a FIFO, socket or device there can't be read, and isn't waited on.
+            using var stream = RegularFile.OpenRead(path!, FileShare.ReadWrite | FileShare.Delete);
             var bytes = budget.ReadAll(stream, maxBytes);
             if (bytes is null)
                 problem = $"it is larger than {maxBytes} bytes.";
@@ -342,7 +352,8 @@ public sealed class V1Folder
             Record = record,
             Profiles = contents.Profiles.Select(p => new V1ProfileSummary
             {
-                Id = p.Guid.ToString(), Name = p.Name, Width = p.Width, Height = p.Height, Active = p.Active,
+                // A name 1.x left null (xsi:nil) is listed as empty.
+                Id = p.Guid.ToString(), Name = p.Name ?? "", Width = p.Width, Height = p.Height, Active = p.Active,
             }).ToList(),
             Settings = contents.Settings,
             Diagnostics = contents.Diagnostics,
@@ -398,6 +409,11 @@ public sealed class V1Folder
                 ?? throw new JsonException("The record is null.");
             if (Check(record) is { } invalid)
                 throw new JsonException(invalid.Message);
+            // The members it knows, held to their schema (types and formats: a completed that isn't a timestamp, say), so
+            // an answer never carries a record outside its format; the members it doesn't know aren't looked at.
+            var known = SpecSchemas.Strict.Validate(JsonSerializer.SerializeToElement(record, SpecJson.Options), RecordSchema);
+            if (!known.IsValid)
+                throw new JsonException($"{known.Errors[0].InstancePath}: {known.Errors[0].Message}");
             return new RecordState(record, null, unknown, Replaceable: true);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
@@ -462,8 +478,9 @@ public sealed class V1Folder
                 return new ImportRefusal("record.id", "id must be a profile id or null.", $"/profiles/{i}/id");
             if (!Outcomes.Contains(outcome.Outcome))
                 return new ImportRefusal("record.outcome", "outcome must be 'imported', 'skipped' or 'failed'.", $"/profiles/{i}/outcome");
-            if (outcome.Reason is { } reason && reason.Length > Limits.RecordReasonLength)
-                return new ImportRefusal("record.reason", $"reason is longer than {Limits.RecordReasonLength} characters.", $"/profiles/{i}/reason");
+            // Counted in characters (code points), as the schema's maxLength counts it, and refused with its code.
+            if (outcome.Reason is { } reason && reason.EnumerateRunes().Count() > Limits.RecordReasonLength)
+                return new ImportRefusal("schema", $"reason is longer than {Limits.RecordReasonLength} characters.", $"/profiles/{i}/reason");
         }
         return null;
     }

@@ -70,8 +70,10 @@ public static class V1Reader
     /// <summary>
     /// Reads a 1.x <c>.infopanel</c> archive (a seekable stream: the body in a temporary file) into its envelope.
     /// <c>Profile.xml</c> and <c>DisplayItems.xml</c> match case-insensitively, asset entries start <c>assets/</c> or
-    /// <c>assets\</c>, the later of two entries with one name wins (1.4.x extracted with overwrite), and any other entry is
-    /// ignored (<c>import.entry</c>). The archive's own <c>Profile.xml</c> is what 1.4.x exported: no window placement.
+    /// <c>assets\</c>, and any other entry is ignored (<c>import.entry</c>). Two entries with exactly one name are refused
+    /// (<c>archive.duplicate</c>, <see cref="ArchiveReader"/>); of two whose names differ only in letter case or separator
+    /// (1.x's aliases of one file), the later wins, as 1.4.x extracted with overwrite. The archive's own
+    /// <c>Profile.xml</c> is what 1.4.x exported: no window placement.
     /// </summary>
     /// <exception cref="ImportRefusal">
     /// The archive breaks a guard (<c>archive.*</c>), is a 2.0 profile archive (<c>archive.v2</c>), has no

@@ -1,0 +1,13 @@
+{
+  "state": "done",
+  "folder": "/Users/ada/Library/Application Support/InfoPanel",
+  "diagnostics": [
+    {
+      "severity": "warning",
+      "code": "import.record",
+      "path": "/record",
+      "message": "The migration record can't be read; the migration counts as done.",
+      "file": "import-v1.json"
+    }
+  ]
+}

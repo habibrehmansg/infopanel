@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { generate } from './gen-types.mjs';
+import { DEFAULT_MANIFEST } from './gen-v1-items.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const schemaFiles = readdirSync(join(root, 'schemas')).filter((f) => f.endsWith('.schema.json')).sort();
@@ -33,11 +34,11 @@ function checkWith(openapi) {
   try {
     for (const f of ['schemas', 'types', 'docs', 'tools']) folder(f);
     for (const f of schemaFiles) copy(`schemas/${f}`);
-    for (const f of ['docs/api.md', 'tools/check.mjs', 'tools/gen-types.mjs']) copy(f);
+    for (const f of ['docs/api.md', 'tools/check.mjs', 'tools/gen-types.mjs', 'tools/gen-v1-items.mjs']) copy(f);
     write('openapi.json', JSON.stringify(openapi, null, 2));
     const schemas = schemaFiles.map((file) => ({ file, json: JSON.parse(readFileSync(join(root, 'schemas', file), 'utf8')) }));
     write('types/index.d.ts', generate(schemas, { file: 'openapi.json', json: openapi }));
-    const env = { ...process.env };
+    const env = { ...process.env, INFOPANEL_KIND_MANIFEST: join(root, DEFAULT_MANIFEST) };
     delete env.TSC;
     return spawnSync(process.execPath, [join(dir, 'tools', 'check.mjs')], { encoding: 'utf8', env });
   } finally {

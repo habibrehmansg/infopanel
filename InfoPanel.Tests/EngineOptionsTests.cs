@@ -57,6 +57,20 @@ public class EngineOptionsTests
     }
 
     [Fact]
+    public void V1Dir_IsAFullPath_ThatNeedNotExist_AndIsNullUnlessGiven()
+    {
+        var dir = TempDir();
+
+        var options = Load(["--v1-dir", dir], out var errors);
+
+        Assert.Empty(errors);
+        Assert.Equal(Path.GetFullPath(dir), options!.V1Dir);
+        Assert.False(Directory.Exists(dir));
+        Assert.Null(Load([], out _)!.V1Dir);
+        Assert.Contains("--v1-dir", EngineCommandLine.Usage);
+    }
+
+    [Fact]
     public void Mock_IsOnWithTheFlagOrAnySeed()
     {
         var flag = Load(["--mock"], out var errors);
@@ -273,6 +287,8 @@ public class EngineOptionsTests
     [InlineData("--port", "--no-browser")]
     [InlineData("--data-dir=")]
     [InlineData("--token", "a", "--token", "b")]
+    [InlineData("--v1-dir")]
+    [InlineData("--v1-dir", "a", "--v1-dir", "b")]
     [InlineData("--urls=http://0.0.0.0:80")]
     [InlineData("--Kestrel:Endpoints:Lan:Url=http://0.0.0.0:80")]
     [InlineData("--kestrel:endpoints:lan:url=http://0.0.0.0:80")]

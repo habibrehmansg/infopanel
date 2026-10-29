@@ -27,6 +27,10 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `POST /api/blobs` | The bytes | `blobInfo`: 201 when the blob is new, 200 when it was already stored; 413 over `mediaBytes` |
 | `HEAD /api/blobs/{id}` | | 200 with the blob's size; 404 when it isn't stored |
 | `GET /api/blobs/{id}` | | The blob's bytes; 404 when it isn't stored |
+| `GET /api/import/v1` | | `v1Migration`: the 1.x migration's state and the 1.x folder ([1.x import](import.md#migrating-a-1x-folder)) |
+| `PUT /api/import/v1` | `v1MigrationRequest` | `v1Migration`; 422 `invalidProblem` ([1.x import](import.md#the-record)) |
+| `POST /api/import/v1/profiles/{v1Id}` | | `v1Profile`; 404 when the 1.x folder has no such profile; 422 `invalidProblem` for 1.1.x data ([1.x import](import.md#the-envelope)) |
+| `POST /api/import/v1/archive` | A 1.x `.infopanel` file's bytes | `v1Profile`; 413 over `archiveBytes`; 422 `invalidProblem` ([1.x import](import.md#reading-a-infopanel-file)) |
 | `POST /api/tokens` | `createTokenRequest` | 201 `createdToken`; 422 `invalidProblem` ([below](#integration-tokens)) |
 | `GET /api/tokens` | | An array of `tokenInfo`, oldest first |
 | `DELETE /api/tokens/{id}` | | 204; 404 when there is no such token |
@@ -36,7 +40,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 
 A request on a profile is checked in this order, and the first failure answers: its query parameters (else 400 `problem`); the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
 
-A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's, save's or duplicate's to `requestBytes` (64 KiB), a token create's to `tokenRequestBytes` (4 KiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `mediaBytes` (413).
+A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's, save's or duplicate's to `requestBytes` (64 KiB), a token create's to `tokenRequestBytes` (4 KiB), a 1.x migration record's to `recordBytes` (1 MiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `mediaBytes` and an archive's to `archiveBytes` (413).
 
 ## Errors
 
@@ -61,8 +65,8 @@ Every request under `/api` carries a token, as `Authorization: Bearer {token}`. 
 
 | Scope | Allows |
 |---|---|
-| `read` | Every `GET` and `HEAD` under `/api` (the session, fonts, sensors, the profile list, documents, exports, thumbnails, blobs) and the preview socket, `doc` messages and frames included |
-| `edit` | Every request that changes a profile, a document or a blob: creating, duplicating and deleting profiles, commits, undo, redo, revert, save and `POST /api/blobs`. `edit` implies `read`: a token made with `edit` has both |
+| `read` | Every `GET` and `HEAD` under `/api` (the session, fonts, sensors, the profile list, documents, exports, thumbnails, blobs, the 1.x migration's state) and the preview socket, `doc` messages and frames included |
+| `edit` | Every request that changes a profile, a document or a blob, or the engine's data: creating, duplicating and deleting profiles, commits, undo, redo, revert, save, `POST /api/blobs`, and the 1.x import's reads (which store blobs) and record. `edit` implies `read`: a token made with `edit` has both |
 
 Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token) and uses the token endpoints. Scopes fail closed: a request that neither scope covers needs the session token.
 
@@ -174,6 +178,10 @@ So blobs that aren't media (a client's description of how it produced a scene, l
 `HEAD /api/blobs/{id}` answers 200 with the blob's size, and `GET /api/blobs/{id}` with its bytes exactly as they were stored, as `application/octet-stream`; both answer 404 for a blob that isn't stored. A stored file whose bytes don't hash to its id counts as not stored.
 
 The engine keeps every blob that a retained version of a document refers to (the current one, the saved one, any in the undo history; through a source's `deps` or a scene's media, [document](document.md#source-and-origin)). It may delete any other blob, but not within 24 hours of the last successful `POST` of its bytes: every `POST /api/blobs` that answers 201 or 200 starts the 24 hours again, so a blob can be stored, or stored again, before the commit that refers to it. `HEAD` and `GET` don't.
+
+## 1.x import
+
+An engine reads InfoPanel 1.x's data without installing anything: a 1.x data folder, its migration state and run-once record, and a 1.x `.infopanel` file, each profile answered as an envelope a client creates a profile from with `POST /api/profiles`. The requests, the envelope, its limits and its diagnostics are on their own page ([1.x import](import.md)).
 
 ## The preview socket
 

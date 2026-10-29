@@ -905,6 +905,299 @@ export interface ErrorMessage {
   message: string;
 }
 
+/** GET and PUT /api/import/v1: the 1.x migration (docs/import.md#migrating-a-1x-folder): its state, the 1.x folder the engine reads, the run-once record once there is one, and the folder's profiles, settings and diagnostics when it has 1.x data. Read tolerantly: a client ignores members it doesn't know. */
+export interface V1Migration {
+  /** `none` (the folder has no 1.x data), `pending` (1.x data and no record: not migrated yet) or `done` (a record, or one the engine can't read: the migration never runs on its own twice). A client treats a state it doesn't know as `done`: it doesn't migrate on its own. */
+  state: "none" | "pending" | "done";
+  /**
+   * The 1.x folder the engine reads, as a full path. The engine only reads it.
+   * Length: ≥ 1.
+   */
+  folder: string;
+  /** The run-once record, when there is one the engine can read. */
+  record?: V1MigrationRecord;
+  /** The folder's profiles, in 1.x order, when it has 1.x data (at most `v1Profiles`, docs/limits.md#1x-import-limits). */
+  profiles?: V1ProfileSummary[];
+  /** The folder's settings, when it has 1.x data whose settings can be read (and isn't 1.1.x data). */
+  settings?: V1Settings;
+  /**
+   * What was found reading the folder and the record (docs/import.md#diagnostics): at most `diagnostics`, then one `more`.
+   * Items: ≤ 1001.
+   */
+  diagnostics?: ImportDiagnostic[];
+}
+
+/** PUT /api/import/v1: what a migration did, as a client reports it; the engine stores it as the run-once record (docs/import.md#the-record), adding the time and the folder. At most `recordOutcomes` outcomes, and at most `recordBytes` as received and as stored (docs/limits.md#1x-import-limits). */
+export interface V1MigrationRequest {
+  /** One outcome per 1.x profile the migration dealt with, in any order. */
+  profiles: V1MigrationOutcome[];
+  /** Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client reading it treats a value it doesn't know as `skipped`. */
+  settings: "imported" | "skipped";
+}
+
+/** The run-once record: what a migration did, as a client reported it, with when the engine stored it and the 1.x folder it read. */
+export interface V1MigrationRecord {
+  /** When the engine stored the record, in UTC to the second. */
+  completed: Timestamp;
+  /**
+   * The 1.x folder the engine read then, as a full path.
+   * Length: ≥ 1.
+   */
+  folder: string;
+  /** Items: ≤ 1000. */
+  profiles: V1MigrationOutcome[];
+  /** Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client treats a value it doesn't know as `skipped`. */
+  settings: "imported" | "skipped";
+}
+
+/** What a migration did with one 1.x profile. */
+export interface V1MigrationOutcome {
+  /** The 1.x profile's Guid, in lower case. */
+  v1Id: DocumentId;
+  /** The profile created from it, or null when none was. */
+  id: DocumentId | null;
+  /** `imported`, `skipped` (the user left it out) or `failed`. A client treats an outcome it doesn't know as `failed`. */
+  outcome: "imported" | "skipped" | "failed";
+  /**
+   * Why, for people: display text.
+   * Length: ≤ 256.
+   */
+  reason?: string;
+}
+
+/** A profile of the 1.x folder's profile list, as 1.x lists it. */
+export interface V1ProfileSummary {
+  /** The 1.x profile's Guid, in lower case: what POST /api/import/v1/profiles/{v1Id} names. */
+  id: DocumentId;
+  /** Its name as stored (empty when it has none). */
+  name: string;
+  /**
+   * Its canvas width as stored, which may be over a document's limit (a client clamps it).
+   * Range: -2147483648–2147483647.
+   */
+  width: number;
+  /**
+   * Its canvas height as stored.
+   * Range: -2147483648–2147483647.
+   */
+  height: number;
+  /** Whether 1.x showed it as a window. */
+  active: boolean;
+}
+
+/** The user data of the 1.x folder's settings (`settings.xml`, else `settings.xml.bak`), each value as 1.x would use it: an absent one is 1.x's default. Nothing is applied by reading it (docs/import.md#settings). */
+export interface V1Settings {
+  /**
+   * The settings version: 131 from 1.3.1 on, 115 from 1.2.x. Absent when it doesn't parse.
+   * Range: -2147483648–2147483647.
+   */
+  version?: number;
+  /**
+   * Frames a second, 1.x's default 15, within the engine setting's range.
+   * Range: 1–60.
+   */
+  targetFrameRate: number;
+  /**
+   * Graph samples' interval in milliseconds, 1.x's default 1000, within the engine setting's range.
+   * Range: 100–3000.
+   */
+  targetGraphUpdateRate: number;
+  libre: V1LibreSettings;
+  programSpecific: V1ProgramSpecificSettings;
+  /** The panel devices of 1.x's device families, at most `v1Devices` per family. */
+  devices: V1Device[];
+  /** Per device family (as `v1Device.family` names it), whether 1.x drove several devices of it. */
+  multiDevice: { [key: string]: boolean };
+  /** 1.x's hotkeys, at most `v1Hotkeys`. */
+  hotkeys: V1Hotkey[];
+}
+
+/** 1.x's LibreHardwareMonitor settings: whether it read sensors with it, and whether and how often it kept their readings. */
+export interface V1LibreSettings {
+  enabled: boolean;
+  storage: boolean;
+  /**
+   * Seconds, within the engine setting's range.
+   * Range: 1–300.
+   */
+  storageInterval: number;
+}
+
+/** Whether 1.x switched profiles by the program in front at all (its profiles' trigger apps), and whether it hid the other profiles then. */
+export interface V1ProgramSpecificSettings {
+  enabled: boolean;
+  hideOthers: boolean;
+}
+
+/** A panel device of one of 1.x's device families: the 1.x profile it showed, and every simple element of the device as stored, as strings, at most `v1DeviceFields`. */
+export interface V1Device {
+  /** `beada`, `turing`, `lianLi`, `thermalright`, `thermaltake`, `jl`, `jonsbo` or `vmax`. A client leaves out a device of a family it doesn't know. */
+  family: "beada" | "turing" | "lianLi" | "thermalright" | "thermaltake" | "jl" | "jonsbo" | "vmax";
+  /** The 1.x profile it showed, its Guid in lower case; absent for none. */
+  profile?: DocumentId;
+  /** The device's elements by their 1.x names, each value as stored (at most `v1SettingLength` characters). */
+  fields: { [key: string]: string };
+}
+
+/** A 1.x hotkey as stored: the keys, the device it targets and the 1.x profile it switches to. */
+export interface V1Hotkey {
+  modifiers: string;
+  key: string;
+  deviceType: string;
+  deviceId: string;
+  deviceLocation: string;
+  /** The 1.x profile it switches to, its Guid in lower case; absent for none. */
+  profile?: DocumentId;
+}
+
+/** POST /api/import/v1/profiles/{v1Id} and POST /api/import/v1/archive: one 1.x profile, read without installing anything (the envelope, docs/import.md#the-envelope): its properties, its items as the 1.x item JSON, its guides, its image files stored as blobs, and what was found on the way. A client creates a profile from it with POST /api/profiles, choosing the profile's id. Read tolerantly: a client ignores members it doesn't know. */
+export interface V1Profile {
+  /** `folder` (a profile of the 1.x folder) or `archive` (a 1.x `.infopanel` file). A client treats a source it doesn't know as `archive`. */
+  source: "folder" | "archive";
+  /** The 1.x profile's Guid as stored, in lower case. It isn't a profile id of this engine: a client that creates a profile from the envelope chooses that. */
+  id: DocumentId;
+  profile: V1ProfileProps;
+  targetWindow?: V1TargetWindow;
+  /** The top-level items, in 1.x order, the first at the back (docs/import.md#items). */
+  items: V1Item[];
+  /** 1.x's guides, wherever they sat among the items. */
+  guides: V1Guide[];
+  /** One entry per image file the items name (gauge frames included), keyed by the items' `filePath` and `relativePath`. */
+  assets: V1Asset[];
+  /**
+   * What was found reading the profile (docs/import.md#diagnostics): at most `diagnostics`, then one `more`.
+   * Items: ≤ 1001.
+   */
+  diagnostics: ImportDiagnostic[];
+}
+
+/** Every member of the 1.x profile model, by its camelCase name, as stored. A string 1.x left null, or a number that isn't finite, is null. */
+export interface V1ProfileProps {
+  name: string | null;
+  /**
+   * As stored, which may be over a document's limit (a client clamps it, `import.size`).
+   * Range: -2147483648–2147483647.
+   */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  showFps: boolean;
+  drag: boolean;
+  backgroundColor: string | null;
+  /** Whether 1.x showed it as a window. A 1.x export writes the model's default, true. */
+  active: boolean;
+  openGL: boolean;
+  fontScale: number | null;
+  topmost: boolean;
+  /** The profile's default font family (`import.font` when the engine doesn't have it). */
+  font: string | null;
+  /** Range: -2147483648–2147483647. */
+  fontSize: number;
+  color: string | null;
+  /** Range: -2147483648–2147483647. */
+  windowX: number;
+  /** Range: -2147483648–2147483647. */
+  windowY: number;
+  resize: boolean;
+  strictWindowMatching: boolean;
+  /** The programs whose window in front shows the profile, as 1.x stored them (comma-separated). */
+  triggerProcessNames: string | null;
+  /** Whether it was selected in 1.x. */
+  isSelected: boolean;
+}
+
+/** The display 1.x placed the profile's window on. */
+export interface V1TargetWindow {
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  /** The display's device name on Windows, such as "\\.\DISPLAY2". */
+  deviceName?: string;
+}
+
+/** What the engine adds to a 1.x item: its sensor binding as this engine reads it now. */
+export interface V1ItemMeta {
+  sensor?: V1SensorMeta;
+}
+
+/** The sensor a 1.x item is bound to: its key in this engine and its status now (`import.sensor` when it has no reading). */
+export interface V1SensorMeta {
+  /**
+   * The sensor's key, as a binding names it (docs/bindings.md).
+   * Length: ≥ 1.
+   */
+  key: string;
+  /** As `sensorEntry.status`: `live`, `stale`, `unavailable`, `denied`, `simulated` or `missing`. A client treats a status it doesn't know as no reading. */
+  status: "live" | "stale" | "unavailable" | "denied" | "simulated" | "missing";
+}
+
+/** A 1.x guide (a line 1.x showed only while a profile was being designed, never on a panel): data for a client, not an item. A member 1.x left out has 1.x's default. */
+export interface V1Guide {
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  /** Range: -2147483648–2147483647. */
+  length: number;
+  color: string;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  /** As stored; 1.x's default "DisplayItem" when absent. */
+  name: string;
+  /** As stored: a guide in a hidden group keeps its own value (`container` tells the group). */
+  hidden: boolean;
+  locked: boolean;
+  /** The JSON pointer of the group's `children` the guide sat in (`/items/1/children`), in the answer's items; absent at the top level. */
+  container?: string;
+}
+
+/** An image file the items name: the blob it was stored as, or why nothing was stored (docs/import.md#assets). */
+export interface V1Asset {
+  /** Exactly the items' `filePath`. */
+  path: string;
+  /** Exactly the items' `relativePath`: the path is inside the profile's assets. */
+  relative: boolean;
+  /** The stored blob, as POST /api/blobs answers it. */
+  blob?: BlobInfo;
+  /**
+   * Why nothing was stored: an `import.asset.*` code (docs/import.md#diagnostics). A later engine may add codes: a client treats one it doesn't know as a file that wasn't stored.
+   * Length: ≥ 1.
+   */
+  code?: string;
+  /**
+   * With `import.asset.media`: the media check's code or the limit's (`media.format`, `limit.mediaBytes`, `archive.expanded`, ...).
+   * Length: ≥ 1.
+   */
+  reason?: string;
+}
+
+/** A problem found reading 1.x data, inside an otherwise readable answer (docs/import.md#diagnostics). */
+export interface ImportDiagnostic {
+  /** `error` (something wasn't read), `warning` (read, but not as 1.x had it) or `info`. A client treats a severity it doesn't know as `warning`. */
+  severity: "error" | "warning" | "info";
+  /**
+   * A code of docs/import.md's catalogue (`import.*`), or `more`, which counts the diagnostics not listed. A later engine may add codes: a client handles a code it doesn't know by its severity (docs/versioning.md#error-codes-and-paths).
+   * Length: ≥ 1.
+   */
+  code: string;
+  /** The JSON pointer to what it is about, in the answer; "" for the whole. */
+  path: string;
+  /** What was found, for people: display text, never read by a client. */
+  message: string;
+  /** The 1.x file it was found in, as the folder or the archive names it (`profiles/{guid}.xml`, `Profile.xml`), when known. */
+  file?: string;
+  /**
+   * The line in `file`, from 1, when known.
+   * Range: 1–2147483647.
+   */
+  line?: number;
+}
+
 // common.schema.json (urn:infopanel:common:1)
 
 /**
@@ -2159,6 +2452,774 @@ export interface GlowEffect {
   color: ColorExpr;
 }
 
+// v1item.schema.json (urn:infopanel:v1item:1)
+
+/** A 1.x item, by its kind. What the engine sends is read tolerantly: a client skips an item whose kind it doesn't know, reporting it as `import.itemType` (docs/import.md#items). */
+export type V1Item = V1TextItem | V1SensorItem | V1ClockItem | V1CalendarItem | V1BarItem | V1GraphItem | V1DonutItem | V1ShapeItem | V1GroupItem | V1TableItem | V1ImageItem | V1SensorImageItem | V1HttpImageItem | V1GaugeItem;
+
+/** An item of the 1.x kind `text` (1.x's TextDisplayItem, "Text"). */
+export interface V1TextItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "text";
+  props: V1TextProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `text` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1TextProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  font: string | null;
+  /** Range: -2147483648–2147483647. */
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikeout: boolean;
+  color: string | null;
+  uppercase: boolean;
+  /** Range: -2147483648–2147483647. */
+  glowRadius: number;
+  fontStyle: string | null;
+  rightAlign: boolean;
+  centerAlign: boolean;
+  wrap: boolean;
+  ellipsis: boolean;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  marquee: boolean;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpeed: number;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpacing: number;
+  glowEnabled: boolean;
+  glowColor: string | null;
+  glowBlendMode: string | null;
+}
+
+/** An item of the 1.x kind `sensor` (1.x's SensorDisplayItem, "Sensor"). */
+export interface V1SensorItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "sensor";
+  props: V1SensorProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `sensor` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1SensorProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  font: string | null;
+  /** Range: -2147483648–2147483647. */
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikeout: boolean;
+  color: string | null;
+  uppercase: boolean;
+  /** Range: -2147483648–2147483647. */
+  glowRadius: number;
+  fontStyle: string | null;
+  rightAlign: boolean;
+  centerAlign: boolean;
+  wrap: boolean;
+  ellipsis: boolean;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  marquee: boolean;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpeed: number;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpacing: number;
+  glowEnabled: boolean;
+  glowColor: string | null;
+  glowBlendMode: string | null;
+  sensorName: string | null;
+  sensorType: "HwInfo" | "Libre" | "Plugin";
+  /** Range: -2147483648–2147483647. */
+  hwInfoRemoteIndex: number;
+  /** Range: 0–4294967295. */
+  id: number;
+  /** Range: 0–4294967295. */
+  instance: number;
+  /** Range: 0–4294967295. */
+  entryId: number;
+  libreSensorId: string | null;
+  pluginSensorId: string | null;
+  valueType: "NOW" | "MIN" | "MAX" | "AVERAGE";
+  threshold1: number | null;
+  threshold1Color: string | null;
+  threshold2: number | null;
+  threshold2Color: string | null;
+  showName: boolean;
+  unit: string | null;
+  overrideUnit: boolean;
+  showUnit: boolean;
+  overridePrecision: boolean;
+  /** Range: -2147483648–2147483647. */
+  precision: number;
+  showThousandsSeparator: boolean;
+  additionModifier: number | null;
+  absoluteAddition: boolean;
+  multiplicationModifier: number | null;
+  divisionToggle: boolean;
+}
+
+/** An item of the 1.x kind `clock` (1.x's ClockDisplayItem, "Clock"). */
+export interface V1ClockItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "clock";
+  props: V1ClockProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `clock` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1ClockProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  font: string | null;
+  /** Range: -2147483648–2147483647. */
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikeout: boolean;
+  color: string | null;
+  uppercase: boolean;
+  /** Range: -2147483648–2147483647. */
+  glowRadius: number;
+  fontStyle: string | null;
+  rightAlign: boolean;
+  centerAlign: boolean;
+  wrap: boolean;
+  ellipsis: boolean;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  marquee: boolean;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpeed: number;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpacing: number;
+  glowEnabled: boolean;
+  glowColor: string | null;
+  glowBlendMode: string | null;
+  format: string | null;
+}
+
+/** An item of the 1.x kind `calendar` (1.x's CalendarDisplayItem, "Calendar"). */
+export interface V1CalendarItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "calendar";
+  props: V1CalendarProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `calendar` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1CalendarProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  font: string | null;
+  /** Range: -2147483648–2147483647. */
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikeout: boolean;
+  color: string | null;
+  uppercase: boolean;
+  /** Range: -2147483648–2147483647. */
+  glowRadius: number;
+  fontStyle: string | null;
+  rightAlign: boolean;
+  centerAlign: boolean;
+  wrap: boolean;
+  ellipsis: boolean;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  marquee: boolean;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpeed: number;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpacing: number;
+  glowEnabled: boolean;
+  glowColor: string | null;
+  glowBlendMode: string | null;
+  format: string | null;
+}
+
+/** An item of the 1.x kind `bar` (1.x's BarDisplayItem, "Bar"). */
+export interface V1BarItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "bar";
+  props: V1BarProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `bar` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1BarProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  sensorName: string | null;
+  sensorType: "HwInfo" | "Libre" | "Plugin";
+  /** Range: -2147483648–2147483647. */
+  hwInfoRemoteIndex: number;
+  /** Range: 0–4294967295. */
+  id: number;
+  /** Range: 0–4294967295. */
+  instance: number;
+  /** Range: 0–4294967295. */
+  entryId: number;
+  libreSensorId: string | null;
+  pluginSensorId: string | null;
+  valueType: "NOW" | "MIN" | "MAX" | "AVERAGE";
+  /** Range: -2147483648–2147483647. */
+  minValue: number;
+  /** Range: -2147483648–2147483647. */
+  maxValue: number;
+  autoValue: boolean;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  flipX: boolean;
+  frame: boolean;
+  frameColor: string | null;
+  background: boolean;
+  backgroundColor: string | null;
+  color: string | null;
+  gradient: boolean;
+  gradientColor: string | null;
+  /** Range: -2147483648–2147483647. */
+  cornerRadius: number;
+}
+
+/** An item of the 1.x kind `graph` (1.x's GraphDisplayItem, "Graph"). */
+export interface V1GraphItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "graph";
+  props: V1GraphProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `graph` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1GraphProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  sensorName: string | null;
+  sensorType: "HwInfo" | "Libre" | "Plugin";
+  /** Range: -2147483648–2147483647. */
+  hwInfoRemoteIndex: number;
+  /** Range: 0–4294967295. */
+  id: number;
+  /** Range: 0–4294967295. */
+  instance: number;
+  /** Range: 0–4294967295. */
+  entryId: number;
+  libreSensorId: string | null;
+  pluginSensorId: string | null;
+  valueType: "NOW" | "MIN" | "MAX" | "AVERAGE";
+  /** Range: -2147483648–2147483647. */
+  minValue: number;
+  /** Range: -2147483648–2147483647. */
+  maxValue: number;
+  autoValue: boolean;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  flipX: boolean;
+  frame: boolean;
+  frameColor: string | null;
+  background: boolean;
+  backgroundColor: string | null;
+  color: string | null;
+  type: "LINE" | "HISTOGRAM";
+  /** Range: -2147483648–2147483647. */
+  thickness: number;
+  /** Range: -2147483648–2147483647. */
+  step: number;
+  fill: boolean;
+  fillColor: string | null;
+}
+
+/** An item of the 1.x kind `donut` (1.x's DonutDisplayItem, "Donut"). */
+export interface V1DonutItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "donut";
+  props: V1DonutProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `donut` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1DonutProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  sensorName: string | null;
+  sensorType: "HwInfo" | "Libre" | "Plugin";
+  /** Range: -2147483648–2147483647. */
+  hwInfoRemoteIndex: number;
+  /** Range: 0–4294967295. */
+  id: number;
+  /** Range: 0–4294967295. */
+  instance: number;
+  /** Range: 0–4294967295. */
+  entryId: number;
+  libreSensorId: string | null;
+  pluginSensorId: string | null;
+  valueType: "NOW" | "MIN" | "MAX" | "AVERAGE";
+  /** Range: -2147483648–2147483647. */
+  minValue: number;
+  /** Range: -2147483648–2147483647. */
+  maxValue: number;
+  autoValue: boolean;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  flipX: boolean;
+  frame: boolean;
+  frameColor: string | null;
+  background: boolean;
+  backgroundColor: string | null;
+  color: string | null;
+  /** Range: -2147483648–2147483647. */
+  radius: number;
+  /** Range: -2147483648–2147483647. */
+  thickness: number;
+  /** Range: -2147483648–2147483647. */
+  span: number;
+}
+
+/** An item of the 1.x kind `shape` (1.x's ShapeDisplayItem, "Shape"). */
+export interface V1ShapeItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "shape";
+  props: V1ShapeProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `shape` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1ShapeProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  type: "Rectangle" | "Capsule" | "Trapezoid" | "Parallelogram" | "Ellipse" | "Triangle" | "Pentagon" | "Hexagon" | "Octagon" | "Star" | "Plus" | "Arrow";
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  /** Range: -2147483648–2147483647. */
+  cornerRadius: number;
+  showFrame: boolean;
+  /** Range: -2147483648–2147483647. */
+  frameThickness: number;
+  frameColor: string | null;
+  showFill: boolean;
+  fillColor: string | null;
+  showGradient: boolean;
+  gradientColor: string | null;
+  gradientColor2: string | null;
+  gradientType: "Linear" | "Sweep" | "Radial" | "Diamond" | "Reflected" | "Spiral";
+  /** Range: -2147483648–2147483647. */
+  gradientAngle: number;
+  /** Range: -2147483648–2147483647. */
+  gradientAnimationSpeed: number;
+}
+
+/** An item of the 1.x kind `group` (1.x's GroupDisplayItem, "Group"). */
+export interface V1GroupItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "group";
+  props: V1GroupProps;
+  meta: V1ItemMeta;
+  /** The group's items, in 1.x order, the first at the back. */
+  children: V1Item[];
+}
+
+/** The properties of a `group` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1GroupProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  /** Range: -2147483648–2147483647. */
+  displayItemsCount: number;
+  isExpanded: boolean;
+}
+
+/** An item of the 1.x kind `table` (1.x's TableSensorDisplayItem, "Table"). */
+export interface V1TableItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "table";
+  props: V1TableProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `table` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1TableProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  font: string | null;
+  /** Range: -2147483648–2147483647. */
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikeout: boolean;
+  color: string | null;
+  uppercase: boolean;
+  /** Range: -2147483648–2147483647. */
+  glowRadius: number;
+  fontStyle: string | null;
+  rightAlign: boolean;
+  centerAlign: boolean;
+  wrap: boolean;
+  ellipsis: boolean;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  marquee: boolean;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpeed: number;
+  /** Range: -2147483648–2147483647. */
+  marqueeSpacing: number;
+  glowEnabled: boolean;
+  glowColor: string | null;
+  glowBlendMode: string | null;
+  sensorName: string | null;
+  sensorType: "HwInfo" | "Libre" | "Plugin";
+  valueType: "NOW" | "MIN" | "MAX" | "AVERAGE";
+  pluginSensorId: string | null;
+  /** Range: -2147483648–2147483647. */
+  maxRows: number;
+  showHeader: boolean;
+  tableFormat: string | null;
+}
+
+/** An item of the 1.x kind `image` (1.x's ImageDisplayItem, "Image"). */
+export interface V1ImageItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "image";
+  props: V1ImageProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `image` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1ImageProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  type: "FILE" | "URL" | "RTSP";
+  readOnly: boolean;
+  filePath: string | null;
+  relativePath: boolean;
+  rtspUrl: string | null;
+  httpUrl: string | null;
+  cache: boolean;
+  /** Range: -2147483648–2147483647. */
+  scale: number;
+  layer: boolean;
+  layerColor: string | null;
+  showPanel: boolean;
+  /** Range: -2147483648–2147483647. */
+  volume: number;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+}
+
+/** An item of the 1.x kind `sensorImage` (1.x's SensorImageDisplayItem, "Sensor Image"). */
+export interface V1SensorImageItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "sensorImage";
+  props: V1SensorImageProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `sensorImage` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1SensorImageProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  type: "FILE" | "URL" | "RTSP";
+  readOnly: boolean;
+  filePath: string | null;
+  relativePath: boolean;
+  rtspUrl: string | null;
+  httpUrl: string | null;
+  cache: boolean;
+  /** Range: -2147483648–2147483647. */
+  scale: number;
+  layer: boolean;
+  layerColor: string | null;
+  showPanel: boolean;
+  /** Range: -2147483648–2147483647. */
+  volume: number;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  sensorName: string | null;
+  sensorType: "HwInfo" | "Libre" | "Plugin";
+  /** Range: -2147483648–2147483647. */
+  hwInfoRemoteIndex: number;
+  /** Range: 0–4294967295. */
+  id: number;
+  /** Range: 0–4294967295. */
+  instance: number;
+  /** Range: 0–4294967295. */
+  entryId: number;
+  libreSensorId: string | null;
+  pluginSensorId: string | null;
+  valueType: "NOW" | "MIN" | "MAX" | "AVERAGE";
+  threshold1: number | null;
+  threshold2: number | null;
+}
+
+/** An item of the 1.x kind `httpImage` (1.x's HttpImageDisplayItem, "HTTP Image"). */
+export interface V1HttpImageItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "httpImage";
+  props: V1HttpImageProps;
+  meta: V1ItemMeta;
+}
+
+/** The properties of a `httpImage` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1HttpImageProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  type: "FILE" | "URL" | "RTSP";
+  readOnly: boolean;
+  filePath: string | null;
+  relativePath: boolean;
+  rtspUrl: string | null;
+  httpUrl: string | null;
+  cache: boolean;
+  /** Range: -2147483648–2147483647. */
+  scale: number;
+  layer: boolean;
+  layerColor: string | null;
+  showPanel: boolean;
+  /** Range: -2147483648–2147483647. */
+  volume: number;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+  sensorName: string | null;
+  sensorType: "HwInfo" | "Libre" | "Plugin";
+  /** Range: -2147483648–2147483647. */
+  hwInfoRemoteIndex: number;
+  /** Range: 0–4294967295. */
+  id: number;
+  /** Range: 0–4294967295. */
+  instance: number;
+  /** Range: 0–4294967295. */
+  entryId: number;
+  libreSensorId: string | null;
+  pluginSensorId: string | null;
+  valueType: "NOW" | "MIN" | "MAX" | "AVERAGE";
+}
+
+/** An item of the 1.x kind `gauge` (1.x's GaugeDisplayItem, "Gauge"). */
+export interface V1GaugeItem {
+  /**
+   * The 1.x item's Guid as stored, in lower case.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  kind: "gauge";
+  props: V1GaugeProps;
+  meta: V1ItemMeta;
+  /** The gauge's frames, in 1.x order: image items. */
+  images: V1ImageItem[];
+}
+
+/** The properties of a `gauge` item, every one of the 1.x model's, by its camelCase name. */
+export interface V1GaugeProps {
+  name: string | null;
+  hidden: boolean;
+  /** Range: -2147483648–2147483647. */
+  x: number;
+  /** Range: -2147483648–2147483647. */
+  y: number;
+  isLocked: boolean;
+  /** Range: -2147483648–2147483647. */
+  rotation: number;
+  sensorName: string | null;
+  sensorType: "HwInfo" | "Libre" | "Plugin";
+  /** Range: -2147483648–2147483647. */
+  hwInfoRemoteIndex: number;
+  /** Range: 0–4294967295. */
+  id: number;
+  /** Range: 0–4294967295. */
+  instance: number;
+  /** Range: 0–4294967295. */
+  entryId: number;
+  libreSensorId: string | null;
+  pluginSensorId: string | null;
+  flipX: boolean;
+  valueType: "NOW" | "MIN" | "MAX" | "AVERAGE";
+  minValue: number | null;
+  maxValue: number | null;
+  /** Range: -2147483648–2147483647. */
+  scale: number;
+  animationSpeed: number | null;
+  /** Range: -2147483648–2147483647. */
+  width: number;
+  /** Range: -2147483648–2147483647. */
+  height: number;
+}
+
 // openapi.json (ApiOperations)
 
 /**
@@ -2605,6 +3666,90 @@ export interface ApiOperations {
       401: null;
       /** No such profile, blob or token. */
       404: null;
+    };
+  };
+  /**
+   * getV1Migration: The 1.x migration: its state, the 1.x folder and, when it has 1.x data, its profiles, settings and diagnostics.
+   *
+   * docs/import.md#migrating-a-1x-folder.
+   */
+  "GET /api/import/v1": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The migration's state. */
+      200: V1Migration;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * recordV1Migration: Stores what a migration did as the run-once record, replacing any record, and answers the new state.
+   *
+   * docs/import.md#the-record.
+   */
+  "PUT /api/import/v1": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: V1MigrationRequest;
+    responses: {
+      /** The record is stored; the migration's state, now done. */
+      200: V1Migration;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** The body breaks its definition or a limit (limit.recordBytes, limit.recordOutcomes); nothing was stored. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * readV1FolderProfile: Reads one profile of the 1.x folder into its envelope, storing its image files as blobs; installs nothing.
+   *
+   * docs/import.md#the-envelope.
+   */
+  "POST /api/import/v1/profiles/{v1Id}": {
+    params: {
+      /** The 1.x profile's Guid, as the migration's state lists it. */
+      v1Id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The profile's envelope. */
+      200: V1Profile;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The folder holds 1.1.x data, which isn't imported (import.version); nothing was stored. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * readV1Archive: Reads a 1.x .infopanel file into its envelope, storing its image files as blobs; installs nothing.
+   *
+   * docs/import.md#the-envelope.
+   */
+  "POST /api/import/v1/archive": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    /** The file's bytes, of any content type. */
+    request: "application/octet-stream";
+    responses: {
+      /** The profile's envelope. */
+      200: V1Profile;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** The bytes are over archiveBytes; nothing was read or stored. */
+      413: Problem;
+      /** The file breaks an archive guard (archive.*), isn't a 1.x profile export (import.archive, archive.v2) or its Profile.xml can't be read (import.xml); nothing was stored. */
+      422: InvalidProblem;
     };
   };
   /**
